@@ -220,151 +220,64 @@ test.describe('好读模式翻页（离线重放）', () => {
     });
   }
 
-  // 「点图缩放」只对**有图片连结**的卷成立（iframe 类没有 img 可点），故按 withImages
-  // 生成 —— 不适用的卷根本不产生测试，而不是跑起来才 test.skip（后者看起来像覆盖漏洞，
-  // 也会把真问题混在里面）。素材本身若一张图都没有则整组显式 skip，不会静默消失。
+  // A viewer round trip must preserve the article's inline geometry and position.
   if (!withImages.length) {
-    test.skip('尚无含图片连结的 article cassette（点图缩放无素材）', () => {});
+    test.skip('An article cassette containing image links is required', () => {});
   }
   for (const cassette of withImages) {
-    // REGRESSION: 好读点图切换「整页放大/缩小」后，捲动位置整个跑掉——放大态卷到
-    // 文章中段再点某张图缩小，内容总高骤减但 .main 的 scrollTop 不变 → 视窗落到文章
-    // 更后面，刚刚在看的那张图跑出视野。修法：点击当下以「被点的图」为锚点记下它相对
-    // 视窗的位置（offsetTop/offsetHeight，layout 座标；.main 与 img 各有 transform
-    // scale，rect 与 scrollTop 不同尺规不可混用），在 useLayoutEffect 里换算回新的
-    // scrollTop（见 src/js/scroll_anchor.js、Screen.jsx handleImageClick）。
-    // 守门：缩小后该图必须仍与 .main 视窗相交（旧 code 会整个卷过头 → 交集 <= 0）。
-    // 纯算式部分在 tests/unit/scroll_anchor.test.js；这里守真浏览器的真 layout。
-    test(`点图缩小后被点的图仍在视野内（捲动锚定）[${cassette.__file}]`, async ({ page }) => {
+    test(`opening and closing an image preserves the reading position [${cassette.__file}]`, async ({ page }) => {
       test.setTimeout(120000);
       await bootOffline(page, ptt);
       await ptt.applyPrefs(page, { enableEasyReading: true });
       await replayCassette(page, cassette, { easyReading: true });
-
-      const SEL = '#mainContainer img.hyperLinkPreview';
-      // 自动开图是**延迟载入**的（卷到附近才挂、卷远了卸掉释放记忆体），所以不能
-      // 「卷到底 → 回顶」就期待整篇的图都还挂着。由上往下扫，停在第一个真的把图挂
-      // 出来的位置，后面的点击/锚定都在那里做。
-      //
-      // 捲動迴圈**由 Node 驱动**（2026-08-27 改）：旧版整段跑在一个 page.evaluate 里
-      // 靠 sleep(250~400) 推进，图回得慢时（offline-slow project）会一路扫到底都看不到
-      // 任何 loaded img → 以 'no inline image rendered' 假红。现在每步捲完都等
-      // helpers/layout.js 的 waitPreviewsSettled（含 Node 端在途图片请求）。
       await waitPreviewsSettled(page);
-      const loadedImgCount = () =>
-        page.evaluate(
-          (sel) =>
-            Array.from(document.querySelectorAll(sel)).filter(
-              (im) => im.offsetWidth > 0 && im.offsetHeight > 0
-            ).length,
-          SEL
-        );
-      const geom = await page.evaluate(() => {
-        const s = document.querySelector('.main');
-        return s ? { h: s.scrollHeight, ch: s.clientHeight } : null;
-      });
-      expect(geom, '找不到捲动容器 .main').not.toBeNull();
-      if (!(await loadedImgCount())) {
-        const step = Math.max(200, geom.ch * 0.8);
-        for (let y = 0; y <= geom.h; y += step) {
-          await page.evaluate((top) => {
-            document.querySelector('.main').scrollTop = top;
-          }, y);
-          await waitPreviewsSettled(page);
-          if (await loadedImgCount()) break;
-        }
-      }
-      // 这三个条件以前是 test.skip 的防御——那是外部图床时代的产物（图载不到就
-      // 跳过，免得网路噪音假红）。图改由本地 fixture 供应后必定载得到，所以「有
-      // 图片连结的文章却一张都没载出来 / 点了不放大 / 放大后图消失」全是真 bug，
-      // 一律硬红，不得再以 skip 掩盖。
-      expect(await loadedImgCount(), '有图片连结的文章却一张都没载出来').toBeGreaterThan(0);
-
-      // 点第一张 → 整页放大（内容变很长，正是位移最明显的场景）。
-      await page.evaluate((sel) => {
-        Array.from(document.querySelectorAll(sel))
-          .filter((im) => im.offsetWidth > 0 && im.offsetHeight > 0)[0]
-          .click();
-      }, SEL);
-      await waitPreviewsSettled(page);
-      expect(
-        await page.evaluate(() =>
-          document.getElementById('mainContainer').classList.contains('imagesEnlarged')
-        ),
-        'enlarge did not apply'
-      ).toBe(true);
-      expect(await loadedImgCount(), 'imgs vanished after enlarge').toBeGreaterThan(0);
-
-      // 取中间那张当锚点（上方压着大量被放大的内容 → 缩小时位移最大）。只有一张时
-      // 就是它自己：位移较小、讯号较弱，但断言完全成立（强情境由 stock-end 的 9
-      // 张涵盖）。
-      // 回傳锚点上方已载出的图数：>0 时缩小必然让上方内容变矮，scrollTop 必须跟着变。
-      const imgsAboveAnchor = await page.evaluate((sel) => {
-        const imgs = Array.from(document.querySelectorAll(sel)).filter(
-          (im) => im.offsetWidth > 0 && im.offsetHeight > 0
-        );
-        const i = Math.floor(imgs.length / 2);
-        imgs[i].setAttribute('data-e2e-anchor', '1');
-        return i;
-      }, SEL);
-      // 卷到图顶位于视窗上方 30% 处（图顶在视窗内）。.main 有 scale 时一次卷不准，
-      // 每卷一次等一帧让版面更新再量（收敛单调）。
-      await page.evaluate(async () => {
-        const scroller = document.querySelector('.main');
-        const img = document.querySelector('[data-e2e-anchor]');
-        const rel = () => img.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-        const target = scroller.getBoundingClientRect().height * 0.3;
-        for (let i = 0; i < 30; i++) {
-          const d = rel() - target;
-          if (Math.abs(d) < 3) break;
-          scroller.scrollTop += d;
-          await new Promise((r) => requestAnimationFrame(r));
-        }
-      });
-      await waitRectStable(page, '[data-e2e-anchor]');
-      const measure = () =>
-        page.evaluate(() => {
+      const imageSelector = '[data-e2e-anchor]';
+      for (let step = 0; step < 100; step += 1) {
+        const result = await page.evaluate(() => {
+          if (Array.from(document.querySelectorAll('#mainContainer img.hyperLinkPreview'))
+            .some((img) => img.naturalWidth > 0 && img.offsetHeight > 0)) return 'found';
           const scroller = document.querySelector('.main');
-          const mr = scroller.getBoundingClientRect();
-          const ir = document.querySelector('[data-e2e-anchor]').getBoundingClientRect();
-          return {
-            rel: ir.top - mr.top,
-            scrollTop: scroller.scrollTop,
-            viewH: mr.height,
-            visible: Math.min(ir.bottom, mr.bottom) - Math.max(ir.top, mr.top),
-          };
+          if (scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight) return 'end';
+          scroller.scrollTop += scroller.clientHeight * 0.8;
+          return 'next';
         });
-      const before = await measure();
-
-      // 点同一张图 → 缩小。React 19：click 的 setState 在事件 task 之后才 commit ⇒
-      // 等 class 真的拿掉、整页版面与锚点图都停了才量（旧版是 sleep(500) 后单次量）。
-      await page.evaluate(() => document.querySelector('[data-e2e-anchor]').click());
-      await page.waitForFunction(
-        () => !document.getElementById('mainContainer').classList.contains('imagesEnlarged')
-      );
-      await waitPreviewsSettled(page);
-      await waitRectStable(page, '[data-e2e-anchor]');
-      const after = await measure();
-      const r = {
-        before,
-        after: { rel: after.rel, scrollTop: after.scrollTop },
-        visible: after.visible,
-      };
-
-      console.log(`[anchor] ${cassette.__file}: ${JSON.stringify(r)}`);
-      // 各项前提（图载出来 / 点了有放大 / 放大后图还在）已在上面逐条硬红，不再有
-      // r.error 这种把所有失败原因揉成一句话的回传值。
-      // 核心症状：缩小后该图仍须与视窗相交（旧 code 会卷过头 → 交集 <= 0）。
-      expect(r.visible).toBeGreaterThan(0);
-      // 前提：上方有被缩小的图却量不到 scrollTop 变化 ⇒ 锚定根本没被考验（延迟载入的
-      // observer margin 失效时就是这样：整页只挂得上视野内那张，位移恒 0、断言恒绿）。
-      if (imgsAboveAnchor > 0) {
-        expect(r.after.scrollTop, '锚点上方有图却没有位移，锚定没被验到').not.toBe(
-          r.before.scrollTop
-        );
+        await waitPreviewsSettled(page);
+        if (result !== 'next') break;
       }
-      // 图顶原本在视窗内 → 应维持固定间距（容忍 layout 取整 / scale 误差）。
-      expect(Math.abs(r.after.rel - r.before.rel)).toBeLessThan(r.before.viewH * 0.15);
+      const marked = await page.evaluate(() => {
+        const image = Array.from(document.querySelectorAll('#mainContainer img.hyperLinkPreview'))
+          .find((img) => img.naturalWidth > 0 && img.offsetHeight > 0);
+        if (!image) return false;
+        image.setAttribute('data-e2e-anchor', '1');
+        image.scrollIntoView({ block: 'center' });
+        return true;
+      });
+      expect(marked, 'The article must provide a loaded inline image').toBe(true);
+      await waitPreviewsSettled(page);
+      await waitRectStable(page, imageSelector);
+      const measure = () => page.evaluate(() => {
+        const scroller = document.querySelector('.main');
+        const image = document.querySelector('[data-e2e-anchor]');
+        return {
+          scrollTop: scroller.scrollTop,
+          height: scroller.scrollHeight,
+          imageWidth: image.offsetWidth,
+          imageHeight: image.offsetHeight,
+        };
+      });
+      const before = await measure();
+      const image = page.locator(imageSelector);
+      const box = await image.boundingBox();
+      await image.click({ position: { x: box.width / 2, y: Math.min(box.height / 2, 100) } });
+      await expect(page.getByRole('dialog', { name: 'Image viewer' })).toBeVisible();
+      await page.getByRole('button', { name: 'Close image viewer' }).click();
+      await expect(page.getByRole('dialog', { name: 'Image viewer' })).toHaveCount(0);
+      await waitPreviewsSettled(page);
+      const after = await measure();
+      expect(Math.abs(after.scrollTop - before.scrollTop)).toBeLessThanOrEqual(2);
+      expect(after.height).toBe(before.height);
+      expect(after.imageWidth).toBe(before.imageWidth);
+      expect(after.imageHeight).toBe(before.imageHeight);
     });
   }
 });

@@ -21,7 +21,7 @@
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { loadCassette, bootOffline, replayCassette } = require('../helpers/replay');
-const { waitPreviewsSettled, waitRectStable } = require('../helpers/layout');
+const { waitPreviewsSettled } = require('../helpers/layout');
 
 // 需要「圖夠多、總高夠長」的素材：短文整篇都在視野內，永遠不會有 slot 在 PgUp 的
 // 同一幀掛載／卸載 ⇒ 測試恆綠。stock-end 有 9 張圖，總高足夠連按數次 PgUp。
@@ -91,58 +91,6 @@ async function walkDown(page) {
   await waitPreviewsSettled(page);
 }
 
-// 點視野內任一張已載入的圖 ⇒ 切換放大／縮小。回傳有沒有點到。
-const clickAnyLoadedImg = (page) =>
-  page.evaluate(() => {
-    const img = Array.from(
-      document.querySelectorAll('img.hyperLinkPreview')
-    ).find((im) => im.offsetWidth > 0 && im.offsetHeight > 0);
-    if (!img) return false;
-    img.click();
-    return true;
-  });
-
-// 捲到底。整趟放大態走完之後**明確**回到一個決定性的位置：點縮小那一下會讓整頁高度
-// 塌掉好幾倍，最終的 scrollTop 是瀏覽器的 scroll anchoring 決定的，測試不該拿它當前提
-// （同一份素材本機恆為 6824，CI 上顯然落在別處 ⇒ 上方一個候選都不剩）。
-async function gotoBottom(page) {
-  await page.evaluate(() => {
-    const s = document.querySelector('.main');
-    s.scrollTop = s.scrollHeight;
-  });
-  await waitPreviewsSettled(page);
-}
-
-// 用倍率列把整頁切到「倍率」尺寸模式（真 hover＋click，同 image_zoom.offline.spec.js
-// 的 revealBar：倍率列平時 visibility:hidden，要 hover 圖片上緣左側才浮現）。
-// 目標取視野內最後一張已載入的圖，把它的上緣捲到視窗頂。
-async function zoomInHere(page) {
-  const IMG = '[data-e2e-zoom-target]';
-  const marked = await page.evaluate(() => {
-    const imgs = Array.from(document.querySelectorAll('img.hyperLinkPreview')).filter(
-      (im) => im.offsetWidth > 0 && im.offsetHeight > 0
-    );
-    const img = imgs[imgs.length - 1];
-    if (!img) return false;
-    img.setAttribute('data-e2e-zoom-target', '1');
-    img.scrollIntoView({ block: 'start' });
-    return true;
-  });
-  if (!marked) return false;
-  await waitPreviewsSettled(page);
-  await waitRectStable(page, IMG);
-  const box = await page.locator(IMG).boundingBox();
-  await page.locator(IMG).hover({ position: { x: Math.round(box.width / 4), y: 8 } });
-  await page
-    .locator('.inlinePreviewSlot', { has: page.locator(IMG) })
-    .locator('.previewZoomBar > .previewZoomIn')
-    .click();
-  await waitPreviewsSettled(page);
-  return page.evaluate(() =>
-    document.getElementById('mainContainer').classList.contains('imagesZoomed')
-  );
-}
-
 // 「已卸載＋只剩替身盒頂著」而且**保證不會自己掛回來**的佔位盒。
 // 三個條件缺一不可（缺了就抓不到 bug，只是靜默變成恆綠）：
 //   a. 內容層是空的 ⇒ 真的卸載了。只看「沒有媒體」不夠：預載會讓視野外的盒子先掛上，
@@ -205,8 +153,7 @@ const pickGhostOnlySlot = (page) =>
 //
 // 動線是 §3 case 1 的同型：某些圖在**目前的尺寸模式**下從沒被量到高度（pinned 為空），
 // 卸載後只剩替身盒頂著。往回捲時舊碼在 mount() 當下先把替身盒拿掉、再放進「讀取中…」
-// 指示器 ⇒ slot 從 ~570px 掉到 ~56px。（原本用 normal 模式；延遲載入的預載／遲滯邊界
-// 修好之後 stock-end 太短，normal 做不出候選，改用倍率模式，見測試本體開頭。）
+// 指示器 ⇒ slot 從 ~570px 掉到 ~56px。
 // 那一次塌陷（實測 438px ＝ 一次 PgUp 的 76.6%）就是使用者「PgUp 捲不上去」的量。
 //
 // 用 ResizeObserver 逐幀採樣而不是事後量一次：事後量到的是已經撐回來的值 ⇒ 恆綠。
@@ -235,35 +182,10 @@ test('往回捲時佔位盒掛載：高度不得塌陷（替身盒讓位給讀�
   await replayCassette(page, article, { easyReading: true });
   await waitPreviewsSettled(page);
 
-  // 「某尺寸模式從沒量過、又已經卸載」的佔位盒要靠模式切換做出來，而延遲載入會預載
-  // 視野 ± LAZY_MOUNT_MARGIN_PX、離開 LAZY_UNMOUNT_MARGIN_PX 才卸載 ⇒ 重放時（圖還沒
-  // 撐開、整篇很短）前段的盒子早就在 normal 下量過了，normal 不可能有候選。改用第三種
-  // 模式「倍率」：
-  // 1. 文末點放大，放大態由頂走到底 —— 每張圖都在放大態載入過（量到 aspect），離文末
-  //    超過卸載邊界的前段幾張在走到底時被卸載。
-  await gotoBottom(page);
-  expect(await clickAnyLoadedImg(page), '文末應有可點的圖來切換放大').toBe(true);
-  await waitPreviewsSettled(page);
-  expect(
-    await page.evaluate(() =>
-      document.getElementById('mainContainer').classList.contains('imagesEnlarged')
-    )
-  ).toBe(true);
+  // Load the article once, then invalidate measured heights as a layout change does.
+  // Intrinsic dimensions must keep unloaded placeholders stable without pinned heights.
   await walkDown(page);
-
-  // 2. 就地（文末）點縮小、再按倍率 ＋。前段那幾張全程卸載著，倍率那格從沒量過。
-  expect(await clickAnyLoadedImg(page), '縮小前視野內應有可點的圖').toBe(true);
-  await waitPreviewsSettled(page);
-  expect(
-    await page.evaluate(() =>
-      document.getElementById('mainContainer').classList.contains('imagesEnlarged')
-    )
-  ).toBe(false);
-  expect(await zoomInHere(page), '文末應能用倍率列切到倍率模式').toBe(true);
-
-  // 3. 捲到底（決定性的觀察位置），再找一個「已卸載、只剩替身盒頂著、而且遠在掛載
-  //    邊界之外」的佔位盒，在它身上裝 ResizeObserver 逐幀記高度。
-  await gotoBottom(page);
+  await page.evaluate(() => window.__app.view.componentScreen.notifyLayoutChanged());
   const target = await pickGhostOnlySlot(page);
   expect(
     target.ok,

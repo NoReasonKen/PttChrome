@@ -243,16 +243,8 @@ const FallbackImage = React.memo(function FallbackImage({
     });
   }, [candidates]);
 
-  // 換下一個候選網址時 loaded 一併重設，避免沿用上一張的已載入狀態。
-  // 原尺寸一併記下：好讀「整頁圖片倍率」的寬度公式（main.css `.imagesZoomed`）以
-  // --nat-w/--nat-h 算出「小圖模式寬 × 倍率」，純 CSS 拿不到 intrinsic size。
-  const handleLoad = React.useCallback((e) => {
-    const img = e && e.currentTarget;
-    const nat =
-      img && img.naturalWidth > 0 && img.naturalHeight > 0
-        ? { w: img.naturalWidth, h: img.naturalHeight }
-        : null;
-    setState((s) => ({ ...s, loaded: true, nat }));
+  const handleLoad = React.useCallback(() => {
+    setState((s) => ({ ...s, loaded: true }));
   }, []);
 
   // 點擊失敗提示 → 從頭重跑整串候選。
@@ -271,7 +263,7 @@ const FallbackImage = React.memo(function FallbackImage({
     }));
   }, []);
 
-  const { index, loaded, attempt, failed, nat } = state;
+  const { index, loaded, attempt, failed } = state;
   const src = candidates[index];
   if (failed || src == null) {
     return (
@@ -295,13 +287,7 @@ const FallbackImage = React.memo(function FallbackImage({
         src={src}
         onLoad={handleLoad}
         onError={handleError}
-        style={
-          loaded
-            ? nat
-              ? { "--nat-w": String(nat.w), "--nat-h": String(nat.h) }
-              : null
-            : { display: "none" }
-        }
+        style={loaded ? null : { display: "none" }}
       />
     </React.Fragment>
   );
@@ -401,6 +387,9 @@ const inlineImage = (descriptor, key) => (
   <FallbackImage
     key={key}
     className="easyReadingImg hyperLinkPreview"
+    role="button"
+    tabIndex={0}
+    aria-label="View image"
     candidates={descriptor.srcset || [descriptor.src]}
   />
 );

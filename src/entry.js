@@ -3,4 +3,6 @@
 import './css/mantine.css';
 import './css/main.css';
 import './css/color.css';
+import 'photoswipe/style.css';
+import './css/image_viewer.css';
 import './js/main';

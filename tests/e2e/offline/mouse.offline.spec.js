@@ -388,7 +388,7 @@ test.describe('滑鼠（離線重放）', () => {
     expect(sent).not.toContain(ARROW_LEFT);
   });
 
-  test('內嵌預覽圖優先：點圖只切放大，不會翻頁或退出文章', async ({ page }) => {
+  test('inline images open the viewer without terminal paging or navigation', async ({ page }) => {
     test.setTimeout(90000);
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, {
@@ -432,21 +432,15 @@ test.describe('滑鼠（離線重放）', () => {
       ((action === 'pageDown' || action === 'end') && room.down);
     expect(observable, `前提：mouseAction=${action} 在此捲動位置有可觀察的後果 ${JSON.stringify(room)}`).toBe(true);
 
-    const enlarged = () =>
-      page.evaluate(() =>
-        document.getElementById('mainContainer').classList.contains('imagesEnlarged')
-      );
-    const before = await enlarged();
     const scrollBefore = await page.evaluate(() => document.querySelector('.main').scrollTop);
     await startCapture(page);
     await page.mouse.down();
     await page.mouse.up();
-    // 「只切放大」：點圖的那個動作確實發生了（先等它，下面的「沒送 ←」才有意義）。
-    await expect.poll(enlarged).toBe(!before);
+    // The viewer must open without sending terminal navigation or paging the article.
+    await expect(page.getByRole('dialog', { name: 'Image viewer' })).toBeVisible();
     expect(await takeCapture(page)).not.toContain(ARROW_LEFT);
-    // 沒有被翻頁捲走。放大本身靠 scroll anchoring 不動 scrollTop（實測 0px）；容忍
-    // 一列以內。**不可放寬到「幾列」**：翻頁撞到頂只會捲剩下的距離（實測 235px ≈ 8 列），
-    // 放寬到 10 列時拿掉 isPreviewTarget 這條照樣是綠的。
+    await page.getByRole('button', { name: 'Close image viewer' }).click();
+    await expect(page.getByRole('dialog', { name: 'Image viewer' })).toHaveCount(0);
     const scrollAfter = await waitScrollStable(page, '.main');
     const chh = await page.evaluate(() => window.__app.view.chh);
     expect(Math.abs(scrollAfter - scrollBefore)).toBeLessThan(chh);

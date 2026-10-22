@@ -110,11 +110,6 @@ async function clickGrayButton(page) {
   await page.locator(BTN_SEL).click();
 }
 
-const enlarged = (page) =>
-  page.evaluate(() =>
-    document.getElementById('mainContainer').classList.contains('imagesEnlarged')
-  );
-
 test.describe('圖片灰階鈕與原生右鍵選單（離線重放）', () => {
   test.skip(!article, '尚無 article cassette；先 yarn record:cassette');
 
@@ -186,26 +181,23 @@ test.describe('圖片灰階鈕與原生右鍵選單（離線重放）', () => {
     expect(await styleOf(page, BTN_SEL, 'visibility')).toBe('visible');
   });
 
-  test('點灰階鈕：只有那張圖變灰階，且不得誤觸點圖放大', async ({ page }) => {
+  test('grayscale changes only the image and does not open the viewer', async ({ page }) => {
     test.setTimeout(180000);
     await boot(page);
     expect(await seekGrayableImage(page)).toBe(true);
     await expect(page.locator(BTN_SEL)).toHaveCount(1);
 
     expect(await styleOf(page, TARGET_IMG_SEL, 'filter')).toBe('none');
-    const before = await enlarged(page);
 
     // 按鈕平時 visibility:hidden，得先 hover 圖片才點得到 —— 這正是使用者的動線，
     // 也順帶確認 Playwright 的可操作性檢查（visible/enabled/stable）真的過得了。
     await clickGrayButton(page);
     expect(await styleOf(page, TARGET_IMG_SEL, 'filter')).toContain('grayscale(1)');
-    // 按鈕住在 #mainContainer 裡，而 ScreenController 在容器上掛了「點圖放大／縮小」
-    // 的委派 listener —— 不 stopPropagation 就會順手把整頁圖片放大。
-    expect(await enlarged(page), '點灰階鈕不得改變 imagesEnlarged').toBe(before);
+    await expect(page.getByRole('dialog', { name: 'Image viewer' })).toHaveCount(0);
 
     await clickGrayButton(page);
     expect(await styleOf(page, TARGET_IMG_SEL, 'filter')).toBe('none');
-    expect(await enlarged(page)).toBe(before);
+    await expect(page.getByRole('dialog', { name: 'Image viewer' })).toHaveCount(0);
   });
 
   test('右鍵壓在圖片上 ⇒ 放行原生選單（我們的選單不開）', async ({ page }) => {

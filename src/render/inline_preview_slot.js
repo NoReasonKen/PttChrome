@@ -73,12 +73,6 @@ import {
   recordSlotHeight,
   slotFloorHeight,
 } from "../js/lazy_media";
-import {
-  formatZoomLabel,
-  isMaxImageZoom,
-  isMinImageZoom,
-  zoomFromSizeMode,
-} from "../js/image_zoom";
 
 const callbacks = new WeakMap();
 // root → { root, near, far }。實務上只有一個 `.main`；root 為 null（找不到捲動容器，
@@ -130,12 +124,9 @@ function rememberSize(href, pinned, aspect) {
 // canvas 會被 taint、toBlob() 直接 throw；補 crossorigin="anonymous" 則會讓大量
 // 圖床改為載入失敗。
 //
-// 狀態放 module 級、以 href 為鍵，理由同上面的 sizeMemo：**任何改動 annotationsKey
-// 的操作都會整份重建 slot**（AI 校正逐筆回填一篇文章就數十次），存在閉包裡的話
-// 灰階會在使用者眼前自己跳回原彩。生命週期比照 imagesEnlarged：同篇 page-down
-// 保留、換文章／退出再進由 ScreenController 清掉（clearInlinePreviewGray）。
-// 刻意**不做成 pref**（比照 imagesEnlarged／mergeCaption，純 runtime 切換），
-// 也刻意不進 annotationsKey（不改變任何一列的標註）。
+// Keep grayscale by URL across slot rebuilds, then clear it when navigation changes
+// the article. It is temporary presentation state, separate from preferences and
+// annotation inputs; caption-AI updates must not silently restore the original color.
 const grayHrefs = new Set();
 
 // 換文章的唯一入口（呼叫端 render/screen.js#_resetImagesGray）。只清 Set 不夠：
@@ -239,8 +230,7 @@ export function resetLazyObserversForTest() {
 // destroy()，否則 observer 與 React root 都會留著（純 JS 化唯一新增的洩漏面，
 // tests/unit/render_dispose.test.js 守）。
 //
-// sizeMode（"normal" | "enlarged" | "zoom@<倍率>"，見 js/image_zoom.js）原本走 React context（Screen 的 imagesEnlarged），
-// 純 JS 版改由 ScreenController 對存活中的 slot 逐一 setSizeMode()。
+// Named layout measurements keep placeholders reusable after layout changes.
 export function createInlinePreviewSlot(href, sizeMode = "normal") {
   const supported = lazyPreviewSupported();
   // 疊層佔位（見檔頭）：content 放真內容、spacer 放佔位高度與替身盒，兩層疊在同一個
@@ -295,11 +285,8 @@ export function createInlinePreviewSlot(href, sizeMode = "normal") {
     }
   }
 
-  // 真圖還沒佔到版面時的替身盒：套的是**跟真圖同一組** .easyReadingImg 規則（max-width/
-  // max-height、放大態的 width:100%），只多給原尺寸 —— 於是高度由 CSS 自己算出來，
-  // 與真圖逐像素相同，兩種模式都準，也不必在 JS 裡複製任何 CSS 常數。--ghost-w 走
-  // CSS 變數而非 inline width：inline 樣式會蓋過放大態的 width:100%，變數則讓那條
-  // 規則照常勝出。
+  // Intrinsic proportions and shared image CSS keep the placeholder the same size
+  // as its loaded image without duplicating CSS bounds in JavaScript.
   function syncGhost() {
     // 判準是「內容裡有沒有**真的佔到版面**的媒體」，不是「有沒有掛載」：掛載到圖片
     // 真的畫出來之間還隔著解析網址＋下載＋解碼（imgur 台灣連線常 stall，產品端又
@@ -322,9 +309,6 @@ export function createInlinePreviewSlot(href, sizeMode = "normal") {
       class: "easyReadingImg inlinePreviewGhost",
       style: {
         "--ghost-w": `${want.w}px`,
-        // 倍率態（.imagesZoomed）的寬度公式吃原尺寸，替身盒要與真圖同一組輸入。
-        "--nat-w": String(want.w),
-        "--nat-h": String(want.h),
         aspectRatio: `${want.w} / ${want.h}`,
       },
     });
@@ -370,8 +354,7 @@ export function createInlinePreviewSlot(href, sizeMode = "normal") {
         "◐",
       );
       grayButton.addEventListener("click", (e) => {
-        // 這一下**只**屬於按鈕：不讓它冒到 ScreenController 掛在容器上的委派
-        // （那條是「點圖放大／縮小」）、也不讓它走到終端機的滑鼠路徑。
+        // This button must neither open the image viewer nor reach terminal input.
         e.stopPropagation();
         e.preventDefault();
         if (grayHrefs.has(href)) grayHrefs.delete(href);
@@ -407,72 +390,6 @@ export function createInlinePreviewSlot(href, sizeMode = "normal") {
     if (!grayButton) return;
     grayButton.remove();
     grayButton = null;
-  }
-
-  // ------------------------------------------------------------ 倍率列
-  // 「－ 125% ＋」：整頁圖片倍率（js/image_zoom.js）。與灰階鈕同一套機制：hover 媒體盒
-  // 才浮現、grid item 疊在同一格、上緣靠量到的 --img-top（寫在 bar 自己身上）。
-  // 水平**置中**（不貼圖片邊角）：倍率改變圖寬時中線不動 ⇒ 可原地連點（見 main.css）。
-  //
-  // 倍率是整頁共用的狀態，住在 ScreenController：按鈕只派發 bubbling 的
-  // `previewzoom` 事件（detail.dir：+1／-1／0＝回 100%），不必把回呼穿過
-  // buildRow/link_segment。倍率顯示由 state.sizeMode 反推，不另存。
-  let zoomBar = null;
-
-  function zoomButton(cls, text, dir) {
-    const b = el("button", { class: cls, type: "button" }, text);
-    // 不搶終端機焦點（隱藏 input #t）：焦點一被按鈕拿走，方向鍵就失效。
-    b.addEventListener("mousedown", (e) => e.preventDefault());
-    b.addEventListener("click", (e) => {
-      // 同灰階鈕：不冒到容器的「點圖放大」委派、也不走終端機的滑鼠路徑。
-      e.stopPropagation();
-      e.preventDefault();
-      const img = singleLaidOutImage();
-      node.dispatchEvent(
-        new CustomEvent("previewzoom", {
-          bubbles: true,
-          detail: { dir, img },
-        }),
-      );
-    });
-    return b;
-  }
-
-  function syncZoomBar() {
-    if (!zoomBar) return;
-    const z = zoomFromSizeMode(state.sizeMode);
-    if (z == null) return; // 放大態：CSS 已經把整列藏起來
-    const [out, label, inn] = zoomBar.children;
-    label.textContent = formatZoomLabel(z);
-    out.disabled = isMinImageZoom(z);
-    inn.disabled = isMaxImageZoom(z);
-  }
-
-  function ensureZoomBar(img) {
-    if (!zoomBar) {
-      zoomBar = el("div", { class: "previewZoomBar" });
-      const out = zoomButton("previewZoomOut", "－", -1);
-      const label = zoomButton("previewZoomLabel", "", 0);
-      const inn = zoomButton("previewZoomIn", "＋", 1);
-      out.title = i18n("imageZoom_out");
-      label.title = i18n("imageZoom_reset");
-      inn.title = i18n("imageZoom_in");
-      zoomBar.appendChild(out);
-      zoomBar.appendChild(label);
-      zoomBar.appendChild(inn);
-      node.appendChild(zoomBar);
-    }
-    zoomBar.style.setProperty(
-      "--img-top",
-      `${img.offsetTop - content.offsetTop}px`,
-    );
-    syncZoomBar();
-  }
-
-  function removeZoomBar() {
-    if (!zoomBar) return;
-    zoomBar.remove();
-    zoomBar = null;
   }
 
   // 錄製期間的佔位盒軌跡（tag preview.slot，見 js/diag.js）。高度類問題（捲動時
@@ -519,7 +436,6 @@ export function createInlinePreviewSlot(href, sizeMode = "normal") {
     // 圖沒了，按鈕就沒有對象可指（純 JS 渲染鏈要自己收生命週期）。灰階**態**仍留在
     // module 級的 grayHrefs 裡 ⇒ 捲回來重新掛載時圖還是灰的。
     removeGrayButton();
-    removeZoomBar();
     syncGhost();
     applyFloorHeight();
     logSlot("unmount");
@@ -594,7 +510,7 @@ export function createInlinePreviewSlot(href, sizeMode = "normal") {
     }
   }
 
-  // 媒體載入完成／點圖切換模式造成的尺寸改變都會走這裡，把新高度記進**當下模式**
+  // Media loading and layout changes update the remembered placeholder height.
   // 那一格。少了這一手，只有「在該模式下卸載過」的圖才有高度，而使用者的典型動線
   // （normal 看幾張 → 點放大 → 往下捲才卸載）永遠不會替 normal 那格留值 ⇒ 切回去
   // 佔位盒塌陷、往上捲時圖一張張撐開把閱讀位置往下推（症狀：捲一捲就跳頁）。
@@ -621,10 +537,8 @@ export function createInlinePreviewSlot(href, sizeMode = "normal") {
     const img = singleLaidOutImage();
     if (img) {
       ensureGrayButton(img);
-      ensureZoomBar(img);
     } else {
       removeGrayButton();
-      removeZoomBar();
     }
     if (state.pinned !== prevPinned || state.aspect !== prevAspect) remember();
     logSlot("resize");
@@ -684,7 +598,6 @@ export function createInlinePreviewSlot(href, sizeMode = "normal") {
       if (state.sizeMode === mode || state.destroyed) return;
       state.sizeMode = mode;
       applyFloorHeight();
-      syncZoomBar();
     },
     // 版面寬度變了 ⇒ 這個 slot 的 pinned 也過期。規則同
     // invalidateInlinePreviewHeights：有替身盒可頂就丟掉，沒有就留著當最佳猜測。
@@ -709,7 +622,6 @@ export function createInlinePreviewSlot(href, sizeMode = "normal") {
         sizeTeardown.delete(node);
       }
       removeGrayButton();
-      removeZoomBar();
       if (state.mounted) {
         state.mounted = false;
         unmountFrom(content);

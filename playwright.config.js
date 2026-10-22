@@ -21,6 +21,7 @@ const ADVERSE_LAYOUT_SPECS = [
 // image_load_conditions 刻意**不在**逆境清單裡：它自己用 bootOffline 的 imageProfile
 // 逐條指定情境（明確傳入的優先序高於 project 名），放進來只會原封不動再跑一次。
 const ADVERSE_IMAGE_SPECS = [
+  'offline/image_viewer.offline.spec.js',
   'offline/lazy_preview_blank.offline.spec.js',
   'offline/lazy_preview_enlarge_blank.offline.spec.js',
   'offline/lazy_preview_margin.offline.spec.js',

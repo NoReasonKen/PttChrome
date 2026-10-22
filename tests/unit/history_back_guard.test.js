@@ -12,6 +12,7 @@ import {
   RESTORE_CHECK_MS,
   ESCAPE_HINT,
 } from "../../src/js/history_back_guard";
+import { isSelfNavigating, resetSelfNavigation } from "../../src/js/self_navigation";
 
 function makeWin() {
   const listeners = {};
@@ -414,6 +415,148 @@ test("uninstall 拆得乾淨（listener 不殘留）", () => {
   expect(t.win.count("popstate")).toBe(0);
   expect(t.win.count("pointerdown")).toBe(0);
   expect(t.win.count("keydown")).toBe(0);
+  expect(t.win.count("imageviewerchange")).toBe(0);
+});
+
+describe("image viewer Back ownership", () => {
+  afterEach(() => resetSelfNavigation());
+
+  function viewer(t) {
+    let open = false;
+    const change = (next) => {
+      open = next;
+      t.win.fire("imageviewerchange", { detail: { open } });
+    };
+    t.app.dismissTopSheet = () => {
+      if (!open) return false;
+      change(false);
+      return true;
+    };
+    return { open: () => change(true), close: () => change(false) };
+  }
+
+  test("a viewer-only sentinel waits for user activation", () => {
+    const t = setup({ backNav: 0 });
+    const image = viewer(t);
+    image.open();
+    expect(t.win.pushed).toHaveLength(0);
+    t.activate();
+    expect(t.win.pushed).toEqual([{ pttchromeBackGuard: 1 }]);
+  });
+
+  test("Back consumes a viewer-only sentinel without terminal input or restoration", () => {
+    const t = setup({ backNav: 0 });
+    const image = viewer(t);
+    t.activate();
+    image.open();
+    t.back();
+    expect(t.keys).toEqual([]);
+    expect(t.hints).toEqual([]);
+    expect(t.win.calls).toEqual([["push", { pttchromeBackGuard: 1 }]]);
+    expect(t.guard.isArmed()).toBe(false);
+    expect(isSelfNavigating()).toBe(true);
+    t.timers.splice(0).forEach((fn) => fn());
+    expect(isSelfNavigating()).toBe(false);
+    t.activate();
+    expect(t.win.pushed).toHaveLength(1);
+  });
+
+  test("button dismissal silently retires the temporary history entry", () => {
+    const t = setup({ backNav: 0 });
+    const image = viewer(t);
+    t.activate();
+    image.open();
+    image.close();
+    expect(t.win.went).toEqual([-1]);
+    expect(t.guard.isArmed()).toBe(false);
+    expect(isSelfNavigating()).toBe(true);
+    t.win.history.state = null;
+    t.back();
+    expect(isSelfNavigating()).toBe(true);
+    t.timers.splice(0).forEach((fn) => fn());
+    expect(isSelfNavigating()).toBe(false);
+    t.back();
+    expect(t.keys).toEqual([]);
+    expect(t.win.pushed).toHaveLength(1);
+  });
+
+  test("Back does not restore the viewer entry while asynchronous close is pending", () => {
+    const t = setup({ backNav: 0 });
+    const image = viewer(t);
+    t.activate();
+    image.open();
+    // PhotoSwipe acknowledges close before its destroy event releases the modal.
+    t.app.dismissTopSheet = () => true;
+    t.back();
+    expect(t.guard.isArmed()).toBe(false);
+    expect(t.win.calls).toEqual([["push", { pttchromeBackGuard: 1 }]]);
+    image.close();
+    expect(t.win.went).toEqual([]);
+    expect(t.keys).toEqual([]);
+  });
+
+  test("reopening before retirement settles arms the new viewer after traversal", () => {
+    const t = setup({ backNav: 0 });
+    const image = viewer(t);
+    t.activate();
+    image.open();
+    image.close();
+    image.open();
+    expect(t.win.pushed).toHaveLength(1);
+    t.win.history.state = null;
+    t.back();
+    expect(t.win.pushed).toHaveLength(2);
+    expect(t.guard.isArmed()).toBe(true);
+    t.back();
+    expect(t.guard.isArmed()).toBe(false);
+    expect(t.keys).toEqual([]);
+  });
+
+  test("an enabled terminal mapping keeps its existing sentinel after viewer dismissal", () => {
+    const t = setup();
+    const image = viewer(t);
+    t.activate();
+    image.open();
+    image.close();
+    expect(t.win.went).toEqual([]);
+    expect(t.guard.isArmed()).toBe(true);
+    t.back();
+    expect(t.keys).toEqual(["ArrowLeft"]);
+    expect(t.win.calls.at(-1)).toEqual(["forward"]);
+  });
+
+  test("turning terminal mapping off does not bypass an open viewer", () => {
+    const t = setup();
+    const image = viewer(t);
+    t.activate();
+    image.open();
+    t.app.mouseGates = () => ({ backNav: 0 });
+    t.back();
+    expect(t.keys).toEqual([]);
+    expect(t.guard.isArmed()).toBe(false);
+    expect(t.win.calls).toHaveLength(1);
+  });
+
+  test("Android host Back closes the viewer while terminal mapping is disabled", () => {
+    const t = setup({ backNav: 0, android: true });
+    const image = viewer(t);
+    image.open();
+    expect(t.win.pttHostBack()).toBe(true);
+    expect(t.keys).toEqual([]);
+    expect(t.win.pushed).toHaveLength(0);
+    expect(t.win.pttHostBack()).toBe(false);
+  });
+
+  test("uninstall releases pending viewer-navigation suppression", () => {
+    const t = setup({ backNav: 0 });
+    const image = viewer(t);
+    t.activate();
+    image.open();
+    image.close();
+    expect(isSelfNavigating()).toBe(true);
+    t.guard.uninstall();
+    expect(isSelfNavigating()).toBe(false);
+  });
 });
 
 // 返回手勢「有時失效」只在實機重現 ⇒ 擋下時要把原因寫進 debug 錄製檔。

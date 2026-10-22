@@ -1814,6 +1814,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"photoswipe@npm:^5.4.4":
+  version: 5.4.4
+  resolution: "photoswipe@npm:5.4.4"
+  checksum: 10c0/9a62a8ee4b87564f3d2067edfd7f168d07973e1e37b21cd4f548363b441d8192991a88d272a0f299de0e7c773e6c74367ebcf895f0e60ca919d52e1d2f3b0355
+  languageName: node
+  linkType: hard
+
 "picocolors@npm:1.1.1, picocolors@npm:^1.1.1":
   version: 1.1.1
   resolution: "picocolors@npm:1.1.1"
@@ -2014,6 +2021,7 @@ __metadata:
     firebase: "npm:^13.0.0"
     husky: "npm:^9.0.0"
     lint-staged: "npm:^17.6.0"
+    photoswipe: "npm:^5.4.4"
     playwright: "npm:^1.64.1"
     postcss: "npm:^8.5.30"
     postcss-preset-mantine: "npm:^1.18.0"

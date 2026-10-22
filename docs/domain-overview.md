@@ -48,6 +48,7 @@ The checked-in Android app loads a web page, with a configurable development pag
 | Board lists and supported variants | `src/js/board_list_parse.js`, `src/js/board_list_session.js` |
 | Article lists and their reading modes | `src/js/list_session.js`, `docs/easy-reading-list.md` |
 | Article easy reading and accumulated pages | `src/js/easy_reading.js`, `docs/easy-reading.md` |
+| Inline image previews and the image viewer | `docs/image-preview-research.md`, `docs/image-viewer-design.md` |
 | Reading position across temporary operations | `src/js/reading_record.js`, `docs/reading-record.md` |
 | Comment counts, recommendation scores, and new-content indicators | `src/js/new_comments.js`, `src/js/comment_parse.js` |
 | Comment bar and long comments | `src/js/comment_bar.js`, `src/js/long_push_session.js`, `docs/long-push.md` |

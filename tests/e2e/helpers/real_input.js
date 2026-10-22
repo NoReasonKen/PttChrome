@@ -271,7 +271,36 @@ async function touchDrag(page, from, to, steps = 8) {
   await s.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
 
+// Keep both contacts diagonal to exercise pinch handling independently of either scroll axis.
+// Advance rendered frames between moves so the browser processes a gesture rather than one jump.
+async function touchPinch(page, center, fromRadius, toRadius, steps = 10) {
+  const session = await cdp(page);
+  const contacts = (radius) => {
+    const offset = radius / Math.sqrt(2);
+    return [
+      { id: 0, x: center.x - offset, y: center.y - offset },
+      { id: 1, x: center.x + offset, y: center.y + offset },
+    ];
+  };
+  await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: contacts(fromRadius) });
+  await nextFrames(page);
+  for (let step = 1; step <= steps; ++step) {
+    const radius = fromRadius + ((toRadius - fromRadius) * step) / steps;
+    await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: contacts(radius) });
+    await nextFrames(page);
+  }
+  await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await nextFrames(page);
+}
+
+async function doubleTap(page, point) {
+  await page.touchscreen.tap(point.x, point.y);
+  await page.touchscreen.tap(point.x, point.y);
+}
+
 module.exports = {
+  touchPinch,
+  doubleTap,
   touchDrag,
   hoverFloatTools,
   cdp,

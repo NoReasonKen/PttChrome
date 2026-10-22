@@ -61,6 +61,10 @@ export function installHistoryBackGuard(app, win, opts) {
   let passThrough = false;
   // 只累計「我們用不到的 back」（見坑 5）。
   let lastBlockedAt = 0;
+  let activated = false;
+  let viewerOpen = false;
+  let viewerSentinel = false;
+  let retiringViewerSentinel = null;
 
   // pref 是動態的（設定頁隨時可改）⇒ 每次都重問，不快取。關閉時不疊 sentinel：
   // 疊了卻不攔的話，使用者要按兩次上一頁才離得開，比不裝更糟。
@@ -136,8 +140,47 @@ export function installHistoryBackGuard(app, win, opts) {
   }
 
   function onActivation() {
-    // pref 是後來才打開的話，下一次使用者動作就會補上（listener 刻意常駐）。
-    if (!armed && gateOn()) armed = pushSentinel();
+    activated = true;
+    armForCurrentContext();
+  }
+
+  function armForCurrentContext() {
+    if (!activated || armed || retiringViewerSentinel || (!gateOn() && !viewerOpen)) return;
+    armed = pushSentinel();
+    viewerSentinel = armed && !gateOn();
+  }
+
+  function onViewerChange(event) {
+    viewerOpen = !!(event && event.detail && event.detail.open);
+    if (viewerOpen) {
+      armForCurrentContext();
+      return;
+    }
+    // A terminal sentinel keeps its existing lifetime. A viewer-only sentinel
+    // must disappear after button/Escape dismissal, so Back has no empty step.
+    const remove = viewerSentinel && armed && !gateOn();
+    viewerSentinel = false;
+    if (!remove) return;
+    const state = w.history && w.history.state;
+    if (!state || state.pttchromeBackGuard !== myId) return;
+    armed = false;
+    const retirement = { end: beginSelfNavigation() };
+    retiringViewerSentinel = retirement;
+    try {
+      w.history.go(-1);
+    } catch (error) {
+      retirement.end();
+      retiringViewerSentinel = null;
+      return;
+    }
+    // Keep hashchange echoes muted for the entire traversal event batch.
+    later(() => {
+      retirement.end();
+      if (retiringViewerSentinel === retirement) {
+        retiringViewerSentinel = null;
+        armForCurrentContext();
+      }
+    }, RESTORE_CHECK_MS);
   }
 
   // 長按上一頁的下拉選單可以一次跳好幾層。單看 popstate 分不出「退一層」和
@@ -153,6 +196,11 @@ export function installHistoryBackGuard(app, win, opts) {
   }
 
   function onPopState(e) {
+    if (retiringViewerSentinel) {
+      retiringViewerSentinel = null;
+      armForCurrentContext();
+      return;
+    }
     // 我們自己 forward() 回來的那一發，不是使用者的返回。
     if (restoring) {
       restoring = false;
@@ -167,22 +215,28 @@ export function installHistoryBackGuard(app, win, opts) {
     if (st && st.pttchromeBackGuard) myId = st.pttchromeBackGuard;
     if (!armed) return;
     armed = false;
-    // 中途被關掉 ⇒ 放行，這一次 back 就是真的 back。
-    if (!gateOn()) return;
+    viewerSentinel = false;
+    // The image viewer owns Back even when terminal navigation is disabled.
+    if (!gateOn() && !viewerOpen) return;
     // 一次跳好幾層：讓它真的走，不吃也不補 sentinel。
     if (passThrough) {
       passThrough = false;
       return;
     }
-    // 吃下 ⇒ 補回 sentinel；放行 ⇒ 不補，下一次 back 真的離站。
-    if (handleBack()) restoreSentinel();
+    if (viewerOpen && !gateOn()) {
+      // A reused terminal sentinel can have an older article URL underneath it.
+      // Dismissing the viewer must not consume that traversal's hashchange.
+      const endSelfNav = beginSelfNavigation();
+      later(endSelfNav, RESTORE_CHECK_MS);
+    }
+    // Viewer destruction may finish asynchronously. Its consumed entry must not
+    // return while close is pending; only terminal navigation restores it.
+    if (handleBack() && gateOn()) restoreSentinel();
   }
 
   // 一次「使用者往外退」：回 true＝吃下（畫面內處理掉或已提示），false＝放行。
   // popstate（sentinel）與 APK 原生返回鍵（pttHostBack）共用，逃生計數也共用。
   function handleBack() {
-    // 中途被關掉 ⇒ 放行，這一次 back 就是真的 back。
-    if (!gateOn()) return false;
     // 手機 bottom sheet 開著：返回＝收起它（Android 原生 App 的返回語意），不送 ←、
     // 不出逃生門提示。sheet 開著時 modalShown 為真，不攔的話這一下會落到「送不出去」
     // 那條而被算成第一次逃生。
@@ -190,6 +244,8 @@ export function installHistoryBackGuard(app, win, opts) {
       lastBlockedAt = 0;
       return true;
     }
+    // Closing an overlay takes priority over the optional terminal-back mapping.
+    if (!gateOn()) return false;
     const sent =!!(app.sendNavKeyAsUser && app.sendNavKeyAsUser('ArrowLeft'));
     logBack(sent);
     if (sent) {
@@ -221,6 +277,7 @@ export function installHistoryBackGuard(app, win, opts) {
   w.addEventListener('pointerdown', onActivation, true);
   w.addEventListener('keydown', onActivation, true);
   w.addEventListener('popstate', onPopState);
+  w.addEventListener('imageviewerchange', onViewerChange);
   if (w.navigation && w.navigation.addEventListener)
     w.navigation.addEventListener('navigate', onNavigate);
 
@@ -231,9 +288,12 @@ export function installHistoryBackGuard(app, win, opts) {
       w.removeEventListener('pointerdown', onActivation, true);
       w.removeEventListener('keydown', onActivation, true);
       w.removeEventListener('popstate', onPopState);
+      w.removeEventListener('imageviewerchange', onViewerChange);
       if (w.navigation && w.navigation.removeEventListener)
         w.navigation.removeEventListener('navigate', onNavigate);
       if (hostBack && w.pttHostBack === hostBack) delete w.pttHostBack;
+      if (retiringViewerSentinel) retiringViewerSentinel.end();
+      retiringViewerSentinel = null;
       armed = false;
     },
     isArmed() { return armed; }

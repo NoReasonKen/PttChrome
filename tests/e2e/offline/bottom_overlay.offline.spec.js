@@ -10,6 +10,7 @@ const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { bootOffline, waitScreenSettled } = require('../helpers/replay');
 const { bottomOverlayViolations } = require('../helpers/overlay_guard');
+const { openPreviewViewer, VIEWER } = require('../helpers/image_viewer');
 
 async function onData(page, map, cursor, col) {
   await page.evaluate(
@@ -43,7 +44,7 @@ const POSTS = [101, 102, 103, 104, 105].map((num, i) => ({
 
 // bbs.c#readdoent 的列表（游標在第 2 篇）→ 開第 2 篇（100% ⇒ 好讀一頁就讀到文末）。
 // full：內文＋推文填滿整頁（要捲）；否則只有一行內文＋一則推文，pmore 把剩下的列畫成空白。
-async function openArticle(page, { full }) {
+async function openArticle(page, { full, imageViewer }) {
   const list = {
     0: { rev: true, text: '【板主：test】看板《Test》'.padEnd(80) },
     1: '[←]離開 [→]閱讀 [^P]發表文章 [b]備忘錄',
@@ -71,6 +72,7 @@ async function openArticle(page, { full }) {
       ' 行  (y)回應(X%)推文(h)說明(←)離開 ',
   };
   for (let r = 5; r < last; r++) art[r] = '內文第 ' + (r - 3) + ' 行';
+  if (imageViewer) art[5] = 'https://i.urusai.cc/overlay-viewer.png';
   art[last] = '推 alice: 最後一則推文                                         09/01 12:34';
   await onData(page, art, 23, 80);
   await waitScreenSettled(page, { 0: '作者', 23: '瀏覽' });
@@ -83,6 +85,7 @@ const COMBOS = [
   ['nextArticle'],
   ['commentBar', 'nextArticle'],
   ['commentBar', 'nextArticle', 'articleTools', 'splitReader'],
+  ['commentBar', 'nextArticle', 'articleTools', 'splitReader', 'imageViewer'],
 ];
 
 // 視窗大小也是一維：終端機字級跟著視窗高度走，em 寫的間距與 px 寫的浮層高度在某些尺寸才
@@ -107,14 +110,19 @@ test.describe('浮層不蓋住文末', () => {
         test(title, async ({ page }) => {
           await page.setViewportSize(vp);
           const opts = {};
-          for (const k of combo) opts[k] = true;
+          for (const k of combo) if (k !== 'imageViewer') opts[k] = true;
           await bootOffline(page, ptt, opts);
           await ptt.applyPrefs(page, { enableEasyReadingList: false });
-          await openArticle(page, { full });
+          await openArticle(page, { full, imageViewer: combo.includes('imageViewer') });
           if (combo.includes('nextArticle')) await expect(page.locator('#nextArticleCard')).toBeVisible();
           if (combo.includes('commentBar')) await expect(page.locator('#commentBar')).toBeVisible();
           // 側欄真的出現了（不然這個組合等於沒測）。
           for (const k of combo) if (SIDE_PANELS[k]) await expect(page.locator(SIDE_PANELS[k]).first()).toBeVisible();
+          if (combo.includes('imageViewer')) {
+            await openPreviewViewer(page);
+            await page.getByRole('button', { name: 'Close image viewer', exact: true }).click();
+            await expect(page.locator(VIEWER)).toHaveCount(0);
+          }
           expect(await bottomOverlayViolations(page)).toEqual([]);
         });
       }

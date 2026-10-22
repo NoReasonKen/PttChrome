@@ -64,6 +64,7 @@ import { navKeyAllowed, navKeyBlockReason } from './nav_key_gate';
 import { isHorizontalWheel } from './swipe_gesture';
 import { isPreviewTarget } from './preview_targets';
 import { ImageUploadController, isUploadLayerTarget } from './image_upload_controller';
+import { ImageViewer } from './image_viewer';
 import { HomeDashboard, isHomeDashboardTarget } from './home_dashboard';
 import { MessageInbox, isMessageInboxTarget } from './message_inbox';
 import { NewComments } from './new_comments';
@@ -316,6 +317,8 @@ export const App = function() {
   // 最後一個 modal 關閉的時間（performance.now() 基準）。term_view 用它擋掉「關框
   // 的那一下」按鍵（modal_key_gate.js）。
   this.modalClosedAt = -Infinity;
+
+  this.imageViewer = new ImageViewer(this);
 
   this.lastSelection = null;
 
@@ -616,6 +619,7 @@ App.prototype.onData = function(data) {
 
 App.prototype.onClose = function() {
   console.info("pttchrome onClose");
+  this.imageViewer?.close();
   this.debugRecorder?.log('app.onClose');
   // 先問：這次斷線是不是我們自己登出造成的（要在下面 disable 清佇列之前收攤）。
   const loggedOut = this.logout.onConnectionClosed();
@@ -774,6 +778,11 @@ App.prototype.setDblclickTimer = function() {
 // 結構上不會發生，但這行成本是零。
 App.prototype.setInputAreaFocus = function() {
   if (this.modalShown)
+    return;
+  // Preserve explicit keyboard focus, including the image restored after viewer dismissal.
+  // Removing an overlay can emit mouseover even when the pointer has not moved.
+  var focused = typeof document !== 'undefined' ? document.activeElement : null;
+  if (focused !== this.inputArea && focused?.tabIndex >= 0 && focused.matches(':focus-visible'))
     return;
   //this.DocInputArea.disabled="";
   this.inputArea.focus({ preventScroll: true });

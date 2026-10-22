@@ -52,9 +52,8 @@
 
 ### 🖼️ 圖片與影片
 
-- **自動開圖／影片預覽** — 圖片與影片連結自動預覽（各大圖床、imgur 相簿、X、YouTube、Twitch、tenor GIF），點圖整篇一起放大。
-- **圖片倍率可調** — 滑鼠移到圖上按 ＋／－，以 50%～400% 調整整篇圖片大小。
-- **單張轉灰階／原生圖片右鍵** — 單張圖一鍵轉灰階；圖片右鍵改用瀏覽器選單，可另存、複製或以圖搜圖。
+- **Image and video previews** — Links preview inline; open one image in a touch-ready viewer.
+- **Grayscale and native image menu** — Apply grayscale or use the browser's image context menu.
 - **圖片載入代理** — imgur、X、catbox 的圖片經本專案代理轉發快取，大幅減少卡住，可逐站開關。
 
 ### 🔗 連結與跳文

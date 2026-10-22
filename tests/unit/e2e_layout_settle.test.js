@@ -228,7 +228,7 @@ describe("逆境 project 設定", () => {
       ),
     ];
     expect(listed.length).toBeGreaterThan(0);
-    const inert = listed.filter((f) => !/\b(bootOffline|installOfflineNetwork|bootScenario)\(/.test(read(f)));
+    const inert = listed.filter((f) => !/\b(bootOffline|installOfflineNetwork|bootScenario|bootImageArticle)\(/.test(read(f)));
     expect(inert).toEqual([]);
   });
 

@@ -64,6 +64,10 @@ _Avoid_: Android-native interface, entire loaded article.
 The continuous reading view of an article, with its available pages joined together for scrolling.
 _Avoid_: Article-list easy reading, native PTT view, unqualified easy reading when the surface matters.
 
+**Image viewer**:
+A separate view of one article image that supports zooming and panning while preserving the article's reading position.
+_Avoid_: Inline preview, article-wide image enlargement, external browser.
+
 **Article-list easy reading**:
 The continuous scrolling view of article entries within a board or its search results.
 _Avoid_: Board-list smooth scrolling, article easy reading, unqualified list mode.

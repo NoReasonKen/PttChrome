@@ -70,9 +70,7 @@ import {
   clearInlinePreviewGray,
   invalidateInlinePreviewHeights,
 } from "./inline_preview_slot";
-import { computeAnchoredScrollTop, offsetTopWithin } from "../js/scroll_anchor";
 import { ChunkLayer } from "./screen_chunk";
-import { imageSizeMode, stepImageZoom } from "../js/image_zoom";
 import { diag, diagActive } from "../js/diag";
 import {
   annotationsKey,
@@ -158,14 +156,8 @@ export class ScreenController {
     this._appliedPusher = null;
     this._hoverPreview = undefined;
     this._hoverPos = { left: undefined, top: undefined };
-    // 好讀自動開圖「一鍵放大全部圖片至視窗寬度」；點任一張內嵌預覽圖切換。
-    this._imagesEnlarged = false;
-    // 好讀自動開圖的「整頁圖片倍率」（圖上浮現的 －／＋，見 js/image_zoom.js）。作用在
-    // 小圖模式；放大態優先、倍率保留。生命週期同 imagesEnlarged。
-    this._imageZoom = 1;
-    // 開燈（隱藏文字提亮）。**只是軌 A 的 CSS 開關**——軌 B（server 已擦掉的內容）
-    // 由 App 切 pmore rawmode 處理，狀態在 enhance.rawMode，不在這裡。與
-    // imagesEnlarged 同生命週期：同篇 page-down 保留、換文章（articleId 變）重置。
+    // Hidden-text lighting survives appended pages and resets for a new article.
+    // Server-side raw mode remains owned by App through enhance.rawMode.
     this._lightsOn = false;
     // 推文區塊行距的容器 class（pref commentBlockSpacing）。每幀由 _render 推導，
     // 這裡只是欄位種子（見 _setCommentSpacing 的 DOM 同步守衛）。
@@ -173,8 +165,7 @@ export class ScreenController {
     // 已讀文章低亮的容器 class（pref dimReadArticles），同 _commentSpacing 的形狀。
     this._dimRead = false;
     // 好讀「圖左字右合併」三態：null（關）→ "imageFirst" → "captionFirst" → null。
-    // 與 imagesEnlarged 同生命週期——同篇 page-down 保留、換文章／退出再進
-    // （articleId 變）才重置，所以不會「換到沒按鈕的文章卻還開著、關不掉」。
+    // Its article-scoped state resets when navigation changes articleId.
     this._mergeCaption = null;
     // 裝置端 AI 校正（第二顆浮動按鈕，per-session）。
     this._captionAi = false;
@@ -210,7 +201,7 @@ export class ScreenController {
     this._stableFrom = 0;
     // 好讀累積長頁的分塊（render/screen_chunk.js）。只在 enhance.stableRows 時啟用。
     this._chunkLayer = new ChunkLayer(this.container);
-    this._liveSlots = new Set(); // 目前掛著的佔位盒（imagesEnlarged 切換要通知）
+    this._liveSlots = new Set(); // Slots sharing layout and grayscale updates.
     this._overlayNodes = []; // 尾端固定浮層（「⋯」工具鈕 + hover 預覽宿主）
     this._captionAiEnabledSeen = null;
     this._availabilityToken = 0;
@@ -229,17 +220,15 @@ export class ScreenController {
     this._listReserveTimer = null;
     this._listScrollAt = -Infinity;
 
-    // 事件委派：點到內嵌預覽圖（.hyperLinkPreview）即切換整頁圖片放大/縮小。
-    // hover 預覽的 OnHover img 無此 class，不受影響。
+    // Inline images open the shared viewer without changing article geometry.
     this._onContainerClick = this._onContainerClick.bind(this);
+    this._onContainerKeyDown = this._onContainerKeyDown.bind(this);
     this._onContainerMouseMove = this._onContainerMouseMove.bind(this);
-    this._onPreviewZoom = this._onPreviewZoom.bind(this);
     this.onHyperLinkMouseOver = this.onHyperLinkMouseOver.bind(this);
     this.onHyperLinkMouseOut = this.onHyperLinkMouseOut.bind(this);
     this.container.addEventListener("click", this._onContainerClick);
+    this.container.addEventListener("keydown", this._onContainerKeyDown);
     this.container.addEventListener("mousemove", this._onContainerMouseMove);
-    // 倍率列的按鈕（inline_preview_slot.js）派發的 bubbling 事件。
-    this.container.addEventListener("previewzoom", this._onPreviewZoom);
 
     this._mergeButton = null;
     this._aiButton = null;
@@ -332,16 +321,10 @@ export class ScreenController {
     ) {
       this._hoverPreview = undefined;
     }
-    // imagesEnlarged 以 enhance.articleId 為準：好讀同篇 page-down 會 concat 出新
-    // lines 參考但 articleId 不變，放大狀態因此在同篇捲動載入時保留；換文章／退出
-    // 再進（articleId 變）才重置。
+    // Article-scoped presentation survives appended pages and resets on navigation.
     const articleId = props.enhance && props.enhance.articleId;
     const prevArticleId = prev && prev.enhance && prev.enhance.articleId;
     if (prev && articleId !== prevArticleId) {
-      // 走唯一入口：直接賦值欄位會漏掉容器 class（＝圖片尺寸的真正決定者）與
-      // 存活中 slot 的 sizeMode，下一篇就會一開場就是大圖。
-      this._setImagesEnlarged(false);
-      this._setImageZoom(1);
       // 單張圖的暫時性灰階同理走唯一入口（直接清 Set 會漏掉已經掛著、還帶著
       // data-gray 的節點 ⇒ 下一篇一開場就有幾張莫名其妙的灰圖）。
       this._resetImagesGray();
@@ -469,61 +452,51 @@ export class ScreenController {
     this._listReserveTimer = null;
     this.onListScroll = null;
     this.container.removeEventListener("click", this._onContainerClick);
+    this.container.removeEventListener("keydown", this._onContainerKeyDown);
     this.container.removeEventListener("mousemove", this._onContainerMouseMove);
-    this.container.removeEventListener("previewzoom", this._onPreviewZoom);
     this.container.remove();
     this._cache = null;
     this._prevFrame = null;
   }
 
   // --------------------------------------------------------------- 事件處理
-  // 縮放會讓整份內容高度驟變，而捲動容器（.main）的 scrollTop 不變 → 視窗相對文章
-  // 整個位移，被點的那張圖跑出視野。故點擊當下先記下錨點（此時讀到的還是**舊
-  // layout**，正是我們要的 before 值），套用後立刻補回捲動位置。
-  // 量測一律用 offsetTop/offsetHeight，不可用 getBoundingClientRect——見
-  // scroll_anchor.js 開頭的座標系規則（.main 與 img 各有 transform scale）。
   _onContainerClick(e) {
-    const t = e.target;
-    if (!t || t.tagName !== "IMG" || !t.classList.contains("hyperLinkPreview"))
+    const img = e.target;
+    if (
+      !img ||
+      img.tagName !== "IMG" ||
+      !img.classList.contains("hyperLinkPreview") ||
+      !(img.naturalWidth > 0 && img.naturalHeight > 0)
+    )
       return;
-    this._withImageAnchor(t, () =>
-      this._setImagesEnlarged(!this._imagesEnlarged),
+    const src = img.currentSrc || img.src;
+    if (!src) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.container.dispatchEvent(
+      new CustomEvent("previewimage", {
+        bubbles: true,
+        detail: {
+          src,
+          width: img.naturalWidth,
+          height: img.naturalHeight,
+          alt: img.alt,
+          referrerPolicy: img.referrerPolicy,
+          trigger: img,
+        },
+      }),
     );
   }
 
-  // 倍率列：dir +1／-1 一格、0 回 100%。錨點取按鈕所屬那張圖（同點圖放大）。
-  _onPreviewZoom(e) {
-    const detail = e.detail || {};
-    const next = stepImageZoom(this._imageZoom, detail.dir);
-    const img = detail.img && detail.img.isConnected ? detail.img : null;
-    const apply = () => this._setImageZoom(next);
-    if (img) this._withImageAnchor(img, apply);
-    else apply();
-    this._refocusTerminal();
-  }
-
-  // 套用一個會改變圖片尺寸的動作，並把 `el` 釘在原本的視窗位置（見上方說明）。
-  _withImageAnchor(el, fn) {
-    const scroller = this.container.closest(".main");
-    const anchor = scroller
-      ? {
-          el,
-          scroller,
-          topBefore: offsetTopWithin(el, this.container),
-          heightBefore: el.offsetHeight,
-          scrollBefore: scroller.scrollTop,
-        }
-      : null; // 拿不到捲動容器就單純切換，不補償（不 crash）。
-    fn();
-    if (!anchor || !anchor.el.isConnected) return;
-    anchor.scroller.scrollTop = computeAnchoredScrollTop({
-      topBefore: anchor.topBefore,
-      heightBefore: anchor.heightBefore,
-      scrollBefore: anchor.scrollBefore,
-      topAfter: offsetTopWithin(anchor.el, this.container),
-      heightAfter: anchor.el.offsetHeight,
-      maxScroll: anchor.scroller.scrollHeight - anchor.scroller.clientHeight,
-    });
+  _onContainerKeyDown(e) {
+    if (
+      (e.key === "Enter" || e.key === " ") &&
+      !e.altKey &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.repeat
+    )
+      this._onContainerClick(e);
   }
 
   _onContainerMouseMove(e) {
@@ -619,7 +592,7 @@ export class ScreenController {
     );
   }
 
-  // 開燈不需要重建任何一列：容器 class 決定樣式（同 imagesEnlarged 的形狀）。
+  // Lighting changes only a container class, preserving all row nodes.
   _setLightsOn(next) {
     const domInSync = this.container.classList.contains("lightsOn") === next;
     if (this._lightsOn === next && domInSync) return;
@@ -633,55 +606,16 @@ export class ScreenController {
     this._syncFloatToolsActive();
   }
 
-  // imagesEnlarged 不需要重建任何一列：容器 class 決定圖片尺寸，佔位盒只要知道
-  // 現在是哪個模式（分模式各記一筆高度，見 lazy_media.recordSlotHeight）。
-  _setImagesEnlarged(next) {
-    // 早退守衛同時看 DOM：欄位對、class 卻沒跟上（有人繞過本入口直接改欄位）時
-    // 不可早退，否則會靜默停在不同步狀態。
-    const domInSync =
-      this.container.classList.contains("imagesEnlarged") === next;
-    if (this._imagesEnlarged === next && domInSync) return;
-    this._imagesEnlarged = next;
-    this._syncImageSize();
-  }
-
-  // 整頁圖片倍率（同 imagesEnlarged 的形狀：容器 class + CSS 變數決定尺寸，不重建列）。
-  _setImageZoom(next) {
-    const domInSync =
-      this.container.classList.contains("imagesZoomed") ===
-      (next !== 1 && !this._imagesEnlarged);
-    if (this._imageZoom === next && domInSync) return;
-    this._imageZoom = next;
-    this._syncImageSize();
-  }
-
-  // 圖片尺寸的 DOM 同步唯一入口：兩個容器 class 互斥（放大態優先），倍率走
-  // --img-zoom（寫在容器上：slot/content 不得有 runtime inline style，見
-  // inline_preview_slot.js 檔頭硬不變量），再把 sizeMode 廣播給存活中的 slot。
-  _syncImageSize() {
-    const enlarged = this._imagesEnlarged;
-    const zoomed = !enlarged && this._imageZoom !== 1;
-    this.container.classList.toggle("imagesEnlarged", enlarged);
-    this.container.classList.toggle("imagesZoomed", zoomed);
-    if (zoomed)
-      this.container.style.setProperty("--img-zoom", String(this._imageZoom));
-    else this.container.style.removeProperty("--img-zoom");
-    const mode = this._sizeMode();
-    diag("image.size", { mode, slots: this._liveSlots.size });
-    for (const slot of this._liveSlots) slot.setSizeMode(mode);
-  }
-
   // 單張圖的暫時性灰階（hover 圖片浮現的切換鈕）。狀態是 module 級、以 href 為鍵
   // （見 inline_preview_slot.js），這裡是**換文章重置**的唯一入口：清掉狀態之後
   // 還得叫每個存活中的 slot 把 data-gray 拿掉，否則畫面停在灰階、按鈕文字也錯。
-  // 與 imagesEnlarged 同生命週期：同篇 page-down 保留、換文章／退出再進才重置。
+  // Grayscale survives appended pages and resets when the article changes.
   _resetImagesGray() {
     clearInlinePreviewGray();
     for (const slot of this._liveSlots) slot.syncGray();
   }
 
-  // 推文區塊行距（pref commentBlockSpacing）：同 lightsOn／imagesEnlarged 的形狀 ——
-  // 容器 class 決定樣式，不重建任何一列，也不進 annotationsKey。
+  // Comment spacing changes a container class without rebuilding row annotations.
   //
   // **判準是 stableRows 而不是 easyReading && pageState===3**：functionMode 原生鏡像
   // 與「防黑守門」兩條 fallback 也帶著 easyReading:true / pageState:3，畫的卻是活的
@@ -691,7 +625,7 @@ export class ScreenController {
   // buf.pageLines 的兩個呼叫點為真，正好就是「文章好讀累積長頁」。
   // 守護：tests/unit/comment_spacing_class.test.js
   _setCommentSpacing(next) {
-    // 早退守衛同時看 DOM（同 _setImagesEnlarged）：欄位對、class 沒跟上時不可早退。
+    // Synchronize both the stored value and its container class.
     const domInSync =
       this.container.classList.contains("commentSpacing") === next;
     if (this._commentSpacing === next && domInSync) return;
@@ -712,7 +646,6 @@ export class ScreenController {
   // 版面**寬度**改變的唯一入口（字級／視窗 resize 走 term_view.setTermFontSize，
   // 圖左字右合併走 _toggleMergeCaption）。佔位盒記的 pinned 高度是在舊寬度下量到
   // 的，換寬度就過期；aspect（原尺寸）與寬度無關，一律保留讓替身盒接手。
-  // **不含 imagesEnlarged**：那是 sizeMode，本來就分模式各記一筆高度。
   notifyLayoutChanged() {
     invalidateInlinePreviewHeights();
     for (const slot of this._liveSlots) slot.invalidatePinned();
@@ -821,7 +754,7 @@ export class ScreenController {
       lines,
       key: cacheKey,
       highlight: this.highlight,
-      sizeMode: this._sizeMode(),
+      sizeMode: "normal",
       rowIndependent,
     };
 
@@ -863,7 +796,6 @@ export class ScreenController {
       frame.rowIndependent &&
       pf.rowIndependent &&
       sameKey(pf.key, frame.key) &&
-      pf.sizeMode === this._sizeMode() &&
       pf.highlight.cls === this.highlight.cls &&
       pf.highlight.col === this.highlight.col;
     const prevLines = frameReuse ? pf.lines : null;
@@ -1066,7 +998,7 @@ export class ScreenController {
         bareDomains: m.bareDomains,
         onHyperLinkMouseOver: this.onHyperLinkMouseOver,
         onHyperLinkMouseOut: this.onHyperLinkMouseOut,
-        sizeMode: this._sizeMode(),
+        sizeMode: "normal",
       });
       const wrapper = el(
         "div",
@@ -1234,7 +1166,7 @@ export class ScreenController {
       blacklistNotice: ann && ann.blacklistNotice,
       onHyperLinkMouseOver: this.onHyperLinkMouseOver,
       onHyperLinkMouseOut: this.onHyperLinkMouseOut,
-      sizeMode: this._sizeMode(),
+      sizeMode: "normal",
     });
     for (let i = 0; i < built.slots.length; ++i) slots.push(built.slots[i]);
     return built.node;
@@ -1269,7 +1201,7 @@ export class ScreenController {
       bareDomains: links.bareDomains,
       onHyperLinkMouseOver: this.onHyperLinkMouseOver,
       onHyperLinkMouseOut: this.onHyperLinkMouseOut,
-      sizeMode: this._sizeMode(),
+      sizeMode: "normal",
     });
   }
 
@@ -1280,12 +1212,7 @@ export class ScreenController {
     return card.node;
   }
 
-  _sizeMode() {
-    return imageSizeMode(this._imagesEnlarged, this._imageZoom);
-  }
-
-  // 把這一列建立的佔位盒掛到它的頂層節點上，並記進存活集合（imagesEnlarged 切換
-  // 要逐一通知）。節點被丟棄時由 disposeNode 收掉。
+  // Track row-owned slots for layout updates and deterministic disposal.
   _adopt(node, slots) {
     node.__slots = slots;
     for (let i = 0; i < slots.length; ++i) {

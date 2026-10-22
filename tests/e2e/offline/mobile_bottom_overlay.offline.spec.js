@@ -7,6 +7,7 @@ const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { bootOffline, waitScreenSettled } = require('../helpers/replay');
 const { bottomOverlayViolations } = require('../helpers/overlay_guard');
+const { openPreviewViewer, VIEWER } = require('../helpers/image_viewer');
 
 async function feed(page, map, cursor, col) {
   await page.evaluate(
@@ -40,7 +41,7 @@ const POSTS = [101, 102, 103, 104, 105].map((num, i) => ({
 
 // 列表（游標在第 2 篇）→ 開第 2 篇（100% ⇒ 好讀一頁就讀到文末）。full：內文＋推文填滿整頁
 // （要捲）；否則只有一行內文＋一則推文，pmore 把剩下的列畫成空白。
-async function openArticle(page, { full }) {
+async function openArticle(page, { full, imageViewer }) {
   const list = {
     0: { rev: true, text: '【板主：test】看板《Test》'.padEnd(80) },
     1: '[←]離開 [→]閱讀 [^P]發表文章 [b]備忘錄',
@@ -65,6 +66,7 @@ async function openArticle(page, { full }) {
       ' 行  (y)回應(X%)推文(h)說明(←)離開 ',
   };
   for (let r = 5; r < last; r++) art[r] = '內文第 ' + (r - 3) + ' 行';
+  if (imageViewer) art[5] = 'https://i.urusai.cc/overlay-viewer.png';
   art[last] = '推 alice: 最後一則推文                                         09/01 12:34';
   await feed(page, art, 23, 80);
   await waitScreenSettled(page, { 0: '作者', 23: '瀏覽' });
@@ -72,7 +74,10 @@ async function openArticle(page, { full }) {
 
 // 會佔畫面邊緣的功能（bootOffline 的 opts）；手機的底部導覽列與 App Bar 一律在。
 // commentBarFold＝推文列收進底部導覽、點導覽的「推文」展開之後的樣子。
-const COMBOS = [[], ['nextArticle'], ['commentBar', 'nextArticle'], ['commentBarFold', 'nextArticle']];
+const COMBOS = [
+  [], ['nextArticle'], ['commentBar', 'nextArticle'], ['commentBarFold', 'nextArticle'],
+  ['commentBarFold', 'nextArticle', 'imageViewer'],
+];
 
 test.describe('手機：浮層不蓋住文末', () => {
   for (const combo of COMBOS) {
@@ -80,11 +85,11 @@ test.describe('手機：浮層不蓋住文末', () => {
       const title = (combo.join('+') || '全關') + '・' + (full ? '長文捲到底' : '推文很少');
       test(title, async ({ page }) => {
         const opts = {};
-        for (const k of combo) opts[k] = true;
+        for (const k of combo) if (k !== 'imageViewer') opts[k] = true;
         if (opts.commentBarFold) opts.commentBar = true;
         await bootOffline(page, ptt, opts);
         await ptt.applyPrefs(page, { enableEasyReadingList: false });
-        await openArticle(page, { full });
+        await openArticle(page, { full, imageViewer: combo.includes('imageViewer') });
         if (combo.includes('commentBarFold')) {
           await expect.poll(() => page.evaluate(() => window.__app.commentBar.state.available)).toBe(true);
           await page.locator('[data-key="X"]').tap();
@@ -93,6 +98,11 @@ test.describe('手機：浮層不蓋住文末', () => {
         await expect(page.locator('body')).toHaveClass(/mobile-layout/);
         if (combo.includes('nextArticle')) await expect(page.locator('#nextArticleCard')).toBeVisible();
         if (opts.commentBar) await expect(page.locator('#commentBar')).toBeVisible();
+        if (combo.includes('imageViewer')) {
+          await openPreviewViewer(page, { touch: true });
+          await page.getByRole('button', { name: 'Close image viewer', exact: true }).tap();
+          await expect(page.locator(VIEWER)).toHaveCount(0);
+        }
         expect(await bottomOverlayViolations(page)).toEqual([]);
       });
     }
