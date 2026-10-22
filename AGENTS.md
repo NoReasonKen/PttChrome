@@ -6,6 +6,16 @@
 - Write documentation and code in English, including comments and test descriptions.
 - Explain behavior through the user-visible concepts in `GLOSSARY.md`. Introduce technical terms by relating them to the familiar content or control before relying on them.
 
+## Subagent delegation
+
+Proactively use subagents when one of these cases offers a clear benefit:
+
+- **Parallel work:** delegate independent work that benefits from division or concurrent investigation to subagents using the main agent's model.
+- **Context isolation:** delegate bounded work whose intermediate details do not help the main agent reason about the overall task to a subagent using the same model. Request concise findings, evidence, and unresolved questions.
+- **Simple work:** use a lightweight model, preferably `gpt-6-luna` when available, for straightforward, well-scoped tasks with clear completion criteria. If it is unavailable, use the main agent's model.
+
+Use the main agent's model for ambiguous or judgment-heavy work. Give each subagent a clear task, the necessary context, an expected result, and explicit file ownership when editing. The main agent remains responsible for reviewing and integrating results, validating changes, and committing completed milestones.
+
 ## Agent skills
 
 ### Issue tracker
