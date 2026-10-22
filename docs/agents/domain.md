@@ -7,8 +7,8 @@ This repo uses a single-context layout:
 
 ## Before exploring
 
-Read `GLOSSARY.md` and the ADRs relevant to the area you will change.
-If either is absent, proceed silently. The `domain-modeling` skill creates these documents lazily as terminology and decisions are resolved.
+Read `GLOSSARY.md`, then use `docs/domain-overview.md` for the relationships between reading experiences and their source locations. Read the ADRs relevant to the area you will change.
+If a domain document is absent, proceed silently. The `domain-modeling` skill creates the glossary and ADRs lazily as terminology and decisions are resolved.
 
 ## Use the glossary's vocabulary
 

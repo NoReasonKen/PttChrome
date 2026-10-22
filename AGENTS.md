@@ -4,6 +4,7 @@
 
 - Communicate with the user in Traditional Chinese.
 - Write documentation and code in English, including comments and test descriptions.
+- Explain behavior through the user-visible concepts in `GLOSSARY.md`. Introduce technical terms by relating them to the familiar content or control before relying on them.
 
 ## Agent skills
 

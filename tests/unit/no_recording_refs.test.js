@@ -8,7 +8,7 @@ import path from "path";
 
 const ROOT = path.join(__dirname, "..", "..");
 const DIRS = ["src", "tests", "docs", "scripts", "tools", "android", "proxy"];
-const TOP = ["AGENTS.md", "CLAUDE.md", "README.md"];
+const TOP = ["AGENTS.md", "CLAUDE.md", "GLOSSARY.md", "README.md"];
 const SKIP_DIR = new Set(["node_modules", "build", ".gradle", "__recordings__", "cassettes", "3rd_script"]);
 const TEXT = /\.(m?[jt]sx?|cjs|md|css|html|kt|java|sh|ya?ml)$/;
 // These tests exercise the downloaded filename format itself.
