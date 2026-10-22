@@ -6,6 +6,11 @@
 - Write documentation and code in English, including comments and test descriptions.
 - Explain behavior through the user-visible concepts in `GLOSSARY.md`. Introduce technical terms by relating them to the familiar content or control before relying on them.
 
+## User's reading context
+
+- The user primarily uses the installed Android app with easy-reading experiences enabled. Start investigations of their questions and reports with the relevant easy-reading path and mobile interaction.
+- Follow shared behavior into other reading modes and application surfaces when relevant. Design features and fixes for the repository as a whole, with readable, maintainable code and clear extension points.
+
 ## Subagent delegation
 
 Proactively use subagents when one of these cases offers a clear benefit:
@@ -203,6 +208,7 @@ Read the corresponding document before changing the listed area:
 | Capture/replay and privacy | `docs/offline-replay-testing.md` |
 | Preference sync, Firebase, platform pitfalls | `docs/pref-sync-firestore.md` |
 | Preview add-ons, image hosts, referer rules | `docs/media-preview-addons.md` |
+| Image preview behavior, easy-reading controls, loading, and regression coverage | `docs/image-preview-research.md` |
 | Official PTT projects and terminal comment formats | `docs/ptt-official-app-research.md` |
 | On-device AI caption pairing | `docs/merge-caption-ai-assist.md` |
 | Build tools and dependency selection | `docs/build-modernization.md` |
