@@ -45,6 +45,8 @@ The stack is Vite 8 (Rolldown) and bundled React 19. `@vitejs/plugin-react` uses
 
 ## Architecture
 
+Before changing a core interface or crossing module boundaries, read `docs/core-api-research.md` for source-backed signatures, return values, event ordering, ownership rules, and related tests. Verify the current implementation when modifying a documented contract.
+
 - Entry chain: root `index.html` -> `src/entry.js` -> `src/js/main.jsx`. Load the Big5 conversion tables in `conv/*.bin`, then `startApp()`, then `new App().connect(DEFAULT_SITE)`.
 - Development builds call `connect()` on boot, matching production timing. This matters for URL consumers such as deep links. `process.env.DEVELOPER_MODE` only exposes probes such as `window.__app` and `__i18n`; Vite selects development for serve and production for build.
 - Login follows the telnet BBS protocol, handled by PTT's `daemon/logind`. Opt-in automatic login lives in `src/js/auto_login.js`: it reads screen prompts and uses browser-managed credentials. See `docs/enhanced-addon.md`.
@@ -302,7 +304,7 @@ For unrelated failures, code-scanning alerts, new job ordering, and required che
 - TermChar.needUpdate is cleared after updateCharAttr consumes it. lineChangeds is cleared only by term_view.redraw. Clearing it in updateCharAttr breaks easy_reading._forceRepaint and list_session._forceRedraw.
 - Plain DOM rendering owns cleanup. Replacing a row or rebuilding the screen must destroy lazy preview placeholders and their IntersectionObserver, ResizeObserver, and ImagePreviewer React roots. The one entry point is `render/screen.js#disposeNode`, covered by `tests/unit/render_dispose.test.js`.
 - pttchrome.modalShown is derived from named sources through `App.setModalOpen(source, open)`. React's ContextMenu effect derives it from render state. Direct writes or parallel manual bookkeeping can leave keyboard focus permanently captured by hidden input #t. Covered by modal_shown_sources.test.js and connect_failure.offline.spec.js. showsInputHelper and showsLiveArticleHelper intentionally do not count as modals.
-- view.conn is assigned only by App.onConnect and is undefined if a connection never succeeded. Send through view._send()/_convSend(), which check conn, rather than calling view.conn.send() directly.
+- view.conn is assigned only by App.onConnect and can be undefined before a successful connection. UI controls use view.sendKeyAsUser(); keyboard/IME input uses view._send()/_convSend(), which apply user-input adoption rules. Machine operations use CommandQueue for serialized transactions or App.sendMachineBytes() through an owning state machine; the caller must honor current wire ownership.
 
 ### Documentation and product maintenance
 
