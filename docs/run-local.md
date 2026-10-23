@@ -5,6 +5,13 @@
 
 ## TL;DR
 
+For a new checkout, run `yarn setup` once before starting development. It installs
+the pinned dependencies, explicitly runs `yarn prepare` (Yarn 4 does not run the
+custom `prepare` lifecycle automatically), and verifies that Git uses the
+checkout's pre-commit checks. After deleting or recreating local Git/Husky
+configuration, run `yarn prepare` and `node scripts/check-git-hooks.mjs` again.
+This setup does not install browser system libraries or the Android SDK.
+
 ```powershell
 cd <專案根目錄>
 yarn start

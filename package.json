@@ -44,6 +44,7 @@
     "src/render/**/*.js": "prettier --write"
   },
   "scripts": {
+    "setup": "yarn install --immutable && yarn prepare && node scripts/check-git-hooks.mjs",
     "prepare": "husky",
     "build": "vite build",
     "start": "vite",
