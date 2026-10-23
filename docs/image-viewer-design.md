@@ -22,8 +22,10 @@ Confirmed constraints for the future issue:
 
 - Foreground image and swipe waiting time are the primary goals; reducing unnecessary requests is secondary. Preventing undocumented source-side throttling is not an acceptance guarantee.
 - The four-load limit applies to viewer-owned image jobs, not all page traffic or a literal four HTTP requests. A job may require resolution, probes, fallback candidates, or retries. Inline preview scheduling remains outside the first version.
+- On navigation, discard queued work outside the viewer preload range and let already started jobs finish. A newly viewed image can wait if all four slots are busy. Closing the viewer still cancels unfinished viewer work.
+- Assign free slots in this order: current image, next image, second following image, previous image. Neighbors can start while the current image is loading; the original strict current-completion barrier is no longer part of the agreed scope.
 
-The feature remains deferred. Cancellation of already started jobs and whether foreground completion should block neighbor loading are still open design decisions.
+The feature remains deferred. Stalled-job deadlines and terminal failure/retry behavior are still open design decisions.
 
 The queue bookkeeping itself is small; no meaningful CPU cost is expected from managing four active jobs. This is a source-based estimate, not a device benchmark. Integration and regression coverage determine the cost:
 
