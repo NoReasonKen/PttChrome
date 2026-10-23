@@ -1,6 +1,6 @@
 # Triage Labels
 
-The five canonical skill roles map to the labels below. This repo also uses `resolved` as an explicit completion state.
+The five canonical skill roles map to the labels below. This repo also uses `backlog` for deferred requirements and `resolved` as an explicit completion state.
 
 | Skill role | Tracker label | Meaning |
 | --- | --- | --- |
@@ -9,11 +9,13 @@ The five canonical skill roles map to the labels below. This repo also uses `res
 | `ready-for-agent` | `ready-for-agent` | Sufficiently specified for an agent to continue independently. |
 | `ready-for-human` | `ready-for-human` | Requires user intervention: a decision, testing, or implementation. |
 | `wontfix` | `wontfix` | Work has been declined. |
+| Additional deferred state | `backlog` | Requirement is recorded but intentionally deferred; no immediate user action is pending. |
 | Additional completion state | `resolved` | Work is actually complete and all acceptance criteria are satisfied. |
 
 ## State transitions
 
 - Keep exactly one of these state labels on each classified issue. Category labels such as `bug` may coexist.
+- For intentionally deferred requirements, apply `backlog`, remove the previous state label, and leave the issue open. Resume only when the user reprioritizes the work, then classify it by the next required action; use `ready-for-agent` when it can proceed independently. Backlog items are excluded from automatic work selection.
 - When a decision, user testing, or user implementation is required, apply `ready-for-human`, describe the needed action and available evidence in a comment, and leave the issue open.
 - After user intervention, apply `ready-for-agent` if an agent can continue the remaining work independently.
 - Implementation that still needs required user testing remains `ready-for-human`.

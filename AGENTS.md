@@ -35,7 +35,7 @@ Track development requirements in GitHub Issues for NoReasonKen/PttChrome. Befor
 
 ### Triage labels
 
-Use the five canonical labels plus `resolved`. Before classifying work or changing its state, read [docs/agents/triage-labels.md](docs/agents/triage-labels.md); `ready-for-human` includes user decisions, testing, and implementation.
+Use the five canonical labels plus `backlog` and `resolved`. Before classifying work or changing its state, read [docs/agents/triage-labels.md](docs/agents/triage-labels.md); `ready-for-human` includes user decisions, testing, and implementation.
 
 ### Domain docs
 

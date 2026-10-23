@@ -27,7 +27,7 @@ Confirmed constraints for the deferred enhancement:
 - Each started job has a 30-second total deadline covering resolution, candidates, retries, and backoff. Queue waiting does not consume that deadline. Timeout stops viewer-owned work and releases capacity; this initial value is a design choice, not a measured optimum.
 - Preserve existing bounded candidate retries. After terminal failure or timeout, navigation away and back within the same open viewer does not retry the failed entry automatically; the existing Retry action submits a new job through the same queue and concurrency limit. Closing and reopening follows existing normal loading/cache behavior without a new persistent failure store.
 
-The feature remains deferred in [issue #5](https://github.com/NoReasonKen/PttChrome/issues/5), which records the complete policy, integration constraints, and acceptance criteria. It remains open as `ready-for-human` until the user reprioritizes implementation; confirming this specification does not authorize runtime changes.
+The feature remains deferred in [issue #5](https://github.com/NoReasonKen/PttChrome/issues/5), which records the complete policy, integration constraints, and acceptance criteria. It remains open as `backlog` until the user reprioritizes implementation; confirming this specification does not authorize runtime changes.
 
 The queue bookkeeping itself is small; no meaningful CPU cost is expected from managing four active jobs. This is a source-based estimate, not a device benchmark. Integration and regression coverage determine the cost:
 

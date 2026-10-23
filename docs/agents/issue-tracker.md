@@ -4,7 +4,7 @@ Issues and specifications for this fork live in [NoReasonKen/PttChrome](https://
 
 ## Scope
 
-Create issues for development requirements that need tracking: bugs, features, enhancements, and concrete technical changes with a defined outcome. Deferred requirements may remain open until the user reprioritizes them.
+Create issues for development requirements that need tracking: bugs, features, enhancements, and concrete technical changes with a defined outcome. Keep intentionally deferred requirements open as `backlog` until the user reprioritizes them.
 
 Record investigation, feasibility analysis, and validation in the related requirement's issue or topic document. Keep routine retrospective follow-up, agent guidance, local setup, and completed-work summaries in repository documentation and commits rather than opening separate tracking issues. A skill's issue-tracking workflow applies only to work within this scope unless the user explicitly requests an issue.
 
@@ -31,7 +31,7 @@ Use `triage-labels.md` for label meanings and state transitions.
 
 Prefer GitHub's native sub-issues and issue dependencies. If unavailable, put `Part of #<parent>` at the top of each child issue, maintain a task list in the parent, and record dependencies as `Blocked by: #<number>`.
 
-For skills that use a work map, keep the map in one issue and link its tickets as children. An actionable ticket has no open blockers or assignee. Claim it by assigning yourself, then record the result and update the map when the work is resolved.
+For skills that use a work map, keep the map in one issue and link its tickets as children. An actionable ticket is labeled `ready-for-agent` and has no open blockers or assignee. Claim it by assigning yourself, then record the result and update the map when the work is resolved.
 
 ## Pull requests as a triage surface
 
