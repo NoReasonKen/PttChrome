@@ -2,6 +2,12 @@
 
 Issues and specifications for this fork live in [NoReasonKen/PttChrome](https://github.com/NoReasonKen/PttChrome/issues). Use the `gh` CLI and explicitly pass `--repo NoReasonKen/PttChrome` for issue, label, and pull request operations.
 
+## Scope
+
+Create issues for development requirements that need tracking: bugs, features, enhancements, and concrete technical changes with a defined outcome. Deferred requirements may remain open until the user reprioritizes them.
+
+Record investigation, feasibility analysis, and validation in the related requirement's issue or topic document. Keep routine retrospective follow-up, agent guidance, local setup, and completed-work summaries in repository documentation and commits rather than opening separate tracking issues. A skill's issue-tracking workflow applies only to work within this scope unless the user explicitly requests an issue.
+
 ## Conventions
 
 - **Create**: `gh issue create --repo NoReasonKen/PttChrome --title "..." --body-file <file>`.

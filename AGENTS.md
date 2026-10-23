@@ -31,7 +31,7 @@ Use the main agent's model for ambiguous or judgment-heavy work. Give each subag
 
 ### Issue tracker
 
-Track engineering work in GitHub Issues for NoReasonKen/PttChrome. Before creating, reading, or updating tickets, read [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+Track development requirements in GitHub Issues for NoReasonKen/PttChrome. Before creating, reading, or updating tickets, read [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md) for scope and conventions.
 
 ### Triage labels
 
