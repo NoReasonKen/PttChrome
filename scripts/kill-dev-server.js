@@ -1,14 +1,9 @@
-// 殺掉殘留的 Vite dev server（佔 8080 的孤兒 node 進程）。
-// 雙重守門：先找佔 8080 的 PID，再驗該進程確實是 node+vite 才砍，
-// 避免誤殺其他佔 8080 的服務（如 java）。永不 fail（一律 exit 0），CI 上無孤兒時是 no-op。
-//
-// 用法：node scripts/kill-dev-server.js（或 yarn kill:dev）。
-//   --own：只殺「本 checkout 自己起的」dev server（PID 由 vite.config.mjs 寫進
-//   DEV_SERVER_PIDFILE）。SessionEnd hook 用這個模式；在 git worktree 裡自動套用。
-//   理由：多個 session 並行時 8080 上是誰的 server 只看 port 分不出來，
-//   不加這層，任何一個 session 結束都會砍掉別人正在跑 e2e 的 server。
+// Stop Node/Vite listeners on port 8080 without stopping unrelated services.
+// --own restricts cleanup to the PID recorded by this checkout's Vite config;
+// linked worktrees always use that restriction. Missing servers are a no-op,
+// while failed inspection or stopping returns a nonzero exit status.
 
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { isLinkedWorktree } = require('./worktree');
@@ -18,13 +13,12 @@ const DEV_SERVER_PIDFILE = path.resolve(__dirname, '..', 'node_modules', '.cache
 const PORT = 8080;
 const isWin = process.platform === 'win32';
 
-// 安靜執行一段指令，回傳 stdout（trim）；失敗回空字串。
-function sh(cmd) {
-  try {
-    return execSync(cmd, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-  } catch (e) {
-    return '';
-  }
+function run(file, args) {
+  return execFileSync(file, args, {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 5000,
+  }).toString().trim();
 }
 
 // 解析「正在 listen PORT 的 PID」清單（純函式，unit test 守護：
@@ -44,7 +38,7 @@ function parseListeningPids(out, port, { lsof = false } = {}) {
     const line = raw.trim();
     if (!line) continue;
     if (lsof) {
-      if (/^\d+$/.test(line)) pids.add(line);
+      if (/^[1-9]\d*$/.test(line)) pids.add(line);
       continue;
     }
     if (!/^TCP\b/i.test(line)) continue;
@@ -70,67 +64,93 @@ function selectPidsToKill(pids, { ownOnly = false, ownPid = null } = {}) {
 
 function readOwnPid() {
   try {
-    return fs.readFileSync(DEV_SERVER_PIDFILE, 'utf8').trim() || null;
+    const pid = fs.readFileSync(DEV_SERVER_PIDFILE, 'utf8').trim();
+    if (!/^[1-9]\d*$/.test(pid)) throw new Error('Invalid development-server PID file');
+    return pid;
   } catch (e) {
-    return null;
+    if (e.code === 'ENOENT') return null;
+    throw e;
   }
 }
 
-// 找出正在 listen PORT 的 PID 清單。
 function findListeningPids() {
-  return isWin
-    ? parseListeningPids(sh('netstat -ano'), PORT)
-    : parseListeningPids(sh(`lsof -ti tcp:${PORT} -sTCP:LISTEN`), PORT, {
-        lsof: true,
-      });
+  if (isWin) return parseListeningPids(run('netstat', ['-ano']), PORT);
+  try {
+    return parseListeningPids(run('lsof', ['-ti', `tcp:${PORT}`, '-sTCP:LISTEN']), PORT, { lsof: true });
+  } catch (error) {
+    // lsof exits 1 with empty output when no matching listener exists.
+    if (error.status === 1 && !String(error.stdout || '').trim() && !String(error.stderr || '').trim()) return [];
+    throw error;
+  }
 }
 
-// 驗 PID 是否為 node 跑 vite 的進程。回傳 true 才砍。
 function isDevServer(pid) {
   if (isWin) {
-    const out = sh(
-      `powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}' | Select-Object -ExpandProperty CommandLine)"`
-    );
-    return /node(\.exe)?\b/i.test(out) && /vite/i.test(out);
+    const out = run('powershell', [
+      '-NoProfile', '-Command',
+      `$ErrorActionPreference='Stop'; Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}' | Select-Object Name,CommandLine | ConvertTo-Json -Compress`,
+    ]);
+    const details = JSON.parse(out);
+    return /^node(?:\.exe)?$/i.test(details.Name) && hasViteCommand(details.CommandLine || '');
   }
-  const out = sh(`ps -p ${pid} -o command=`);
-  return /node\b/i.test(out) && /vite/i.test(out);
+  // Unlimited width keeps Vite visible even under long dependency paths.
+  const command = run('ps', ['-ww', '-p', pid, '-o', 'args=']);
+  // Linux exposes the real executable even when Node changes its process title.
+  const executable = process.platform === 'linux'
+    ? fs.realpathSync(`/proc/${pid}/exe`)
+    : run('ps', ['-ww', '-p', pid, '-o', 'comm=']);
+  return /(?:^|[\\/])node(?:\.exe)?$/i.test(executable) && hasViteCommand(command);
+}
+
+function hasViteCommand(command) {
+  return /(?:^|[\\/\s"])vite(?:\.js)?(?:[\\/\s"]|$)/i.test(command);
 }
 
 function kill(pid) {
-  if (isWin) sh(`taskkill /PID ${pid} /T /F`);
-  else sh(`kill -9 ${pid}`);
+  if (isWin) run('taskkill', ['/PID', pid, '/T', '/F']);
+  else process.kill(Number(pid), 'SIGKILL');
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if (!findListeningPids().includes(pid)) return;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+  }
+  throw new Error(`Development server still listens on :${PORT} (pid ${pid})`);
 }
 
 function main() {
   let pids;
-  try {
-    pids = findListeningPids();
-  } catch (e) {
-    return; // 工具不存在等 → 視為沒有孤兒
-  }
   const ownOnly = process.argv.includes('--own') || isLinkedWorktree();
-  pids = selectPidsToKill(pids, { ownOnly, ownPid: ownOnly ? readOwnPid() : null });
-  if (!pids.length) return; // 8080 沒人佔（或不是自己的），靜默
+  try {
+    const ownPid = ownOnly ? readOwnPid() : null;
+    if (ownOnly && !ownPid) return 0;
+    pids = selectPidsToKill(findListeningPids(), { ownOnly, ownPid });
+  } catch (e) {
+    console.error(`Unable to inspect development servers: ${e.message}`);
+    return 1;
+  }
 
+  let exitCode = 0;
   for (const pid of pids) {
     try {
       if (isDevServer(pid)) {
         kill(pid);
         console.log(`killed stale dev server on :${PORT} (pid ${pid})`);
+      } else if (ownOnly) {
+        console.error(`The recorded development-server PID is listening but is not Node/Vite (pid ${pid}); leaving it untouched`);
+        exitCode = 1;
       } else {
-        console.log(`:${PORT} 被非 dev-server 進程佔用 (pid ${pid})，未動`);
+        console.log(`Leaving unrelated listener on :${PORT} untouched (pid ${pid})`);
       }
     } catch (e) {
-      // 個別 PID 失敗不影響其他，吞掉
+      console.error(`Unable to stop development server (pid ${pid}): ${e.message}`);
+      exitCode = 1;
     }
   }
+  return exitCode;
 }
 
-// 被 require（unit test 取用 parseListeningPids）時不可自己跑起來、更不可 exit。
+// Importing parser helpers must not execute cleanup.
 if (require.main === module) {
-  main();
-  process.exit(0);
+  process.exitCode = main();
 }
 
 module.exports = { parseListeningPids, selectPidsToKill, DEV_SERVER_PIDFILE };

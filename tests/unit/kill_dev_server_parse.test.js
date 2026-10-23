@@ -54,6 +54,10 @@ describe("kill-dev-server：netstat 輸出解析", () => {
       "912",
     ]);
   });
+
+  test("lsof output never selects process group zero", () => {
+    expect(parseListeningPids("0\n911\n", PORT, { lsof: true })).toEqual(["911"]);
+  });
 });
 
 // 多 session 並行：SessionEnd hook 跑 `--own`，只能砍本 checkout pidfile 記的那個 PID。

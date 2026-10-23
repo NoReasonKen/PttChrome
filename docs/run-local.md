@@ -64,6 +64,13 @@ Setup script 的輸出記在 `/root/.cache/pttchrome-cloud-setup.log`（第一�
 
 ## 指令對照
 
+`yarn kill:dev` verifies the process identity and checks that the selected
+listener disappears before reporting success. Failed inspection or stopping
+returns a nonzero status. For session cleanup, use `yarn kill:dev --own` to limit
+the operation to the PID recorded by this checkout; a missing PID file is a
+no-op. A linked worktree always applies that restriction. A retained unrelated
+service must be handled by its owner before starting Vite on the same port.
+
 | 動作 | 指令 |
 |---|---|
 | 啟動 dev server | `yarn start`（= `vite`） |
