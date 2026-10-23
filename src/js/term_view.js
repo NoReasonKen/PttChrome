@@ -1633,10 +1633,12 @@ TermView.prototype = {
 
   setTermFontSize: function(cw, ch) {
     var innerBounds = this.innerBounds;
-    // 字級 pref 與視窗 resize 都經過這裡，而 mainDisplay 的寬度是 chw*cols ⇒ chw 一變
-    // 圖片的顯示寬度就變，好讀佔位盒記的高度（pinned）全部過期。見
-    // render/screen.js#notifyLayoutChanged。
+    // Preview measurements depend on width and, in mobile reflow, the 50dvh cap.
+    // Expire pinned placeholders after height-only resizes as well.
     var widthChanged = this.chw !== cw;
+    var previewHeightChanged = this.reflow &&
+      this._previewViewportHeight !== innerBounds.height;
+    this._previewViewportHeight = innerBounds.height;
     this.chw = cw;
     this.chh = ch;
     var fontSize = this.chh + 'px';
@@ -1709,7 +1711,7 @@ TermView.prototype = {
     this.updateReverseScaleCss();
     this.updateCursorPos();
 
-    if (widthChanged) this.componentScreen.notifyLayoutChanged();
+    if (widthChanged || previewHeightChanged) this.componentScreen.notifyLayoutChanged();
   },
 
   // 字級不變、只重排位置（手機軟鍵盤開關）。走 setTermFontSize 而不是只改

@@ -75,6 +75,12 @@ import {
 } from "../js/lazy_media";
 
 const callbacks = new WeakMap();
+const previewHrefs = new WeakMap();
+
+// Gallery discovery reads slot identity without mounting off-screen previews.
+export function inlinePreviewHref(node) {
+  return previewHrefs.get(node);
+}
 // root → { root, near, far }。實務上只有一個 `.main`；root 為 null（找不到捲動容器，
 // 例如 unit 測試直接掛在 body）走隱式 root，行為等同沒有捲動容器的頁面。
 let observerPairs = new Map();
@@ -236,6 +242,7 @@ export function createInlinePreviewSlot(href, sizeMode = "normal") {
   // 疊層佔位（見檔頭）：content 放真內容、spacer 放佔位高度與替身盒，兩層疊在同一個
   // grid area ⇒ slot 高度取 max。**node 與 content 一輩子不得有 inline style。**
   const node = el("div", { class: "inlinePreviewSlot" });
+  previewHrefs.set(node, href);
   const content = el("div", { class: "inlinePreviewContent" });
   const spacer = el("div", { class: "inlinePreviewSpacer" });
   node.appendChild(content);

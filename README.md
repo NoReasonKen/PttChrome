@@ -52,7 +52,7 @@
 
 ### 🖼️ 圖片與影片
 
-- **Image and video previews** — Links preview inline; open one image in a touch-ready viewer.
+- **Image and video previews** — Preview links inline; swipe and zoom through article images.
 - **Grayscale and native image menu** — Apply grayscale or use the browser's image context menu.
 - **圖片載入代理** — imgur、X、catbox 的圖片經本專案代理轉發快取，大幅減少卡住，可逐站開關。
 

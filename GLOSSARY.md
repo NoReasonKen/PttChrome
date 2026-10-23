@@ -65,7 +65,7 @@ The continuous reading view of an article, with its available pages joined toget
 _Avoid_: Article-list easy reading, native PTT view, unqualified easy reading when the surface matters.
 
 **Image viewer**:
-A separate view of one article image that supports zooming and panning while preserving the article's reading position.
+A separate view of an article's images for browsing, zooming, and panning, with a return to the viewed image's reading position.
 _Avoid_: Inline preview, article-wide image enlargement, external browser.
 
 **Article-list easy reading**:

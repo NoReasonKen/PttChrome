@@ -270,6 +270,8 @@ body.mobile-layout:not(.mobileSelectMode) #mainContainer {
 }
 /* 圖片上限 39em 是照 80 欄寬訂的，換行版面的欄寬只剩視窗寬。 */
 .main.mobileReflow .easyReadingImg {
+  /* Reserve half the current viewport height for the surrounding article. */
+  max-height: 50dvh;
   max-width: 100%;
 }
 

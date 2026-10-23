@@ -5,6 +5,22 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+.pswp.imageViewer img {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.imageViewerLoading,
+.imageViewerError {
+  display: grid;
+  place-content: center;
+  gap: 1rem;
+  min-height: 100%;
+  color: white;
+  text-align: center;
+}
+
 .imageViewer .pswp__top-bar {
   padding-top: env(safe-area-inset-top, 0px);
   padding-right: env(safe-area-inset-right, 0px);

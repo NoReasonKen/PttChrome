@@ -5,7 +5,13 @@ const { waitPreviewsSettled, waitRectStable } = require('./layout');
 
 const PREVIEW = '#mainContainer img.hyperLinkPreview';
 const VIEWER = '.pswp[role="dialog"][aria-label="Image viewer"]';
-const VIEWER_IMAGE = `${VIEWER} .pswp__img:not(.pswp__img--placeholder)`;
+// PhotoSwipe also mounts adjacent slides; only the current slide is exposed to assistive technology.
+const VIEWER_IMAGE = `${VIEWER} .pswp__item[aria-hidden="false"] .pswp__img:not(.pswp__img--placeholder)`;
+
+const TALL_TRANSPARENT_IMAGE = {
+  contentType: 'image/svg+xml',
+  body: '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="2400"><circle cx="600" cy="1200" r="400" fill="#dd8833"/></svg>',
+};
 
 async function feedScreen(page, rows) {
   await page.evaluate((rows) => {
@@ -39,7 +45,7 @@ async function bootImageArticle(page, opts = {}) {
     23: ' 文章選讀  (y)回應(X)推文(^X)轉錄 ',
   });
   await waitScreenSettled(page, { 2: '編號', 23: '文章選讀' });
-  await feedScreen(page, {
+  const articleRows = {
       0: '作者  test (Reader) 看板 Test',
       1: '標題  [Test] Image viewing',
       2: '時間  Mon Sep  1 12:00:00 2025',
@@ -48,19 +54,44 @@ async function bootImageArticle(page, opts = {}) {
       8: 'https://i.urusai.cc/viewer-two.png',
       22: '推 reader: Final comment                                      09/01 12:34',
       23: '  瀏覽 第 1/1 頁 (100%)  目前顯示: 第 01~23 行  (y)回應(X%)推文(h)說明(←)離開 ',
-  });
+  };
+  if (opts.interveningLink) articleRows[6] = opts.interveningLink;
+  if (opts.galleryImages) {
+    articleRows[4] = opts.galleryImages[0];
+    delete articleRows[8];
+    delete articleRows[22];
+    articleRows[23] = '  瀏覽 第 1/1 頁 (100%)  目前顯示: 第 01~23 行';
+  }
+  await feedScreen(page, articleRows);
   await waitScreenSettled(page, { 0: '作者', 23: '瀏覽' });
   // Match replayCassette: offline article data does not pass through a live navigation edge.
   await page.evaluate(() => window.__app.easyReading.enterEasyReading());
+  if (opts.galleryImages) {
+    // Feed complete terminal pages through the real parser to build an article longer than lazy media margins.
+    const gapPages = opts.imageGapPages ?? 10;
+    const pageCount = (opts.galleryImages.length - 1) * gapPages + 2;
+    for (let index = 1; index < pageCount; ++index) {
+      const start = index * 23 + 1;
+      const end = start + 22;
+      const rows = Object.fromEntries(Array.from({ length: 23 }, (_, row) => [row, `Article body line ${start + row}.`]));
+      if (index % gapPages === 0 && opts.galleryImages[index / gapPages]) {
+        rows[4] = opts.galleryImages[index / gapPages];
+      }
+      rows[23] = `  瀏覽 第 ${index + 1}/${pageCount} 頁 (100%)  目前顯示: 第 ${start}~${end} 行`;
+      await feedScreen(page, rows);
+      await waitScreenSettled(page, { 0: `Article body line ${start}.`, 23: `第 ${start}~${end} 行` });
+    }
+    await page.locator('#mainContainer .inlinePreviewSlot').first().evaluate((slot) => slot.scrollIntoView({ block: 'center' }));
+  }
   await waitPreviewsSettled(page);
   await expect(page.locator(PREVIEW).first()).toBeVisible();
 }
 
-async function openPreviewViewer(page, { touch = false } = {}) {
-  const image = page.locator(PREVIEW).first();
+async function openPreviewViewer(page, { touch = false, selector = PREVIEW } = {}) {
+  const image = page.locator(selector).first();
   await image.scrollIntoViewIfNeeded();
   await waitPreviewsSettled(page);
-  await waitRectStable(page, PREVIEW);
+  await waitRectStable(page, selector);
   if (touch) await image.tap();
   else await image.click();
   await expect(page.locator(VIEWER)).toBeVisible();
@@ -91,6 +122,6 @@ async function collectSent(page) {
 const sentText = (page) => page.evaluate(() => (window.__imageViewerSent || []).join(''));
 
 module.exports = {
-  PREVIEW, VIEWER, VIEWER_IMAGE, bootImageArticle, openPreviewViewer,
+  PREVIEW, VIEWER, VIEWER_IMAGE, TALL_TRANSPARENT_IMAGE, bootImageArticle, openPreviewViewer,
   articleGeometry, collectSent, sentText,
 };

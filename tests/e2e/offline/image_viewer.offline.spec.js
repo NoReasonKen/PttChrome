@@ -46,7 +46,6 @@ test('keyboard opening isolates background controls and terminal keys, and resto
     await page.keyboard.press('Shift+Tab');
     await expect.poll(() => page.evaluate(() => document.activeElement === document.body ||
       !!document.activeElement.closest('.pswp'))).toBe(true);
-    await page.keyboard.press('ArrowLeft');
     await page.keyboard.press('PageDown');
     await page.keyboard.press('a');
     await expect(page.locator(VIEWER)).toBeVisible();

@@ -26,12 +26,17 @@ const noop = () => {};
 export const of = (src) => Promise.resolve({ src });
 
 const previewRequestCache = new Map();
+const resolvedPreviews = new WeakMap();
+
+export const cachedPreviewDescriptor = (href) =>
+  resolvedPreviews.get(previewRequestCache.get(href));
 // 同一 href 永遠回傳同一個 Promise 參考，讓 <ImagePreviewer>（PureComponent）
 // 在整列重繪（如 pusherHighlight 切換）時 props 穩定、跳過更新，避免 iframe 重掛閃爍。
 export const requestPreview = (href) => {
   let p = previewRequestCache.get(href);
   if (p === undefined) {
     p = of(href).then(resolveSrcToImageUrl);
+    p.then((descriptor) => resolvedPreviews.set(p, descriptor), noop);
     // 不可預覽的一般連結（default resolver）在 render 期就 reject，而
     // <ImagePreviewer> 的 rejection handler 要到 useEffect（commit 後）才掛上
     // —— 中間隔著 microtask checkpoint，瀏覽器先射 unhandledrejection
@@ -49,6 +54,10 @@ export const requestPreview = (href) => {
 // `type` defaults to "image" when omitted (back-compat with bare { src }).
 export const resolveSrcToImageUrl = ({ src }) =>
   imageUrlResolvers.find((r) => r.test(src)).request(src);
+
+// Exclude the unsupported catch-all without maintaining a second URL registry.
+export const supportsMediaPreview = (src) =>
+  imageUrlResolvers.slice(0, -1).some((resolver) => resolver.test(src));
 
 // Hover preview only deals with still images: measure height for positioning.
 // Non-image descriptors (video/iframe/album) pass through unchanged — OnHover
@@ -168,7 +177,7 @@ const LoadingOverlay = () => (
 
 // Some hosts only accept requests without a referer (imgur, twitter, …); a few
 // require it (verb.tw). Strip the referer everywhere except the latter.
-const needsReferer = (src) => {
+export const needsReferer = (src) => {
   try {
     return /(^|\.)verb\.tw$/i.test(new URL(src, location.href).hostname);
   } catch (e) {
@@ -180,8 +189,8 @@ const needsReferer = (src) => {
 // 就跳下一候選、候選耗盡即 render false（讀取動畫消失、無圖、無提示）→ 看起來跟
 // 「沒在讀取」一模一樣，正是這功能本要防的誤判。故每個候選先 bounded 重試（backoff
 // 內維持讀取動畫），全部耗盡才顯示可見的「載入失敗，點擊重試」。
-const MAX_RETRIES_PER_CANDIDATE = 2;
-const RETRY_BASE_MS = 300; // 退避：300ms, 600ms（每候選 1+2 次嘗試）
+export const MAX_RETRIES_PER_CANDIDATE = 2;
+export const RETRY_BASE_MS = 300; // 退避：300ms, 600ms（每候選 1+2 次嘗試）
 
 // <img> that walks a list of candidate URLs. Each candidate is retried a few
 // times with backoff before advancing; one candidate (the resolved src) is the
