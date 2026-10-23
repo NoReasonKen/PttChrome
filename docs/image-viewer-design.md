@@ -16,7 +16,14 @@ The data source has empty boundary slides before and after its images. PhotoSwip
 
 ## Loading scheduler assessment
 
-The proposed scheduler would maintain a fixed article-order window of one previous image, the current image, and two following images, with at most four concurrent image loads. It would load the current image before starting neighbors, update the queue on navigation, and retain completed images. This policy is **not implemented**. The existing viewer loads nearby images on demand and does not download every article image at startup. [Current activation and loading](../src/js/image_viewer.js), [gallery collection](../src/js/article_images.js).
+The original scheduler proposal would maintain a fixed article-order viewer preload range of one previous image, the current image, and two following images, with at most four concurrent image loads. It also requested waiting for the current image before starting neighbors, updating the queue on navigation, and retaining completed images. This policy is **not implemented**. The existing viewer loads nearby images on demand and does not download every article image at startup. [Current activation and loading](../src/js/image_viewer.js), [gallery collection](../src/js/article_images.js).
+
+Confirmed constraints for the future issue:
+
+- Foreground image and swipe waiting time are the primary goals; reducing unnecessary requests is secondary. Preventing undocumented source-side throttling is not an acceptance guarantee.
+- The four-load limit applies to viewer-owned image jobs, not all page traffic or a literal four HTTP requests. A job may require resolution, probes, fallback candidates, or retries. Inline preview scheduling remains outside the first version.
+
+The feature remains deferred. Cancellation of already started jobs and whether foreground completion should block neighbor loading are still open design decisions.
 
 The queue bookkeeping itself is small; no meaningful CPU cost is expected from managing four active jobs. This is a source-based estimate, not a device benchmark. Integration and regression coverage determine the cost:
 

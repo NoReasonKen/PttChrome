@@ -68,6 +68,10 @@ _Avoid_: Article-list easy reading, native PTT view, unqualified easy reading wh
 A separate view of an article's images for browsing, zooming, and panning, with a return to the viewed image's reading position.
 _Avoid_: Inline preview, article-wide image enlargement, external browser.
 
+**Viewer preload range**:
+The neighboring article images selected for preparation around the image currently open in the image viewer.
+_Avoid_: Download queue, concurrent load limit.
+
 **Article-list easy reading**:
 The continuous scrolling view of article entries within a board or its search results.
 _Avoid_: Board-list smooth scrolling, article easy reading, unqualified list mode.
