@@ -24,8 +24,10 @@ Confirmed constraints for the future issue:
 - The four-load limit applies to viewer-owned image jobs, not all page traffic or a literal four HTTP requests. A job may require resolution, probes, fallback candidates, or retries. Inline preview scheduling remains outside the first version.
 - On navigation, discard queued work outside the viewer preload range and let already started jobs finish. A newly viewed image can wait if all four slots are busy. Closing the viewer still cancels unfinished viewer work.
 - Assign free slots in this order: current image, next image, second following image, previous image. Neighbors can start while the current image is loading; the original strict current-completion barrier is no longer part of the agreed scope.
+- Each started job has a 30-second total deadline covering resolution, candidates, retries, and backoff. Queue waiting does not consume that deadline. Timeout stops viewer-owned work and releases capacity; this initial value is a design choice, not a measured optimum.
+- Preserve existing bounded candidate retries. After terminal failure or timeout, navigation away and back does not retry the failed entry automatically; the existing Retry action submits a new job through the same queue and concurrency limit.
 
-The feature remains deferred. Stalled-job deadlines and terminal failure/retry behavior are still open design decisions.
+The feature remains deferred. These constraints are ready for final shared-understanding confirmation before publishing a future implementation issue; they do not authorize runtime changes.
 
 The queue bookkeeping itself is small; no meaningful CPU cost is expected from managing four active jobs. This is a source-based estimate, not a device benchmark. Integration and regression coverage determine the cost:
 
