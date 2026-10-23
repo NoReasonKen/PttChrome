@@ -193,7 +193,7 @@ Changes under `src/components/**` run Prettier through Husky/lint-staged.
 
 ### Topic documentation
 
-Read the corresponding document before changing the listed area:
+Read the corresponding document before changing the listed area or answering the listed operational questions:
 
 | Area | Document |
 | --- | --- |
@@ -219,7 +219,7 @@ Read the corresponding document before changing the listed area:
 | board_list*.js and term_view board-list branches | `docs/board-list-smooth-scroll.md` |
 | long_push*.js, byte boundaries, filtering, no form-feed | `docs/long-push.md` and protocol section 11.3 |
 | term_size.js, setTermFontSize, centering, NAWS, fixed 80 columns | `docs/terminal-size.md` |
-| android/**, android_bridge.js, credential_store.js, boot_site.js | `docs/android-app.md` |
+| Android installation, on-device testing, APK/web updates and deployment; android/**, android_bridge.js, credential_store.js, boot_site.js | `docs/android-app.md` |
 | Announcement worker and scripts/ptt-announcements.mjs | `docs/ptt-announcement-bot.md` |
 | Touch, mobile_layout.js, MobileToolbar/AppBar/Sheet, navigation, system back | `docs/mobile.md` |
 | article_search.js, search_history.js, SearchModal | `docs/article-search.md` |

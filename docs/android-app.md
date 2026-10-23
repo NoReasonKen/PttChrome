@@ -1,6 +1,15 @@
 # Android App（`android/`）
 
-動 `android/**`、`src/js/android_bridge.js`、`src/js/credential_store.js`、`src/js/boot_site.js` 前先讀。
+Read this guide before Android installation, on-device acceptance testing,
+APK/web updates or deployment, and changes to `android/**`,
+`src/js/android_bridge.js`, `src/js/credential_store.js`, or `src/js/boot_site.js`.
+
+For web changes in an existing APK, start with [development page sources](#debug-版並存與-dev-server-模式):
+the APK normally loads the author's website, so a local frontend commit or an
+unchanged APK rebuild does not deliver this fork's web changes to the phone.
+Before connecting a device, use `yarn doctor --android`; add `--web` to verify
+desktop access to an already running development server. See the
+[environment doctor](local-env-troubleshooting.md#environment-doctor) for scope.
 
 ## 為什麼要有 APK
 - 手機 Chrome 開網頁版，切到別的 App 幾秒後 WebSocket 被系統凍結／切斷。網頁端無解（瀏覽器分頁沒有前景服務）。
