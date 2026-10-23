@@ -11,6 +11,12 @@
 - The user primarily uses the installed Android app with easy-reading experiences enabled. Start investigations of their questions and reports with the relevant easy-reading path and mobile interaction.
 - Follow shared behavior into other reading modes and application surfaces when relevant. Design features and fixes for the repository as a whole, with readable, maintainable code and clear extension points.
 
+## Engineering collaboration
+
+- The user has a programming background and limited web/mobile experience. Explain platform-specific constraints through concrete user-visible behavior.
+- Evaluate proposed mechanisms against the user's goal, current behavior, implementation and maintenance cost, performance/regression risks, and expected benefit. Separate source evidence from assumptions and unmeasured effects.
+- Proactively correct mistaken assumptions, offer simpler alternatives, and recommend deferral when costs outweigh likely benefits. Make a reasoned recommendation and respect the user's explicit decisions.
+
 ## Subagent delegation
 
 Proactively use subagents when one of these cases offers a clear benefit:
