@@ -18,16 +18,16 @@ The data source has empty boundary slides before and after its images. PhotoSwip
 
 The original scheduler proposal would maintain a fixed article-order viewer preload range of one previous image, the current image, and two following images, with at most four concurrent image loads. It also requested waiting for the current image before starting neighbors, updating the queue on navigation, and retaining completed images. This policy is **not implemented**. The existing viewer loads nearby images on demand and does not download every article image at startup. [Current activation and loading](../src/js/image_viewer.js), [gallery collection](../src/js/article_images.js).
 
-Confirmed constraints for the future issue:
+Confirmed constraints for the deferred enhancement:
 
 - Foreground image and swipe waiting time are the primary goals; reducing unnecessary requests is secondary. Preventing undocumented source-side throttling is not an acceptance guarantee.
 - The four-load limit applies to viewer-owned image jobs, not all page traffic or a literal four HTTP requests. A job may require resolution, probes, fallback candidates, or retries. Inline preview scheduling remains outside the first version.
 - On navigation, discard queued work outside the viewer preload range and let already started jobs finish. A newly viewed image can wait if all four slots are busy. Closing the viewer still cancels unfinished viewer work.
-- Assign free slots in this order: current image, next image, second following image, previous image. Neighbors can start while the current image is loading; the original strict current-completion barrier is no longer part of the agreed scope.
+- Assign free slots in this order: current image, next image, previous image, second following image. Neighbors can start while the current image is loading; the original strict current-completion barrier is no longer part of the agreed scope.
 - Each started job has a 30-second total deadline covering resolution, candidates, retries, and backoff. Queue waiting does not consume that deadline. Timeout stops viewer-owned work and releases capacity; this initial value is a design choice, not a measured optimum.
-- Preserve existing bounded candidate retries. After terminal failure or timeout, navigation away and back does not retry the failed entry automatically; the existing Retry action submits a new job through the same queue and concurrency limit.
+- Preserve existing bounded candidate retries. After terminal failure or timeout, navigation away and back within the same open viewer does not retry the failed entry automatically; the existing Retry action submits a new job through the same queue and concurrency limit. Closing and reopening follows existing normal loading/cache behavior without a new persistent failure store.
 
-The feature remains deferred. These constraints are ready for final shared-understanding confirmation before publishing a future implementation issue; they do not authorize runtime changes.
+The feature remains deferred in [issue #5](https://github.com/NoReasonKen/PttChrome/issues/5), which records the complete policy, integration constraints, and acceptance criteria. It remains open as `ready-for-human` until the user reprioritizes implementation; confirming this specification does not authorize runtime changes.
 
 The queue bookkeeping itself is small; no meaningful CPU cost is expected from managing four active jobs. This is a source-based estimate, not a device benchmark. Integration and regression coverage determine the cost:
 
