@@ -1,5 +1,29 @@
 # 本機 e2e 環境問題對照表
 
+## Environment doctor
+
+Run `yarn doctor` before working in a new or refreshed checkout. It checks Node,
+the pinned Yarn version, installed dependencies, and this checkout's Git hooks.
+Optional capabilities are checked only when requested:
+
+- `yarn doctor --browser`: launch Chromium and Firefox and render inline content.
+  This catches missing browser downloads and system libraries before a test run.
+- `yarn doctor --android`: verify Android Platform Tools (`adb version`). A full
+  Android SDK is not required to test an existing APK. Set `ADB` to an executable
+  path if it is outside the SDK or PATH; WSL also checks `adb.exe` on PATH.
+- `yarn doctor --device`: also list device readiness, including unauthorized and
+  offline devices. Allow USB debugging on the phone when prompted. Listing may
+  start the host ADB daemon; it does not select or change a device.
+- `yarn doctor --web`: check the existing Vite service on IPv4 localhost port 8080. In WSL it also probes from Windows using `curl.exe`, covering the host
+  connection used by Windows ADB. It does not verify the phone connection or
+  execute the application page. Start `yarn start --host` separately if needed.
+
+Flags can be combined. Exit 0 means the requested capabilities passed; exit 2
+means an environment or usage problem. Unrequested capabilities are skipped.
+The doctor never installs tools, starts Vite or an emulator, modifies a device,
+or connects to PTT. Fix the reported prerequisites before interpreting test
+failures as application regressions.
+
 判準通則：零 AssertionError、失敗案例耗時 0ms 或整批在 launch 階段就掛、同一支 spec 在別的 project／CI 全綠 ⇒ 環境問題，不要改被測 code。
 （由 CLAUDE.md「測試」節搬出；那邊只留一行指標。）
 

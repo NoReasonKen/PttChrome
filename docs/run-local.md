@@ -12,6 +12,12 @@ checkout's pre-commit checks. After deleting or recreating local Git/Husky
 configuration, run `yarn prepare` and `node scripts/check-git-hooks.mjs` again.
 This setup does not install browser system libraries or the Android SDK.
 
+Run `yarn doctor` to check basic readiness before development. Add `--browser`
+for an actual Chromium/Firefox launch check, or `--android --web` for ADB and
+desktop-to-development-server reachability. See
+[the environment doctor](local-env-troubleshooting.md#environment-doctor)
+for optional device checks, scope, and exit statuses.
+
 ```powershell
 cd <專案根目錄>
 yarn start

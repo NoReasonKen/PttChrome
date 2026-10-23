@@ -45,6 +45,7 @@
   },
   "scripts": {
     "setup": "yarn install --immutable && yarn prepare && node scripts/check-git-hooks.mjs",
+    "doctor": "node scripts/doctor.mjs",
     "prepare": "husky",
     "build": "vite build",
     "start": "vite",
