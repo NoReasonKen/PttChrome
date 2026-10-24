@@ -19,7 +19,9 @@
 // （**刻意分開**，這樣「查不到」不會被誤讀成「沒問題」）。
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { stripVTControlCharacters } from "node:util";
 import path from "node:path";
+import { redactCredentials } from "./credential-patterns.mjs";
 
 const API = "https://api.github.com";
 const POLL_MS = 20000;
@@ -198,11 +200,40 @@ async function api(p, { raw = false, method = "GET" } = {}) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// 失敗 step 的 log 尾巴。整包 log 可能很大，只留最後 N 行——失敗訊息幾乎都在尾端。
-async function tailJobLog(repo, jobId, lines = 40) {
+export function summarizeJobLog(text) {
+  // Normalize terminal escapes first, then redact before excerpting: escapes can
+  // split a token, and a private-key block can cross excerpt boundaries.
+  const lines = redactCredentials(stripVTControlCharacters(String(text || ""))).split(/\r?\n/);
+  const tailStart = Math.max(0, lines.length - 40);
+  const selected = new Set();
+  let contextBudget = 80;
+  const failure = /##\[error\]|\b[A-Za-z]*Error:|\bFAIL\s|Test timeout of|(?:^|\s)\d+\)\s+\[|[✘×]\s|not ready in \d+ms|Emulator failed to become ready|warm-up failed/;
+  for (let i = 0; i < tailStart && contextBudget > 0; i++) {
+    if (!failure.test(lines[i])) continue;
+    for (let j = Math.max(0, i - 2); j <= Math.min(tailStart - 1, i + 10) && contextBudget > 0; j++) {
+      if (selected.has(j)) continue;
+      selected.add(j);
+      contextBudget--;
+    }
+  }
+  for (let i = tailStart; i < lines.length; i++) selected.add(i);
+
+  const output = [];
+  let previous = -1;
+  for (const index of [...selected].sort((a, b) => a - b)) {
+    if (index > previous + 1) output.push(`[${index - previous - 1} log lines omitted]`);
+    const line = lines[index];
+    output.push(line.length > 180 ? `${line.slice(0, 80)} … [line truncated] … ${line.slice(-75)}` : line);
+    previous = index;
+  }
+  return output.join("\n");
+}
+
+// Keep failure details readable without printing the complete job log.
+async function tailJobLog(repo, jobId) {
   try {
     const text = await api(`/repos/${repo}/actions/jobs/${jobId}/logs`, { raw: true });
-    return text.split(/\r?\n/).slice(-lines).join("\n");
+    return summarizeJobLog(text);
   } catch (e) {
     return `（抓不到 log：${e.message}）`;
   }
