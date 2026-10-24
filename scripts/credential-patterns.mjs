@@ -7,7 +7,7 @@ const RULES = [
   ["google-oauth-secret", /\bGOCSPX-[A-Za-z0-9_-]{20,}/g],
   ["google-access-token", /\bya29\.[A-Za-z0-9_.-]{20,}/g],
   ["google-refresh-token", /\b1\/\/[A-Za-z0-9_-]{20,}/g],
-  ["credential-assignment", /\b(?:client_secret|private_key|refresh_token|access_token|APPCHECK_DEBUG_TOKEN|ANDROID_KEYSTORE_PASSWORD|ANDROID_KEY_PASSWORD)\b["']?\s*[:=]\s*["']?[A-Za-z0-9_./+=-]{20,}/gi],
+  ["credential-assignment", /(?<![\w"'])(["']?)(?:client_secret|private_key|refresh_token|access_token|APPCHECK_DEBUG_TOKEN|ANDROID_KEYSTORE_PASSWORD|ANDROID_KEY_PASSWORD)\1\s*[:=]\s*(?:"(?:\\.|[^"\\\r\n]){20,}"|'(?:\\.|[^'\\\r\n]){20,}'|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})/gi],
 ];
 
 export function credentialFindings(text) {
@@ -25,11 +25,14 @@ export function redactCredentials(text) {
     /-----BEGIN ((?:[A-Z0-9]+ )*PRIVATE KEY)-----[\s\S]*?(?:-----END \1-----|$)/g,
     "[REDACTED]",
   );
-  for (const [, pattern] of RULES) result = result.replace(pattern, "[REDACTED]");
-  return result
+  result = result
     .replace(/(\bauthorization:\s*(?:bearer|basic)\s+)[^\s"',]+/gi, "$1[REDACTED]")
     .replace(
-      /(\b(?:password|client_secret|private_key|refresh_token|access_token|api[_-]?key|FIREBASE_API_KEY|APPCHECK_DEBUG_TOKEN|ANDROID_KEYSTORE_PASSWORD|ANDROID_KEY_PASSWORD)\b["']?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s&,"']+)/gi,
+      /(\b(?:password|client_secret|private_key|refresh_token|access_token|api[_-]?key|FIREBASE_API_KEY|APPCHECK_DEBUG_TOKEN|ANDROID_KEYSTORE_PASSWORD|ANDROID_KEY_PASSWORD)\b["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|[^\r\n&,"']+)/gi,
       "$1[REDACTED]",
     );
+  // Preserve the field name until its whole value has been removed. Matching a
+  // signature first can otherwise leave a password suffix with no key to find.
+  for (const [, pattern] of RULES) result = result.replace(pattern, "[REDACTED]");
+  return result;
 }

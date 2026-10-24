@@ -86,3 +86,14 @@ test("redacts credentials before selecting error excerpts or their tail", () => 
   expect(result).toContain("[REDACTED]");
   expect(result).toContain("retry=false");
 });
+
+test.each(["!private suffix", " private suffix", String.fromCharCode(92, 34) + "private suffix"])(
+  "redacts the entire quoted signing password including %s",
+  (suffix) => {
+    const value = "x".repeat(24) + suffix;
+    const log = ["Error: signing failed", "ANDROID_KEYSTORE_PASSWORD=" + JSON.stringify(value)].join("\n");
+    const summary = summarizeJobLog(log);
+    expect(summary).toContain("[REDACTED]");
+    expect(summary).not.toContain("private suffix");
+  },
+);

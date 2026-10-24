@@ -52,6 +52,18 @@ test("permits unstaged local credentials while inspecting only the staged snapsh
   expect(result.output).not.toContain(githubToken);
 });
 
+test("allows credential fields to read their values from environment variables", () => {
+  const cwd = fixture();
+  stage(cwd, "auth.js", "const access_token = process.env.APPLICATION_ACCESS_TOKEN;\n");
+  expect(scan(cwd).status).toBe(0);
+});
+
+test("allows a credential label to be assembled with a runtime value", () => {
+  const cwd = fixture();
+  stage(cwd, "label.js", 'const label = ["ANDROID_KEYSTORE_PASSWORD=" + JSON.stringify(value)].join("\\n");\n');
+  expect(scan(cwd).status).toBe(0);
+});
+
 test.each([
   ["browser-key-policy", browserKey],
   ["browser-key-policy", "AI" + "za" + "B".repeat(34) + "-"],
