@@ -1,6 +1,14 @@
 const { defineConfig, devices } = require('@playwright/test');
 const { e2eWorkers } = require('./tests/e2e/workers_policy');
 const { assertNotWorktree } = require('./scripts/worktree');
+const { userInfo } = require('node:os');
+
+const firefoxLaunchEnv = { ...process.env, MOZ_DISABLE_CONTENT_SANDBOX: '1' };
+// Firefox rejects root when the inherited HOME belongs to the runner user.
+// Correct only its launch environment; Node/Yarn and other browsers keep HOME.
+if (process.env.CI === 'true' && process.platform === 'linux' && process.getuid?.() === 0) {
+  firefoxLaunchEnv.HOME = userInfo().homedir;
+}
 
 // git worktree 裡禁跑任何 Playwright project（exit 2），理由與逃生門見 scripts/worktree.js。
 // 放在 config 而非 package.json：直接 `npx playwright test` 也擋得到。
@@ -155,7 +163,7 @@ module.exports = defineConfig({
         ...devices['Desktop Firefox'],
         proxy: OFFLINE_NO_NETWORK,
         launchOptions: {
-          env: { ...process.env, MOZ_DISABLE_CONTENT_SANDBOX: '1' },
+          env: firefoxLaunchEnv,
           firefoxUserPrefs: { 'network.http.fast-fallback-to-IPv4': false },
         },
       },

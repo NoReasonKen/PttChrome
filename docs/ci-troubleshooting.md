@@ -41,6 +41,15 @@
   their existing setup. The workflow contract is
   checked by `tests/unit/ci_playwright_container.test.js`; actual installation
   and container execution must also pass CI.
+- **Firefox refuses the root E2E container's inherited home**: a launch error
+  about running as root in another user's session means the job's `HOME` is
+  owned by the runner user. `offline-firefox` overrides only its browser launch
+  environment on Linux CI with UID 0, using the account home reported by
+  `os.userInfo().homedir`. Do not use `os.homedir()`, which follows the inherited
+  `HOME`, or change the whole job's home and Yarn cache location. Other users,
+  platforms, and local runs retain their environment. The existing Firefox
+  sandbox setting and IPv4 fallback preference remain in place; regression
+  coverage is in `tests/unit/e2e_firefox_localhost.test.js`.
 - **部署鎖只鎖 `deploy` job**（`deploy.yml`，`concurrency: pages`）：放 workflow 層級會讓連續 push 的測試整輪排隊
   （畫面「waiting for Deploy to GitHub Pages #N to complete」）。代價是舊 commit 可能晚於新 commit 拿到鎖 ⇒
   deploy job 拿鎖後先比對 branch head，不是最新就略過部署（step 顯示 skipped 屬正常）。新 commit 若測試紅，

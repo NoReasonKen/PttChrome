@@ -12,10 +12,66 @@
 //
 // 純靜態，不開瀏覽器 ⇒ 放 unit（比照 tests/unit/e2e_offline_no_network.test.js）。
 import config from "../../playwright.config.js";
+import fs from "node:fs";
+import { createRequire } from "node:module";
+import vm from "node:vm";
+
+const configUrl = new URL("../../playwright.config.js", import.meta.url);
+const configSource = fs.readFileSync(configUrl, "utf8");
+const requireFromConfig = createRequire(configUrl);
+
+function loadConfigFor(options = {}) {
+  const { platform, uid, ci, home } = {
+    platform: "linux", uid: 0, ci: "true", home: "/root", ...options,
+  };
+  const env = {
+    VITEST: "true",
+    CI: ci,
+    HOME: "/github/home",
+    MOZ_DISABLE_CONTENT_SANDBOX: "0",
+    FIREFOX_TEST_SETTING: "preserved",
+  };
+  const userInfo = vi.fn(() => ({ homedir: home }));
+  const context = {
+    module: { exports: {} },
+    process: { env, platform, getuid: uid == null ? undefined : () => uid, argv: [] },
+    require: (id) => id === "node:os" ? { userInfo } : requireFromConfig(id),
+  };
+  vm.runInNewContext(configSource, context, { filename: "playwright.config.js" });
+  const project = context.module.exports.projects.find((entry) => entry.name === "offline-firefox");
+  return { launchEnv: project.use.launchOptions.env, env, userInfo };
+}
 
 const isFirefox = (p) =>
   ((p.use || {}).defaultBrowserType || (p.use || {}).browserName) === "firefox";
 const firefoxProjects = config.projects.filter(isFirefox);
+
+describe("Firefox launch home in CI containers", () => {
+  test.each(["/root", "/custom/root-home"])(
+    "root Linux CI uses the account home %s only for Firefox",
+    (home) => {
+      const { launchEnv, env, userInfo } = loadConfigFor({ home });
+      expect(launchEnv.HOME).toBe(home);
+      expect(userInfo).toHaveBeenCalledTimes(1);
+      expect(env.HOME).toBe("/github/home");
+      expect(launchEnv.MOZ_DISABLE_CONTENT_SANDBOX).toBe("1");
+      expect(launchEnv.FIREFOX_TEST_SETTING).toBe("preserved");
+    }
+  );
+
+  test.each([
+    { name: "non-root Linux CI", uid: 1001 },
+    { name: "local Linux root", ci: undefined },
+    { name: "explicitly disabled CI", ci: "false" },
+    { name: "Windows CI without getuid", platform: "win32", uid: null },
+    { name: "macOS CI", platform: "darwin" },
+  ])("$name preserves the inherited home", (options) => {
+    const { launchEnv, env, userInfo } = loadConfigFor(options);
+    expect(launchEnv.HOME).toBe(env.HOME);
+    expect(userInfo).not.toHaveBeenCalled();
+    expect(launchEnv.MOZ_DISABLE_CONTENT_SANDBOX).toBe("1");
+  });
+});
 
 describe("Firefox e2e：連 dev server 不走 IPv4 快速備援", () => {
   test("至少有一個 Firefox project（清單改名不得靜默讓這支變空轉）", () => {
