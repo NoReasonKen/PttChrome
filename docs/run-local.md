@@ -12,6 +12,23 @@ checkout's pre-commit checks. After deleting or recreating local Git/Husky
 configuration, run `yarn prepare` and `node scripts/check-git-hooks.mjs` again.
 This setup does not install browser system libraries or the Android SDK.
 
+### Credential checks
+
+The pre-commit hook scans the staged Git snapshot for recognizable credentials,
+private-key headers, signing stores, local environment files, and actual Google
+browser API key values. Cleaning only the working copy does not clean the index.
+Remove a blocked value and stage the corrected file before committing.
+
+Run `yarn check:credentials` to check the entire tracked index, as the reusable CI
+unit job does. Findings show only file, line and rule; values are withheld.
+This signature check does not detect every possible credential format. Keep
+private material outside Git and review configuration changes.
+
+Firebase browser API keys remain visible in built JavaScript. Keeping their
+values out of source supports rotation; authorization still depends on API
+restrictions, Auth, Firestore rules and App Check. The production-build regression
+uses fake inputs to verify the actual client config and exclude debug bypasses.
+
 Run `yarn doctor` to check basic readiness before development. Add `--browser`
 for an actual Chromium/Firefox launch check, or `--android --web` for ADB and
 desktop-to-development-server reachability. See

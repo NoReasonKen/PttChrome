@@ -46,6 +46,7 @@
   "scripts": {
     "setup": "yarn install --immutable && yarn prepare && node scripts/check-git-hooks.mjs",
     "doctor": "node scripts/doctor.mjs",
+    "check:credentials": "node scripts/scan-credentials.mjs --tracked",
     "prepare": "husky",
     "build": "vite build",
     "start": "vite",

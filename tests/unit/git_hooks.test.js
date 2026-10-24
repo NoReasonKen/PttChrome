@@ -91,3 +91,26 @@ test("the installed pre-commit hook blocks an actual commit with a NUL byte", ()
   expect(result.status).not.toBe(0);
   expect(result.stdout + result.stderr).toMatch(/NUL/);
 });
+
+test("the installed pre-commit hook blocks credentials before Git creates a commit", () => {
+  const root = fixture();
+  install(root);
+  fs.mkdirSync(path.join(root, "scripts"));
+  for (const file of ["edit-guard.mjs", "scan-credentials.mjs", "credential-patterns.mjs"]) {
+    fs.copyFileSync(path.join(ROOT, "scripts", file), path.join(root, "scripts", file));
+  }
+  const token = "gh" + "p_" + "Z".repeat(36);
+  fs.writeFileSync(path.join(root, "config.js"), token);
+  execFileSync("git", ["add", "config.js"], { cwd: root });
+  const result = spawnSync("git", [
+    "-c", "user.name=Hook Test", "-c", "user.email=hook@example.invalid",
+    "commit", "-m", "Check credential enforcement",
+  ], {
+    cwd: root, encoding: "utf8",
+    env: { ...process.env, HUSKY: "1", XDG_CONFIG_HOME: path.join(root, "config") },
+  });
+  expect(result.status).not.toBe(0);
+  expect(result.stdout + result.stderr).toContain("github-token");
+  expect(result.stdout + result.stderr).not.toContain(token);
+  expect(spawnSync("git", ["rev-parse", "--verify", "HEAD"], { cwd: root }).status).not.toBe(0);
+});

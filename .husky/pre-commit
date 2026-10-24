@@ -1,2 +1,3 @@
 node scripts/edit-guard.mjs --staged
+node scripts/scan-credentials.mjs --staged
 yarn lint-staged
