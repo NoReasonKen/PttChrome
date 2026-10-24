@@ -201,7 +201,7 @@ The repository's four signing secrets are `ANDROID_KEYSTORE_B64`,
 Release tags fail when any signing input is missing. Non-release builds may
 still produce debug artifacts without these secrets.
 
-Push `android-v<version>` to build and verify the signed APK, then publish
+Push `android-fork-v<version>` to build and verify the signed APK, then publish
 `pttchrome.apk` and `LICENSE` in a GitHub Release with links to that tag's
 complete corresponding source and installation instructions. `versionCode`
 is the Android workflow's `github.run_number`; later updates must increase it.

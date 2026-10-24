@@ -3,11 +3,11 @@ name: Android APK
 # android/ 的建置與發佈（docs/android-app.md）。網頁本體仍由 deploy.yml 部署到 GitHub Pages，
 # APK 只是載入它的殼，所以這裡只看 android/ 的變動。
 #   push dev／PR：JVM unit test ＋ 產 APK（artifact）
-#   push tag android-v*：同上，並建立 GitHub Release 附上簽章 APK
+#   push tag android-fork-v*（繼承自 upstream 的 android-v* 不觸發）：同上，並建立 GitHub Release 附上簽章 APK
 on:
   push:
     branches: [dev]
-    tags: ['android-v*']
+    tags: ['android-fork-v*']
     paths: ['android/**', '.github/workflows/android.yml']
   pull_request:
     paths: ['android/**', '.github/workflows/android.yml']
@@ -33,7 +33,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
 
       - name: Validate release signing inputs
-        if: startsWith(github.ref, 'refs/tags/android-v')
+        if: startsWith(github.ref, 'refs/tags/android-fork-v')
         env:
           ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -61,8 +61,8 @@ jobs:
       - name: Version
         run: |
           echo "ANDROID_VERSION_CODE=${{ github.run_number }}" >> "$GITHUB_ENV"
-          if [[ "$GITHUB_REF" == refs/tags/android-v* ]]; then
-            echo "ANDROID_VERSION_NAME=${GITHUB_REF#refs/tags/android-v}" >> "$GITHUB_ENV"
+          if [[ "$GITHUB_REF" == refs/tags/android-fork-v* ]]; then
+            echo "ANDROID_VERSION_NAME=${GITHUB_REF#refs/tags/android-fork-v}" >> "$GITHUB_ENV"
           else
             echo "ANDROID_VERSION_NAME=0.0.${{ github.run_number }}-dev" >> "$GITHUB_ENV"
           fi
@@ -102,7 +102,7 @@ jobs:
           path: android/pttchrome.apk
 
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/android-v') && env.ANDROID_KEYSTORE_FILE != ''
+        if: startsWith(github.ref, 'refs/tags/android-fork-v') && env.ANDROID_KEYSTORE_FILE != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

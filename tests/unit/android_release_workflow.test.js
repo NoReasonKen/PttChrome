@@ -38,9 +38,18 @@ const runSigningGuard = (missing) => {
   });
 };
 
+// Inherited upstream tags (android-v*) must never trigger this fork's release.
+test("only fork release tags trigger and gate a release", () => {
+  expect(workflow).toContain("tags: ['android-fork-v*']");
+  expect(workflow).not.toMatch(/refs\/tags\/android-v/);
+  expect(step("Publish release")).toContain(
+    "if: startsWith(github.ref, 'refs/tags/android-fork-v')",
+  );
+});
+
 test("release tags require signing before decoding or building, while non-release builds skip the guard", () => {
   expect(step("Validate release signing inputs")).toContain(
-    "if: startsWith(github.ref, 'refs/tags/android-v')",
+    "if: startsWith(github.ref, 'refs/tags/android-fork-v')",
   );
   expect(
     workflow.indexOf("name: Validate release signing inputs"),
