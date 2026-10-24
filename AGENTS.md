@@ -3,7 +3,7 @@
 ## Language
 
 - Communicate with the user in Traditional Chinese.
-- Write documentation and code in English, including comments and test descriptions.
+- Write documentation and code in English, including comments and test descriptions. Keep README.md in Traditional Chinese to match its existing language.
 - Explain behavior through the user-visible concepts in [GLOSSARY.md](GLOSSARY.md). Introduce technical terms by relating them to the familiar content or control before relying on them.
 
 ## User's reading context

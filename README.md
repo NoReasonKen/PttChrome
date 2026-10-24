@@ -170,4 +170,7 @@ PTT 只接受來自官方網站 (`https://term.ptt.cc`) 的連線，所以第三
 
 # 📜 授權與來源
 
-以 [GPL-2.0](LICENSE) 授權釋出。原作者 [Chuck Yang（iamchucky/PttChrome）](https://github.com/iamchucky/PttChrome)，網頁版由 [robertabcd/PttChrome](https://github.com/robertabcd/PttChrome) 改寫（即 term.ptt.cc 採用的版本），本增強版由 [abccbaandy](https://github.com/abccbaandy) 維護。問題回報請至 [Issues](../../issues)。
+以 [GPL-2.0](LICENSE) 授權釋出。原作者 [Chuck Yang（iamchucky/PttChrome）](https://github.com/iamchucky/PttChrome)，網頁版由 [robertabcd/PttChrome](https://github.com/robertabcd/PttChrome) 改寫（即 term.ptt.cc 採用的版本），增強版由 [abccbaandy](https://github.com/abccbaandy) 維護。問題回報請至 [Issues](https://github.com/abccbaandy/PttChrome/issues)。
+
+本 fork 由 [NoReasonKen](https://github.com/NoReasonKen/PttChrome) 開發與維護。問題回報請至 [Issues](../../issues)。
+
