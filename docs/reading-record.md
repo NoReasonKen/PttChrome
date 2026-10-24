@@ -34,6 +34,16 @@
 - 看板列表：`board_list_session.requestViewportRestore`。
 - 首頁儀表板：`home_dashboard.requestViewportRestore`，存成待還原錨，面板下一次畫出來（或更新完重畫）時套用，那張卡片不在了就不動；收起面板（原生主選單、打字）作廢。
 
+Article restoration keeps the requested row and its fractional offset while that
+row's lazy previews change height. A local ResizeObserver follows only the target
+row and reading viewport; normal view updates retarget it after row replacement.
+Updates reuse `pageRowTop` and coalesce in animation frames. Wheel, touch, pointer,
+or keyboard input releases this ownership immediately, as do a new restore request
+and article cleanup. Stable content causes no polling, and slow image loading has
+no fixed readiness deadline. Programmatic scrolling and browser scroll anchoring
+do not count as reader input. See `src/js/scroll_restore_follow.js` and
+`mobile_reading_restore.offline.spec.js`.
+
 | 功能（feature） | 完成 done | 取消 cancel／失敗 fail |
 |---|---|---|
 | `long-push` 長推文 | 文章：文末 | 文章：原列 |

@@ -10,6 +10,7 @@ import { offsetTopWithin } from './scroll_anchor';
 import { renderChunksAround } from '../render/screen_chunk';
 import { isJumpParkedListScreen } from './list_session';
 import { createBottomStick } from './bottom_stick';
+import { followScrollRestore } from './scroll_restore_follow';
 import { recordFor } from './reading_record';
 
 // Pure decision for auto-enabling easy reading, evaluated once per settle edge
@@ -492,6 +493,7 @@ export function EasyReading(core, view, termBuf) {
   // Deliberately NOT _savedScrollTop: that one is the functionMode round trip and
   // is cleared by every enter/leave, so it cannot survive across articles.
   this._pendingScrollRestore = null;
+  this._scrollRestoreFollow = null;
   // One-shot retry for the external-landing enable (ensureEnabledOnArticle): the
   // navigation's onDone fires before the screen is necessarily complete, so it may
   // ask to be re-evaluated on the NEXT settle — once, then dropped.
@@ -769,6 +771,7 @@ EasyReading.prototype._resetPagingState = function() {
     this._view.clearReverse('dropped');
   // 「按了 End、黏在文末」也是這一篇的。
   if (this._bottomStick) this._bottomStick.release();
+  this._scrollRestoreFollow?.release();
 };
 
 // Arm the recovery timer for the outstanding request. _watchdogSig is the identity
@@ -2092,6 +2095,7 @@ EasyReading.prototype._onKeyDown = function(e) {
   // view out from under them a page later.
   if (this._pendingScrollRestore) this._diagScrollRestore('drop', { reason: 'key', key: e.key });
   this._pendingScrollRestore = null;
+  this._scrollRestoreFollow?.release();
 
   if (this._onKeyDownProcessUI(e) === 'browser')
     return 'browser';
@@ -2189,6 +2193,7 @@ EasyReading.prototype.ensureEnabledOnArticle = function(allowRetry, reason) {
 // Ask for the reading position to be restored once the article has grown enough.
 // lineIndex 0 (or null) means "was at the top" — nothing to do.
 EasyReading.prototype.requestScrollRestore = function(lineIndex) {
+  this._scrollRestoreFollow?.release();
   if (!lineIndex) return;
   this._pendingScrollRestore = { lineIndex: lineIndex, tries: 0 };
   this._diagScrollRestore('request', { lineIndex: lineIndex });
@@ -2224,10 +2229,12 @@ EasyReading.prototype._diagScrollRestoreSettled = function(lineIndex) {
 // 與 requestScrollRestore 共用同一個 one-shot 欄位 ⇒ 離開文章／使用者按鍵接手的清除
 // 點一併適用，兩者也不會同時掛著。
 EasyReading.prototype.requestScrollToBottom = function() {
+  this._scrollRestoreFollow?.release();
   this._pendingScrollRestore = { bottom: true, tries: 0 };
 };
 
 EasyReading.prototype._advanceScrollRestore = function() {
+  this._scrollRestoreFollow?.update();
   const pending = this._pendingScrollRestore;
   if (!pending) return;
   const disp = this._view.mainDisplay;
@@ -2270,7 +2277,18 @@ EasyReading.prototype._advanceScrollRestore = function() {
     clientHeight: disp.clientHeight,
     reflow: !!this._view.reflow
   });
-  if (step.action === 'apply') this._diagScrollRestoreSettled(pending.lineIndex);
+  if (step.action === 'apply') {
+    const view = this._view;
+    const articleKey = this._articleKey;
+    this._scrollRestoreFollow = followScrollRestore({
+      scroller: disp,
+      target: () => view.mainContainer?.querySelector('[type="bbsrow"][srow="' + Math.floor(pending.lineIndex) + '"]'),
+      measure: () => view.pageRowTop(pending.lineIndex),
+      isCurrent: () => this._enabled && this.startedEasyReading && !this._functionMode &&
+        this._articleKey === articleKey && this._core?.connectState === 1,
+    });
+    this._diagScrollRestoreSettled(pending.lineIndex);
+  }
 };
 
 // 捲動一段列數；回傳「有沒有真的還捲得動」（false ⇒ 呼叫端當作到頂/到底處理）。

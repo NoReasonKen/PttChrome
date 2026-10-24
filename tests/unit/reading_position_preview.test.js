@@ -101,11 +101,17 @@ describe("視窗頂端落在掛圖那一列的中間", () => {
   function restoreTo(view, lineIndex) {
     const er = Object.create(EasyReading.prototype);
     er._view = view;
+    er._core = { connectState: 1 };
     er.easyReadingReachedPageEnd = false;
     er.requestScrollRestore(lineIndex);
     er._advanceScrollRestore();
     return er;
   }
+
+  const nextFrames = async () => {
+    await new Promise(requestAnimationFrame);
+    await new Promise(requestAnimationFrame);
+  };
 
   test("來回一趟：回到圖裡的同一處，不是貼齊列頂", () => {
     const { view, disp, rowTop } = mount();
@@ -155,6 +161,75 @@ describe("視窗頂端落在掛圖那一列的中間", () => {
       disp.remove();
     }
   });
+
+  test("restoration preserves the row fraction when its preview loads afterward", async () => {
+    const { view, disp, mc, rowTop } = mount();
+    let er;
+    try {
+      const row = mc.querySelector(`[srow="${PREVIEW_ROW}"]`);
+      disp.scrollTop = rowTop(PREVIEW_ROW) + row.offsetHeight / 2;
+      const lineIndex = view.currentLineIndex();
+      row.lastChild.style.height = "20px";
+      er = restoreTo(view, lineIndex);
+      er._enabled = true;
+      er.startedEasyReading = true;
+      row.lastChild.style.height = "600px";
+      await expect.poll(() => view.currentLineIndex(), { timeout: 1000 }).toBeCloseTo(lineIndex, 2);
+    } finally {
+      er?._scrollRestoreFollow?.release();
+      disp.remove();
+    }
+  });
+
+  test("restoration follows a replacement row through the existing view-update hook", async () => {
+    const { view, disp, mc } = mount();
+    const er = restoreTo(view, PREVIEW_ROW + 0.5);
+    er._enabled = true;
+    er.startedEasyReading = true;
+    try {
+      await expect.poll(() => view.currentLineIndex()).toBe(PREVIEW_ROW + 0.5);
+      const row = mc.querySelector(`[srow="${PREVIEW_ROW}"]`);
+      const replacement = row.cloneNode(true);
+      replacement.lastChild.style.height = "600px";
+      row.replaceWith(replacement);
+      er._advanceScrollRestore();
+      await expect.poll(() => view.currentLineIndex()).toBe(PREVIEW_ROW + 0.5);
+    } finally {
+      er._scrollRestoreFollow?.release();
+      disp.remove();
+    }
+  });
+
+  test.each(["reset", "leave", "new restore", "bottom restore", "function mode", "disabled", "different article", "disconnected"])(
+    "%s releases the old row fraction before later preview growth",
+    async (action) => {
+      const { view, disp, mc, rowTop } = mount();
+      const er = restoreTo(view, PREVIEW_ROW + 0.5);
+      er._enabled = true;
+      er.startedEasyReading = true;
+      er._termBuf = {};
+      er._core = { connectState: 1 };
+      try {
+        await expect.poll(() => view.currentLineIndex()).toBe(PREVIEW_ROW + 0.5);
+        if (action === "reset") er._resetPagingState();
+        if (action === "leave") er.leaveCurrentPost();
+        if (action === "new restore") er.requestScrollRestore(30);
+        if (action === "bottom restore") er.requestScrollToBottom();
+        if (action === "function mode") er._functionMode = true;
+        if (action === "disabled") er._enabled = false;
+        if (action === "different article") er._articleKey = "another article";
+        if (action === "disconnected") er._core.connectState = 2;
+        disp.scrollTop = rowTop(30);
+        await nextFrames();
+        mc.querySelector(`[srow="${PREVIEW_ROW}"]`).lastChild.style.height = "600px";
+        await nextFrames();
+        expect(view.currentLineIndex()).toBe(30);
+      } finally {
+        er._scrollRestoreFollow?.release();
+        disp.remove();
+      }
+    },
+  );
 });
 
 test("topRowSnippet（只給錄製檔）：視窗頂端那一列的前幾個字，空白收成一格", () => {

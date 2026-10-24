@@ -13,6 +13,7 @@ const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { bootOffline } = require('../helpers/replay');
 const { waitPreviewsSettled } = require('../helpers/layout');
+const { touchDrag, nextFrames } = require('../helpers/real_input');
 
 const SIM_SRC = fs.readFileSync(path.join(__dirname, '..', 'helpers', 'pmore_sim.js'), 'utf8');
 const TOTAL = 600;
@@ -114,5 +115,43 @@ for (const frac of [0.25, 0.5, 0.8]) {
     expect(after.text).toBe(before.text);
     expect(after.li).toBeCloseTo(before.li, 2);
     expect(Math.abs(after.top - before.top)).toBeLessThanOrEqual(2);
+  });
+}
+
+for (const input of ['wheel', 'touch', 'key', 'pointer']) {
+  test(`restored article position yields to reader ${input} input before later preview growth`, async ({ page }) => {
+    await openAndRead(page, 201.5);
+    await expect.poll(async () => (await topOfView(page)).li).toBeCloseTo(201.5, 2);
+    const point = { x: 206, y: 190 };
+    if (input === 'wheel') {
+      await page.mouse.move(point.x, point.y);
+      await page.mouse.wheel(0, 100);
+    } else if (input === 'touch') {
+      await touchDrag(page, point, { x: point.x, y: point.y - 70 });
+    } else if (input === 'key') {
+      await page.keyboard.press('Shift');
+    } else {
+      await page.mouse.move(point.x, point.y);
+      await page.mouse.down();
+    }
+    await nextFrames(page);
+    // Move the fixture away from the restored row without another input event.
+    // A surviving follower would pull it back when that row's real layout grows.
+    await page.evaluate(() => {
+      const view = window.__app.view;
+      view.mainDisplay.scrollTop = view.pageRowTop(230);
+    });
+    await waitPreviewsSettled(page);
+    const before = await topOfView(page);
+    expect(before.li).toBeGreaterThan(220);
+    await page.evaluate(() => {
+      const image = document.querySelector('[type="bbsrow"][srow="201"] img');
+      image.style.maxHeight = 'none';
+      image.style.height = '600px';
+    });
+    await waitPreviewsSettled(page);
+    expect((await topOfView(page)).li).toBe(before.li);
+    if (input === 'touch') await page.screenshot({ path: test.info().outputPath('reader-takeover.png') });
+    if (input === 'pointer') await page.mouse.up();
   });
 }
