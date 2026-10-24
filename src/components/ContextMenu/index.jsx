@@ -43,6 +43,10 @@ import { onPrefSaveImpl } from "./pref_save";
 import { readValuesWithDefault, writeValues } from "../../js/pref_storage";
 import * as prefSync from "../../js/pref_sync";
 import {
+  cloudSyncSetupRequested,
+  cloudSyncUiPolicy,
+} from "../../js/cloud_sync_setup";
+import {
   parseBlacklist,
   listColRegion,
   appendBlacklistEntry,
@@ -948,6 +952,10 @@ export const ContextMenu = ({ pttchrome }) => {
       ...initialState,
       showsPalette: true,
       paletteCtx: {
+        hiddenSettingKeys: cloudSyncUiPolicy(
+          prefSync.canSync(),
+          cloudSyncSetupRequested(),
+        ).hiddenSearchKeys,
         searchKinds: busy
           ? []
           : availableSearchKinds(searchGateFacts(pttchrome)),

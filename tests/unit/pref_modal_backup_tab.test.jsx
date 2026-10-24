@@ -17,10 +17,18 @@ import * as prefSync from "../../src/js/pref_sync";
 
 // 雲端同步不是本測試的標的，且會拉 Firebase SDK。
 vi.mock("../../src/js/pref_sync", () => ({
+  canSync: vi.fn(() => false),
   savePrefs: vi.fn(),
   signIn: vi.fn(() => Promise.resolve()),
   signOut: vi.fn(() => Promise.resolve()),
   onAuthState: vi.fn(() => () => {}),
+}));
+
+// These tests exercise backup actions and sign-in after entering the setup link.
+vi.mock("../../src/js/cloud_sync_setup", async (importOriginal) => ({
+  ...(await importOriginal()),
+  cloudSyncSetupRequested: () => true,
+  subscribeCloudSyncSetup: () => () => {},
 }));
 
 vi.mock("../../src/js/prompt_api", () => ({

@@ -32,6 +32,14 @@ do not transfer automatically. Updates to this app require the same signing
 key, the same application ID, and an increasing version code. Reading-page
 updates are delivered separately through GitHub Pages.
 
+Cloud sync is private initially. The maintainer can open
+`https://noreasonken.github.io/PttChrome/#cloud-sync-setup`, then go to Settings
+and Backup to sign in. The link reveals controls for the current page session
+only. The Firebase administrator must separately grant the account's
+`cloudSync: true` custom claim; sign in again after that grant. Normal users
+see local backup controls without cloud sync. See
+[private cloud access](pref-sync-firestore.md#private-access-in-this-fork).
+
 ## 為什麼要有 APK
 - 手機 Chrome 開網頁版，切到別的 App 幾秒後 WebSocket 被系統凍結／切斷。網頁端無解（瀏覽器分頁沒有前景服務）。
 - APK ＝ WebView 殼載入**線上** GitHub Pages（`AppConfig.PAGE_URL`，網頁更新不必重裝）＋前景服務持有 PTT 連線。

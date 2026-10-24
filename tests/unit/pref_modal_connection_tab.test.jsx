@@ -18,6 +18,7 @@ import { DEFAULT_PROXY_HOST } from "../../src/js/util";
 
 // 雲端同步不是本測試的標的，且會拉 Firebase SDK。
 vi.mock("../../src/js/pref_sync", () => ({
+  canSync: vi.fn(() => false),
   savePrefs: vi.fn(),
   signIn: vi.fn(() => Promise.resolve()),
   signOut: vi.fn(() => Promise.resolve()),

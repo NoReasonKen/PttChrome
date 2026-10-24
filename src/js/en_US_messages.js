@@ -451,6 +451,9 @@ export const en_US = {
   "optionsDesc_backup": {
     "message": "Export / import settings, cloud sync"
   },
+  "optionsDesc_backupLocal": {
+    "message": "Export / import settings"
+  },
   "optionsDesc_about": {
     "message": "Version, debug mode and what's new"
   },

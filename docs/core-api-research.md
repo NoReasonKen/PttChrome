@@ -186,6 +186,17 @@ For example, a completed long comment goes to the article bottom; cancellation r
 
 **Regression entry points:** [safe-mode projection and read sites](../tests/unit/native_safe_mode.test.js#L18), [cloud sanitization/merge](../tests/unit/pref_sync_logic.test.js#L10).
 
+Cloud sync is a separate, initially private capability. `prefSync.canSync()`
+reports the advisory access state used by settings visibility;
+`prefSync.onAuthState(callback)` also notifies when that state changes. Sign-in
+checks the authenticated token's boolean `cloudSync` claim before attaching a
+listener. Access denial signs out and clears automatic restoration while
+preserving local values; initial listener errors reject the sign-in promise.
+The setup link reveals controls without granting access. Firestore rules
+independently require the claim and matching document UID.
+[Lifecycle](../src/js/pref_sync.js), [rules](../firestore.rules),
+[integration coverage](../tests/integration/cloud_sync_access.test.js).
+
 ## 14. Android page identity and connection destination
 
 **Reader's purpose:** know which reading page an installed APK is actually displaying before expecting a source change to appear on the phone. The checked-in production URL points to this fork's GitHub Pages deployment; the APK loads a web page rather than bundling this checkout's screen code. [AppConfig](../android/app/src/main/java/io/github/abccbaandy/pttchrome/AppConfig.kt#L4).

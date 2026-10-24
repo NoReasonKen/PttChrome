@@ -166,6 +166,29 @@ test('手機：設定頁全螢幕、先列分類清單；點進分類內容佔�
   await expect(page.locator('.PrefModal [data-pref-category="about"]')).toBeVisible();
 });
 
+test('mobile cloud sync stays hidden until the private setup link is opened', async ({ page }) => {
+  await bootOffline(page, ptt);
+  await feedRaw(page, `${ESC}[2J${ESC}[H  MOBILE CLOUD SETUP TEST  `);
+  await waitScreenSettled(page);
+  await openTerminalContextMenu(page);
+  await page.locator(CONTEXT_SHEET).first()
+    .getByText(await label(page, 'cmenu_settings'), { exact: true }).tap();
+  const modal = page.locator('.PrefModal');
+  await expect(modal).toBeVisible();
+  await modal.locator('[data-pref-category="backup"]').tap();
+  const signIn = modal.getByRole('button', {
+    name: await label(page, 'options_syncSignIn'),
+  });
+  await expect(signIn).toBeHidden();
+  await expect(modal.getByRole('button', {
+    name: await label(page, 'options_backupExportBtn'),
+  })).toBeVisible();
+  await page.goto('/#cloud-sync-setup');
+  // Same-document navigation can return narrow settings to its category list.
+  await modal.locator('[data-pref-category="backup"]').tap();
+  await expect(signIn).toBeVisible();
+});
+
 // 回歸：debug 錄製鈕原本是獨立的 fixed 按鈕（right/bottom 16），手機上疊在底部工具列
 // 上。現在收進「⋯」：非文章畫面也出現，且不與工具列重疊。
 test('手機：debug 錄製鈕收在「⋯」裡，不與底部工具列重疊', async ({ page }) => {

@@ -23,6 +23,7 @@ import { DEFAULT_PREFS } from "../../src/js/pref_storage";
 import { readSearchHistory } from "../../src/js/search_history";
 
 vi.mock("../../src/js/pref_sync", () => ({
+  canSync: vi.fn(() => false),
   savePrefs: vi.fn(),
   signIn: vi.fn(() => Promise.resolve()),
   signOut: vi.fn(() => Promise.resolve()),

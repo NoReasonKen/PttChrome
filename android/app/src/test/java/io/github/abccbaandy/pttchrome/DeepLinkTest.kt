@@ -51,6 +51,10 @@ class DeepLinkTest {
         assertEquals(OpenApp, c("https://noreasonken.github.io/PttChrome/?board=Gossiping"))
     }
 
+    @Test fun privateCloudSetupFragmentReachesTheReadingPage() {
+        assertEquals(Article("cloud-sync-setup"), c(AppConfig.PAGE_URL + "#cloud-sync-setup"))
+    }
+
     @Test fun otherPagesOnSameHostAreNotOurs() {
         assertEquals(NotOurs, c("https://noreasonken.github.io/"))
         assertEquals(NotOurs, c("https://noreasonken.github.io/Other/#Gossiping/1gIeu-3A"))

@@ -31,6 +31,11 @@ import {
 } from "../../js/pref_storage";
 import * as prefSync from "../../js/pref_sync";
 import {
+  cloudSyncSetupRequested,
+  cloudSyncUiPolicy,
+  subscribeCloudSyncSetup,
+} from "../../js/cloud_sync_setup";
+import {
   promptApiAvailability,
   ensurePromptApiModel,
   destroyPromptApi,
@@ -324,6 +329,15 @@ export const PrefModal = ({
   // typing, so only this can answer "is there still a plaintext copy here?".
   const [storedSnapshot, setStoredSnapshot] = useState(readValuesWithDefault);
   const [syncUser, setSyncUser] = useState(null);
+  const [syncAllowed, setSyncAllowed] = useState(prefSync.canSync);
+  const syncSetupRequested = useSyncExternalStore(
+    subscribeCloudSyncSetup,
+    cloudSyncSetupRequested,
+  );
+  const { visible: showCloudSync, hiddenSearchKeys } = cloudSyncUiPolicy(
+    syncAllowed,
+    syncSetupRequested,
+  );
   const [syncStatus, setSyncStatus] = useState("idle"); // idle | syncing | synced | error
   // 使用者（或企業政策）已封鎖本站通知：deep link 交接就只剩標題閃爍＋頁內橫幅，
   // 說清楚比讓那個勾勾看起來有效好。初值直接讀當下的權限，不必等使用者去點。
@@ -660,7 +674,10 @@ export const PrefModal = ({
   );
 
   useEffect(() => {
-    const unsub = prefSync.onAuthState((user) => setSyncUser(user));
+    const unsub = prefSync.onAuthState((user) => {
+      setSyncUser(user);
+      setSyncAllowed(prefSync.canSync());
+    });
     return () => {
       if (unsub) unsub();
     };
@@ -735,7 +752,11 @@ export const PrefModal = ({
         <div className="PrefModal__Grid">
           <div className="PrefModal__Grid__Col--left">
             {!narrow && <Title order={3}>{i18n("menu_settings")}</Title>}
-            <PrefSearchBox onJump={onSearchJump} resetToken={show} />
+            <PrefSearchBox
+              onJump={onSearchJump}
+              resetToken={show}
+              hiddenKeys={hiddenSearchKeys}
+            />
             {!narrow && (
               <Tabs.List>
                 {PREF_CATEGORIES.map((c) => (
@@ -763,7 +784,11 @@ export const PrefModal = ({
                         {i18n(c.labelKey)}
                       </span>
                       <span className="PrefModal__Category__Desc">
-                        {i18n(c.descKey)}
+                        {i18n(
+                          c.value === "backup" && !showCloudSync
+                            ? "optionsDesc_backupLocal"
+                            : c.descKey,
+                        )}
                       </span>
                     </span>
                     <IconChevronRight
@@ -2075,9 +2100,11 @@ export const PrefModal = ({
               {navActiveKey === "autologin" && (
                 <>
                   <PrefSection legendKey="options_autoLogin">
-                    <Text size="xs" c="dimmed" mb="xs">
-                      {i18n("tooltip_autoLoginSynced")}
-                    </Text>
+                    {showCloudSync && (
+                      <Text size="xs" c="dimmed" mb="xs">
+                        {i18n("tooltip_autoLoginSynced")}
+                      </Text>
+                    )}
                     <PrefCheckbox
                       name="autoLogin"
                       checked={values.autoLogin}
@@ -2354,41 +2381,43 @@ export const PrefModal = ({
                   </Text>
                 )}
               </PrefSection>
-              <PrefSection legendKey="options_sync">
-                <Text className="PrefModal__warning">
-                  {i18n("tooltip_sync")}
-                </Text>
-                {syncUser ? (
-                  <div>
-                    <Text>
-                      {i18n("options_syncSignedInAs")}
-                      {syncUser.email}
-                    </Text>
-                    <Button variant="default" onClick={onSyncSignOutClick}>
-                      {i18n("options_syncSignOut")}
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    variant="default"
-                    onClick={onSyncSignInClick}
-                    disabled={syncStatus === "syncing"}
-                  >
-                    {i18n("options_syncSignIn")}
-                  </Button>
-                )}
-                {syncStatus !== "idle" && (
-                  <Text>
-                    {i18n(
-                      {
-                        syncing: "options_syncStatusSyncing",
-                        synced: "options_syncStatusSynced",
-                        error: "options_syncStatusError",
-                      }[syncStatus],
-                    )}
+              {showCloudSync && (
+                <PrefSection legendKey="options_sync">
+                  <Text className="PrefModal__warning">
+                    {i18n("tooltip_sync")}
                   </Text>
-                )}
-              </PrefSection>
+                  {syncUser ? (
+                    <div>
+                      <Text>
+                        {i18n("options_syncSignedInAs")}
+                        {syncUser.email}
+                      </Text>
+                      <Button variant="default" onClick={onSyncSignOutClick}>
+                        {i18n("options_syncSignOut")}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="default"
+                      onClick={onSyncSignInClick}
+                      disabled={syncStatus === "syncing"}
+                    >
+                      {i18n("options_syncSignIn")}
+                    </Button>
+                  )}
+                  {syncStatus !== "idle" && (
+                    <Text>
+                      {i18n(
+                        {
+                          syncing: "options_syncStatusSyncing",
+                          synced: "options_syncStatusSynced",
+                          error: "options_syncStatusError",
+                        }[syncStatus],
+                      )}
+                    </Text>
+                  )}
+                </PrefSection>
+              )}
             </Tabs.Panel>
             <Tabs.Panel value="about" className="PrefModal__about-selectable">
               <div>

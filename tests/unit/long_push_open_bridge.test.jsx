@@ -29,6 +29,7 @@ import {
 } from "../../src/js/long_push_draft";
 
 vi.mock("../../src/js/pref_sync", () => ({
+  canSync: vi.fn(() => false),
   savePrefs: vi.fn(),
   signIn: vi.fn(() => Promise.resolve()),
   signOut: vi.fn(() => Promise.resolve()),

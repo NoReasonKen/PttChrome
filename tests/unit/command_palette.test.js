@@ -149,6 +149,15 @@ describe("最近去過／我的最愛的看板", () => {
     expect(items.find((it) => it.text === "Baseball")).toMatchObject({ source: "favorite", desc: "棒球" });
   });
 
+  test("settings hidden by the caller are excluded without changing generic search", () => {
+    const id = "setting:section:options_sync";
+    expect(ids(buildPaletteItems("Preference Cloud Sync", { lang: "en_us" }))).toContain(id);
+    expect(ids(buildPaletteItems("Preference Cloud Sync", {
+      lang: "en_us",
+      hiddenSettingKeys: ["section:options_sync"],
+    }))).not.toContain(id);
+  });
+
   test("打板名開頭 ⇒ 符合的最近／最愛排最前；打的字等於板名就不再另列「前往看板」", () => {
     const b = buildPaletteItems("b", { ...LIST, quickBoards: QUICK });
     expect(quickIds(b)).toEqual(["Baseball", "Beauty"]);

@@ -32,6 +32,7 @@ let loadPromise = null;
 // synchronously (currentUser != null implies the SDK finished loading).
 let fb = null;
 let currentUser = null;
+let cloudSyncAllowed = false;
 // False until Firebase answers the first onAuthStateChanged — before that,
 // currentUser === null only means "don't know yet", not "signed out".
 let authStateKnown = false;
@@ -109,6 +110,7 @@ const init = () => {
     }
     authM.onAuthStateChanged(auth, user => {
       currentUser = user;
+      cloudSyncAllowed = false;
       authStateKnown = true;
       // Session gone (sign-out, token expired/revoked) → stop listening
       // before Firestore starts rejecting the stream with permission-denied.
@@ -142,6 +144,24 @@ const detachSnapshotListener = () => {
 const changedKeys = (a, b) =>
   Object.keys(b).filter(k => !deepEqual(a && a[k], b[k]));
 
+const setCloudSyncAllowed = allowed => {
+  if (cloudSyncAllowed === allowed) return;
+  cloudSyncAllowed = allowed;
+  authStateListeners.forEach(cb => cb(currentUser));
+};
+
+// UI visibility is advisory; firestore.rules independently enforces this claim.
+const requireCloudSyncAccess = async () => {
+  const user = currentUser;
+  const token = user && await fb.authM.getIdTokenResult(user);
+  if (!user || currentUser !== user || token.claims.cloudSync !== true) {
+    const error = new Error("Cloud sync is not enabled for this account.");
+    error.code = "permission-denied";
+    throw error;
+  }
+  setCloudSyncAllowed(true);
+};
+
 // Attach the realtime listener on users/{uid} and reconcile every snapshot
 // (see classifySnapshot for the case split). This is what propagates changes
 // made on another device/tab into this one — without it, a stale tab would
@@ -152,7 +172,7 @@ const attachSnapshotListener = () => {
   detachSnapshotListener();
   console.info("pref_sync: attaching snapshot listener (users/" +
     currentUser.uid + ")");
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     let resolved = false;
     const resolveOnce = values => {
       if (!resolved) {
@@ -212,12 +232,23 @@ const attachSnapshotListener = () => {
         // attach doesn't assume it's still alive.
         console.warn("pref_sync: snapshot listener error", e);
         snapshotUnsub = null;
+        if (!resolved) {
+          resolved = true;
+          reject(e);
+        } else if (e.code === "permission-denied") {
+          // Initial denial is handled by the awaiting sign-in/startup call.
+          // After a successful sync, the listener owns session cleanup.
+          signOut().catch(error => {
+            console.warn("pref_sync: denied session cleanup failed", error);
+          });
+        }
       }
     );
   });
 };
 
 export const getUser = () => currentUser;
+export const canSync = () => cloudSyncAllowed;
 
 // main.js registers the app-level apply callback here once at startup.
 // Plain assignment — safe to call before (or without) any Firebase load.
@@ -281,8 +312,12 @@ export const startIfPreviouslySignedIn = () => {
       console.info(
         "pref_sync: startup auth " + (user ? "restored" : "expired/revoked")
       );
-      if (user) await attachSnapshotListener();
+      if (user) {
+        await requireCloudSyncAccess();
+        await attachSnapshotListener();
+      }
     } catch (e) {
+      if (e.code === "permission-denied") await signOut();
       console.warn("pref_sync: startup sync failed", e);
     }
   })();
@@ -298,13 +333,19 @@ export const startIfPreviouslySignedIn = () => {
 export const signIn = async (onCloudValues, authenticate) => {
   const f = await init();
   await (authenticate || authenticateGoogle)(f);
-  try {
-    window.localStorage.setItem(SYNC_FLAG_KEY, "1");
-  } catch (e) {}
   await waitForUser();
-  const values = await attachSnapshotListener();
-  if (onCloudValues) onCloudValues(values);
-  return values;
+  try {
+    await requireCloudSyncAccess();
+    try {
+      window.localStorage.setItem(SYNC_FLAG_KEY, "1");
+    } catch (e) {}
+    const values = await attachSnapshotListener();
+    if (onCloudValues) onCloudValues(values);
+    return values;
+  } catch (e) {
+    if (e.code === "permission-denied") await signOut();
+    throw e;
+  }
 };
 
 // Sign out and stop syncing. localStorage prefs are kept: the app keeps
@@ -312,6 +353,7 @@ export const signIn = async (onCloudValues, authenticate) => {
 // auth does, or the open stream errors with permission-denied.
 export const signOut = async () => {
   detachSnapshotListener();
+  setCloudSyncAllowed(false);
   try {
     window.localStorage.removeItem(SYNC_FLAG_KEY);
   } catch (e) {}
@@ -330,7 +372,7 @@ export const signOut = async () => {
 // the day it was introduced, so no cloud doc can possibly hold one, and adding
 // it would just ship a useless field on every upload.
 export const savePrefs = async values => {
-  if (!currentUser) return values;
+  if (!currentUser || !cloudSyncAllowed) return values;
   console.info("pref_sync: uploading prefs");
   try {
     await fb.fsM.setDoc(

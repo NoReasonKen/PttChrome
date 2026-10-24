@@ -131,6 +131,33 @@ const seeder = () => {
 
 const seedDoc = data => seeder().then(s => setDoc(doc(s.db, "users", s.uid), data));
 
+// Only the local emulator administrator grants access. Seed the same unique
+// account before either the injected or native Android sign-in path runs.
+const setCloudSyncAccess = (user, allowed) => {
+  if (!PROJECT_ID.startsWith("demo-")) {
+    throw new Error("Integration access grants require a demo project.");
+  }
+  return fetch(
+    "http://" + process.env.FIREBASE_AUTH_EMULATOR_HOST +
+      "/identitytoolkit.googleapis.com/v1/projects/" + PROJECT_ID +
+      "/accounts:update",
+    {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer owner",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        localId: user.uid,
+        customAttributes: JSON.stringify({ cloudSync: allowed })
+      })
+    }
+  ).then(res => {
+    if (!res.ok) throw new Error("setCloudSyncAccess: HTTP " + res.status);
+    return user.getIdToken(true);
+  });
+};
+
 // Firestore REST value → plain JS (only the types pref docs use).
 const fromRest = v => {
   if ("mapValue" in v) return fromRestFields(v.mapValue.fields || {});
@@ -247,7 +274,9 @@ beforeEach(() => {
       prefSync.registerOnCloudValues(null);
       infoSpy.mockClear();
       warnSpy.mockClear();
-    });
+    })
+    .then(seeder)
+    .then(s => setCloudSyncAccess(s.auth.currentUser, true));
 });
 
 afterEach(() => {
@@ -315,6 +344,41 @@ describe("startup restore (previously signed in)", () => {
         expect(cloudDoc.prefs).not.toHaveProperty("autoLoginUser");
         expect(cloudDoc.prefs).not.toHaveProperty("autoLoginOtpSecret");
         expect(cloudDoc.schemaVersion).toBe(1);
+      });
+  });
+
+  it("stops unauthorized startup restoration and preserves local preferences", () => {
+    const local = { fontSize: 19, autoLoginPassword: "local-password" };
+    const onCloudValues = vi.fn();
+    writeStoredPrefs(local);
+    prefSync.registerOnCloudValues(onCloudValues);
+
+    return prefSync.ensureFirebase()
+      .then(f => f.authM.signInWithCredential(
+        f.auth,
+        f.authM.GoogleAuthProvider.credential(tokenFor(testSub + "-blocked-startup"))
+      ))
+      .then(() => waitFor(() => prefSync.getUser(), "unauthorized auth state"))
+      .then(() => {
+        window.localStorage.setItem(SYNC_FLAG_KEY, "1");
+        prefSync.startIfPreviouslySignedIn();
+        return waitFor(
+          () => !prefSync.getUser() && window.localStorage.getItem(SYNC_FLAG_KEY) === null,
+          "unauthorized startup stopped"
+        );
+      })
+      .then(() => {
+        expect(onCloudValues).not.toHaveBeenCalled();
+        expect(readStoredPrefs()).toEqual(local);
+        expect(prefSync.canSync()).toBe(false);
+        const listenerCount = infoSpy.mock.calls.filter(
+          c => String(c[0]).includes("attaching snapshot listener")
+        ).length;
+        expect(listenerCount).toBe(0);
+        prefSync.startIfPreviouslySignedIn();
+        expect(infoSpy.mock.calls.filter(
+          c => String(c[0]).includes("attaching snapshot listener")
+        )).toHaveLength(listenerCount);
       });
   });
 });
@@ -433,6 +497,7 @@ describe("lifecycle", () => {
       })
       .then(() => {
         expect(window.localStorage.getItem(SYNC_FLAG_KEY)).toBe(null);
+        expect(prefSync.canSync()).toBe(false);
         return seedDoc({ prefs: { fontSize: 99 } });
       })
       .then(() => flush(300))
@@ -460,8 +525,102 @@ describe("lifecycle", () => {
         expect(modalCb).toHaveBeenCalledTimes(1); // one-shot for the modal form
         expect(appCb).toHaveBeenCalled(); // app applied it too
         expect(window.localStorage.getItem(SYNC_FLAG_KEY)).toBe("1");
+        expect(prefSync.canSync()).toBe(true);
         expect(readStoredPrefs().fontSize).toBe(18);
       });
+  });
+
+  it("rejects unauthorized sign-in without enabling sync or changing local preferences", () => {
+    const local = {
+      fontSize: 19,
+      autoLoginUser: "local-user",
+      autoLoginPassword: "local-password",
+      autoLoginOtpSecret: "ABCDEFGHIJKLMNOP"
+    };
+    writeStoredPrefs(local);
+    const modalCb = vi.fn();
+    const appCb = vi.fn();
+    prefSync.registerOnCloudValues(appCb);
+    const unauthorizedAuth = f =>
+      f.authM.signInWithCredential(
+        f.auth,
+        f.authM.GoogleAuthProvider.credential(tokenFor(testSub + "-blocked"))
+      );
+
+    return expect(prefSync.signIn(modalCb, unauthorizedAuth))
+      .rejects.toMatchObject({ code: "permission-denied" })
+      .then(() => {
+        expect(modalCb).not.toHaveBeenCalled();
+        expect(appCb).not.toHaveBeenCalled();
+        expect(readStoredPrefs()).toEqual(local);
+        expect(window.localStorage.getItem(SYNC_FLAG_KEY)).toBe(null);
+        expect(prefSync.getUser()).toBe(null);
+        expect(prefSync.canSync()).toBe(false);
+      });
+  });
+
+  it("rejects an actual listener denial when access is revoked after the advisory check", async () => {
+    const local = { fontSize: 19, autoLoginPassword: "local-password" };
+    writeStoredPrefs(local);
+    const modalCb = vi.fn();
+    const appCb = vi.fn();
+    prefSync.registerOnCloudValues(appCb);
+    const f = await prefSync.ensureFirebase();
+    const authM = f.authM;
+    // Keep the genuine allowed-token snapshot, then refresh to a revoked token
+    // before Firestore attaches. This coordinates a permission-change race;
+    // both tokens, the listener, and the denial come from the real emulators.
+    f.authM = {
+      ...authM,
+      getIdTokenResult: async user => {
+        const token = await authM.getIdTokenResult(user);
+        expect(token.claims.cloudSync).toBe(true);
+        await setCloudSyncAccess(user, false);
+        return token;
+      }
+    };
+    try {
+      await expect(prefSync.signIn(modalCb, credAuth))
+        .rejects.toMatchObject({ code: "permission-denied" });
+      expect(warnSpy.mock.calls.some(
+        call => String(call[0]).includes("snapshot listener error")
+      )).toBe(true);
+      expect(modalCb).not.toHaveBeenCalled();
+      expect(appCb).not.toHaveBeenCalled();
+      expect(readStoredPrefs()).toEqual(local);
+      expect(window.localStorage.getItem(SYNC_FLAG_KEY)).toBe(null);
+      expect(prefSync.getUser()).toBe(null);
+      expect(prefSync.canSync()).toBe(false);
+    } finally {
+      f.authM = authM;
+    }
+  });
+
+  it("signs out and preserves local preferences when an active listener loses access", async () => {
+    writeStoredPrefs({ fontSize: 19, autoLoginPassword: "local-password" });
+    await prefSync.signIn(null, credAuth);
+    const local = readStoredPrefs();
+    const f = await prefSync.ensureFirebase();
+    const authChanged = vi.fn();
+    const unsubscribe = prefSync.onAuthState(authChanged);
+    try {
+      await disableNetwork(f.db);
+      await setCloudSyncAccess(f.auth.currentUser, false);
+      await enableNetwork(f.db);
+      await waitFor(
+        () => !prefSync.canSync() && prefSync.getUser() === null,
+        "revoked active session to sign out"
+      );
+      expect(warnSpy.mock.calls.some(
+        call => String(call[0]).includes("snapshot listener error")
+      )).toBe(true);
+      expect(authChanged).toHaveBeenLastCalledWith(null);
+      expect(window.localStorage.getItem(SYNC_FLAG_KEY)).toBe(null);
+      expect(readStoredPrefs()).toEqual(local);
+    } finally {
+      unsubscribe();
+      await enableNetwork(f.db);
+    }
   });
 
   // APK（WebView）不能 signInWithPopup：signIn 不帶 authenticate 時改向原生 bridge
@@ -507,6 +666,7 @@ describe("lifecycle", () => {
         .then(values => {
           expect(sent.map(m => m.op)).toEqual(["googleSignIn"]);
           expect(prefSync.getUser().uid).toBe(uid);
+          expect(prefSync.canSync()).toBe(true);
           expect(values.fontSize).toBe(21);
           expect(modalCb).toHaveBeenCalledTimes(1);
           expect(readStoredPrefs().fontSize).toBe(21);
@@ -520,6 +680,7 @@ describe("lifecycle", () => {
         .then(() => {
           expect(sent.map(m => m.op)).toEqual(["googleSignIn", "googleSignOut"]);
           expect(prefSync.getUser()).toBe(null);
+          expect(prefSync.canSync()).toBe(false);
         });
     });
   });

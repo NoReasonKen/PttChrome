@@ -95,6 +95,7 @@ function actionMatch(action, q, title) {
  *   title(key): string —— 動作標題（i18n；比對用，可省）
  *   lang: 設定搜尋用的語系（可省）
  *   quickBoards: { recent: string[], favorites: {name, desc}[] } | null（可省）
+ *   hiddenSettingKeys: string[] of settings omitted by the caller's visibility policy
  * @returns {Array<{id, kind, ...}>} 依顯示順序。kind ∈ article｜board｜search｜action｜setting
  */
 export function buildPaletteItems(query, ctx) {
@@ -161,7 +162,8 @@ export function buildPaletteItems(query, ctx) {
       lang: c.lang,
       limit: PALETTE_SETTING_LIMIT,
     });
-    for (const h of hits)
+    for (const h of hits) {
+      if (c.hiddenSettingKeys?.includes(h.key)) continue;
       out.push({
         id: "setting:" + h.key,
         kind: "setting",
@@ -171,6 +173,7 @@ export function buildPaletteItems(query, ctx) {
         tabLabel: h.tabLabel,
         sectionLabel: h.sectionLabel,
       });
+    }
   }
   return out;
 }

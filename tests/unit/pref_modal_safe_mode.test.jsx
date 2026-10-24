@@ -12,6 +12,7 @@ import { setupI18n, i18n } from "../../src/js/i18n";
 import { DEFAULT_PREFS, NATIVE_SAFE_MODE_KEYS } from "../../src/js/pref_storage";
 
 vi.mock("../../src/js/pref_sync", () => ({
+  canSync: vi.fn(() => false),
   savePrefs: vi.fn(),
   signIn: vi.fn(() => Promise.resolve()),
   signOut: vi.fn(() => Promise.resolve()),

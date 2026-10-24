@@ -10,15 +10,23 @@
 import { render, act, fireEvent, waitFor } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import ContextMenu from "../../src/components/ContextMenu";
-import { setupI18n } from "../../src/js/i18n";
+import { setupI18n, i18n } from "../../src/js/i18n";
+import * as prefSync from "../../src/js/pref_sync";
+import { cloudSyncSetupRequested } from "../../src/js/cloud_sync_setup";
 import { DEFAULT_PREFS, readValuesWithDefault } from "../../src/js/pref_storage";
 import { aidToFn } from "../../src/js/aid_codec";
 
 vi.mock("../../src/js/pref_sync", () => ({
+  canSync: vi.fn(() => false),
   savePrefs: vi.fn(),
   signIn: vi.fn(() => Promise.resolve()),
   signOut: vi.fn(() => Promise.resolve()),
   onAuthState: vi.fn(() => () => {}),
+}));
+
+vi.mock("../../src/js/cloud_sync_setup", async (importOriginal) => ({
+  ...(await importOriginal()),
+  cloudSyncSetupRequested: vi.fn(() => false),
 }));
 
 vi.mock("../../src/js/prompt_api", () => ({
@@ -82,7 +90,26 @@ const type = (text) => fireEvent.change(input(), { target: { value: text } });
 const key = (k) => fireEvent.keyDown(input(), { key: k });
 
 beforeAll(() => setupI18n());
-beforeEach(() => window.localStorage.clear());
+beforeEach(() => {
+  window.localStorage.clear();
+  prefSync.canSync.mockReturnValue(false);
+  cloudSyncSetupRequested.mockReturnValue(false);
+});
+
+test.each([
+  [false, false, false],
+  [true, false, true],
+  [false, true, true],
+])("cloud setting discovery respects setup %s and authorization %s", async (setupRequested, allowed, visible) => {
+  cloudSyncSetupRequested.mockReturnValue(setupRequested);
+  prefSync.canSync.mockReturnValue(allowed);
+  const pttchrome = makePttchrome();
+  mount(pttchrome);
+  openPalette(pttchrome);
+  await waitFor(() => expect(input()).not.toBeNull());
+  type(i18n("options_sync"));
+  expect(itemIds().includes("setting:section:options_sync")).toBe(visible);
+});
 
 test("掛載後接手（回 true）、算 modal", async () => {
   const pttchrome = makePttchrome();

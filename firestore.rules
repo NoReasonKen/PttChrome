@@ -1,9 +1,11 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Each signed-in user may only read/write their own prefs document.
+    // Cloud access is granted by an administrator, never by a preference value.
     match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read, write: if request.auth != null
+        && request.auth.uid == uid
+        && request.auth.token.cloudSync == true;
     }
   }
 }

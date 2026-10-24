@@ -21,6 +21,7 @@ import { DEFAULT_PREFS } from "../../src/js/pref_storage";
 import * as prefSync from "../../src/js/pref_sync";
 
 vi.mock("../../src/js/pref_sync", () => ({
+  canSync: vi.fn(() => false),
   savePrefs: vi.fn(),
   signIn: vi.fn(() => Promise.resolve()),
   signOut: vi.fn(() => Promise.resolve()),
@@ -88,6 +89,7 @@ beforeAll(() => {
   setupI18n();
 });
 beforeEach(() => {
+  prefSync.canSync.mockReturnValue(false);
   onSave.mockClear();
   prefSync.savePrefs.mockClear();
   window.localStorage.clear();
@@ -241,6 +243,7 @@ describe("設定搜尋框", () => {
 });
 
 describe("錨點覆蓋度（索引裡每一項都跳得到）", () => {
+  beforeEach(() => prefSync.canSync.mockReturnValue(true));
   // 靜態掃描（pref_search_index.test.js）只能確認原始碼裡寫了錨點；條件渲染、
   // 打錯 key、adapter 沒把屬性傳下去這些都要真的 render 才看得出來。
   const byTab = {};

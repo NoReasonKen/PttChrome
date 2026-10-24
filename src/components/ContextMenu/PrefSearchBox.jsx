@@ -33,12 +33,16 @@ const Highlighted = ({ text, ranges }) => {
   return out;
 };
 
-export const PrefSearchBox = ({ onJump, resetToken }) => {
+export const PrefSearchBox = ({ onJump, resetToken, hiddenKeys }) => {
   const [query, setQuery] = useState("");
   const combobox = useCombobox({
     onDropdownClose: () => combobox.resetSelectedOption(),
   });
-  const results = useMemo(() => searchPrefSettings(query), [query]);
+  const results = useMemo(
+    () =>
+      searchPrefSettings(query).filter((hit) => !hiddenKeys?.includes(hit.key)),
+    [query, hiddenKeys],
+  );
 
   // 查詢一變就把第一筆設為選取，否則 Enter 不會有反應：Mantine 的 Enter 分支
   // 要求 selectedOptionIndex !== -1，而沒按過方向鍵時它是 -1。必須等新選項

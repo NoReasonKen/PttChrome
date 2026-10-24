@@ -451,6 +451,9 @@
   "optionsDesc_backup": {
     "message": "匯出／匯入設定、雲端同步"
   },
+  "optionsDesc_backupLocal": {
+    "message": "匯出／匯入設定"
+  },
   "optionsDesc_about": {
     "message": "版本、除錯模式與更新內容"
   },

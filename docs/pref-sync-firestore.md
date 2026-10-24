@@ -1,5 +1,32 @@
 # 偏好設定雲端同步（Firebase Firestore）
 
+## Private access in this fork
+
+Cloud preference sync is initially restricted to the maintainer. An administrator
+must grant the account the boolean Firebase Auth custom claim `cloudSync: true`.
+`firestore.rules` requires both that claim and ownership of `users/{uid}`.
+Neither a signed-in Google account nor a field in its preferences grants access.
+The owner's email and UID belong in private administration, not public source.
+Other users retain local settings, import/export, and normal PTT functionality.
+
+The entire cloud-sync section and its settings-search results are hidden unless
+`prefSync.canSync()` confirms access or the current page session has received
+the dedicated `#cloud-sync-setup` link. That link enables the initial sign-in
+interface only; it grants no backend permission. Keep setup state out of synced
+preferences. Once access is granted, sign in again to receive a current token.
+
+`prefSync.onAuthState` also notifies subscribers when the advisory access state
+changes. The client checks the claim before attaching a Firestore listener and
+before uploads; Firestore independently enforces the permission for modified
+clients. Initial listener failures reject sign-in instead of leaving it pending.
+Access denial clears the restore flag, signs out, and preserves local settings.
+
+Keep this project's billing on the no-cost Spark plan without a linked Cloud
+Billing account. Access control prevents unauthorized data sync; it does not
+promise that public Auth or App Check endpoints receive zero external requests.
+Provisioning and device acceptance remain tracked in
+[issue #6](https://github.com/NoReasonKen/PttChrome/issues/6).
+
 ## 架構
 
 | 層 | 檔案 | 職責 |
@@ -42,7 +69,14 @@
 `yarn test:integration` = `node scripts/run-integration.mjs`：在 **Docker** 跑 emulator（auth+firestore），vitest 在 host 連容器埠。真 modular SDK 連本機 emulator、`firestore.rules` 實際 enforce，**無 mock/假 firebase**；latency compensation（`hasPendingWrites`）、離線快取（`fromCache`）、permission-denied 都由真 SDK 產生。
 
 - **為何 Docker**：`firebase-tools` 反覆把 transitive Dependabot alert（node-fetch/uuid/tough-cookie）拖進 committed lockfile。改用 pinned image `andreysenov/firebase-tools:15.22.3-node-22`（內含 firebase-tools + OpenJDK），firebase-tools 完全移出 `package.json`/`yarn.lock` → 整棵子樹的 alert 連同未來漏洞一次消失。prod 設定同步用的是 `firebase`（client SDK，`dependencies`），與 firebase-tools 無關，不受影響。
-- 前置：**Docker**（本機跑 integration 必需；無 Docker 則只能靠 CI 驗）。emulator 設定檔（`firebase.json`/`firestore.rules`/`firestore.indexes.json`）以 read-only 掛進容器 `/home/node`；vitest 透過 `FIRESTORE_EMULATOR_HOST`/`FIREBASE_AUTH_EMULATOR_HOST` env 連線（`tests/integration/setup.js`）。orchestration 細節：`scripts/run-integration.mjs`（拉起容器 → `waitHttp`（HTTP 健康檢查，非 TCP） 輪詢就緒 → 跑 vitest → `finally` 拆容器）。
+  A one-off local verification may instead run the same pinned Firebase CLI
+  with a user-local Java 21+ runtime through `emulators:exec --only auth,firestore
+  --project demo-pttchrome`. Keep the CLI outside project dependencies, perform
+  the Auth/Firestore warm-up from `scripts/run-integration.mjs` before Vitest,
+  and pass the same loopback emulator variables to the integration project.
+  This still exercises the real SDK, emulator, and repository rules; it must
+  never target a production project.
+- The normal integration runner requires **Docker**; the official CLI/JRE alternative above is available without Docker. The runner mounts `firebase.json`, `firestore.rules`, and `firestore.indexes.json` read-only, warms up both emulators, runs Vitest against loopback ports, and removes its container in `finally`. See `scripts/run-integration.mjs` and `tests/integration/setup.js`.
 - port：firestore **8089**（預設 8080 與 dev server 衝突）、auth 9099（`firebase.json` emulators 段，已設 `host: 0.0.0.0` 供容器埠映射）。
 - `demo-` 前綴 project id：保證純離線、不需 `firebase login`、不可能打到正式專案。
 - 登入：auth emulator 接受**假 unsigned Google ID token**（官方功能）——`signInWithCredential(auth, GoogleAuthProvider.credential('{"sub":...,"email":...}'))`。`signInWithPopup` 需要真瀏覽器 UI，headless 不可行 → `prefSync.signIn(onCloudValues, authenticate)` 第二參數是測試注入縫；production 呼叫端不傳（走 `google_sign_in.js#authenticateGoogle`：瀏覽器 popup／Android APK 原生 ID token＋`signInWithCredential`，見 `docs/android-app.md`「雲端同步 Google 登入」），流程其餘部分（旗標、attach、merge、callback）全是真路徑。APK 分支在 integration 以假 bridge 回假 token 走真 SDK。
@@ -71,9 +105,9 @@ firebase deploy --only firestore:rules
 
 踩坑：
 - `firestore:databases:create` 首次會 403（Cloud Firestore API 未啟用）；啟用後要等 1–3 分鐘傳播再重試。無 gcloud 時可用 firebase CLI 的 OAuth token 呼叫 serviceusage REST 啟用。
-- **Google Auth provider 無法用 CLI / REST 開**（標準 Firebase Auth 的初始化沒有公開 API；`identityPlatform:initializeAuth` 需付費 Identity Platform；REST 建 IdP config 需自備 OAuth client）→ 必須手動：Console → Authentication → Get started → Sign-in method → Google → Enable。`localhost` 預設已在 authorized domains。
+- Current Firebase CLI supports Google provider provisioning through `firebase deploy --only auth`. Use a private config with `auth.providers.googleSignIn` containing `oAuthBrandDisplayName`, `supportEmail`, and `authorizedRedirectUris`; keep the support email outside the public repository. This standard Firebase Auth path does not require upgrading to paid Identity Platform. See the [official provider configuration guide](https://firebase.google.com/docs/auth/configure-providers-cli).
 - **部署網域（如 GitHub Pages 的 `<user>.github.io`）必須加進 Auth authorized domains**，否則線上登入報 `auth/unauthorized-domain`（只看網域不看 path）。Console 手動加，或 REST：`PATCH https://identitytoolkit.googleapis.com/admin/v2/projects/<project-id>/config?updateMask=authorizedDomains`（body 帶完整清單，會整組覆蓋）。
-- rules / indexes 檔在 repo 根目錄（`firestore.rules`、`firestore.indexes.json`、`firebase.json`、`.firebaserc`），rules 只允許 `request.auth.uid == uid` 讀寫 `users/{uid}`。
+- Rules and indexes live at the repository root. This fork additionally requires the administrator-issued boolean `cloudSync: true` claim for `users/{uid}` access; matching `request.auth.uid == uid` alone is insufficient.
 
 ## App Check（reCAPTCHA Enterprise，2026-06）
 

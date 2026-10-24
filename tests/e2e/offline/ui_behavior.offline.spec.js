@@ -144,13 +144,13 @@ test.describe('UI 行為（offline，跨 bootstrap 版本守門）', () => {
     await expect(autoLoginUser).toBeHidden();
     await expect(blacklist).toBeHidden();
 
-    // → backup（匯出／匯入檔案 + 雲端同步；雲端同步是從一般分頁搬過來的）
+    // Backup remains available while private cloud sync stays hidden.
     await nav.getByText(await label(page, 'options_backup'), { exact: true }).click();
     await expect(exportBtn).toBeVisible();
     await expect(
       page.locator('.PrefModal input[name="backupImportFile"]')
     ).toHaveCount(1); // display:none，由按鈕轉發點擊
-    await expect(syncSignIn).toBeVisible();
+    await expect(syncSignIn).toBeHidden();
     await expect(copyOnSelect).toBeHidden();
     await expect(autoLoginUser).toBeHidden();
 
@@ -334,6 +334,26 @@ test.describe('UI 行為（offline，跨 bootstrap 版本守門）', () => {
       page.locator('.InputHelperModal__Dialog').getByText(sendText, { exact: true })
     ).toBeVisible();
   });
+
+  for (const setupAtBoot of [true, false]) {
+    test(`private cloud sync setup works through a ${setupAtBoot ? 'cold-start' : 'running-page'} link`, async ({ page }) => {
+      await installReplay(page);
+      await page.goto(setupAtBoot ? '/#cloud-sync-setup' : '/');
+      const nav = await openSettings(page);
+      await nav.getByText(await label(page, 'options_backup'), { exact: true }).click();
+      const signIn = page.locator('.PrefModal').getByRole('button', {
+        name: await label(page, 'options_syncSignIn'),
+      });
+      if (!setupAtBoot) {
+        await expect(signIn).toBeHidden();
+        await page.goto('/#cloud-sync-setup');
+      }
+      await expect(signIn).toBeVisible();
+      await expect(page.locator('.PrefModal').getByRole('button', {
+        name: await label(page, 'options_backupExportBtn'),
+      })).toBeVisible();
+    });
+  }
 
   // ===== 基本 UI 不變式：換任何 UI 庫／CSS 都該維持，故以行為斷言守門 =====
 

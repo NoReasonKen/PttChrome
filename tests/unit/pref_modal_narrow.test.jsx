@@ -14,6 +14,7 @@ import { PrefModal, PREF_CATEGORIES } from "../../src/components/ContextMenu/Pre
 import { setupI18n, i18n } from "../../src/js/i18n";
 
 vi.mock("../../src/js/pref_sync", () => ({
+  canSync: vi.fn(() => false),
   savePrefs: vi.fn(),
   signIn: vi.fn(() => Promise.resolve()),
   signOut: vi.fn(() => Promise.resolve()),
@@ -77,7 +78,7 @@ describe("設定頁：窄螢幕（手機直向）", () => {
       const el = category(cat.value);
       expect(el, cat.value).not.toBeNull();
       expect(el.textContent).toContain(i18n(cat.labelKey));
-      const desc = i18n(cat.descKey);
+      const desc = i18n(cat.value === "backup" ? "optionsDesc_backupLocal" : cat.descKey);
       expect(typeof desc === "string" && desc.length > 0 && desc !== cat.descKey, cat.descKey).toBe(true);
       expect(el.textContent).toContain(desc);
     }

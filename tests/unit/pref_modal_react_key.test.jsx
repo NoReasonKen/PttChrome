@@ -19,6 +19,7 @@ import { zh_TW as zh } from "../../src/js/zh_TW_messages";
 import { en_US as en } from "../../src/js/en_US_messages";
 
 vi.mock("../../src/js/pref_sync", () => ({
+  canSync: vi.fn(() => false),
   savePrefs: vi.fn(),
   signIn: vi.fn(() => Promise.resolve()),
   signOut: vi.fn(() => Promise.resolve()),
