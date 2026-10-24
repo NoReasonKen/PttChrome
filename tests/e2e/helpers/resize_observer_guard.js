@@ -97,9 +97,14 @@ function pageGuard({ originSrc, tag }) {
     const pending = [];
     for (const info of registry.values()) {
       for (const [el, last] of info.targets) {
+        // Native observation pauses inside skipped content-visibility:auto
+        // chunks, retaining its last delivered box. offsetWidth can still expose
+        // cached geometry there; it does not prove a notification is pending.
+        if (el.isConnected && typeof el.checkVisibility === 'function' && el.checkVisibility() &&
+            !el.checkVisibility({ contentVisibilityAuto: true })) continue;
         // offsetWidth/Height ＝ 不受 transform 影響的 border box（RO 的 borderBoxSize 同義）；
         // SVG 等沒有 offset* 的目標跳過。四捨五入誤差容忍 1px。
-        if (typeof el.offsetWidth !== 'number') continue;
+        if (typeof el.offsetWidth !== 'number' || typeof el.offsetHeight !== 'number') continue;
         const w = el.isConnected ? el.offsetWidth : 0;
         const h = el.isConnected ? el.offsetHeight : 0;
         const changed = last

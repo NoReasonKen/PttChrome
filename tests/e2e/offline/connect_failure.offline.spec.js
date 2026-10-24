@@ -133,7 +133,7 @@ test.describe('連線失敗診斷', () => {
     await expect(alert.getByText(await label(page, 'alert_connectionOriginBad'))).toBeVisible();
     await expect(
       alert.getByRole('link', { name: await label(page, 'alert_connectionOriginHelp') })
-    ).toHaveAttribute('href', /github\.com\/abccbaandy\/PttChrome#/);
+    ).toHaveAttribute('href', /github\.com\/NoReasonKen\/PttChrome#/);
     expect(await page.evaluate(() => window.__app.isConnected())).toBe(false);
 
     await alert.getByRole('button', { name: await label(page, 'alert_connectionProxyYes') }).click();
