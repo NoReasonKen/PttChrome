@@ -3,7 +3,7 @@
 //
 // 前身是每秒無條件切換 `body.blink--active`：整棵樹做一次樣式失效，再加上 #cursor 的
 // display 在 none/block 之間切換所觸發的 layout。實測前景閒置時九成以上的 CPU 花在這裡，
-// 而且成本會隨畫面節點數增加（docs/handoff/android-battery-drain.md）。現在的規則：
+// 而且成本會隨畫面節點數增加（docs/deferred/android-battery-drain.md）。現在的規則：
 //   - 游標只切換自己的 class（CSS 只動 visibility，不觸發 layout）
 //   - body class 只在 DOM 裡真的有 SGR 5 閃爍字（.qq*）時才掛上
 //   - 頁面隱藏時不閃

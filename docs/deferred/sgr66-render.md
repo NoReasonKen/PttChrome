@@ -33,5 +33,5 @@ pref `connectionEncoding: 'utf8'`（實驗性，`src/js/wire_charset.js`）已�
 
 ## 相關但不同的一張：送出方向
 
-`docs/handoff/ansi-half-color-send-raw-mode.md` —— 貼 ASCII art 的一字雙色轉換，
+`docs/deferred/ansi-half-color-send-raw-mode.md` —— 貼 ASCII art 的一字雙色轉換，
 那個會因為 PTT 編輯器關閉 Raw mode 而失效，與本張無關。

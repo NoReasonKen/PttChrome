@@ -154,13 +154,13 @@ expect 餘掉）。本專案的實作見 `term_buf.js#beginSyncUpdate` 與 `docs
 ⇒ **client 端忽略即完全正確**，降級結果正是公告寫的「直接用後半部的顏色呈現」。
 本專案 `TermChar.assignParams` 的 `case 66:` 是有意的 no-op（不是「剛好落在 30-37/40-47
 範圍外」），守護 `tests/unit/ansi_parser_sgr66.test.js`。真要做分色渲染的觸發條件與代價見
-`docs/handoff/sgr66-render.md`。
+`docs/deferred/sgr66-render.md`。
 
 **送出方向另有一個未爆彈**：公告第 3 階段「今年底前 PTT 編輯器關閉 Raw mode，強制新文章
 只能使用 SGR 66」。本專案貼 ASCII art 時走 `string_util.js#ansiHalfColorConv`，用的是
 `\x00` raw-mode 注入（配 `;50m` 這個 PttChrome 自有慣例），那條路屆時會失效。
 **現在不動**（PTT 編輯器的改動還沒進公開 source，照公告文字猜會違反本檔開頭的研究方法規範），
-觸發條件與作法見 `docs/handoff/ansi-half-color-send-raw-mode.md`。
+觸發條件與作法見 `docs/deferred/ansi-half-color-send-raw-mode.md`。
 
 ### ECMA-48 相容性要求（2026-09-20 公告）
 

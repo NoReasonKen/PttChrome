@@ -44,7 +44,7 @@ export const SEED_HANDLED = {
   "M.1789918206.A.BF3": "5596f76",
   "M.1789902495.A.1C6": "d9e09c8、2aaf041",
   "M.1789836427.A.6B9": "d9e09c8",
-  "M.1789835221.A.6AC": "d9e09c8（刻意 no-op；分色渲染見 docs/handoff/sgr66-render.md）",
+  "M.1789835221.A.6AC": "d9e09c8（刻意 no-op；分色渲染見 docs/deferred/sgr66-render.md）",
   "M.1789835206.A.7DE": "6e59941、d9e09c8",
   "M.1789835193.A.E46": "6e59941",
   "M.1789835163.A.633": "d9e09c8",

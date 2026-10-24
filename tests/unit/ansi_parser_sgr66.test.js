@@ -21,7 +21,7 @@
 // 本專案 term_view.js 寫死 `charset = 'big5'` ⇒ 走的是 FTCONF_DBCS_OUTPUT_SGR66
 // 這條，**永遠收不到 SGR 66**。所以 term_buf.js 的 `case 66:` 是有意的 no-op，
 // 不是「剛好落在 default 的 30-37/40-47 範圍外」的巧合 —— 這支測試鎖住那個意圖。
-// 真要實作分色渲染的觸發條件與代價見 docs/handoff/sgr66-render.md。
+// 真要實作分色渲染的觸發條件與代價見 docs/deferred/sgr66-render.md。
 import { TermBuf } from "../../src/js/term_buf";
 import { AnsiParser } from "../../src/js/ansi_parser";
 import { u2b } from "../../src/js/string_util";

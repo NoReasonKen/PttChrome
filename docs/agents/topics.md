@@ -54,5 +54,3 @@ Read the corresponding document before changing the listed area or answering the
 | public/sw.js and open_cache.js | [docs/open-cache.md](../open-cache.md) |
 
 For user-provided debug captures, first use `yarn debug:screens` (`scripts/debug-screens.mjs`). Without a timestamp it prints a readable send/log timeline; --from/--to narrow it. A millisecond timestamp prints the screen using the app's TermBuf/AnsiParser through Vite ssrLoadModule and cassette.rows. Keep this parser authoritative: miniature hand-written terminal parsers can misread CUP and create false remnants. Mid-session captures are incomplete before the first full redraw. Covered by `tests/unit/debug_screens.test.js`.
-
-Unfinished handoffs live under `docs/handoff/`, one Markdown file per unfinished feature/fix. Delete that handoff after finishing it; read [docs/handoff/README.md](../handoff/README.md).

@@ -193,7 +193,7 @@ TermChar.prototype = {
         //
         // 所以這裡是**有意的 no-op**，不是「剛好落在下面 default 的範圍外」。
         // 忽略它的結果正是公告描述的降級行為：整個字用後半格的顏色。
-        // 真要實作渲染的觸發條件與代價見 docs/handoff/sgr66-render.md。
+        // 真要實作渲染的觸發條件與代價見 docs/deferred/sgr66-render.md。
         // 守護：tests/unit/ansi_parser_sgr66.test.js
         break;
       default:

@@ -55,13 +55,17 @@ Before module, rendering, lifecycle, browser/OS input, or PTT protocol changes, 
 
 For Android installation, on-device testing, APK/web updates, publication, or native bridge changes, start with [Android app guidance](docs/android-app.md); use the topic index for additional affected surfaces.
 
-For user debug captures and unfinished work, use the dedicated entries in the [topic index](docs/agents/topics.md).
+For user debug captures, use the dedicated entry in the [topic index](docs/agents/topics.md).
 
 ## Work completion
 
 **Local primary checkout:** work directly on the current branch, normally dev. Create no feature branch. After each coherent work milestone is completed and its relevant checks pass, commit the task's changes automatically with a focused English commit message. Keep unrelated changes out of the commit.
 
 For linked worktrees and cloud sessions, follow their separate branch, commit, push, and integration rules in the Git workflow.
+
+## Temporary files
+
+Put temporary documents, such as handoffs, scratch notes, and one-off outputs, under `./tmp/` at the repository root. Git ignores `tmp/`; never commit its contents.
 
 ## Local test runs
 

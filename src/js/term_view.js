@@ -664,7 +664,7 @@ TermView.prototype = {
   },
 
   // 每秒閃爍相位（TermBuf.notify 尾端呼叫）。省電不變量（守護 tests/unit/blink_phase.test.js，
-  // 數據見 docs/handoff/android-battery-drain.md）：
+  // 數據見 docs/deferred/android-battery-drain.md）：
   //   - 游標只切換自己的 class：CSS 只動 visibility ⇒ 只需要 paint，不觸發 layout。
   //   - body.blink--active（SGR 5 閃爍字 .qq* 的 CSS 開關）只在 DOM 真的有閃爍字時才掛。
   //     切換 body class 會讓整棵樹做一次樣式失效，成本跟著節點數變大。
