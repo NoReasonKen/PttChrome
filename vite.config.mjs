@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -48,9 +48,14 @@ const devServerPidfile = () => ({
   },
 });
 
-export default defineConfig(({ command }) => {
+export default defineConfig(({ command, mode }) => {
   // dev server（vite serve）＝ developer mode；vite build ＝ production。
   const DEVELOPER_MODE = command === 'serve';
+  const env = { ...loadEnv(mode || (DEVELOPER_MODE ? 'development' : 'production'), process.cwd(), ''), ...process.env };
+  const firebaseApiKey = env.FIREBASE_API_KEY || '';
+  if (!DEVELOPER_MODE && !firebaseApiKey) {
+    throw new Error('FIREBASE_API_KEY is required for a production build. Configure the restricted Firebase browser key in the build environment.');
+  }
   return {
     // 部署在 GitHub Pages 子路徑，所有資源引用走相對路徑。
     base: './',
@@ -68,11 +73,14 @@ export default defineConfig(({ command }) => {
       // Set ALLOW_SITE_IN_QUERY=yes to re-enable the query override.
       'process.env.ALLOW_SITE_IN_QUERY': JSON.stringify(process.env.ALLOW_SITE_IN_QUERY === 'yes'),
       'process.env.DEVELOPER_MODE': JSON.stringify(DEVELOPER_MODE),
+      // This browser identifier is intentionally present in the built client.
+      // Never use this mechanism for service-account keys or other credentials.
+      'process.env.FIREBASE_API_KEY': JSON.stringify(firebaseApiKey),
       // App Check debug token for local dev (pref_sync.js). Comes from the
       // developer's machine env, never from the repo — a registered debug
       // token bypasses reCAPTCHA, so committing it would defeat App Check.
       // Unset → undefined → pref_sync falls back to per-profile auto tokens.
-      'process.env.APPCHECK_DEBUG_TOKEN': JSON.stringify(process.env.APPCHECK_DEBUG_TOKEN) || 'undefined',
+      'process.env.APPCHECK_DEBUG_TOKEN': JSON.stringify(DEVELOPER_MODE ? env.APPCHECK_DEBUG_TOKEN : undefined) || 'undefined',
       'process.env.GIT_COMMIT': JSON.stringify(GIT_COMMIT),
       'process.env.BUILD_TIME': JSON.stringify(BUILD_TIME),
       // Emulator hookup in pref_sync.js is test-only (set by the integration

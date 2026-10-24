@@ -17,6 +17,8 @@ global.window = {
 // cover running `vitest run --project integration` directly against an
 // already-running `firebase emulators:start`. Ports match firebase.json.
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || "demo-pttchrome";
+// Emulator-only identifier: integration tests never need a production API key.
+process.env.FIREBASE_API_KEY = "demo-api-key";
 process.env.FIREBASE_AUTH_EMULATOR_HOST =
   process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099";
 process.env.FIRESTORE_EMULATOR_HOST =

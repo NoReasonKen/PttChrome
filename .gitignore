@@ -1,4 +1,7 @@
 node_modules
+.env
+.env.*
+!.env.example
 **/*.concat.*
 
 # Yarn v4（node-modules linker；cache 走全域）

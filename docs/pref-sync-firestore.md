@@ -35,7 +35,24 @@ explicitly when administering it. The earlier Cloud-only project is unused.
 The project has no linked billing account. Google sign-in allows
 `noreasonken.github.io` and the project's Firebase authentication domains.
 The web app is `1:1012243465943:web:e2a9996308186f24fed292`; public SDK, OAuth,
-and reCAPTCHA identifiers live in `src/js/firebase_config.js`.
+and reCAPTCHA identifiers live in `src/js/firebase_config.js`. The restricted
+browser API key is supplied through `FIREBASE_API_KEY`, using ignored
+`.env.local` for local work and the repository's Actions secret for deployment.
+Production builds fail when this input is missing. Emulator tests use a fake
+identifier and never need a production key.
+The production browser key excludes localhost. Prefer the Auth/Firestore
+emulators for local sync tests; real cloud development needs separate staging
+configuration rather than widening the production key's allowed origins.
+
+Build injection keeps replacement keys out of Git history; it does not conceal
+the key from readers of the shipped JavaScript. Firebase browser keys identify
+the project rather than authorize access. Restrict the browser key to the
+Firebase APIs used by this app and the reading/Auth helper origins. Never add
+unrelated billable APIs such as the Gemini Developer API. See the
+[official API key guidance](https://firebase.google.com/docs/projects/api-keys).
+Service-account private keys, OAuth client secrets, refresh/access tokens,
+App Check debug tokens, and APK signing material must never reach source or
+production JavaScript. Production builds discard the App Check debug input.
 
 App Check uses a SCORE key restricted to `noreasonken.github.io`, a one-day
 token TTL, and a minimum valid score of `0.5`. Verify token exchange from the

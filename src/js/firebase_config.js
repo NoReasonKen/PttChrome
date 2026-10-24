@@ -1,8 +1,9 @@
 // Firebase web app config for preference cloud sync (see pref_sync.js).
-// Not a secret: web configs are public by design; access control is enforced
-// by Firestore security rules (firestore.rules) and Auth authorized domains.
+// Firebase browser configuration is client-visible, not an authorization secret.
+// Inject the restricted browser key at build time to keep rotations out of Git.
+// Firestore rules, custom claims, and App Check enforce access independently.
 export const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyByIMT4gaDbMzvJGhCPTebQhccXnPryHcU",
+  apiKey: process.env.FIREBASE_API_KEY || "",
   authDomain: "pttchrome-7fae4.firebaseapp.com",
   projectId: "pttchrome-7fae4",
   storageBucket: "pttchrome-7fae4.firebasestorage.app",
