@@ -50,3 +50,6 @@ docs/local/
 
 # Vitest Browser Mode（unit-browser）的附件／截圖目錄
 .vitest/
+
+# Local scratch files, including agent handoff documents; never committed
+/tmp/
