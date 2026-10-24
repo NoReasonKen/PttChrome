@@ -62,3 +62,7 @@ docs/local/
 /docs/agents/
 /docs/core-api-research.md
 /docs/image-preview-research.md
+
+# Local cloud administration helpers. They use the owner's Firebase CLI login
+# and embed firebase-tools OAuth client values; never commit them.
+/scripts/*.local.mjs
