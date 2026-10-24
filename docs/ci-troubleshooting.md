@@ -24,11 +24,23 @@
   **一條測試都沒跑**，但看起來像 e2e 整批爆炸。判準：失敗 step 的 log 只有 apt 的 `Hash Sum mismatch`，
   沒有任何 spec 名稱；`test-unit`／`test-integration` 全綠。**重跑無效**（不是隨機掉包，是上游 index 不一致，
   可直接抓 `dists/stable/Release` 與 `Packages.gz` 自行比對 sha256 確認）。
-  **現況：e2e job 已不跑 apt**——一律跑在 Playwright 官方 Docker image（`mcr.microsoft.com/playwright:v<版本>-noble`，
-  瀏覽器與系統依賴內建；apt 另一個問題是鏡像站慢，實測同輪兩 job 37 秒 vs 414 秒）。image 版本由
-  `playwright-version` job 從 yarn.lock 讀出（`scripts/playwright-version.mjs`），**不准寫死**（Dependabot 只改 yarn.lock）。
-  新增 e2e job 照抄 `container:` 區塊（含 `--user 1001 --ipc=host`），不要加 `playwright install`。
-  守護 `tests/unit/ci_playwright_container.test.js`。若 image 拉不到（`manifest unknown`）＝該版 image 尚未發布，等官方發布即可。
+  Current E2E jobs use the official Playwright image's browsers and system
+  libraries; do not add `playwright install`. The image version comes from
+  `playwright-version` and `yarn.lock` (`scripts/playwright-version.mjs`), never
+  a separately pinned tag. An unavailable image (`manifest unknown`) means the
+  official image has not been published yet.
+- **Missing process inspection tool in an E2E container**: `spawnSync lsof ENOENT`
+  means `kill:dev` cannot inspect existing listeners, so tests stop before boot.
+  The official image omits `lsof`. Both offline/adverse jobs in `test.yml` and
+  their repeat jobs in `flaky-hunt.yml` use the image's default root user with
+  `--ipc=host`. After checkout, they call `.github/actions/setup-e2e`, which
+  installs `lsof` with apt and configures Node.js, Corepack, and Yarn caching.
+  Keep that shared environment setup in the composite action rather than
+  duplicating it in job definitions. It does not reinstall browsers or bypass
+  process verification. Unit containers retain `--user 1001 --ipc=host` and
+  their existing setup. The workflow contract is
+  checked by `tests/unit/ci_playwright_container.test.js`; actual installation
+  and container execution must also pass CI.
 - **部署鎖只鎖 `deploy` job**（`deploy.yml`，`concurrency: pages`）：放 workflow 層級會讓連續 push 的測試整輪排隊
   （畫面「waiting for Deploy to GitHub Pages #N to complete」）。代價是舊 commit 可能晚於新 commit 拿到鎖 ⇒
   deploy job 拿鎖後先比對 branch head，不是最新就略過部署（step 顯示 skipped 屬正常）。新 commit 若測試紅，

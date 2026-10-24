@@ -4,12 +4,12 @@
 //   1. 速度看 Ubuntu 鏡像站臉色：同一輪兩個 job，一個 37 秒、另一個卡 414 秒；
 //   2. 會被 runner 內建的第三方 apt 來源連坐（Google Chrome 來源發布中間態 ⇒
 //      apt-get update 整包回 100，一條測試都沒跑卻像 e2e 整批爆炸）。
-// image 內建瀏覽器與系統依賴，兩個問題一起消失。
+// Reuse the image's browsers; install only lsof for checked server cleanup.
 //
 // 守的東西：
 //   - image tag 必須取自 playwright-version job（＝yarn.lock 的版本），不准寫死 ——
 //     版本不一致 ⇒ `Executable doesn't exist` 整批秒掛，而 Dependabot 只改 yarn.lock；
-//   - 不准再跑 `playwright install`（跑了＝又回到 apt）；
+//   - Do not reinstall Playwright browsers; lsof is a separate CI dependency.
 //   - `--ipc=host`：Docker 預設 /dev/shm 64MB，多 worker 的 Chromium 會被撐爆；
 //   - e2e 是 matrix job（offline 拆 shard、adverse 每桶一個且可再拆 shard），required checks 綁的
 //     `test-e2e-offline`／`test-e2e-offline-adverse` 改由收斂 job 扛 —— 收斂 job 必須
@@ -21,12 +21,14 @@ import { ADVERSE_PROJECTS } from "../../scripts/run-adverse-e2e.mjs";
 
 const ROOT = path.join(__dirname, "..", "..");
 const YAML = fs.readFileSync(path.join(ROOT, ".github", "workflows", "test.yml"), "utf8");
+const NIGHTLY_YAML = fs.readFileSync(path.join(ROOT, ".github", "workflows", "flaky-hunt.yml"), "utf8");
+const E2E_SETUP = fs.readFileSync(path.join(ROOT, ".github", "actions", "setup-e2e", "action.yml"), "utf8");
 
 // 以 job 為單位切開（頂層 job 是 2 空格縮排的 `<name>:`）。
-const jobs = () => {
+const jobs = (yaml = YAML) => {
   const out = [];
   let cur = null;
-  for (const line of YAML.split(/\r?\n/)) {
+  for (const line of yaml.split(/\r?\n/)) {
     const m = /^ {2}([A-Za-z][\w-]*):\s*$/.exec(line);
     if (m) {
       if (cur) out.push(cur);
@@ -45,6 +47,55 @@ const E2E_CMD = /^\s*yarn test:e2e/m;
 const e2eJobs = () => jobs().filter((j) => E2E_CMD.test(j.body));
 
 const E2E_JOBS = ["test-e2e-offline-shard", "test-e2e-offline-adverse-bucket"];
+
+describe("container process-inspection dependencies", () => {
+  test.each([
+    { workflow: "test.yml", yaml: YAML, name: "test-e2e-offline-shard" },
+    { workflow: "test.yml", yaml: YAML, name: "test-e2e-offline-adverse-bucket" },
+    { workflow: "flaky-hunt.yml", yaml: NIGHTLY_YAML, name: "e2e-offline-repeat" },
+    { workflow: "flaky-hunt.yml", yaml: NIGHTLY_YAML, name: "e2e-adverse-repeat" },
+  ])("$workflow / $name prepares its environment after checkout and before E2E cleanup", ({ yaml, name }) => {
+    const job = jobs(yaml).find((candidate) => candidate.name === name);
+    expect(job, name).toBeDefined();
+    expect(job.body).toMatch(/^\s*options: --ipc=host\s*$/m);
+    const checkout = job.body.search(/^\s*- uses: actions\/checkout@/m);
+    const setup = job.body.search(/^\s*- uses: \.\/\.github\/actions\/setup-e2e\s*$/m);
+    const tests = job.body.search(/^\s*yarn test:e2e/m);
+    expect(checkout, name).toBeGreaterThanOrEqual(0);
+    expect(setup, name).toBeGreaterThan(checkout);
+    expect(tests, name).toBeGreaterThan(setup);
+    expect(job.body).not.toMatch(/^\s*(apt-get|- uses: actions\/setup-node@)/m);
+  });
+
+  test("shared E2E setup installs lsof and enables Corepack before Yarn cache discovery", () => {
+    expect(E2E_SETUP).toMatch(/^\s*using: composite\s*$/m);
+    const steps = E2E_SETUP.split(/^ {4}- /m).slice(1);
+    for (const step of steps) {
+      if (/^\s*run:/m.test(step)) expect(step).toMatch(/^\s*shell: bash\s*$/m);
+    }
+    const install = steps.findIndex((step) => /apt-get install -y --no-install-recommends lsof/.test(step));
+    expect(install).toBeGreaterThanOrEqual(0);
+    expect(steps[install]).toMatch(/apt-get update[\s\S]*apt-get install/);
+    const nodeSteps = steps.map((step, index) => ({ step, index }))
+      .filter(({ step }) => /^uses: actions\/setup-node@/.test(step));
+    expect(nodeSteps).toHaveLength(2);
+    for (const { step } of nodeSteps) expect(step).toMatch(/^\s*node-version: 24\s*$/m);
+    const corepack = steps.findIndex((step) => /^\s*run: corepack enable\s*$/m.test(step));
+    expect(nodeSteps[0].index).toBeGreaterThan(install);
+    expect(corepack).toBeGreaterThan(nodeSteps[0].index);
+    expect(nodeSteps[1].index).toBeGreaterThan(corepack);
+    expect(nodeSteps[1].step).toMatch(/^\s*cache: yarn\s*$/m);
+  });
+
+  test.each([
+    { yaml: YAML, name: "test-unit" },
+    { yaml: NIGHTLY_YAML, name: "unit-repeat" },
+  ])("unit container $name retains its unprivileged user", ({ yaml, name }) => {
+    const job = jobs(yaml).find((candidate) => candidate.name === name);
+    expect(job.body).toMatch(/^\s*options: --user 1001 --ipc=host\s*$/m);
+    expect(job.body).not.toContain("apt-get install");
+  });
+});
 
 // 失敗現場要留得下來：offline 偶發紅常常本機重現不出來，CI 沒上傳 test-results 時
 // 只剩一行 Received 可猜（issue #53 後續那次 long_push_image_upload 的偶發紅）。

@@ -94,12 +94,10 @@ jobs:
       - id: v
         run: node scripts/playwright-version.mjs >> "$GITHUB_OUTPUT"
 
-  # e2e job 一律跑在 Playwright 官方 image 裡：瀏覽器與系統依賴都已內建，不跑
-  # `playwright install --with-deps`。理由：那一步底下是 apt，速度看 Ubuntu 鏡像站臉色
-  #（實測同一輪兩個 job，一個 37 秒、另一個卡 414 秒），還會被 runner 內建的第三方 apt
-  # 來源連坐（Google Chrome 來源發布中間態 ⇒ apt-get update 整包回 100）。
-  # `--user 1001`＝runner 使用者，checkout／cache 的檔案權限才對得上；`--ipc=host` 是
-  # Playwright 官方建議：Docker 預設 /dev/shm 只有 64MB，多 worker 的 Chromium 會被它撐爆。
+  # Use the official image's browsers instead of reinstalling them in each job.
+  # E2E containers use its default root user to install lsof, which the image
+  # omits but kill:dev requires for checked process cleanup. Unit jobs keep UID 1001.
+  # --ipc=host avoids Chromium exhausting Docker's default 64 MB shared memory.
   #
   # 拆 4 個 shard 平行跑（fullyParallel ⇒ 以 test 為單位切，各約四分之一）。每個 job 固定付
   # ~50s（拉 image ~30s＋checkout／setup-node／yarn install），所以 shard 數跟著測試量調：
@@ -119,21 +117,10 @@ jobs:
     timeout-minutes: 30
     container:
       image: mcr.microsoft.com/playwright:v${{ needs.playwright-version.outputs.version }}-noble
-      options: --user 1001 --ipc=host
+      options: --ipc=host
     steps:
       - uses: actions/checkout@v7
-
-      # Yarn v4/corepack：先 enable 再讓 setup-node 做 cache:yarn（詳見 test-unit 註解）。
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-
-      - run: corepack enable
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: yarn
+      - uses: ./.github/actions/setup-e2e
 
       # 同 test-unit：e2e 耗時也隨 runner 抽到的 CPU 型號浮動（同一份 code 單片 200s／350s
       # 都見過），比較耗時前先對機型。start 印機型＋記憶體，並在背景每 10s 取樣 CPU（含 steal）／
@@ -217,21 +204,10 @@ jobs:
             shards: 1
     container:
       image: mcr.microsoft.com/playwright:v${{ needs.playwright-version.outputs.version }}-noble
-      options: --user 1001 --ipc=host
+      options: --ipc=host
     steps:
       - uses: actions/checkout@v7
-
-      # Yarn v4/corepack：先 enable 再讓 setup-node 做 cache:yarn（詳見 test-unit 註解）。
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-
-      - run: corepack enable
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: yarn
+      - uses: ./.github/actions/setup-e2e
 
       # 同 test-e2e-offline-shard 的資源取樣。
       - name: Runner resources

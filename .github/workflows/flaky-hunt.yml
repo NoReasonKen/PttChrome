@@ -174,17 +174,10 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     container:
       image: mcr.microsoft.com/playwright:v${{ needs.playwright-version.outputs.version }}-noble
-      options: --user 1001 --ipc=host
+      options: --ipc=host
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-      - run: corepack enable
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: yarn
+      - uses: ./.github/actions/setup-e2e
       # 帶 grep 時多數 shard 分不到 test：--pass-with-no-tests 讓空 shard 綠（grep 打錯會整批空綠，看 log 的 test 數）。
       - name: Offline E2E × ${{ env.REPEAT }} (shard ${{ matrix.shard }}/8)
         shell: bash
@@ -231,17 +224,10 @@ jobs:
             shards: 1
     container:
       image: mcr.microsoft.com/playwright:v${{ needs.playwright-version.outputs.version }}-noble
-      options: --user 1001 --ipc=host
+      options: --ipc=host
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-      - run: corepack enable
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: yarn
+      - uses: ./.github/actions/setup-e2e
       # 帶 grep 時同 e2e-offline-repeat：空 shard 用 --pass-with-no-tests 維持綠。
       - name: Adverse E2E × ${{ env.REPEAT }} (${{ matrix.bucket }}, shard ${{ matrix.shard }}/${{ matrix.shards }})
         shell: bash
