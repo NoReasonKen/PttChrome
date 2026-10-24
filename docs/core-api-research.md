@@ -188,7 +188,7 @@ For example, a completed long comment goes to the article bottom; cancellation r
 
 ## 14. Android page identity and connection destination
 
-**Reader's purpose:** know which reading page an installed APK is actually displaying before expecting a source change to appear on the phone. The checked-in production URL points to the inherited deployment; the APK loads a web page rather than bundling this checkout's screen code. [AppConfig](../android/app/src/main/java/io/github/abccbaandy/pttchrome/AppConfig.kt#L4).
+**Reader's purpose:** know which reading page an installed APK is actually displaying before expecting a source change to appear on the phone. The checked-in production URL points to this fork's GitHub Pages deployment; the APK loads a web page rather than bundling this checkout's screen code. [AppConfig](../android/app/src/main/java/io/github/abccbaandy/pttchrome/AppConfig.kt#L4).
 
 - Kotlin `PageSource(url, origin, isDev)` and `PageSource.resolve(devEnabled, devUrl, allowLan)` select production or a validated development origin. `parseDevServer` normalizes allowed HTTP development URLs or returns null. [Resolver](../android/app/src/main/java/io/github/abccbaandy/pttchrome/PageSource.kt#L14).
 - JavaScript `bootSite(prefs, siteOverride) -> string` selects the **PTT connection destination**, not that reading-page URL: explicit override, Android local proxy, preference proxy, then default. It does not write the native proxy into synchronized settings. [Implementation](../src/js/boot_site.js#L1).

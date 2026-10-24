@@ -39,7 +39,7 @@ PTT's read marker and PttChrome's record of reaching an article's end describe d
 
 ### The APK and its reading page have separate versions
 
-The checked-in Android app loads a web page, with a configurable development page source. Its default production page currently belongs to `abccbaandy/PttChrome`. Testing a change in this personal fork requires confirming which reading page the APK is loading; changing local source alone does not change that page.
+The checked-in Android app loads this fork's online reading page at `noreasonken.github.io/PttChrome/`, with a configurable development page source. Testing a change requires confirming which reading page revision the APK is loading; changing local source alone does not update the deployed page. Upstream APKs still load their own configured page.
 
 ## Source map
 

@@ -2,6 +2,7 @@
 build/
 local.properties
 *.jks
+*.p12
 *.keystore
 keystore.properties
 .idea/

@@ -16,7 +16,7 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
-        <!-- 密碼共用：讓 Credential Manager 認 abccbaandy.github.io 存的密碼（Digital Asset Links）。 -->
+        <!-- Website association requires matching Digital Asset Links published by this fork. -->
         <meta-data
             android:name="asset_statements"
             android:resource="@string/asset_statements" />
@@ -32,14 +32,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Deep link（docs/deep-link.md「Android APK」）。fragment 不參與比對，所以只能收頁面根路徑。
-                 本站：App Links 自動驗證（網域根的 assetlinks.json 有 handle_all_urls）。 -->
+            <!-- Fragments are not part of intent matching, so accept only the reading page paths.
+                 App Links verification requires a matching association at the website root. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" />
-                <data android:host="abccbaandy.github.io" />
+                <data android:host="noreasonken.github.io" />
                 <data android:path="/PttChrome" />
                 <data android:path="/PttChrome/" />
                 <data android:path="/PttChrome/index.html" />

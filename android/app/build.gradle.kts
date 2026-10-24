@@ -21,7 +21,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "io.github.abccbaandy.pttchrome"
+        applicationId = "io.github.noreasonken.pttchrome"
         minSdk = 26
         targetSdk = 37
         versionCode = (System.getenv("ANDROID_VERSION_CODE") ?: "1").toInt()
@@ -32,6 +32,7 @@ android {
         if (releaseStoreFile != null) {
             create("release") {
                 storeFile = rootProject.file(releaseStoreFile)
+                storeType = "PKCS12"
                 storePassword = signingValue("ANDROID_KEYSTORE_PASSWORD", "storePassword")
                 keyAlias = signingValue("ANDROID_KEY_ALIAS", "keyAlias")
                 keyPassword = signingValue("ANDROID_KEY_PASSWORD", "keyPassword")
@@ -40,8 +41,8 @@ android {
     }
 
     buildTypes {
-        // 本機 debug APK 跟正式版並存（不同 applicationId ⇒ 不會覆蓋安裝）。名稱與明文設定由
-        // src/debug/res 覆寫。Firebase（Google 登入）與 assetlinks 都另外註冊了 .debug 這個套件。
+        // Debug and release coexist; resources distinguish their names and cleartext policy.
+        // Google sign-in and Digital Asset Links require each package/signing identity to be registered separately.
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"

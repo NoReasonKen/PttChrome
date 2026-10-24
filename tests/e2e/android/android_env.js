@@ -104,7 +104,7 @@ function parseResumedPackage(text) {
 }
 
 // debug APK（`android/` 的 assembleDebug）：applicationId 多 `.debug`，Activity 類別名不變。
-const APK_PKG = 'io.github.abccbaandy.pttchrome.debug';
+const APK_PKG = 'io.github.noreasonken.pttchrome.debug';
 const APK_ACTIVITY = `${APK_PKG}/io.github.abccbaandy.pttchrome.MainActivity`;
 
 // 要裝的 APK：env ANDROID_E2E_APK（CI）或本機 gradle 的預設輸出位置。

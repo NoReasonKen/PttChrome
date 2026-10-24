@@ -5,11 +5,32 @@ APK/web updates or deployment, and changes to `android/**`,
 `src/js/android_bridge.js`, `src/js/credential_store.js`, or `src/js/boot_site.js`.
 
 For web changes in an existing APK, start with [development page sources](#debug-版並存與-dev-server-模式):
-the APK normally loads the author's website, so a local frontend commit or an
-unchanged APK rebuild does not deliver this fork's web changes to the phone.
+the APK loads an online reading page, so a local frontend commit or an
+unchanged APK rebuild does not deliver unpublished web changes to the phone.
 Before connecting a device, use `yarn doctor --android`; add `--web` to verify
 desktop access to an already running development server. See the
 [environment doctor](local-env-troubleshooting.md#environment-doctor) for scope.
+
+## Fork distribution
+
+This fork uses application ID `io.github.noreasonken.pttchrome` and the visible
+name **PttChrome Fork**, independently of the upstream app. Its reading page is
+`https://noreasonken.github.io/PttChrome/`; the native bridge and local proxy
+accept that page's origin. The retained Kotlin namespace is an implementation
+detail, not the installed app's identity.
+
+Release preparation and independent Firebase provisioning are tracked in
+[issue #6](https://github.com/NoReasonKen/PttChrome/issues/6). Upstream Firebase,
+Google OAuth, and Digital Asset Links registrations described below do not
+register this fork's new package, signing certificate, or website.
+
+Install the signed APK from [this fork's releases](https://github.com/NoReasonKen/PttChrome/releases)
+directly on the phone, allowing installation from the downloading browser when
+Android asks. Keep the upstream app installed if needed. Export settings from
+the old app and import them into the fork; saved credentials and login state
+do not transfer automatically. Updates to this app require the same signing
+key, the same application ID, and an increasing version code. Reading-page
+updates are delivered separately through GitHub Pages.
 
 ## 為什麼要有 APK
 - 手機 Chrome 開網頁版，切到別的 App 幾秒後 WebSocket 被系統凍結／切斷。網頁端無解（瀏覽器分頁沒有前景服務）。
@@ -19,7 +40,7 @@ desktop access to an already running development server. See the
 
 ## 架構
 ```
-WebView  https://abccbaandy.github.io/PttChrome/
+WebView  https://noreasonken.github.io/PttChrome/
   ├─ window.__PTT_ANDROID__ = { version, site }     document-start script（只注入 PAGE_ORIGIN）
   ├─ window.PttAndroid                              WebMessageListener（只注入 PAGE_ORIGIN）
   └─ ws://127.0.0.1:<系統挑的 port>/bbs/<token>
@@ -123,12 +144,25 @@ WebView  https://abccbaandy.github.io/PttChrome/
 - 正式版也有此模式，但只收 localhost：區網 IP 需要整個 App 放行明文（network_security_config 無法只放行 IP 範圍），只在 debug（`src/debug/res/xml/network_security_config.xml` base-config 放行）。main 的 config 放行 `127.0.0.1`＋`localhost`。
 - 開著 dev 模式：通知標題顯示「開發模式：<origin>」、每次建 WebView 跳 Toast（正式版使用者不會忘了關）。dev 頁連 PTT 照樣走原生 proxy（`boot_site` 的 android 優先），密碼 bridge 同樣開放給 dev origin。
 
-## 發佈
-- 已完成：keystore（`~/.android-keys/pttchrome/`，不入 repo，**遺失＝之後無法更新 App**，須另行備份）、4 個 secrets、assetlinks。本機 release 簽章：把同目錄的 `keystore.properties` 複製到 `android/`（gitignored）。
-1. 使用者本機產 keystore（**不入 repo**）：`keytool -genkeypair -v -keystore release.jks -alias pttchrome -keyalg RSA -keysize 4096 -validity 36500`
-2. GitHub secrets：`ANDROID_KEYSTORE_B64`（`base64 -w0 release.jks`）、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。
-3. push tag `android-v<版本>` → CI 建 Release 附 `pttchrome.apk`。versionCode ＝ `github.run_number`。
-4. 首次發佈後用該 keystore 的 SHA-256 產 assetlinks.json（上一節）。
+## Publication
+
+Use a fixed encrypted PKCS#12 signing store and keep a private backup of both
+the store and its password outside Git. Losing the key prevents normal updates
+to an installed copy. Local builds may use gitignored `android/keystore.properties`
+with `storeFile`, `storePassword`, `keyAlias`, and `keyPassword`.
+
+The repository's four signing secrets are `ANDROID_KEYSTORE_B64`,
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`.
+Release tags fail when any signing input is missing. Non-release builds may
+still produce debug artifacts without these secrets.
+
+Push `android-v<version>` to build and verify the signed APK, then publish
+`pttchrome.apk` and `LICENSE` in a GitHub Release with links to that tag's
+complete corresponding source and installation instructions. `versionCode`
+is the Android workflow's `github.run_number`; later updates must increase it.
+Before the first release, verify that Pages serves the selected web revision
+and that the fork's Google sign-in and Firestore/App Check registrations are
+configured. A successful build does not establish device acceptance.
 
 ## 狀態
 | 項目 | 狀態 |

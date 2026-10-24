@@ -36,32 +36,38 @@ class DeepLinkTest {
     }
 
     @Test fun ownSitePassesFragmentThrough() {
-        assertEquals(Article("Gossiping/M.1786265274.A.5E3.html"), c("https://abccbaandy.github.io/PttChrome/#Gossiping/M.1786265274.A.5E3.html"))
-        assertEquals(Article("Gossiping/1gIeu-3A"), c("https://abccbaandy.github.io/PttChrome#Gossiping/1gIeu-3A"))
-        assertEquals(Article("aid=1gIeu-3A&board=Gossiping"), c("https://abccbaandy.github.io/PttChrome/index.html#aid=1gIeu-3A&board=Gossiping"))
+        assertEquals(Article("Gossiping/M.1786265274.A.5E3.html"), c("https://noreasonken.github.io/PttChrome/#Gossiping/M.1786265274.A.5E3.html"))
+        assertEquals(Article("Gossiping/1gIeu-3A"), c("https://noreasonken.github.io/PttChrome#Gossiping/1gIeu-3A"))
+        assertEquals(Article("aid=1gIeu-3A&board=Gossiping"), c("https://noreasonken.github.io/PttChrome/index.html#aid=1gIeu-3A&board=Gossiping"))
     }
 
     @Test fun ownSiteQueryBecomesHashForm() {
-        assertEquals(Article("board=Gossiping&aid=1gIeu-3A"), c("https://abccbaandy.github.io/PttChrome/?aid=1gIeu-3A&board=Gossiping"))
+        assertEquals(Article("board=Gossiping&aid=1gIeu-3A"), c("https://noreasonken.github.io/PttChrome/?aid=1gIeu-3A&board=Gossiping"))
     }
 
     @Test fun ownSiteWithoutArticleJustOpensApp() {
-        assertEquals(OpenApp, c("https://abccbaandy.github.io/PttChrome/"))
-        assertEquals(OpenApp, c("https://abccbaandy.github.io/PttChrome/#"))
-        assertEquals(OpenApp, c("https://abccbaandy.github.io/PttChrome/?board=Gossiping"))
+        assertEquals(OpenApp, c("https://noreasonken.github.io/PttChrome/"))
+        assertEquals(OpenApp, c("https://noreasonken.github.io/PttChrome/#"))
+        assertEquals(OpenApp, c("https://noreasonken.github.io/PttChrome/?board=Gossiping"))
     }
 
     @Test fun otherPagesOnSameHostAreNotOurs() {
-        assertEquals(NotOurs, c("https://abccbaandy.github.io/"))
-        assertEquals(NotOurs, c("https://abccbaandy.github.io/Other/#Gossiping/1gIeu-3A"))
-        assertEquals(NotOurs, c("https://abccbaandy.github.io/PttChrome/assets/x.js"))
-        assertEquals(NotOurs, c("http://abccbaandy.github.io/PttChrome/#Gossiping/1gIeu-3A"))
+        assertEquals(NotOurs, c("https://noreasonken.github.io/"))
+        assertEquals(NotOurs, c("https://noreasonken.github.io/Other/#Gossiping/1gIeu-3A"))
+        assertEquals(NotOurs, c("https://noreasonken.github.io/PttChrome/assets/x.js"))
+        assertEquals(NotOurs, c("http://noreasonken.github.io/PttChrome/#Gossiping/1gIeu-3A"))
+    }
+
+    @Test fun upstreamAndSimilarHostsAreNotOwnedByThisFork() {
+        assertEquals(NotOurs, c("https://abccbaandy.github.io/PttChrome/#Gossiping/1gIeu-3A"))
+        assertEquals(NotOurs, c("https://noreasonken.github.io.evil.example/PttChrome/#Gossiping/1gIeu-3A"))
+        assertEquals(NotOurs, c("https://noreasonken.github.io:8443/PttChrome/#Gossiping/1gIeu-3A"))
     }
 
     @Test fun productionLinkIsOwnSiteRegardlessOfDevMode() {
         // MainActivity 一律用預設 pageUrl：App 在 dev server 模式下點正式版連結仍在 App 內跳文
         //（模擬器實測：舊版拿當前來源判定，dev 模式下本站連結全被交給瀏覽器）。
-        assertEquals(Article("Gossiping/1gIeu-3A"), DeepLink.classify("https://abccbaandy.github.io/PttChrome/#Gossiping/1gIeu-3A"))
+        assertEquals(Article("Gossiping/1gIeu-3A"), DeepLink.classify("https://noreasonken.github.io/PttChrome/#Gossiping/1gIeu-3A"))
         // pageUrl 參數只是讓判定規則可測：換個頁面網址，規則一樣成立。
         assertEquals(Article("Gossiping/1gIeu-3A"), c("http://localhost:8080/#Gossiping/1gIeu-3A", "http://localhost:8080/"))
         assertEquals(NotOurs, c("http://localhost:8081/#Gossiping/1gIeu-3A", "http://localhost:8080/"))

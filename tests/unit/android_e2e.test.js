@@ -97,7 +97,7 @@ describe("parseResumedPackage：前景 App", () => {
     expect(androidEnv.parseResumedPackage(dump)).toBe("com.android.chrome");
   });
   test("舊格式 mResumedActivity: 也認；debug APK 的套件名帶 .debug", () => {
-    const dump = "  mResumedActivity: ActivityRecord{9f u0 io.github.abccbaandy.pttchrome.debug/io.github.abccbaandy.pttchrome.MainActivity t3}";
+    const dump = "  mResumedActivity: ActivityRecord{9f u0 io.github.noreasonken.pttchrome.debug/io.github.abccbaandy.pttchrome.MainActivity t3}";
     expect(androidEnv.parseResumedPackage(dump)).toBe(androidEnv.APK_PKG);
   });
   test("沒有前景 Activity ⇒ null", () => {
@@ -129,10 +129,30 @@ describe("APK dev server 設定", () => {
     const ps = fs.readFileSync(path.join(ROOT, "android/app/src/main/java/io/github/abccbaandy/pttchrome/PageSource.kt"), "utf8");
     expect(ps).toMatch(/DEFAULT_DEV_URL = "http:\/\/localhost:8080\/"/);
   });
-  test("applicationIdSuffix .debug ⇒ APK_PKG", () => {
+  test("the debug package and activity follow the application ID and retained namespace", () => {
     const gradle = fs.readFileSync(path.join(ROOT, "android/app/build.gradle.kts"), "utf8");
-    expect(gradle).toMatch(/applicationIdSuffix = "\.debug"/);
-    expect(androidEnv.APK_PKG).toBe("io.github.abccbaandy.pttchrome.debug");
+    const applicationId = gradle.match(/applicationId = "([^"]+)"/)[1];
+    const namespace = gradle.match(/namespace = "([^"]+)"/)[1];
+    const suffix = gradle.match(/applicationIdSuffix = "([^"]+)"/)[1];
+    expect(applicationId).toBe("io.github.noreasonken.pttchrome");
+    expect(androidEnv.APK_PKG).toBe(applicationId + suffix);
+    expect(androidEnv.APK_ACTIVITY).toBe(`${androidEnv.APK_PKG}/${namespace}.MainActivity`);
+  });
+});
+
+describe("fork production identity", () => {
+  test("the reading page, native bridge origin, and App Links host stay aligned", () => {
+    const config = fs.readFileSync(path.join(ROOT, "android/app/src/main/java/io/github/abccbaandy/pttchrome/AppConfig.kt"), "utf8");
+    const manifest = fs.readFileSync(path.join(ROOT, "android/app/src/main/AndroidManifest.xml"), "utf8");
+    const strings = fs.readFileSync(path.join(ROOT, "android/app/src/main/res/values/strings.xml"), "utf8");
+    const page = new URL(config.match(/PAGE_URL = "([^"]+)"/)[1]);
+    const origin = config.match(/PAGE_ORIGIN = "([^"]+)"/)[1];
+    expect(page.href).toBe("https://noreasonken.github.io/PttChrome/");
+    expect(origin).toBe(page.origin);
+    expect(manifest).toContain(`android:host="${page.hostname}"`);
+    expect(manifest).not.toContain('android:host="abccbaandy.github.io"');
+    expect(strings).toContain(`${origin}/.well-known/assetlinks.json`);
+    expect(strings).not.toContain("https://abccbaandy.github.io/.well-known/assetlinks.json");
   });
 });
 
