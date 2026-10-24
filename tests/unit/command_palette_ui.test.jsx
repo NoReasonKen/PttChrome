@@ -16,24 +16,10 @@ import { cloudSyncSetupRequested } from "../../src/js/cloud_sync_setup";
 import { DEFAULT_PREFS, readValuesWithDefault } from "../../src/js/pref_storage";
 import { aidToFn } from "../../src/js/aid_codec";
 
-vi.mock("../../src/js/pref_sync", () => ({
-  canSync: vi.fn(() => false),
-  savePrefs: vi.fn(),
-  signIn: vi.fn(() => Promise.resolve()),
-  signOut: vi.fn(() => Promise.resolve()),
-  onAuthState: vi.fn(() => () => {}),
-}));
+vi.mock("../../src/js/pref_sync", { spy: true });
 
-vi.mock("../../src/js/cloud_sync_setup", async (importOriginal) => ({
-  ...(await importOriginal()),
-  cloudSyncSetupRequested: vi.fn(() => false),
-}));
+vi.mock("../../src/js/cloud_sync_setup", { spy: true });
 
-vi.mock("../../src/js/prompt_api", () => ({
-  promptApiAvailability: () => Promise.resolve("available"),
-  ensurePromptApiModel: vi.fn(() => Promise.resolve("available")),
-  destroyPromptApi: vi.fn(),
-}));
 
 const PREF_KEY = "pttchrome.pref.v1";
 const AID = "1gU3xHKD";

@@ -277,21 +277,24 @@ const selectData = (keys) =>
 
 // The About tab's version blurb embeds clickable links; these never change, so
 // build them once at module load (was recompose's static initial state).
-// 血緣：iamchucky（Chrome extension 原版）→ robertabcd（網頁版，term.ptt.cc）
-// → abccbaandy（本 fork，增強版）。
+// Fork lineage: iamchucky -> robertabcd -> abccbaandy -> NoReasonKen.
 export const ABOUT_LINKS = {
+  link_github_noreasonken: link(
+    "NoReasonKen",
+    "https://github.com/NoReasonKen",
+  ),
   link_github_abccbaandy: link("abccbaandy", "https://github.com/abccbaandy"),
   link_this_PttChrome: link(
-    "abccbaandy/PttChrome",
-    "https://github.com/abccbaandy/PttChrome",
+    "NoReasonKen/PttChrome",
+    "https://github.com/NoReasonKen/PttChrome",
   ),
   link_this_site: link(
-    "abccbaandy.github.io/PttChrome",
-    "https://abccbaandy.github.io/PttChrome/",
+    "noreasonken.github.io/PttChrome",
+    "https://noreasonken.github.io/PttChrome/",
   ),
   link_this_issues: link(
     "GitHub Issues",
-    "https://github.com/abccbaandy/PttChrome/issues",
+    "https://github.com/NoReasonKen/PttChrome/issues",
   ),
   link_term_ptt_cc: link("term.ptt.cc", "https://term.ptt.cc"),
   link_github_iamchucky: link("Chuck Yang", "https://github.com/iamchucky"),

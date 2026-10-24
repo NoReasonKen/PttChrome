@@ -21,6 +21,8 @@ Browser test constraints:
 - Mock read-only browser globals with `Object.defineProperty` or `vi.spyOn`; see `tests/unit/helpers/credential_api.js`.
 - Give scrolling elements real dimensions and overflow. Keep layout properties such as scrollHeight and offsetTop real. IntersectionObserver is asynchronous; stub or inject it when explicit control is needed.
 - `vi.resetModules()` cannot rerun native ESM modules in browser mode. Expose a test reset function for page-lifetime caches, following `auto_login.js#_resetSessionCredentialForTest`.
+- Settings tests normally use the real signed-out `pref_sync` adapter: subscribing and reading access state do not load Firebase. Where auth/setup state needs control, use `vi.mock(module, { spy: true })` and override only the necessary functions. Shared manual factories have caused cross-file factory-resolution failures in Vitest Browser Mode. For AI settings, control `window.LanguageModel` while retaining the real adapter and its complete exports.
+- Keep the test server's `Cache-Control: no-store` header in `vitest.config.mjs`. Browser mock shims reuse module URLs across isolated test documents; cached shims can refer to another document's mock registry. This header also reaches provider-generated responses and leaves the production Vite configuration independent.
 - Use real browser tests rather than restoring jsdom or happy-dom: simulated DOM behavior previously concealed real failures. See [docs/build-modernization.md](../build-modernization.md).
 
 `tests/unit/` covers logic, parsing, state machines, conversion, and core screen rendering. `tests/unit/helpers/mount_screen.js` mounts ScreenController/buildRow with fake TermChar values; peripheral React tests use Testing Library.

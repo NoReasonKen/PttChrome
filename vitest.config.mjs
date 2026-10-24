@@ -37,6 +37,9 @@ const unitTimeout = testTimeout ? { testTimeout } : {};
 
 export default defineConfig({
   plugins: [react()],
+  // Mock factory shims share URLs across isolated browser test documents.
+  // Replaying a cached shim can reference another document's mock registry.
+  server: { headers: { 'Cache-Control': 'no-store' } },
   // Big5 轉碼表（tests/unit/helpers/load_big5_tables.js 用 `?inline` 讀）。
   assetsInclude: ['**/*.bin'],
   test: {

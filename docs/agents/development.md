@@ -38,7 +38,7 @@ Before each commit, decide whether the change adds a user-facing feature. If so,
 - Extend an existing feature entry instead of adding a duplicate. `tests/unit/readme_features.test.js` enforces at most 100 characters and two sentences per entry.
 - Preserve the exact existing extension-installation heading: connection_probe.js#ORIGIN_SETUP_URL links to its anchor, protected by the same test.
 
-The inherited public-facing product links (About's current-version link, README, and GitHub About) target abccbaandy/PttChrome. robertabcd/PttChrome and iamchucky/PttChrome appear only in source/credits sections. About links are defined in PrefModal.jsx#ABOUT_LINKS. Engineering tickets for this personal fork use NoReasonKen/PttChrome as configured in docs/agents/issue-tracker.md.
+Public-facing current-version, website, download, and issue links target NoReasonKen/PttChrome and its GitHub Pages deployment. Preserve abccbaandy/PttChrome, robertabcd/PttChrome, and iamchucky/PttChrome attribution in source/credits. About links are defined in PrefModal.jsx#ABOUT_LINKS. Engineering tickets use NoReasonKen/PttChrome as configured in docs/agents/issue-tracker.md.
 
 Major framework/build/dependency upgrades must also update the technology-upgrade section in About, through about_new_content in both `src/js/zh_TW_messages.js` and `src/js/en_US_messages.js`.
 

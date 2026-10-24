@@ -6,7 +6,9 @@
 
 在瀏覽器上直接連 PTT 的網頁版終端機。以 PTT 官方網頁版 [term.ptt.cc](https://term.ptt.cc) 的原始碼（[robertabcd/PttChrome](https://github.com/robertabcd/PttChrome)）為基底，加上一系列閱讀與操作的增強功能。
 
-👉 **立即使用：<https://abccbaandy.github.io/PttChrome/>**（連不上請看下方的「連線修復指南」）
+👉 **立即使用：<https://noreasonken.github.io/PttChrome/>**（連不上請看下方的「連線修復指南」）
+
+📱 **Android 安裝：**到[本分支的發行頁](https://github.com/NoReasonKen/PttChrome/releases)下載 `pttchrome.apk`，在手機上開啟安裝；詳細步驟見[Android 安裝說明](docs/android-app.md#install-and-update)。
 
 ---
 
@@ -151,9 +153,9 @@ PTT 只接受來自官方網站 (`https://term.ptt.cc`) 的連線，所以第三
 裝好這條規則後，點到 `https://www.ptt.cc/bbs/看板/M.xxx.A.xxx.html` 這種官方文章網址，會自動改在本站開啟並跳到那篇文章（已有登入好的分頁就交給它開）。
 
 1. 安裝 [Requestly 套件](https://chromewebstore.google.com/detail/requestly-intercept-modif/mdnleldcmiljblolnjhpnblkcekpdkpa)（與方法一相同，已裝過就跳過）。
-2. 點 👉 **[匯入 PTT 文章網址跳轉設定](https://app.requestly.io/rules#sharedList/1879e51729bb474c8011b0d98216927e-ptt-deep-link)**，按「**Import to my rules**」。
+2. 點 👉 **[匯入 PTT 文章網址跳轉設定](https://app.requestly.io/rules#sharedList/1879e51729bb474c8011b0d98216927e-ptt-deep-link)**，按「**Import to my rules**」。這是上游提供的規則，匯入後請先把目標網站改為 `https://noreasonken.github.io/PttChrome/`。
 
-> 原理：只認文章網址，把 `https://www.ptt.cc/bbs/<看板/檔名>` 改寫成 `https://abccbaandy.github.io/PttChrome/#<看板/檔名>`，再由本站的文章分享連結功能跳轉。自架站台請把目標網址換成自己的；想看官方網頁版時把這條規則關掉即可。
+> 原理：只認文章網址，把 `https://www.ptt.cc/bbs/<看板/檔名>` 改寫成 `https://noreasonken.github.io/PttChrome/#<看板/檔名>`，再由本站的文章分享連結功能跳轉。自架站台請把目標網址換成自己的；想看官方網頁版時把這條規則關掉即可。
 
 ---
 

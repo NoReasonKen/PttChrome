@@ -16,21 +16,6 @@ import { DEFAULT_PREFS } from "../../src/js/pref_storage";
 import { DEFAULT_IMGUR_PROXY_BASE, IMAGE_PROXY_SITES } from "../../src/js/image_proxy";
 import { DEFAULT_PROXY_HOST } from "../../src/js/util";
 
-// 雲端同步不是本測試的標的，且會拉 Firebase SDK。
-vi.mock("../../src/js/pref_sync", () => ({
-  canSync: vi.fn(() => false),
-  savePrefs: vi.fn(),
-  signIn: vi.fn(() => Promise.resolve()),
-  signOut: vi.fn(() => Promise.resolve()),
-  onAuthState: vi.fn(() => () => {}),
-}));
-
-vi.mock("../../src/js/prompt_api", () => ({
-  promptApiAvailability: () => Promise.resolve("available"),
-  ensurePromptApiModel: vi.fn(() => Promise.resolve("available")),
-  destroyPromptApi: vi.fn(),
-}));
-
 const PREF_KEY = "pttchrome.pref.v1";
 
 const openConnectionTab = (prefs = {}) => {

@@ -1702,7 +1702,7 @@
     "message": "開放原始碼的 PTT 網頁版終端機",
   },
   "about_description": {
-    "message": "由 #link_github_abccbaandy# 維護，以 PTT 官方網頁版 #link_term_ptt_cc# 的原始碼為基底，加上好讀模式、自動開圖、推文樓層、黑名單、手機版面等閱讀與操作增強。原作者為 #link_github_iamchucky#，網頁版由 #link_github_robertabcd# 改寫。",
+    "message": "此分支由 #link_github_noreasonken# 維護，延續 #link_github_abccbaandy# 的增強版。以 PTT 官方網頁版 #link_term_ptt_cc# 的原始碼為基底，加上好讀模式、自動開圖、推文樓層、黑名單、手機版面等閱讀與操作增強。原作者為 #link_github_iamchucky#，網頁版由 #link_github_robertabcd# 改寫。",
   },
   "about_version_title": {
     "message": "版本"

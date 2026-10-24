@@ -145,8 +145,8 @@ describe("diagnoseConnectFailure 決策表", () => {
   });
 });
 
-test("ORIGIN_SETUP_URL 指向 README 方法一（擴充套件）", () => {
+test("ORIGIN_SETUP_URL points to this fork's extension setup instructions", () => {
   expect(ORIGIN_SETUP_URL).toMatch(
-    /^https:\/\/github\.com\/abccbaandy\/PttChrome#/,
+    /^https:\/\/github\.com\/NoReasonKen\/PttChrome#/,
   );
 });

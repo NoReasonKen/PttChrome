@@ -1703,7 +1703,7 @@ export const en_US = {
     "message": "An open source web terminal for PTT"
   },
   "about_description": {
-    "message": "Maintained by #link_github_abccbaandy#. Built on the source of PTT's official web client #link_term_ptt_cc#, with reading and usability enhancements such as easy-reading mode, inline image previews, comment floor numbers, blacklists and a mobile layout. Originally written by #link_github_iamchucky#; the web version was rewritten by #link_github_robertabcd#.",
+    "message": "This fork is maintained by #link_github_noreasonken#, building on #link_github_abccbaandy#'s enhanced version. Built on the source of PTT's official web client #link_term_ptt_cc#, with reading and usability enhancements such as easy-reading mode, inline image previews, comment floor numbers, blacklists and a mobile layout. Originally written by #link_github_iamchucky#; the web version was rewritten by #link_github_robertabcd#.",
   },
   "about_version_title": {
     "message": "Version"

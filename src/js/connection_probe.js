@@ -8,7 +8,7 @@
 
 // README「方法一：安裝擴充套件」—— Origin 偽裝的設定教學。
 export const ORIGIN_SETUP_URL =
-  'https://github.com/abccbaandy/PttChrome#-%E6%96%B9%E6%B3%95%E4%B8%80%E5%AE%89%E8%A3%9D%E6%93%B4%E5%85%85%E5%A5%97%E4%BB%B6%E5%BC%B7%E7%83%88%E6%8E%A8%E8%96%A6%E6%9C%80%E7%A9%A9%E5%AE%9A';
+  'https://github.com/NoReasonKen/PttChrome#-%E6%96%B9%E6%B3%95%E4%B8%80%E5%AE%89%E8%A3%9D%E6%93%B4%E5%85%85%E5%A5%97%E4%BB%B6%E5%BC%B7%E7%83%88%E6%8E%A8%E8%96%A6%E6%9C%80%E7%A9%A9%E5%AE%9A';
 
 const PROBE_TIMEOUT_MS = 8000;
 

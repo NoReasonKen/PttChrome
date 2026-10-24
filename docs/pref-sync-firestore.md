@@ -27,6 +27,21 @@ promise that public Auth or App Check endpoints receive zero external requests.
 Provisioning and device acceptance remain tracked in
 [issue #6](https://github.com/NoReasonKen/PttChrome/issues/6).
 
+### Fork deployment
+
+The active project is `pttchrome-7fae4`, with its Standard Firestore database in
+`asia-east1`. `.firebaserc` selects this project; pass `--project pttchrome-7fae4`
+explicitly when administering it. The earlier Cloud-only project is unused.
+The project has no linked billing account. Google sign-in allows
+`noreasonken.github.io` and the project's Firebase authentication domains.
+The web app is `1:1012243465943:web:e2a9996308186f24fed292`; public SDK, OAuth,
+and reCAPTCHA identifiers live in `src/js/firebase_config.js`.
+
+App Check uses a SCORE key restricted to `noreasonken.github.io`, a one-day
+token TTL, and a minimum valid score of `0.5`. Verify token exchange from the
+published reading page before enforcing Firestore App Check. Owner grants
+belong in Firebase Auth custom claims, never in this repository or a preference.
+
 ## 架構
 
 | 層 | 檔案 | 職責 |
@@ -89,9 +104,10 @@ Provisioning and device acceptance remain tracked in
 - 收尾：afterAll `terminate(db)` + `deleteApp(app)`（main + seeder 都要），否則 gRPC channel / auth token timer 讓 vitest 掛著不退。
 - emulator 產物 `firestore-debug.log` / `firebase-debug.log` 已 gitignore。
 
-## Firebase 專案設定（一次性，已完成）
+## Firebase project setup
 
-project：`pttchrome-prefs-7k3m`（Firestore：asia-east1）。重建時：
+The upstream project `pttchrome-prefs-7k3m` is retained here only as a historical
+reference. This fork uses the independent project above. Generic setup commands:
 
 ```
 firebase projects:create <project-id> --display-name "PttChrome Prefs"

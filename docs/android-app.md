@@ -24,6 +24,8 @@ Release preparation and independent Firebase provisioning are tracked in
 Google OAuth, and Digital Asset Links registrations described below do not
 register this fork's new package, signing certificate, or website.
 
+## Install and update
+
 Install the signed APK from [this fork's releases](https://github.com/NoReasonKen/PttChrome/releases)
 directly on the phone, allowing installation from the downloading browser when
 Android asks. Keep the upstream app installed if needed. Export settings from
@@ -32,13 +34,27 @@ do not transfer automatically. Updates to this app require the same signing
 key, the same application ID, and an increasing version code. Reading-page
 updates are delivered separately through GitHub Pages.
 
+The fork's Firebase project is `pttchrome-7fae4`. Its registered release Android
+app is `1:1012243465943:android:e5d5527c79db53dffed292`, with package
+`io.github.noreasonken.pttchrome` and the fixed release signing certificate.
+The Android OAuth client and Firebase Web OAuth client were checked together
+in the generated Android configuration. Debug installations need their own
+package/certificate registration before Google sign-in can work.
+
 Cloud sync is private initially. The maintainer can open
 `https://noreasonken.github.io/PttChrome/#cloud-sync-setup`, then go to Settings
 and Backup to sign in. The link reveals controls for the current page session
-only. The Firebase administrator must separately grant the account's
-`cloudSync: true` custom claim; sign in again after that grant. Normal users
-see local backup controls without cloud sync. See
+only. The initial maintainer account already has the administrator-granted
+`cloudSync: true` custom claim. Other accounts require a separate administrator
+grant and a fresh sign-in before they can sync. Normal users see local backup
+controls without cloud sync. See
 [private cloud access](pref-sync-firestore.md#private-access-in-this-fork).
+
+For APK setup, open that link in the installed app. If Android sends it to the
+browser, enable `noreasonken.github.io` in the app's system supported-link
+settings, then reopen it. Browser and APK sign-in state are separate. Import
+settings from the old app before the first sync; PTT credentials stay local
+and must be entered again in the new app.
 
 ## 為什麼要有 APK
 - 手機 Chrome 開網頁版，切到別的 App 幾秒後 WebSocket 被系統凍結／切斷。網頁端無解（瀏覽器分頁沒有前景服務）。
@@ -97,47 +113,58 @@ WebView  https://noreasonken.github.io/PttChrome/
 ## 雲端同步 Google 登入
 - Google 禁止 WebView 內 OAuth（`disallowed_useragent`）⇒ `signInWithPopup` 在 APK 必失敗。改走：網頁 `google_sign_in.js#authenticateGoogle`（`pref_sync.signIn` 預設）→ bridge `googleSignIn` → 原生 `GetSignInWithGoogleOption` 取 ID token → 網頁 `signInWithCredential`。Firestore／App Check 照舊在網頁端跑。登出另送 `googleSignOut`（`clearCredentialState`）。
 - `serverClientId` ＝ Firebase Google provider 的 **Web** client（`firebase_config.js#GOOGLE_WEB_CLIENT_ID`，由網頁傳入，原生只驗形狀 `isGoogleWebClientId`）。查法：identitytoolkit admin `GET projects/<p>/defaultSupportedIdpConfigs/google.com` 的 `clientId`。
-- **前置（Google Cloud 端）**：同專案要有 Android OAuth client（package `io.github.abccbaandy.pttchrome`＋簽章 SHA-1），否則 Credential Manager 回 developer error（bridge `error:'failed'`，logcat `PttCredentialBridge`）。做法：Firebase 新增 Android app 並加 SHA-1（會自動建 Android OAuth client）。release 與 debug keystore 的 SHA-1 都要加（debug APK 才能本機測）；SHA-1 用 `keytool -list -v -keystore <jks>` 取。
-  已完成（2026-10，REST：firebase `v1beta1 .../androidApps` 建 app → `.../sha` 加 SHA-1）：android app `1:220067863446:android:1080054d9949d387581bb7`，release＋本機 debug 兩把 SHA-1，`.../config` 的 google-services.json 驗到兩個 `client_type:1`。換開發機（debug keystore 不同）要再加一把；換 release key 也要重加。
+- Google Cloud must register the Android package and its signing SHA-1 in the
+  same project as the Web OAuth client. This fork's release registration is
+  `io.github.noreasonken.pttchrome` in project `pttchrome-7fae4`, Firebase Android
+  app `1:1012243465943:android:e5d5527c79db53dffed292`. The fixed release
+  certificate's SHA-1 and matching Android/Web OAuth clients have been checked
+  in the generated Android configuration; on-device sign-in still needs fork
+  acceptance testing. Missing registration produces a Credential Manager
+  developer error (`error:'failed'`, logcat tag `PttCredentialBridge`).
+- The debug package `io.github.noreasonken.pttchrome.debug` is not registered
+  yet. Register it separately and add the debug signing certificate before
+  testing Google sign-in. Each new debug key needs its own SHA-1 registration;
+  inspect the certificate with `keytool -list -v -keystore <keystore>`.
 - googleid 以 Kotlin 2.4 編譯，AGP 9 內建 KGP 2.2 讀不了 ⇒ 根 `build.gradle.kts` 以 `kotlin-android` plugin `apply false` 把 KGP 抬到 `libs.versions.toml#kotlin`。
 - 守護：`tests/unit/google_sign_in.test.js`（選路）、`tests/integration/pref_sync.test.js`「Android APK sign-in」（emulator 真 `signInWithCredential`）、JVM `CredentialBridgeTest`。
 
 ## 密碼共用（Digital Asset Links）
-- **現況：不共用（缺陷，程式修不了）**。APK 存的密碼在 GPM 顯示為 `pttchrome.abccbaandy.github.io`（套件名反轉＝被當獨立 App），網頁版（Chrome）看不到，APK 也讀不到網頁存的。
-  - 設定面 CONFIRMED 正確：release APK 簽章 SHA-256（`apksigner verify --print-certs`）＝ assetlinks 指紋，manifest include 正確，DAL API 驗證通過。
-  - 根因：Google 文件寫明 GPM 的 app↔網站關聯只採用**發佈到 Google Play 公開管道**的 App（developers.google.com `identity/smartlock-passwords/android/associate-apps-and-sites`、`identity/credential-sharing/set-up`）。本 APK 走 GitHub Release 側載 ⇒ 永遠不會被關聯。
-  - 要修只能上 Play（未做）：注意 Play App Signing 會換簽章 ⇒ assetlinks 要加 Play 的 SHA-256；specialUse FGS 需審核說明。
-  - App 設定頁「關於」有對使用者說明（`settings_password_note`）。
-- APK manifest `asset_statements` → include `https://abccbaandy.github.io/.well-known/assetlinks.json`。
-- assetlinks 必須在**網域根**：repo `abccbaandy.github.io`（user site），不能放在 `/PttChrome/` 底下。需 `.nojekyll`，否則 Jekyll 不輸出 `.well-known`。
-- 內容（`<SHA256>` ＝ release 簽章憑證指紋，`keytool -list -v -keystore release.jks` 取得）：
-```json
-[
-  {
-    "relation": ["delegate_permission/common.get_login_creds", "delegate_permission/common.handle_all_urls"],
-    "target": { "namespace": "web", "site": "https://abccbaandy.github.io" }
-  },
-  {
-    "relation": ["delegate_permission/common.get_login_creds", "delegate_permission/common.handle_all_urls"],
-    "target": {
-      "namespace": "android_app",
-      "package_name": "io.github.abccbaandy.pttchrome",
-      "sha256_cert_fingerprints": ["<SHA256>"]
-    }
-  }
-]
-```
-- 線上檔另有第三筆：`io.github.abccbaandy.pttchrome.debug`＋本機 debug keystore 的 SHA-256（為上 Play 預備；現在同樣不生效）。
-- 已上線（repo `abccbaandy/abccbaandy.github.io`），Google Digital Asset Links API 驗證通過：
-  `https://digitalassetlinks.googleapis.com/v1/statements:list?source.web.site=https://abccbaandy.github.io&relation=delegate_permission/common.get_login_creds`。
-- applicationId `io.github.abccbaandy.pttchrome` 與簽章一旦發佈就不可改（assetlinks 綁它、使用者覆蓋安裝也要同簽章）。
+
+The sideloaded fork keeps its saved PTT credentials separate from Chrome.
+Google Password Manager's app/website credential association requires public
+Google Play distribution; a GitHub APK does not establish that association.
+The native settings explain this limitation through `settings_password_note`.
+
+The fork's `asset_statements` references
+`https://noreasonken.github.io/.well-known/assetlinks.json`, but that root file
+has not been deployed. No Digital Asset Links verification is established for
+this fork. Users can select supported link domains manually in Android's
+default-opening settings; creating a root website is not required for the
+first APK release.
+
+Upstream reference only: `abccbaandy/abccbaandy.github.io` published statements
+for `io.github.abccbaandy.pttchrome` and its debug package. The inherited
+certificate comparisons and successful Digital Asset Links API checks apply
+to those upstream identities, not this fork's package, certificate, or domain.
+
+If website association is added later, serve the statements from the domain
+root rather than `/PttChrome/`, using this fork's package and certificate
+SHA-256. A later Play release must account for the Play App Signing certificate
+and foreground-service requirements. Keep the fork's application ID and
+release signing key stable so installed copies can receive APK updates.
 
 ## 建置
 - 本機：需 JDK 17+（**完整 JDK**，只有 JRE 會 `No Java compiler found` 或 `Toolchain installation '<jre>' does not provide the required capabilities: [JAVA_COMPILER]`）＋ Android SDK（platform 37、build-tools 37）。
   - 判準：`"$JAVA_HOME/bin/javac" -version` 要成功。系統層 `JAVA_HOME` 指向 JRE 時，在**使用者層**設 `JAVA_HOME` 指向完整 JDK 覆蓋它；改完要重開 Claude 才生效，當下 session 先在指令前加 `JAVA_HOME=<jdk> ./gradlew ...`。
   - `local.properties` 的 `sdk.dir` 要跟 env `ANDROID_HOME` 一致（指到不存在的目錄＝`sdk.dir property ... Directory does not exist`）。
 - 推到實機（無線 adb）：`adb mdns services` 找 `_adb-tls-connect` 的 `IP:port` → `adb connect <IP:port>`（已配對過就不需配對碼；沒配對過要手機「無線偵錯 → 以配對碼配對」後 `adb pair`）→ `adb -s <IP:port> install -r app/build/outputs/apk/debug/app-debug.apk`。
-  - 網頁端改動要在 App 內測：`yarn start --host`＋`adb -s <IP:port> reverse tcp:8080 tcp:8080`，debug App 開 dev server 模式。免手動點設定：`am force-stop` 後用 `run-as io.github.abccbaandy.pttchrome.debug` 寫 `shared_prefs/app_settings.xml`（`dev_server_enabled`=true、`dev_server_url`=`http://localhost:8080/`，鍵名見 `AppSettings.kt`）。只有 debug APK 能 `run-as`。
+  - To test frontend changes in the app, run `yarn start --host` and
+    `adb -s <IP:port> reverse tcp:8080 tcp:8080`, then enable dev-server mode.
+    For automated setup, force-stop `io.github.noreasonken.pttchrome.debug`
+    before using `run-as io.github.noreasonken.pttchrome.debug` to write
+    `shared_prefs/app_settings.xml` with `dev_server_enabled=true` and
+    `dev_server_url=http://localhost:8080/` (keys: `AppSettings.kt`). Only the
+    debug APK supports `run-as`.
   `android/local.properties` 寫 `sdk.dir=`（gitignored）。新版 cmdline-tools 的 `sdkmanager` 已改為 `android sdk install platforms/android-37.0 build-tools/37.0.0`。
 - `cd android && ./gradlew test assembleDebug` → `app/build/outputs/apk/debug/app-debug.apk`。
 - JVM test：`WsProtocolTest`（握手／frame）、`LocalWebSocketProxyTest`（MockWebServer 當假 PTT：Origin 改寫、雙向轉送、token／Origin 拒絕、跟隨當前頁面 origin）、`PageSourceTest`（dev 網址白名單）。
@@ -145,8 +172,18 @@ WebView  https://noreasonken.github.io/PttChrome/
 - Windows 上新增 `gradlew` 要 `git update-index --chmod=+x android/gradlew`，否則 CI `Permission denied`。
 
 ## debug 版並存與 dev server 模式
-- debug buildType `applicationIdSuffix=".debug"`（名稱「PttChrome Debug」、綠底＋黃色 DEBUG 標籤的 icon，`src/debug/res` 覆寫；icon 由正式 icon 換色加標籤產生，改正式 icon 時要一起重做）⇒ 本機 debug APK 與正式版並存，不會覆蓋。`namespace` 不變（`R`／`BuildConfig` 套件同）。
-- `.debug` 套件已另外註冊：Firebase Android app `1:220067863446:android:aa45bbf803efe7ce581bb7`＋本機 debug SHA-1（雲端同步 Google 登入可用）、assetlinks 第三筆。換開發機（debug keystore 不同）兩處都要再加：`firebase apps:android:sha:create <appId> <SHA-1> --project pttchrome-prefs-7k3m`。
+- The debug build uses `applicationIdSuffix=".debug"`, package
+  `io.github.noreasonken.pttchrome.debug`, and the name **PttChrome Fork Debug**.
+  Its icon has a green background and yellow DEBUG label (`src/debug/res`);
+  update that variant when changing the release icon. Debug and release apps
+  coexist. The Kotlin namespace remains `io.github.abccbaandy.pttchrome` for
+  both variants; it is not the installed application's identity.
+- Debug Google sign-in is not configured in this fork yet. Create a Firebase
+  Android app for the debug package in `pttchrome-7fae4`, then register its key:
+  `firebase apps:android:sha:create <debug-app-id> <SHA-1> --project pttchrome-7fae4`.
+  A different development machine's debug key needs another registration.
+  Neither the upstream debug registration nor a release-package registration
+  covers this package/key combination.
 - App 設定（原生 `SettingsActivity`）→「載入電腦上的 dev server」：WebView 改載入 `yarn start`，改網頁不必推版。入口：網頁設定「連線」分頁的「App 設定」鈕（bridge `openAppSettings`）、長按 App 圖示的動態捷徑（不用靜態 `shortcuts.xml`：要寫死 targetPackage，跟 `.debug` 衝突）、載入失敗頁連結（`pttchrome-app://settings`／`use-production`）。
 - 用法：電腦 `yarn start --host`（Windows vite 預設只綁 `[::1]`，adb reverse 連的是 127.0.0.1，同 `docs/android-e2e.md` 踩坑表）＋ `adb reverse tcp:8080 tcp:8080`，網址填 `http://localhost:8080/`。debug APK 也可直接填 `http://<電腦區網 IP>:8080/`。
 - 正式版也有此模式，但只收 localhost：區網 IP 需要整個 App 放行明文（network_security_config 無法只放行 IP 範圍），只在 debug（`src/debug/res/xml/network_security_config.xml` base-config 放行）。main 的 config 放行 `127.0.0.1`＋`localhost`。
@@ -173,6 +210,13 @@ and that the fork's Google sign-in and Firestore/App Check registrations are
 configured. A successful build does not establish device acceptance.
 
 ## 狀態
+
+The table below preserves upstream implementation and device evidence inherited
+with the source. Its `CONFIRMED` entries refer to the upstream app and backend;
+they do not establish acceptance of this fork's APK, signing identity, or cloud
+project. Fork on-device acceptance remains pending, including native Google
+sign-in, preference sync, and WebView App Check.
+
 | 項目 | 狀態 |
 |---|---|
 | JVM test（WsProtocol／proxy） | CONFIRMED |

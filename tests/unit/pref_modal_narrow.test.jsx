@@ -13,19 +13,7 @@ import prefModalCss from "../../src/components/ContextMenu/PrefModal.css?raw";
 import { PrefModal, PREF_CATEGORIES } from "../../src/components/ContextMenu/PrefModal";
 import { setupI18n, i18n } from "../../src/js/i18n";
 
-vi.mock("../../src/js/pref_sync", () => ({
-  canSync: vi.fn(() => false),
-  savePrefs: vi.fn(),
-  signIn: vi.fn(() => Promise.resolve()),
-  signOut: vi.fn(() => Promise.resolve()),
-  onAuthState: vi.fn(() => () => {}),
-}));
 
-vi.mock("../../src/js/prompt_api", () => ({
-  promptApiAvailability: () => Promise.resolve("available"),
-  ensurePromptApiModel: vi.fn(() => Promise.resolve("available")),
-  destroyPromptApi: vi.fn(),
-}));
 
 let style;
 beforeAll(() => {

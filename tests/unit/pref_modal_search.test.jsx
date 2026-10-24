@@ -20,19 +20,8 @@ import { PREF_SEARCH_ITEMS } from "../../src/js/pref_search";
 import { DEFAULT_PREFS } from "../../src/js/pref_storage";
 import * as prefSync from "../../src/js/pref_sync";
 
-vi.mock("../../src/js/pref_sync", () => ({
-  canSync: vi.fn(() => false),
-  savePrefs: vi.fn(),
-  signIn: vi.fn(() => Promise.resolve()),
-  signOut: vi.fn(() => Promise.resolve()),
-  onAuthState: vi.fn(() => () => {}),
-}));
+vi.mock("../../src/js/pref_sync", { spy: true });
 
-vi.mock("../../src/js/prompt_api", () => ({
-  promptApiAvailability: () => Promise.resolve("available"),
-  ensurePromptApiModel: vi.fn(() => Promise.resolve("available")),
-  destroyPromptApi: vi.fn(),
-}));
 
 const PREF_KEY = "pttchrome.pref.v1";
 

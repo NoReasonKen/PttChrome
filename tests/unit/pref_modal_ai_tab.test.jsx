@@ -11,25 +11,13 @@ import { MantineProvider } from "@mantine/core";
 import { PrefModal } from "../../src/components/ContextMenu/PrefModal";
 import { setupI18n, i18n } from "../../src/js/i18n";
 import { DEFAULT_PREFS } from "../../src/js/pref_storage";
+import { destroyPromptApi, ensurePromptApiReady } from "../../src/js/prompt_api";
 
-// 雲端同步不是本測試的標的，且會拉 Firebase SDK。
-vi.mock("../../src/js/pref_sync", () => ({
-  canSync: vi.fn(() => false),
-  savePrefs: vi.fn(),
-  signIn: vi.fn(() => Promise.resolve()),
-  signOut: vi.fn(() => Promise.resolve()),
-  onAuthState: vi.fn(() => () => {}),
-}));
-
-const ensurePromptApiModel = vi.fn(() => Promise.resolve("available"));
-const destroyPromptApi = vi.fn();
+// Keep the real adapter and control the browser API boundary. A whole-module
+// mock would replace exports used by the rendering pipeline in other suites.
+const createModelSession = vi.fn();
+const destroyModelSession = vi.fn();
 let availability = "available";
-
-vi.mock("../../src/js/prompt_api", () => ({
-  promptApiAvailability: () => Promise.resolve(availability),
-  ensurePromptApiModel: (...a) => ensurePromptApiModel(...a),
-  destroyPromptApi: (...a) => destroyPromptApi(...a),
-}));
 
 const PREF_KEY = "pttchrome.pref.v1";
 
@@ -66,9 +54,20 @@ beforeAll(() => setupI18n());
 
 beforeEach(() => {
   availability = "available";
-  ensurePromptApiModel.mockClear();
-  destroyPromptApi.mockClear();
+  createModelSession.mockReset().mockImplementation(async () => ({
+    destroy: destroyModelSession,
+  }));
+  destroyModelSession.mockClear();
+  vi.stubGlobal("LanguageModel", {
+    availability: () => Promise.resolve(availability),
+    create: createModelSession,
+  });
   window.localStorage.clear();
+});
+
+afterEach(() => {
+  destroyPromptApi();
+  vi.unstubAllGlobals();
 });
 
 describe("AI 分頁：總閘門", () => {
@@ -114,6 +113,7 @@ describe("AI 分頁：不支援的瀏覽器／裝置", () => {
     "%s → 分頁照常顯示，總開關與子選項全部反灰並附狀態說明",
     async (state) => {
       availability = state;
+      if (state === "unsupported") vi.stubGlobal("LanguageModel", undefined);
       openAiTab({ enableAi: true, enableBareDomainLink: true });
 
       await waitFor(() => expect(cb("enableAi")).toBeDisabled());
@@ -135,17 +135,21 @@ describe("AI 分頁：模型下載", () => {
     clickPref("enableAi");
 
     expect(cb("enableAi")).toBeChecked();
-    expect(ensurePromptApiModel).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(createModelSession).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(destroyModelSession).toHaveBeenCalledTimes(1));
   });
 
-  test("取消勾選 → 釋放常駐 session，不再觸發下載", () => {
+  test("disabling AI releases an existing session without starting another download", async () => {
+    await ensurePromptApiReady("pref-modal-test", "A test session.");
+    createModelSession.mockClear();
+    destroyModelSession.mockClear();
     openAiTab({ enableAi: true });
 
     clickPref("enableAi");
 
     expect(cb("enableAi")).not.toBeChecked();
-    expect(destroyPromptApi).toHaveBeenCalledTimes(1);
-    expect(ensurePromptApiModel).not.toHaveBeenCalled();
+    await waitFor(() => expect(destroyModelSession).toHaveBeenCalledTimes(1));
+    expect(createModelSession).not.toHaveBeenCalled();
   });
 
   test("已勾選但模型未下載（跨裝置同步）→ 出現補救的下載按鈕", async () => {

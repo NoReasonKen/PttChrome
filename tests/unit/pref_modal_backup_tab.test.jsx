@@ -14,28 +14,17 @@ import { setupI18n, i18n } from "../../src/js/i18n";
 import { DEFAULT_PREFS } from "../../src/js/pref_storage";
 import { downloadAsFile } from "../../src/js/util";
 import * as prefSync from "../../src/js/pref_sync";
+import {
+  cloudSyncSetupRequested,
+  subscribeCloudSyncSetup,
+} from "../../src/js/cloud_sync_setup";
 
-// 雲端同步不是本測試的標的，且會拉 Firebase SDK。
-vi.mock("../../src/js/pref_sync", () => ({
-  canSync: vi.fn(() => false),
-  savePrefs: vi.fn(),
-  signIn: vi.fn(() => Promise.resolve()),
-  signOut: vi.fn(() => Promise.resolve()),
-  onAuthState: vi.fn(() => () => {}),
-}));
+// Keep Google authentication under test control while using the real adapter.
+vi.mock("../../src/js/pref_sync", { spy: true });
 
 // These tests exercise backup actions and sign-in after entering the setup link.
-vi.mock("../../src/js/cloud_sync_setup", async (importOriginal) => ({
-  ...(await importOriginal()),
-  cloudSyncSetupRequested: () => true,
-  subscribeCloudSyncSetup: () => () => {},
-}));
+vi.mock("../../src/js/cloud_sync_setup", { spy: true });
 
-vi.mock("../../src/js/prompt_api", () => ({
-  promptApiAvailability: () => Promise.resolve("available"),
-  ensurePromptApiModel: vi.fn(() => Promise.resolve("available")),
-  destroyPromptApi: vi.fn(),
-}));
 
 // 只換掉 downloadAsFile（測試要攔下匯出內容，也不該真的觸發下載），其餘照原樣（PrefModal 也用
 // DEFAULT_PROXY_HOST）。
@@ -104,6 +93,10 @@ const withCredentials = {
 beforeAll(() => setupI18n());
 
 beforeEach(() => {
+  vi.mocked(prefSync.signIn).mockResolvedValue(undefined);
+  vi.mocked(prefSync.signOut).mockResolvedValue(undefined);
+  vi.mocked(cloudSyncSetupRequested).mockReturnValue(true);
+  vi.mocked(subscribeCloudSyncSetup).mockReturnValue(() => {});
   window.localStorage.clear();
   downloadAsFile.mockClear();
   onReset.mockClear();

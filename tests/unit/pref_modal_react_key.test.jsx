@@ -18,19 +18,7 @@ import { setupI18n } from "../../src/js/i18n";
 import { zh_TW as zh } from "../../src/js/zh_TW_messages";
 import { en_US as en } from "../../src/js/en_US_messages";
 
-vi.mock("../../src/js/pref_sync", () => ({
-  canSync: vi.fn(() => false),
-  savePrefs: vi.fn(),
-  signIn: vi.fn(() => Promise.resolve()),
-  signOut: vi.fn(() => Promise.resolve()),
-  onAuthState: vi.fn(() => () => {}),
-}));
 
-vi.mock("../../src/js/prompt_api", () => ({
-  promptApiAvailability: () => Promise.resolve("available"),
-  ensurePromptApiModel: vi.fn(() => Promise.resolve("available")),
-  destroyPromptApi: vi.fn(),
-}));
 
 
 beforeAll(() => {
@@ -100,13 +88,13 @@ test.each([
 });
 
 // fork 的「關於」曾整段照抄上游，「此版本」連到 robertabcd ⇒ 鎖住此版本指向本 fork。
-test("「此版本」連到本 fork，上游另列一條", () => {
+test("the current version links to this fork and retains upstream attribution", () => {
   const hrefs = (id) =>
     replaceI18n(id, ABOUT_LINKS)
       .filter(isValidElement)
       .map((el) => el.props.href);
   expect(hrefs("about_version_current")).toContain(
-    "https://github.com/abccbaandy/PttChrome",
+    "https://github.com/NoReasonKen/PttChrome",
   );
   expect(hrefs("about_version_current").join(" ")).not.toMatch(/robertabcd/);
   expect(hrefs("about_version_upstream")).toContain(

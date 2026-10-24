@@ -5,6 +5,10 @@ import { page } from "vitest/browser";
 import { PrefModal } from "../../src/components/ContextMenu/PrefModal";
 import { setupI18n, i18n } from "../../src/js/i18n";
 import * as prefSync from "../../src/js/pref_sync";
+import {
+  cloudSyncSetupRequested,
+  subscribeCloudSyncSetup,
+} from "../../src/js/cloud_sync_setup";
 
 const auth = vi.hoisted(() => ({
   user: null,
@@ -13,32 +17,9 @@ const auth = vi.hoisted(() => ({
 }));
 const setup = vi.hoisted(() => ({ requested: false, listeners: new Set() }));
 
-vi.mock("../../src/js/pref_sync", () => ({
-  canSync: () => auth.allowed,
-  savePrefs: vi.fn(),
-  signIn: vi.fn(() => Promise.resolve()),
-  signOut: vi.fn(() => Promise.resolve()),
-  onAuthState: (listener) => {
-    auth.listeners.add(listener);
-    listener(auth.user);
-    return () => auth.listeners.delete(listener);
-  },
-}));
+vi.mock("../../src/js/pref_sync", { spy: true });
+vi.mock("../../src/js/cloud_sync_setup", { spy: true });
 
-vi.mock("../../src/js/cloud_sync_setup", async (importOriginal) => ({
-  ...(await importOriginal()),
-  cloudSyncSetupRequested: () => setup.requested,
-  subscribeCloudSyncSetup: (listener) => {
-    setup.listeners.add(listener);
-    return () => setup.listeners.delete(listener);
-  },
-}));
-
-vi.mock("../../src/js/prompt_api", () => ({
-  promptApiAvailability: () => Promise.resolve("available"),
-  ensurePromptApiModel: vi.fn(() => Promise.resolve("available")),
-  destroyPromptApi: vi.fn(),
-}));
 
 const openModal = () =>
   render(
@@ -73,6 +54,19 @@ const emitAuth = (user, allowed) =>
 
 beforeAll(() => setupI18n());
 beforeEach(() => {
+  vi.mocked(prefSync.canSync).mockImplementation(() => auth.allowed);
+  vi.mocked(prefSync.signIn).mockResolvedValue(undefined);
+  vi.mocked(prefSync.signOut).mockResolvedValue(undefined);
+  vi.mocked(prefSync.onAuthState).mockImplementation((listener) => {
+    auth.listeners.add(listener);
+    listener(auth.user);
+    return () => auth.listeners.delete(listener);
+  });
+  vi.mocked(cloudSyncSetupRequested).mockImplementation(() => setup.requested);
+  vi.mocked(subscribeCloudSyncSetup).mockImplementation((listener) => {
+    setup.listeners.add(listener);
+    return () => setup.listeners.delete(listener);
+  });
   window.localStorage.clear();
   auth.user = null;
   auth.allowed = false;
