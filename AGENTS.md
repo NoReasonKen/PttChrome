@@ -63,6 +63,10 @@ For user debug captures and unfinished work, use the dedicated entries in the [t
 
 For linked worktrees and cloud sessions, follow their separate branch, commit, push, and integration rules in the Git workflow.
 
+## Local test runs
+
+**Run one test command at a time on the local machine.** Wait for each unit, integration, E2E, or build run to exit before starting the next, including in background shells and subagents. Local CPU and memory are limited; concurrent suites exhaust RAM and swap and cause unrelated timeouts.
+
 ## Live-login limits
 
 **A complete live suite may log in exactly once, without exceptions.**
