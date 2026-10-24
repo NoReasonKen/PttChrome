@@ -15,7 +15,7 @@
 //   yarn ci:status --timeout-ms <ms>  等 CI 的上限（預設 30 分鐘，從本專案 run 出現起算）
 //   yarn ci:status --rerun-failed  跑完若失敗，自動重跑失敗 job（僅限已知 flaky）
 //
-// 需要環境變數 GH_TOKEN。exit code：0 全綠 / 1 有失敗 / 2 工具或設定問題
+// Needs GH_TOKEN or a logged-in gh CLI. exit code: 0 all green / 1 failure / 2 tool or configuration problem
 // （**刻意分開**，這樣「查不到」不會被誤讀成「沒問題」）。
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -142,6 +142,35 @@ export function noRunAction({ wait, sawRuns, now, appearDeadline, deadline }) {
   return now < (sawRuns ? deadline : appearDeadline) ? "wait" : "fail";
 }
 
+// Root-cause hints for "no run". A fork keeps upstream workflow files, but GitHub
+// disables Actions in forks by default (repository-level enabled=false). Even
+// after Actions is enabled, workflows with a schedule stay `disabled_fork` and
+// skip push triggers too. In 2026-10 pushes silently never triggered CI for
+// several sessions. Returns lines to print; an empty array means no blocker.
+export function diagnoseActionsBlockers({ permissions, workflows }) {
+  const lines = [];
+  if (permissions && permissions.enabled === false) {
+    lines.push("GitHub Actions is disabled for this repository (forks start disabled): enable it on the repository's Actions page.");
+  }
+  for (const w of workflows || []) {
+    if (w.state && w.state !== "active") {
+      lines.push(`Workflow "${w.name}" (${w.path}) is ${w.state}` +
+        (w.state === "disabled_fork" ? ": forks disable scheduled workflows; enable it on its Actions page." : "."));
+    }
+  }
+  return lines;
+}
+
+// GH_TOKEN wins; otherwise borrow the gh CLI login (`gh auth token`). Neither ⇒ null (exit 2).
+export function resolveGhToken(env, ghAuthToken) {
+  if (env.GH_TOKEN) return env.GH_TOKEN;
+  try {
+    return String(ghAuthToken() || "").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 // 全部 run 都完成才算完成（有 run 還在跑就要繼續等）。
 export function allSettled(runs) {
   return (runs || []).length > 0 && runs.every((r) => r.status === "completed");
@@ -239,11 +268,27 @@ async function tailJobLog(repo, jobId) {
   }
 }
 
+// Print root-cause hints for a missing run. A failed diagnosis must not mask the original exit 2.
+async function reportActionsBlockers(repo) {
+  try {
+    const [permissions, wf] = await Promise.all([
+      api(`/repos/${repo}/actions/permissions`),
+      api(`/repos/${repo}/actions/workflows?per_page=100`),
+    ]);
+    const lines = diagnoseActionsBlockers({ permissions, workflows: wf.workflows });
+    if (lines.length) console.error(["Actions blockers found:", ...lines.map((l) => `  - ${l}`)].join("\n"));
+  } catch (e) {
+    console.error(`(Could not check for disabled workflows: ${e.message})`);
+  }
+}
+
 async function main() {
-  if (!process.env.GH_TOKEN) {
-    console.error("GH_TOKEN 未設定——無法查 GitHub Actions。");
+  const token = resolveGhToken(process.env, () => sh("gh", ["auth", "token"]));
+  if (!token) {
+    console.error("GH_TOKEN is unset and the gh CLI is not logged in; cannot query GitHub Actions.");
     return 2;
   }
+  process.env.GH_TOKEN = token;
   const repo =
     arg("repo") || parseRepoFromRemote(sh("git", ["remote", "get-url", "origin"]));
   if (!repo) {
@@ -308,6 +353,7 @@ async function main() {
             : "（--no-wait：只看當下，未等待建立。）") +
           "\n可能原因：該 commit 未 push、workflow 未被觸發（例如由 GITHUB_TOKEN 產生的 push 不會遞迴觸發），或分支名有誤。",
       );
+      await reportActionsBlockers(repo);
       return 2;
     }
     sawRuns = true;
@@ -331,6 +377,7 @@ async function main() {
           "\n可能原因：workflow 未被觸發（例如由 GITHUB_TOKEN 產生的 push 不會遞迴觸發）、" +
           "workflow 被停用，或 GitHub 端事件延遲（實測可達 11 分鐘）。",
       );
+      await reportActionsBlockers(repo);
       return 2;
     }
     if (!sawProjectRun) {

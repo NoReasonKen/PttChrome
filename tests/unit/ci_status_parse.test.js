@@ -19,6 +19,8 @@ import {
   runMark,
   runsFailed,
   noRunAction,
+  diagnoseActionsBlockers,
+  resolveGhToken,
   DEFAULT_DEADLINE_MS,
 } from "../../scripts/ci-status.mjs";
 
@@ -350,4 +352,51 @@ describe("runMark / runsFailed", () => {
 // 舊預設 15 分鐘 ⇒ 每次都在它跑完前逾時，還沒跑完的 run 被判「不綠」回 exit 1。
 test("預設等待時間蓋得過最慢的 job（>= 30 分鐘）", () => {
   expect(DEFAULT_DEADLINE_MS).toBeGreaterThanOrEqual(30 * 60 * 1000);
+});
+
+// A fork keeps workflow files but GitHub disables Actions there by default, and
+// scheduled workflows stay `disabled_fork` even after Actions is enabled. Runs
+// then never appear on push; "no run" must name that cause instead of guessing.
+describe("diagnoseActionsBlockers", () => {
+  const wf = (name, state) => ({ name, state, path: `.github/workflows/${name}.yml` });
+
+  test("repository-level Actions disabled is reported first", () => {
+    const lines = diagnoseActionsBlockers({ permissions: { enabled: false }, workflows: [] });
+    expect(lines[0]).toMatch(/Actions.*disabled/i);
+  });
+
+  test("fork-disabled and manually disabled workflows are listed with their state", () => {
+    const lines = diagnoseActionsBlockers({
+      permissions: { enabled: true },
+      workflows: [wf("Deploy", "active"), wf("CodeQL", "disabled_fork"), wf("Nightly", "disabled_manually")],
+    });
+    const text = lines.join("\n");
+    expect(text).toContain("CodeQL");
+    expect(text).toContain("disabled_fork");
+    expect(text).toContain("Nightly");
+    expect(text).not.toContain("Deploy");
+  });
+
+  test("nothing to report when Actions and every workflow are active", () => {
+    expect(
+      diagnoseActionsBlockers({ permissions: { enabled: true }, workflows: [wf("Deploy", "active")] }),
+    ).toEqual([]);
+  });
+});
+
+describe("resolveGhToken", () => {
+  test("GH_TOKEN wins without calling gh", () => {
+    const gh = vi.fn();
+    expect(resolveGhToken({ GH_TOKEN: "env-token" }, gh)).toBe("env-token");
+    expect(gh).not.toHaveBeenCalled();
+  });
+
+  test("falls back to the gh CLI login", () => {
+    expect(resolveGhToken({}, () => "cli-token\n")).toBe("cli-token");
+  });
+
+  test("no token when gh is missing or logged out", () => {
+    expect(resolveGhToken({}, () => "")).toBe(null);
+    expect(resolveGhToken({}, () => { throw new Error("ENOENT"); })).toBe(null);
+  });
 });
