@@ -53,3 +53,9 @@ docs/local/
 
 # Local scratch files, including agent handoff documents; never committed
 /tmp/
+
+# Developer- and agent-facing files kept local (see AGENTS.md "What belongs in git")
+/AGENTS.md
+/CLAUDE.md
+/GLOSSARY.md
+/docs/domain-overview.md
