@@ -1,4 +1,4 @@
-// 查 GitHub Actions 狀態（push 後必做，見 CLAUDE.md）。等 run 跑完、印每個 job
+// 查 GitHub Actions 狀態（push 後必做）。等 run 跑完、印每個 job
 // 的結果，失敗時直接把失敗 step 的 log 尾巴撈出來。
 //
 // **為什麼是 Node 腳本而不是一行 curl|jq**：本機（Git Bash / PowerShell）**沒有
@@ -96,7 +96,7 @@ export function isFullSha(s) {
 //
 // GitHub 的 default setup（CodeQL、Dependabot）會用 `dynamic/...` 這種虛擬 workflow
 // 路徑、event 記成 `dynamic` —— 在 dev 上它叫「Push on dev」，很容易被誤認成本專案
-// 的 CI。CLAUDE.md 已明寫它不算。判定「有沒有 CI 在跑」只能看本專案的 run，否則就
+// 的 CI，但它不算。判定「有沒有 CI 在跑」只能看本專案的 run，否則就
 // 會像 2026-08-27 那次：deploy run 還沒建立，卻因為 CodeQL 那顆已完成而回報全綠。
 // 兩個判準都用（event 與 path），任一命中就排除。
 export function isProjectRun(run) {

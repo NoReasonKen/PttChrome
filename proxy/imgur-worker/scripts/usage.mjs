@@ -4,7 +4,7 @@
 //   node scripts/usage.mjs [--days N]
 //
 // 憑證直接沿用 `wrangler login` 存下的 OAuth token，不需另外辦 API token。
-// **本機沒有 jq，也不要用 curl|jq 拼**（見專案 CLAUDE.md 記載的踩坑：jq 不存在時
+// **本機沒有 jq，也不要用 curl|jq 拼**（jq 不存在時
 // 解析永遠是空字串，錯誤又被 2>/dev/null 吞掉，看起來像查不到）。
 //
 // 重要觀念：**快取命中不算一次 Worker invocation**（命中時 Worker 根本不執行），

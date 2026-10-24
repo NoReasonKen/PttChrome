@@ -146,28 +146,7 @@ describe('hook CLI 協定（exit 2＋stderr 回饋給模型）', () => {
   });
 });
 
-describe('接線：hook 與 pre-commit 沒被拆掉', () => {
-  const settings = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude/settings.json'), 'utf8'));
-  const commandsOf = (event) =>
-    (settings.hooks?.[event] || []).map((h) => ({
-      matcher: h.matcher || '',
-      commands: (h.hooks || []).map((x) => x.command).join('\n'),
-    }));
-
-  test('PreToolUse 掛在 Bash 與 PowerShell', () => {
-    const entry = commandsOf('PreToolUse').find((h) => /edit-guard\.mjs" --pre-tool/.test(h.commands));
-    expect(entry).toBeTruthy();
-    for (const tool of ['Bash', 'PowerShell']) expect(entry.matcher.split('|')).toContain(tool);
-  });
-
-  test('PostToolUse 掛在檔案工具與 shell 工具', () => {
-    const entry = commandsOf('PostToolUse').find((h) => /edit-guard\.mjs" --post-tool/.test(h.commands));
-    expect(entry).toBeTruthy();
-    for (const tool of ['Edit', 'Write', 'MultiEdit', 'Bash', 'PowerShell']) {
-      expect(entry.matcher.split('|')).toContain(tool);
-    }
-  });
-
+describe('接線：pre-commit 沒被拆掉', () => {
   test('husky pre-commit 跑 --staged', () => {
     const hook = fs.readFileSync(path.join(ROOT, '.husky/pre-commit'), 'utf8');
     expect(hook).toMatch(/node scripts\/edit-guard\.mjs --staged/);

@@ -3,7 +3,7 @@
 // 目的：把 `[←]離開 [→]閱讀 [Ctrl-P]發表文章 [d]刪除 …` 與
 // ` 文章選讀  (y)回應(X)推文(^X)轉錄 …` 裡的每一組括號變成可點按鈕。
 //
-// pttbbs 原始碼校準（依 CLAUDE.md「PTT 邏輯不准猜」逐條查證，不是從畫面反推）：
+// pttbbs 原始碼校準（依 docs/pttbbs-screen-protocol.md「研究方法規範」逐條查證，不是從畫面反推）：
 //   mbbsd/bbs.c:663      readtitle()：showtitle() 佔 row 0，緊接 outs("[←]離開 …\n")
 //                        ⇒ 看板文章列表的提示列固定在 **row 1**
 //   mbbsd/board.c:1330   看板列表：outs("[←][q]回上層 [→][r]閱讀 [↑↓]選擇 …\n")

@@ -53,7 +53,7 @@ yarn start
 | 階段 | 做什麼 | 在哪 |
 |---|---|---|
 | 環境 Setup script（建環境時跑一次，結果被快取） | Node 24、corepack/Yarn 4、`yarn install --immutable`、`yarn playwright install --with-deps chromium firefox`、字型對齊 CI、clone `3rd_script/pttbbs`／`ptt-term` | `scripts/cloud-setup.sh` |
-| SessionStart hook（每個 session） | 快取比 dev 舊時補上：`yarn.lock` 比 `node_modules` 新 ⇒ `yarn install --immutable`；`playwright-core` 要的 chromium／headless shell／ffmpeg／firefox revision 不在 ⇒ `yarn playwright install chromium firefox`。裝不起來才退回提醒；字型對齊 CI 沒做過就補做 | `scripts/check-remote-commits.mjs`（`CLAUDE_CODE_REMOTE=true` 才自己裝；本機只提醒） |
+| SessionStart hook（每個 session；本 fork 目前未設定，要用時在 Claude Code 設定加 hook 執行 `node scripts/check-remote-commits.mjs`） | 快取比 dev 舊時補上：`yarn.lock` 比 `node_modules` 新 ⇒ `yarn install --immutable`；`playwright-core` 要的 chromium／headless shell／ffmpeg／firefox revision 不在 ⇒ `yarn playwright install chromium firefox`。裝不起來才退回提醒；字型對齊 CI 沒做過就補做 | `scripts/check-remote-commits.mjs`（`CLAUDE_CODE_REMOTE=true` 才自己裝；本機只提醒） |
 
 環境設定的 Setup script 欄位只放下面兩行（不假設當下工作目錄就是 repo），之後改 `scripts/cloud-setup.sh` 即可，新 session 生效：
 

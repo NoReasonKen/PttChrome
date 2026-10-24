@@ -1,7 +1,6 @@
 # CI 故障對照表
 
 `yarn ci:status` 紅了、但失敗的 job／step 看起來與被測 code 無關時查這裡；新增 CI job 前讀最後兩條。
-（由 CLAUDE.md「push 後必查 CI」節搬出；那邊只留一行指標。）
 
 - **nightly `Flaky Hunt`（`.github/workflows/flaky-hunt.yml`）**：每天在 dev 上把 unit／integration 各連跑 N 輪、offline e2e 與逆境圖片 e2e（adverse 三桶）`--repeat-each=N`（預設 10）；Android 模擬器 e2e 每週一次（窗起點週六 UTC＝台灣週日 05:00 那輪，`--repeat-each` 預設 5，`scripts/flaky-hunt-gate.mjs#decideAndroid`；手動 dispatch 要明確選 `suite=android`，`all` 不含）。它的紅＝**真的 flaky**（框架層不 retry），處置是照該 issue 找根因修，不是重跑。`yarn ci:status` 不把它算進 push 的 CI（同 sha 也排除）。完整流程：
   - **排程保證**：GitHub schedule 會延遲（實測天天晚 ~3h、最多 +5h）也可能被丟，所以掛三個非整點 cron（UTC 21:17／03:17／09:17＝台灣 05:17／11:17／17:17）。最前面的 `gate` job 查本 workflow 在 dev 上自最近一次 UTC 21:00 起、**比自己早**建立的 run：有 success／failure 或還在跑／排隊的 ⇒ 其餘 job 全跳過（gate-only 的短 run）；cancelled 不算。`workflow_dispatch` 永不跳過，但在 dev 上手動跑過也算「今天跑過」（`scripts/flaky-hunt-gate.mjs`）。concurrency 按 ref 分組、`cancel-in-progress: false`：後到的排隊等前一輪結束再由 gate 跳過；PR branch 的驗證 dispatch 與 dev 的 nightly 互不取消。

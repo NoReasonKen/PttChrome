@@ -9,7 +9,7 @@
 // 欄位一律**按 cell 切**（TermChar 陣列恆 80 格、DBCS 佔兩格）——不走 rowToText 的
 // 字串索引，所以舊游標 ●／置底 ★ 這類全形前綴造成的位移（comment_parse.realignListColumns
 // 要補的那件事）在這裡不存在。顏色沿用 LinkSegmentBuilder，與原列逐格同色。
-// 欄位出處（不猜，CLAUDE.md）：
+// 欄位出處（不猜，一律對照 pttbbs 原始碼）：
 //   文章列表 pttbbs `mbbsd/bbs.c#readdoent`：%7d 序號 [0,7)、標記 [7,9)、推文數 [9,11)、
 //     日期 %-6.5s [11,17)、作者 %-13.12s（12 字＋1 空白）[17,30)、標題（含 □/R:/轉
 //     前綴）從 30 起。切點與 comment_parse 同一組（parseListAuthor [17,29)、

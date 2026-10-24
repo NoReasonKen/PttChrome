@@ -2,7 +2,7 @@
 // 零 DOM、零 app 狀態 ⇒ 全部在 tests/unit/board_list_parse.test.js 守護。
 //
 // 事實來源一律是 `3rd_script/pttbbs/mbbsd/board.c#show_brdlist` / `#choose_board`
-// （CLAUDE.md：PTT 邏輯不准猜）。三個承重事實：
+// （PTT 邏輯不准猜，見 docs/pttbbs-screen-protocol.md「研究方法規範」）。三個承重事實：
 //   1. 版型：showtitle row0 → 熱鍵列 row1 → vbarf 欄位列 row2 → body row 3..22
 //      （`while (++myrow < b_lines)`，b_lines=23）→ vs_footer 在 row 23。
 //   2. 序號欄是 `prints("%7d", head)`（head 已 ++）⇒ **編號＝1-based 絕對位置**，

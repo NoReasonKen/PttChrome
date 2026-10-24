@@ -274,7 +274,7 @@ const AUTO_LOGIN_TERMINAL_PHASES = [
 ];
 
 // 注入自動登入 prefs。addInitScript 而非 applyPrefs：auto_login 只在 connect 當下讀，
-// 而開站即 connect（CLAUDE.md「dev build 開站即 connect()」）⇒ 必須在 goto 之前就位。
+// 而開站即 connect（dev build 與正式版同樣開站即 connect()）⇒ 必須在 goto 之前就位。
 async function installAutoLoginPrefs(page, extra) {
   const user = process.env.PTT_USER;
   const pass = process.env.PTT_PASS;
@@ -679,7 +679,7 @@ function listArticleNumbers(rows, opts = {}) {
   return out;
 }
 
-// 當前列表畫面的候選（讀 buf.getRowText，不讀 DOM —— 見 CLAUDE.md）。
+// 當前列表畫面的候選（讀 buf.getRowText，不讀 DOM —— 見 docs/enhanced-addon.md 踩坑 A）。
 async function readListCandidates(page, opts) {
   const rows = await page.evaluate(() => {
     const buf = window.__app.buf;

@@ -3,7 +3,7 @@
 // 為什麼要強制而不是寫規則：歷來的編輯坑全發生在「經 shell 改檔」這層——heredoc 把雙反斜線
 // 折成一個、`String.replace` 的 `$` 序列把全文再貼一次、Windows python 文字模式寫出 CRLF、
 // PowerShell here-string 被丟進 Bash。Edit／Write 工具沒有 shell 跳脫與換行轉換，這幾類
-// 不可能發生；而 CLAUDE.md 的規則擋不住系統提示鼓勵「用 sed／heredoc 改檔」。
+// 不可能發生；而寫在 agent 指引裡的規則擋不住系統提示鼓勵「用 sed／heredoc 改檔」。
 //
 // 模式：
 //   --pre-tool   PreToolUse（Bash|PowerShell）：擋「用 shell 寫專案文字檔」，exit 2 把理由回饋給模型。

@@ -79,7 +79,7 @@ pref `refreshMinIntervalSec`（預設 5 秒，0 ＝不限制），只在**真的
 - 下拉重整（`pull_refresh.js`）：只在 `core.mobile`、非選取模式、無 modal、畫面重整得了、觸點底下的捲動
   視口已在頂端時起手；被動監聽、從不 `preventDefault`；位移阻尼 0.5、門檻 64px、上限 96px；放手才生效，
   拉回去或改成水平就取消。
-- **這是 CLAUDE.md「系統原生行為不准模擬」的例外**，理由逐條對照該規範：
+- **這是「系統原生行為不准模擬」原則（`docs/mouse.md`「手勢與瀏覽器返回」）的例外**，理由逐條對照該規範：
   1. 沒有入口可接：Chrome 的 pull-to-refresh 唯一的結果是整頁重載＝斷線＋重新登入，頁面收不到「使用者拉了」、
      也不能把結果換掉；
   2. 觸控事件有完整相位（start/move/end），「放手才生效／拉回取消」做得正確——不是 WheelEvent 缺 phase 那種輸入；

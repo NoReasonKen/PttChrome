@@ -185,8 +185,8 @@ describe("isKnownFlaky", () => {
 });
 
 // GitHub 的 default setup（CodeQL / Dependabot）跑的是 `dynamic/...` workflow，
-// 不是 repo 裡的 .github/workflows/*.yml。CLAUDE.md 明寫「只有 `Push on dev` 那個
-// `dynamic` run 是 CodeQL default setup，不算」。
+// 不是 repo 裡的 .github/workflows/*.yml。規則：只有 `Push on dev` 那個
+// `dynamic` run 是 CodeQL default setup，不算。
 //
 // REGRESSION（2026-08-27 實際踩到）：push 事件到 `Deploy to GitHub Pages` run 被
 // 建立之間**延遲了 11 分鐘**。這段空窗期裡 runs API 只回得到 CodeQL 那一顆，而它

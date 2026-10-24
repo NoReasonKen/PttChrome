@@ -1,7 +1,7 @@
 // 看板列表平滑捲動的純解析層守護（src/js/board_list_parse.js）。
 //
 // 素材是**手寫的 24 列文字陣列**，格式逐格照 `3rd_script/pttbbs/mbbsd/board.c`
-// #show_brdlist 的 prints 組出來（CLAUDE.md：PTT 邏輯不准猜）：
+// #show_brdlist 的 prints 組出來（PTT 邏輯不准猜，見 docs/pttbbs-screen-protocol.md「研究方法規範」）：
 //   row0 showtitle「【看板列表】」／row1 熱鍵列／row2 vbarf 欄位列
 //   row3..22 body（`while (++myrow < b_lines)`，b_lines=23 ⇒ 20 列）
 //   row23 vs_footer，三個變體就是三種畫面的指紋（board.c:1279-1290）

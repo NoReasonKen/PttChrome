@@ -1,5 +1,5 @@
 // README 給一般使用者 3 分鐘內看完：功能特色每條只寫 1～2 句「它做什麼」，
-// 細節（設定位置、限制、原理）留在設定頁說明或 docs/。規範見 CLAUDE.md「README 功能列表」。
+// 細節（設定位置、限制、原理）留在設定頁說明或 docs/。規範即本測試的斷言。
 // 2026-10 前的 README 單條動輒上千字，靠人眼自律守不住 ⇒ 靜態掃描。
 import fs from "node:fs";
 import path from "node:path";

@@ -2,7 +2,7 @@
 //   - viewport-fit=cover：手機 App Bar／底部工具列以 safe-area 讓位（App._readSafeInsets）。
 //   - **不准**加 interactive-widget=resizes-content：軟鍵盤開關會變成 layout resize ⇒
 //     重算字級、改列數、重送 NAWS（docs/mobile.md「軟鍵盤蓋住底列」）。
-//   - **不准**鎖 user-scalable／maximum-scale：雙指縮放是瀏覽器原生行為（CLAUDE.md）。
+//   - **不准**鎖 user-scalable／maximum-scale：雙指縮放是瀏覽器原生行為（docs/mouse.md「手勢與瀏覽器返回」）。
 //   - theme-color 與 manifest 的 theme_color 一致（安裝成 App 後的狀態列色）。
 import indexHtml from "../../index.html?raw";
 import manifest from "../../public/manifest.webmanifest?raw";

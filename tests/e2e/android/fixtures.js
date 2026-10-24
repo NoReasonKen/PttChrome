@@ -34,7 +34,7 @@ const envError = (msg) => new Error(`${ENV_ERROR_TAG} ${msg}`);
 const LAUNCH_TIMEOUT_MS = 60000;
 
 // adb reverse 是往 host 的 **127.0.0.1** 連；Windows 上 vite 只綁 [::1]:8080
-// （CLAUDE.md「跑起來」）⇒ 直接 reverse 到 8080 得到 ERR_EMPTY_RESPONSE。
+// （見 scripts/kill-dev-server.js）⇒ 直接 reverse 到 8080 得到 ERR_EMPTY_RESPONSE。
 // 中間墊一層 TCP 轉送：127.0.0.1:<隨機埠> → localhost:8080（autoSelectFamily 兩種都試）。
 // 原始 TCP 轉送，WebSocket upgrade 照常通過。
 function startBridge() {

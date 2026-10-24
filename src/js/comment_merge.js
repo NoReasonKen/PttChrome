@@ -158,7 +158,7 @@ export function groupSameAuthorRuns(anns, breakAt) {
 //
 // 內容 cell 都沿用 lines 內的既有 TermChar 實例——絕不可自造 plain object，
 // prototype 方法（isStartOfURL 等）一剝離 LinkSegmentBuilder 就 runtime 崩潰
-// （pageLines JSON-clone 事故的同型地雷，見 CLAUDE.md 測試段）。內容 slice 保留
+// （pageLines JSON-clone 事故的同型地雷）。內容 slice 保留
 // URL flag，推文裡的連結／inline 圖片預覽照常。唯一的合成 cell 是換行：以
 // Object.create 繼承來源空格 cell 的 prototype 再覆寫 ch='\n'（clone 而非
 // mutate——原 cell 屬於 buf，直接改會污染畫面），配合 .mergedCommentBlock 的

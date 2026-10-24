@@ -38,7 +38,7 @@ export function isPreviewTarget(el) {
 //   * 影片／iframe 不納入：<video> 自己有原生控制項選單，iframe 是第三方頁面，
 //     兩者都不是這次動線（以圖找圖）的對象。
 //
-// 依據 CLAUDE.md「系統／瀏覽器的原生行為不准模擬，一律接入使用」：智慧鏡頭沒有
+// 依據「系統／瀏覽器的原生行為不准模擬，一律接入使用」（docs/mouse.md「手勢與瀏覽器返回」）：智慧鏡頭沒有
 // 任何網頁可呼叫的 API，唯一入口就是原生選單 ⇒ 只能拆掉自己擋原生的那道牆
 // （ContextMenu/index.jsx 開頭那個無條件的 preventDefault）。
 export const NATIVE_MENU_SELECTOR = 'img.easyReadingImg';

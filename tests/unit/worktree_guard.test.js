@@ -1,11 +1,11 @@
-// 多 session 並行守門（scripts/worktree.js，規則見 CLAUDE.md「多 session 並行」）。
+// 多 session 並行守門（規則見 scripts/worktree.js 檔頭）。
 //
 // 鎖三件事：
 //   1. linked worktree 判定：`.git` 檔指向 `.git/worktrees/<name>` 才算；submodule
 //      （`.git/modules/…`）與主目錄（`.git` 是資料夾）不算 —— 判錯在主目錄會把 e2e 整個擋掉。
 //   2. 會搶全機資源的入口都經過守門（Playwright config、integration runner）；
 //      這種「多一道擋」最容易被順手刪掉，所以靜態掃描。
-//   3. SessionEnd hook 只殺自己 checkout 的 dev server（--own），不殺 8080 上別人的。
+//   3. vite dev server 寫 pidfile，`kill-dev-server --own` 才能只殺自己 checkout 的，不殺 8080 上別人的。
 
 import fs from "node:fs";
 import os from "node:os";
@@ -113,15 +113,7 @@ describe("入口都經過守門（靜態）", () => {
   });
 });
 
-describe("SessionEnd hook 只殺自己的 dev server", () => {
-  test("kill-dev-server 帶 --own，且沒有 PostToolUse 旗標檔那套", () => {
-    const settings = JSON.parse(read(".claude/settings.json"));
-    const cmds = JSON.stringify(settings.hooks.SessionEnd);
-    expect(cmds).toContain("kill-dev-server.js\\\" --own");
-    // PostToolUse 可以有別的用途（edit-guard），但不准再掛殺 dev server 的那套。
-    expect(JSON.stringify(settings.hooks.PostToolUse || [])).not.toMatch(/kill-dev-server|dev-server/);
-  });
-
+describe("kill-dev-server --own 只殺自己的 dev server", () => {
   test("vite dev server 會寫 pidfile（--own 的依據）", () => {
     expect(read("vite.config.mjs")).toMatch(/plugins: \[[^\]]*devServerPidfile\(\)/);
   });

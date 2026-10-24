@@ -14,7 +14,7 @@
     <link rel="manifest" href="./manifest.webmanifest">
 
     <!-- 手機版面（docs/mobile.md）：刻意**不**鎖 user-scalable／maximum-scale ——
-         雙指縮放是瀏覽器原生行為，看不清時的後援（CLAUDE.md「原生行為一律接入」）。
+         雙指縮放是瀏覽器原生行為，看不清時的後援（原生行為一律接入，見 docs/mouse.md「手勢與瀏覽器返回」）。
          刻意**還沒**加 interactive-widget=resizes-content：它讓軟鍵盤開關變成 layout
          resize ⇒ onWindowResize 重算字級，fixed-font-size 下還會改列數、重送 NAWS。
          鍵盤遮住底列的處理見 docs/mobile.md Phase 2。

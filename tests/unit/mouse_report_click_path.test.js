@@ -6,7 +6,7 @@
 //   1. **優先權**：連結／預覽／有選取／列表好讀（buffer/frozen）一律贏過回報；
 //   2. **只在原生 24 列畫面回報**（好讀長頁與虛擬視窗的列號跟 server 對不起來）；
 //   3. **座標真的走 clientToPos**（不得另寫幾何——docs/mouse.md 的座標契約）；
-//   4. **送出走 view._send()**，不得直接碰 view.conn（CLAUDE.md：view.conn 在
+//   4. **送出走 view._send()**，不得直接碰 view.conn（view.conn 在
 //      連線成功前是 undefined）。
 import { App } from "../../src/js/pttchrome";
 

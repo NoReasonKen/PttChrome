@@ -93,7 +93,7 @@ export default defineConfig(({ command, mode }) => {
       outDir: 'dist',
       emptyOutDir: true,
       sourcemap: true,
-      // 目標＝主流桌機瀏覽器現代版（見 CLAUDE.md 慣例）；不考慮手機/舊版/冷門瀏覽器。
+      // 目標＝主流桌機瀏覽器現代版（見 docs/build-modernization.md）；不考慮手機/舊版/冷門瀏覽器。
       //
       // **用 Vite 的字面值，不要手寫版本號陣列**。'baseline-widely-available' 由 Vite
       // 解析成 Baseline Widely Available 那組（Vite 8.2 ＝ chrome111/edge111/firefox114/

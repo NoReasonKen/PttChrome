@@ -16,7 +16,7 @@
 //   - deep link 改走 hashchange（同一個已登入分頁再貼一次連結，deep_link_entry.js
 //     明列的第 2 條進入路徑）。
 // ⇒ 豁免名單清空，整輪一次登入。
-// 純靜態掃描，不連網、不開瀏覽器，所以放 unit（e2e 素材不穩，見 CLAUDE.md 測試段）。
+// 純靜態掃描，不連網、不開瀏覽器，所以放 unit（e2e 素材不穩）。
 import fs from "fs";
 import path from "path";
 import { e2eProjectFiles, E2E_DIR } from "../../scripts/e2e-project-files.mjs";

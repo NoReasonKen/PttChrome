@@ -60,7 +60,7 @@ offline spec 遍歷所有 article cassette 逐卷守門；End 測試自動挑帶
 - 頁數上限在 hook 內吞掉超額 `\x1b[6~`（無 race：pageLines 停在已 flush 的頁），控制素材大小/重放時長。
   實測 Stock 12 頁 ≈ cassette 27KB + fixture 44KB；不設上限的盤中閒聊可達 416 頁 / 2.6MB。
 
-### 隱私（CLAUDE.md，公開 fork 必守）—— CONFIRMED 關鍵設計
+### 隱私（公開 fork 必守）—— CONFIRMED 關鍵設計
 - **capture 是 article-scoped**：hook 裝在登入*之後*、Enter 前清空 `cur` → cassette/fixture 只含
   「文章 recv（公開內容）」，**不含登入畫面 / 帳號回顯 / 個人化狀態列**。
 - 預設**強制 guest**（刪 `PTT_USER`/`PTT_PASS` env）：guest 無密碼、PTT 不回顯密碼 → 素材零憑證。

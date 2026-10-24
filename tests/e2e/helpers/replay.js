@@ -760,7 +760,7 @@ function currentProjectName() {
 }
 
 // 這一輪的圖片載入情境。優先序：明確傳入 > env OFFLINE_IMAGE_PROFILE > project 名 > 'cache'。
-// 用 project 名而非 env 當主來源，是為了不引入 cross-env（見 CLAUDE.md 建置鏈決策）。
+// 用 project 名而非 env 當主來源，是為了不引入 cross-env（見 docs/build-modernization.md）。
 function offlineImageProfile(explicit) {
   if (explicit) return explicit;
   return resolveImageProfile({ env: process.env, projectName: currentProjectName() });

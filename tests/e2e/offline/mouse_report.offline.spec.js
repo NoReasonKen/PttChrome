@@ -7,7 +7,7 @@
 //   2. 點擊真的把 SGR 寫上線，而且**恰好一對**（不是每個 mousedown/mouseup 各一份）；
 //   3. 座標對得上真實的格線幾何（unit 的 clientToPos 是 mock）；
 //   4. **原生行為沒被弄壞**：選字仍然選得到、右鍵仍然是我們的選單。
-//      這條是 CLAUDE.md 的硬規則，也是整個 Phase C 風險最高的地方。
+//      這條是專案的硬規則（docs/mouse.md「手勢與瀏覽器返回」），也是整個 Phase C 風險最高的地方。
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const {

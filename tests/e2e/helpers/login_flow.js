@@ -9,7 +9,7 @@
 // 慢的時候整條 spec 紅。live e2e 沒辦法穩定重現，只能用純函式在 unit 餵畫面序列守護
 // （tests/unit/e2e_login_flow.test.js）。
 //
-// 畫面字串的依據一律是 pttbbs 原始碼，不從錄到的畫面反推（CLAUDE.md 慣例段）：
+// 畫面字串的依據一律是 pttbbs 原始碼，不從錄到的畫面反推（docs/pttbbs-screen-protocol.md「研究方法規範」）：
 //   daemon/logind/logind.c  PASSWD_CHECK_MSG /AUTH_SUCCESS_MSG / FREEAUTH_SUCCESS_MSG /
 //                           AUTH_FAIL_MSG(ERR_PASSWD) / TFA_PROMPT_MSG / TFA_FAIL_MSG /
 //                           SERVICE_FAIL_MSG / OVERLOAD_CPU_MSG / OVERLOAD_USER_MSG /

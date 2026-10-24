@@ -62,7 +62,7 @@ yarn playwright install --with-deps chromium firefox \
 # 理由與實測見 scripts/cloud-fonts.mjs 檔頭。舊環境（快取）由 SessionStart hook 補做。
 node scripts/cloud-fonts.mjs || echo "[setup] WARN: 字型對齊失敗"
 
-# ── pttbbs 原始碼（.gitignore 忽略，CLAUDE.md「PTT 邏輯不准猜」要讀它）──
+# ── pttbbs 原始碼（.gitignore 忽略，PTT 邏輯不准猜，要讀它）──
 # 之後的更新由 SessionStart hook scripts/sync-3rd-script.mjs 負責。
 mkdir -p 3rd_script
 [ -d 3rd_script/pttbbs/.git ] || git clone --depth 1 https://github.com/ptt/pttbbs 3rd_script/pttbbs \

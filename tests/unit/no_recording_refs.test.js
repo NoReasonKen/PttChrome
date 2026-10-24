@@ -1,5 +1,5 @@
-// Documentation, comments, and test names must remain useful to future sessions;
-// see AGENTS.md. User captures are private, so their names and timestamps are
+// Documentation, comments, and test names must remain useful to future sessions.
+// User captures are private, so their names and timestamps are
 // dead pointers. Describe the facts or reference a cassette stored in the repo.
 //
 // This is a static unit check, like tests/unit/no_test_retry.test.js.

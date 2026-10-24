@@ -7,7 +7,7 @@
 //     stub WebSocket 在 page 內、不寫檔不佔 port，彼此沒有相依性。
 //   - 其餘一律 1：live 靠 worker-scoped 的共用 session（helpers/fixtures.js），
 //     多一個 worker 就多一次登入，直接違反「整輪只登入一次」（PTT 登入頻率限制、
-//     BOT 封鎖，見 CLAUDE.md 測試段）。**沒指定 --project 也算**（會跑到 live）。
+//     BOT 封鎖，見 docs/pttbbs-screen-protocol.md §11.2）。**沒指定 --project 也算**（會跑到 live）。
 // 判斷方向刻意是「證明全是 offline 才放開」，而不是「看到 live 才收緊」：
 // 漏判只會變慢，不會多登入。
 //

@@ -188,7 +188,7 @@ test.describe('選取文字（offline）', () => {
   });
 
   // 2026-09 XTerm SGR 滑鼠回報：把滑鼠交給 PTT server 之後，原生選字**仍然要能用**
-  // （CLAUDE.md 硬規則：系統／瀏覽器的原生行為不准模擬也不准擋掉）。
+  // （硬規則：系統／瀏覽器的原生行為不准模擬也不准擋掉，見 docs/mouse.md「手勢與瀏覽器返回」）。
   //
   // 這條的設計刻意「不新增任何 mousedown/mouseup/auxclick listener、不新增
   // preventDefault」，回報只掛在既有的 click handler 上、且排在

@@ -6,7 +6,7 @@
 //   $env:RECORD_MODE="article"; $env:RECORD_BOARD="Stock"; $env:RECORD_NAME="stock-comments"; yarn record:cassette
 //   $env:RECORD_MODE="list";    $env:RECORD_BOARD="C_Chat"; $env:RECORD_NAME="cchat-list";    yarn record:cassette
 //
-// 隐私（CLAUDE.md，公开 fork 必守）：
+// 隐私（公开 fork 必守，见 docs/offline-replay-testing.md）：
 //  - 凭证优先读 tests/e2e/.ptt-creds.json（gitignored，密码不进聊天/命令列）；无则强制 guest。
 //  - capture 是 article-scoped（hook 装在登入后、Enter 前清空 buffer）→ 只含公开文章内容。
 //  - 即使用真实帐号登入：写档前对 recv + fixture 文字做「登入帐号等长 redact」+ assertNoLeak 把关，

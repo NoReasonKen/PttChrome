@@ -82,7 +82,7 @@ export const EXIT_COL_END = 7;
 // 選單（pageState 1，含主功能表／分類看板／看板列表／我的最愛）的可點區起點。
 // **刻意不套欄位限制**：pttbbs mbbsd/board.c#show_brdlist 每一列至少有四種版型
 // （NBRD_LINE 分隔線、NBRD_FOLDER 目錄、IN_CLASSROOT() 的 10 空格前綴、一般看板
-// 列），沒有一個共用的「標題欄起點」可用。依 CLAUDE.md「PTT 邏輯不准猜」，在沒有
+// 列），沒有一個共用的「標題欄起點」可用。依 docs/pttbbs-screen-protocol.md「研究方法規範」，在沒有
 // 對 source 校準出可靠欄位之前維持整列可點，只擋掉最左邊的序號區。
 export const MENU_COL_START = 8;
 

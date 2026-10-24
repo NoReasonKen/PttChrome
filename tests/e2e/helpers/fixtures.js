@@ -52,8 +52,8 @@ const {
 const test = base.test.extend({
   shared: [
     async ({ browser }, use) => {
-      // 這一輪稍早已判定被封鎖 ⇒ 連 context 都不要開（開站即自動 connect，見
-      // CLAUDE.md「dev build 開站即 connect()」）。Playwright 在 test 失敗後會重啟
+      // 這一輪稍早已判定被封鎖 ⇒ 連 context 都不要開（開站即自動 connect，dev build
+      // 與正式版同樣開站即 connect()）。Playwright 在 test 失敗後會重啟
       // worker、fixture 因此重建，沒有這道閂鎖就會一路重登到封鎖延長。
       assertNotBotBlocked();
       const context = await browser.newContext({ baseURL: 'http://localhost:8080' });

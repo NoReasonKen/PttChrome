@@ -28,7 +28,7 @@ pref `connectionEncoding: 'utf8'`（實驗性，`src/js/wire_charset.js`）已�
 3. **代價**：會動到 `tests/unit/fixtures/screen_golden/*.html` 這份外部契約快照
    （`UPDATE_GOLDEN=1 yarn test:unit render_dom_equivalence`，要逐行看 diff），
    以及 `.wpadding` 的寬度契約（`fixedResize` 直接掃 DOM 改寬度）。
-   見 CLAUDE.md「核心渲染鏈的 DOM 是外部契約」。
+   核心渲染鏈的 DOM 是外部契約，見 `tests/unit/render_dom_equivalence.test.js` 與 `tests/unit/fixtures/screen_golden/`。
 4. 驗證只能靠**合成 cassette**（Big5 連線量不到真的 SGR 66）。
 
 ## 相關但不同的一張：送出方向

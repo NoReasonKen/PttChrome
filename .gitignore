@@ -42,7 +42,7 @@ dist/*
 .idea/
 3rd_script/
 
-# Claude Code 建的 git worktree（多 session 並行；規則見 CLAUDE.md「多 session 並行」）
+# Claude Code 建的 git worktree（多 session 並行；規則見 scripts/worktree.js）
 .claude/worktrees/
 .claude/settings.local.json
 # 個人裝置的研究筆記與原始量測（含裝置／已安裝 App 等隱私資訊，絕不入 repo）

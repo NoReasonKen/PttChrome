@@ -72,7 +72,7 @@ export function acceptsKeyEvent(e, isComposition) {
   // 真 IME 的 229 不受影響：那時 altKey 是 false。
   //
   // keyCode 0 那半是 iOS 來的，但**刻意保留**：專案目標是主流桌機瀏覽器
-  //（CLAUDE.md），不為手機做相容，而它在桌機 IME 也在作用，移除有風險、零收益。
+  //（vite.config.mjs build.target），不為手機做相容，而它在桌機 IME 也在作用，移除有風險、零收益。
   // 不要再把它當待辦。
   if ((e.keyCode == 229 || e.keyCode == 0) && !isAltRemapEvent(e))
     return false;

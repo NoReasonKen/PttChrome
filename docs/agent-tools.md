@@ -24,7 +24,7 @@
 
 - **高階工具不自己拼 PTT 按鍵**：一律走 `aid_navigation` 的序列化導航（逃生前導／板跳／進板畫面／跳號／開文，每步依畫面內容驗證）。新增跳法 = 在那邊加 run 的中段：`startBoard`（`_enqueueEnd` 落地＝`endLanded`）、`startNum`（`_enqueueNumJump` 落地＝`numJumpLanded`，同 list_session open-jump 指紋）。dir `goto` 不碰返回堆疊（成功 `invalidate`）。`onEnd({ok, error})` 每輪恰好呼叫一次（`_endRun`，成功點：`_finishGoto`／`_enqueueOpen.onDone`；失敗點：`_fail`）。
 - 讀全文兩條路互斥：好讀 pref 開著 ⇒ 等 `easyReadingReachedPageEnd` 且 `buf.pageLines` 連續 3 次不再長（好讀自己會翻完整篇）；沒開 ⇒ 原生 pmore 自己 PgDn 到 `pagePercent 100`，`findPageOverlap` 去重。不可兩邊同時送 PgDn。
-- 未登入（這條連線沒看過主功能表）一律拒絕：逃生前導的 ← 與板名會被打進登入畫面帳號欄。不提供登入工具（登入頻率限制／BOT 封鎖，見 `CLAUDE.md`「測試」節）。
+- 未登入（這條連線沒看過主功能表）一律拒絕：逃生前導的 ← 與板名會被打進登入畫面帳號欄。不提供登入工具（登入頻率限制／BOT 封鎖，見 `docs/pttbbs-screen-protocol.md` §11.2）。
 - `board` 只收 `[0-9A-Za-z_-]`：不把任意字串打進 PTT。
 - `serializedOpHint(core)` 非 null 或未連線 ⇒ 拒絕，一個 byte 都不送。
 - **背景分頁（`document.hidden`）一律拒絕**（`HIDDEN_TAB_ERROR`）：Chrome 把背景分頁的 setTimeout 節流到 ≥1s（藏 5 分鐘後 1 分鐘），term_buf settle 與 CommandQueue 逾時／探針全靠計時器 ⇒ 逾時先於 settle，每步誤判。CONFIRMED live：背景分頁 End 落地了仍逾時、進板畫面逾時；切前景後同流程 list 0.16s、read 0.55s。agent 端用 `Page.bringToFront`。

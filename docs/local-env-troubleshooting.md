@@ -25,7 +25,6 @@ or connects to PTT. Fix the reported prerequisites before interpreting test
 failures as application regressions.
 
 判準通則：零 AssertionError、失敗案例耗時 0ms 或整批在 launch 階段就掛、同一支 spec 在別的 project／CI 全綠 ⇒ 環境問題，不要改被測 code。
-（由 CLAUDE.md「測試」節搬出；那邊只留一行指標。）
 
 - **Playwright 升版後（含 Dependabot bump）本機必跑 `yarn playwright install chromium`**：新版綁新 browser binary，
   沒裝會整批 e2e 秒掛（症狀：`browserType.launch: Executable doesn't exist`），與被測 code 無關。CI 每次都重裝所以不受影響。

@@ -155,7 +155,7 @@ npm --prefix proxy/imgur-worker run usage
 
 `scripts/usage.mjs`：沿用 `wrangler login` 的 OAuth token 打 GraphQL Analytics API，
 印出今日執行次數 / 100 000 免費額度。`--days=N` 可看多天。
-（本機沒有 `jq`，別用 `curl | jq` 拼——見 CLAUDE.md 記載的踩坑。）
+（本機沒有 `jq`，別用 `curl | jq` 拼：解析會永遠是空字串，看起來像查不到。）
 Dashboard 路徑：Workers & Pages → `ptt-imgur-cache` → Metrics。
 
 ### 額度

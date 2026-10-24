@@ -1,7 +1,7 @@
 'use strict';
 
 // 多 session 並行的守門：判斷目前 checkout 是不是 git linked worktree。
-// 規則（CLAUDE.md「多 session 並行」）：
+// 規則：
 //   - worktree 裡禁跑 e2e／integration／record／android（搶 8080、Docker 容器、
 //     PTT 帳號與大量 CPU；Playwright 的 reuseExistingServer 還會靜默測到主目錄的 code）
 //     ⇒ assertNotWorktree() 以 exit 2 拒絕，逃生門 ALLOW_WORKTREE_E2E=1。

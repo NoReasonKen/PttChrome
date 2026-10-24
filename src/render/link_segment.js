@@ -4,7 +4,7 @@
 //
 // 原 src/components/Row/LinkSegmentBuilder.jsx（含 HyperLink / FixedUrlLine 兩個
 // 小元件）的純 JS 版。狀態機與邊界判定一字未改，只有產物從 React element 換成
-// DOM 節點；所有 class / data-* 都是外部契約，見 CLAUDE.md 與 golden。
+// DOM 節點；所有 class / data-* 都是外部契約，見 tests/unit/fixtures/screen_golden/。
 import cx from "classnames";
 import { el } from "./dom";
 import { isDBCSLead } from "../js/string_util";

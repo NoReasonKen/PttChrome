@@ -5,7 +5,7 @@
 // 由 MantineRoot 的 theme classNames 掛上），在按下點插一個 span 跑完 CSS 動畫就移除。
 // 規則：
 //   - **核心畫面（#mainContainer）一律跳過**：那裡是純 JS 渲染鏈的單一寫入路徑
-//     （CLAUDE.md「不要在 #mainContainer 上開第二條寫入路徑」），選單大按鈕／列表卡片只用
+//     （不要在 #mainContainer 上開第二條寫入路徑，見 docs/enhanced-addon.md），選單大按鈕／列表卡片只用
 //     CSS :active。
 //   - prefers-reduced-motion 時不畫（只剩各元件自己的 :active 底色）。
 //   - 只是裝飾：不 preventDefault、不攔事件、不碰焦點。

@@ -727,7 +727,7 @@ DBCS 雙色字），只找一層在那種字上會漏判。`components/ContextMe
 `components/ContextMenu/index.jsx#onContextMenu` 掛在 `#BBSWindow` 的 **capture**
 階段，原本第一行就無條件 `preventDefault()` ⇒ 圖片上的原生選單（另存圖片／複製
 圖片／使用 Google 智慧鏡頭搜尋）整組叫不出來。智慧鏡頭**沒有任何網頁可呼叫的
-API**，唯一入口就是原生選單 ⇒ 依 CLAUDE.md「系統／瀏覽器的原生行為不准模擬，一律
+API**，唯一入口就是原生選單 ⇒ 依本檔「手勢與瀏覽器返回」的原則「系統／瀏覽器的原生行為不准模擬，一律
 接入使用……接入時通常要同時拆掉自己擋原生的那道牆」，把那道牆拆掉。
 
 處置收斂成純函式 `js/context_menu_items.js#contextMenuDisposition`，三態：

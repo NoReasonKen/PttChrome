@@ -187,7 +187,7 @@ function assertTextNoLeak(text) {
   assertNoLeak({ cassette: { steps: [{ on: 'text', recv: Buffer.from(text, 'utf8').toString('base64') }] } });
 }
 
-// 本機資訊把關（CLAUDE.md 隱私節）：家目錄（兩種斜線）、OS 使用者名稱都不准出現在要寫出的
+// 本機資訊把關（公開 fork 的隱私規則）：家目錄（兩種斜線）、OS 使用者名稱都不准出現在要寫出的
 // JSON 文字裡。bytes 是 base64，命中的只可能是 meta／清單的明文欄位（例：誤把錄製檔絕對路徑
 // 當 source 寫進去）。
 function assertNoLocalInfo(text, info = { home: os.homedir(), user: os.userInfo().username }) {

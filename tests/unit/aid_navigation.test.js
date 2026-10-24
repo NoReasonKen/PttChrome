@@ -103,7 +103,7 @@ function makeHarness({
     }
   };
   // termBuf 是「當前原生畫面」：AidNavigation 用 getRowText 讀末列判 currstat，
-  // 並在起手時取整螢幕簽章（CLAUDE.md：讀畫面一律用 buf.getRowText）。
+  // 並在起手時取整螢幕簽章（讀畫面一律用 buf.getRowText，見 docs/enhanced-addon.md 踩坑 A）。
   const termBuf = {
     startedEasyReading: true,
     rows: 24,

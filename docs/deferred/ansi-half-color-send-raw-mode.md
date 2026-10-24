@@ -37,5 +37,5 @@
 ## 讀碼備忘
 
 - 這個函式的正規表示式含 `\x15`，**改它一律用 Write/Edit 工具**，不要用 Bash heredoc
-  裡的 python 腳本（heredoc 會折掉一層反斜線，見 CLAUDE.md）。
+  裡的 python 腳本（heredoc 會折掉一層反斜線）。
 - 與 `docs/deferred/sgr66-render.md` 無關：那張是**收**的方向（Big5 連線收不到，不用做）。

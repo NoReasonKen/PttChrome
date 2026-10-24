@@ -2,7 +2,7 @@
 //
 // 症狀：offline-firefox（selection.offline.spec.js）在 Windows 上每輪隨機紅幾條，
 // 紅的子集每次都不同，錯誤全是 `page.goto: NS_ERROR_CONNECTION_REFUSED`，dev server
-// 全程活著、PID 不變（不是 CLAUDE.md 那種「之後整批同錯」的 server 被砍）。
+// 全程活著、PID 不變（不是「前面全綠、之後整批同錯」那種 dev server 被砍）。
 // 成因：Windows 上 vite 只綁 IPv6 `[::1]:8080`，Firefox 解析 `localhost` 的 happy-eyeballs
 // （`network.http.fast-fallback-to-IPv4`）在負載下 IPv6 連線稍慢時就並行開 IPv4 備援，
 // 打到沒人聽的 `127.0.0.1:8080` 拿到 refused，整個導航直接失敗。Chromium 不會。

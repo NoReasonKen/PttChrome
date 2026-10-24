@@ -25,7 +25,7 @@ test('裝 chromium（含 headless shell／ffmpeg）與 firefox：unit-browser、
   expect(code).toMatch(/yarn playwright install\b[^\n]*\bchromium\b[^\n]*\bfirefox\b/);
 });
 
-test('拉 pttbbs 原始碼（CLAUDE.md「PTT 邏輯不准猜」）', () => {
+test('拉 pttbbs 原始碼（PTT 邏輯不准猜）', () => {
   expect(code).toMatch(
     /^[^\n]*\bgit clone\b[^\n]*\shttps:\/\/github\.com\/ptt\/pttbbs\s+3rd_script\/pttbbs\b/m
   );

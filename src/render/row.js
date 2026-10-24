@@ -7,7 +7,7 @@
 //   type/srow           main.css 的合併塊排版與 #mainContainer > span 的 display:block
 //   data-pusher(-col/-end/-date-end)  pttchrome 的點推文列高亮 + 推文可點區欄位判定
 //   data-list-author/-title  右鍵快速加黑名單
-// 動它們之前先看 CLAUDE.md 與 tests/unit/fixtures/screen_golden/。
+// 動它們之前先看 tests/unit/render_dom_equivalence.test.js 與 tests/unit/fixtures/screen_golden/。
 import cx from "classnames";
 import { el } from "./dom";
 import { i18n } from "../js/i18n";
@@ -182,9 +182,12 @@ export function buildRow({
         "data-list-author": listAuthor,
         "data-list-title": listTitle,
         "data-list-read": listRead ? "" : undefined,
-        class: cx({ pusherHighlight, mentionsSelf, newCommentsStart }) || undefined,
+        class:
+          cx({ pusherHighlight, mentionsSelf, newCommentsStart }) || undefined,
         // 新推文分隔線的小字（css .newCommentsStart::before 讀它）。
-        "data-new-comments": newCommentsStart ? i18n("new_comments_divider") : undefined,
+        "data-new-comments": newCommentsStart
+          ? i18n("new_comments_divider")
+          : undefined,
         style: hidden ? { visibility: "hidden" } : undefined,
       },
       content,
