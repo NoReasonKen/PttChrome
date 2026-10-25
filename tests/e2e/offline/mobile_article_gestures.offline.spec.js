@@ -1,7 +1,8 @@
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { waitRectStable, waitPreviewsSettled } = require('../helpers/layout');
-const { touchDrag } = require('../helpers/real_input');
+const { cdp, touchDrag } = require('../helpers/real_input');
+const { pauseClockNow } = require('../helpers/clock');
 const { openPreviewViewer, PREVIEW, VIEWER } = require('../helpers/image_viewer');
 const {
   DRAWER, PANEL, bootGestureArticle, beginArticleTouch, revealArticleDrawer, gestureSent
@@ -48,6 +49,49 @@ test('a short drag and touch cancellation restore the closed drawer', async ({ p
   await expect(page.locator(DRAWER)).toHaveCount(0);
   expect(await gestureSent(page)).toBe('');
 });
+
+async function tapDuringOpening(page, target) {
+  await page.clock.install();
+  const width = page.viewportSize().width;
+  const main = await waitRectStable(page, '.main');
+  const y = main.top + Math.min(100, main.height / 2);
+  const contact = await beginArticleTouch(page, { x: width - 24, y });
+  await contact.move({ x: 12, y });
+  // The drag already fully extends the panel. Measure before releasing so
+  // layout waits cannot consume the opening interval that this test exercises.
+  const rect = await waitRectStable(page, target.startsWith('[') ? target : PANEL);
+  const point = target === 'left' ? { x: 10, y }
+    : target === 'above' ? { x: width / 2, y: rect.top / 2 }
+    : target === 'below' ? { x: width / 2, y: rect.top + rect.height + 10 }
+    : { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  await pauseClockNow(page);
+  await (await cdp(page)).send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  // Deliver the release frames while holding the settling timer in its opening
+  // interval, regardless of driver latency. Touch input still goes through CDP.
+  await page.clock.runFor(50);
+  await expect(page.locator(DRAWER)).toHaveAttribute('data-state', 'opening');
+  await page.touchscreen.tap(point.x, point.y);
+  await page.clock.resume();
+}
+
+for (const side of ['left', 'above', 'below']) {
+  test(`the first fresh ${side} backdrop tap during drawer opening dismisses it without navigation`, async ({ page }) => {
+    await bootGestureArticle(page);
+    await tapDuringOpening(page, side);
+    await expect(page.locator(DRAWER)).toHaveCount(0);
+    expect(await gestureSent(page)).toBe('');
+  });
+}
+
+for (const key of ['thread', '[', '=', ']', 'author']) {
+  test(`the first fresh ${key} shortcut tap during drawer opening activates it exactly once`, async ({ page }) => {
+    await bootGestureArticle(page);
+    await tapDuringOpening(page, `[data-article-shortcut="${key}"]`);
+    await expect(page.locator(DRAWER)).toHaveCount(0);
+    // This article fixture has no URL, so either search first resolves its AID.
+    await expect.poll(() => gestureSent(page)).toBe(key === 'thread' || key === 'author' ? 'Q' : key);
+  });
+}
 
 test('the open drawer consumes vertical and left swipes; a right swipe closes without article exit', async ({ page }) => {
   await bootGestureArticle(page);

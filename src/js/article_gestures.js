@@ -89,7 +89,12 @@ export class ArticleGestures {
       this._cancel();
       return;
     }
-    if (!event.isPrimary || !this.available() || this.settling || this._otherModalOpen()) return;
+    if (!event.isPrimary || !this.available() || this._otherModalOpen()) return;
+    if (this.settling) {
+      if (!this.opened || !this.root) return;
+      // A fresh contact is intentional input, unlike the opening drag's release.
+      this._finishDrawerSettle(true);
+    }
     const target = event.target;
     if (!this.opened && (!this.core.view.mainDisplay.contains(target) || target.closest(EXCLUDED))) return;
     if (!this.opened && (this.core.mobileSelectMode || !window.getSelection().isCollapsed)) return;
@@ -321,21 +326,25 @@ export class ArticleGestures {
     this.opened = opened;
     this.settling = true;
     this.root.dataset.state = opened ? 'opening' : 'closing';
-    this.panel.inert = true;
+    // Keep opening buttons as touch targets; their click handlers remain gated
+    // until settling finishes or a fresh contact completes it early.
+    this.panel.inert = !opened;
     const duration = settleDuration();
     this.panel.style.transition = `transform ${duration}ms ease-out`;
     this._paint(opened ? window.innerWidth * DRAWER_WIDTH : 0);
-    this.timer = setTimeout(() => {
-      this.timer = null;
-      this.settling = false;
-      if (!opened) this._remove();
-      else {
-        this.root.dataset.state = 'open';
-        this.panel.style.transition = '';
-        this.panel.inert = false;
-        this.panel.querySelector('button').focus({ preventScroll: true });
-      }
-    }, duration);
+    this.timer = setTimeout(() => this._finishDrawerSettle(opened), duration);
+  }
+
+  _finishDrawerSettle(opened) {
+    this._stopMotion();
+    this.settling = false;
+    if (!opened) this._remove();
+    else {
+      this.root.dataset.state = 'open';
+      this.panel.style.transition = '';
+      this.panel.inert = false;
+      this.panel.querySelector('button').focus({ preventScroll: true });
+    }
   }
 
   _remove() {

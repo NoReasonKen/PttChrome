@@ -49,7 +49,7 @@ The drawer overlays a stationary article. Its width is 75% of the article viewpo
 
 During article exit, move the article title and content together. The app-owned bottom toolbar stays fixed. The revealed underlay is a non-interactive static preview of the list before article entry, with a dark fallback when no matching preview exists. It is not a live server list. A canceled drag sends no exit command; commit actual navigation only when release accepts the exit.
 
-Suspend background interaction once a panel drag is recognized and while the drawer is open. Enable menu activation only after it settles open. Tapping any space outside the shorter panel, including above/below or to its left, closes it without passing the tap through. System Back and Escape also close the drawer. Closing without navigation preserves article reading position.
+Suspend background interaction once a panel drag is recognized and while the drawer is open. Enable menu activation only after it settles open; a fresh touch during the opening animation completes that animation immediately so the first intentional tap is accepted. The original drag release cannot activate a shortcut. Shortcut labels have a cyan underline to distinguish them from article text visible through the panel. Tapping any space outside the shorter panel, including above/below or to its left, closes it without passing the tap through. System Back and Escape also close the drawer. Closing without navigation preserves article reading position.
 
 ## Interruption and resizing
 
@@ -81,6 +81,8 @@ Permit one search/navigation operation at a time and reject duplicate starts. Wi
 ## Acceptance coverage
 
 These are required future checks, not claims of completed verification:
+
+Installed-Android rotation acceptance is deferred pending [#18](https://github.com/NoReasonKen/PttChrome/issues/18): the owner reports that rotation exits article easy reading. Automated viewport checks do not establish that this underlying device behavior is fixed.
 
 - Real touch input from different starting positions, links, and previews; ordinary tap, long press, vertical scrolling, selection, and pinch remain functional.
 - Both sides and exact equality of all distance thresholds; deliberate fast flings, slow release after an earlier fast segment, and final reversals.
