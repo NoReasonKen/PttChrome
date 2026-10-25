@@ -20,6 +20,10 @@ The design interview has confirmed these decisions; they do not authorize implem
 - Once a drawer drag is recognized, suspend background article interaction. Enable menu action activation only after the drawer has settled open. Backdrop tap, system Back, and Escape close it; closing without navigation preserves the article reading position. Both drawer reveal/retraction and article exit must follow the finger visually. The exact article surface moved during exit and its underlying screen remain undecided; opening the drawer was previously agreed to overlay a stationary article. Visual styling and panel height remain undecided.
 - Use the existing same-thread terminology and semantics consistently across the title-related shortcuts instead of exact whole-title string equality. Exact protocol behavior still requires source verification.
 - The same-thread and same-author search shortcuts directly show results for the entire current board, using the current article as the query source without opening an editable prompt. Starting from an existing search result does not restrict the new search to that result set. Return behavior remains undecided.
+- With the drawer closed, vertical gestures browse the article, left gestures reveal the drawer, and right gestures retract the article. With the drawer open, only a right gesture retracts it; other swipe directions have no action and must not scroll the background article. Menu taps and explicit dismissal remain available.
+- Opening or retracting the drawer moves only the drawer over a stationary article. Exiting the article moves the article itself with the finger. The exact moved surface boundaries are still undecided.
+- During article retraction, reveal a non-interactive static preview of the list from before article entry. Use a dark fallback if no preview is available. This is not a live list or a promise of current server content. Commit the existing article-exit navigation only after release accepts the exit; cancellation preserves the article.
+- A deliberate final fling overrides distance in either direction, including reversing a pending action: a final right fling cancels drawer opening, and a final left fling cancels drawer/article retraction. Without a qualifying fling, evaluate net panel position at release, not cumulative travel distance.
 
 ## Confirmed asymmetric release rules
 
@@ -29,7 +33,7 @@ Opening and retraction have different thresholds. Let viewport width be W:
 - Retracting an open drawer: move right by more than half its panel width (0.375W), or finish with an intentional fast right fling, to close it. Otherwise restore it fully open.
 - Retracting the article with the drawer closed: treat the article as a full-width panel. Move right by more than 0.5W, or finish with an intentional fast right fling, to exit. Otherwise restore the article.
 
-Pending clarification: whether to formalize progress as net panel displacement at release so reversal undoes progress, exact equality behavior, and interaction between a late opposite-direction fling and position thresholds.
+Exact equality at a distance threshold and quantitative fling thresholds remain to be specified. Direction reversal and net-position semantics are confirmed above.
 
 Use one owner for horizontal article gestures and state-dependent outcomes. Reuse existing user-navigation and easy-reading exit behavior rather than issuing raw protocol bytes or imitating browser history navigation. Keep the exit action separate from drawer rendering so implementation and regressions can be organized independently. Article exit rendering now includes continuous visual motion, so the earlier low-cost stationary-article feedback proposal no longer applies. [Existing navigation entry](../src/js/pttchrome.jsx), [Navigation gates](../src/js/nav_key_gate.js), [Existing Back routing](../src/js/history_back_guard.js).
 
