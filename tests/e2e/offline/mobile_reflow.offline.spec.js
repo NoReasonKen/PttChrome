@@ -7,6 +7,7 @@ const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { findCassette, bootOffline, replayCassette } = require('../helpers/replay');
 const { waitPreviewsSettled, scrollIntoViewStable } = require('../helpers/layout');
+const { SCREEN_COPY, addScreenCopy } = require('../helpers/screen_copy');
 
 const article = findCassette('article');
 
@@ -241,8 +242,7 @@ test.describe('長按選單（觸控 contextmenu）', () => {
   // 症狀（使用者回報）：手機很難複製推文 —— 推文內容從卡片左緣起，第一個字貼著螢幕邊，
   // 選取把手拉不過去。長按推文就給「複製這則推文」，不必選取。
   const COMMENT_LINE = '[data-e2e-target] .commentCardText [data-type="bbsline"]';
-  test('長按推文內容：選單有「複製這則推文」（預覽＝那則內容），按下寫進剪貼簿', async ({ page }) => {
-    test.setTimeout(90000);
+  const copyCommentByLongPress = async (page) => {
     await page.addInitScript(() => {
       window.__copied = [];
       Object.defineProperty(navigator, 'clipboard', {
@@ -269,6 +269,20 @@ test.describe('長按選單（觸控 contextmenu）', () => {
     await item.click();
     await expect.poll(() => page.evaluate(() => window.__copied)).toEqual([expected]);
     await expect(page.locator(CONTEXT_SHEET)).toHaveCount(0);
+  };
+
+  test('長按推文內容：選單有「複製這則推文」（預覽＝那則內容），按下寫進剪貼簿', async ({ page }) => {
+    test.setTimeout(90000);
+    await copyCommentByLongPress(page);
+  });
+
+  // #26: a screen copy earlier in the document, as a stacked-page layer will be,
+  // must not capture the comment card or what is copied from it.
+  test('with a screen copy earlier in the document, long-press copy still copies the shown comment', async ({ page }) => {
+    test.setTimeout(90000);
+    await addScreenCopy(page);
+    await copyCommentByLongPress(page);
+    await expect(page.locator(`${SCREEN_COPY} [data-e2e-target]`)).toHaveCount(0);
   });
 
   // 「回覆這則」（長按推文）：推文列切成 →、預填帳號、輸入框拿到焦點；不送鍵。

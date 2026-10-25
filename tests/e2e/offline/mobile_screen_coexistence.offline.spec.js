@@ -6,23 +6,7 @@ const { PREVIEW, bootImageArticle } = require('../helpers/image_viewer');
 const { beginArticleTouch } = require('../helpers/article_gestures');
 const ptt = require('../helpers/ptt');
 const { bootOffline, loadCassette, replayListCassette } = require('../helpers/replay');
-
-const MAIN = '.main:not([data-test-copy])';
-
-// A copy with the same structure and ids, inserted before the app's own screen.
-async function addScreenCopy(page) {
-  await page.addInitScript(() => {
-    document.addEventListener('DOMContentLoaded', () => {
-      const copy = document.createElement('div');
-      copy.className = 'main';
-      copy.setAttribute('data-test-copy', '');
-      copy.style.cssText = 'position:fixed;left:-10000px;top:0;width:300px;height:300px;overflow:auto';
-      copy.innerHTML = '<div id="mainContainer"><span type="bbsrow" srow="0">copy</span>' +
-        '<div style="height:2000px"></div></div>';
-      document.body.prepend(copy);
-    });
-  });
-}
+const { ACTIVE_MAIN: MAIN, addScreenCopy } = require('../helpers/screen_copy');
 
 const ownScreen = page => page.evaluate(() => {
   const app = window.__app;
