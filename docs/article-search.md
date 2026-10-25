@@ -3,7 +3,7 @@
 ## Article shortcut searches
 
 The mobile article drawer can search the whole current board for the article's
-author without an editable dialog. `article_shortcut_search.js` owns identity
+author or thread without an editable dialog. `article_shortcut_search.js` owns identity
 capture, the serialized search and its return route. It reuses the native `a`
 search semantics, including case-insensitive substring author matching.
 
@@ -13,6 +13,16 @@ the information box dismissed. `AidNavigation.selectArticle(board, aid, onEnd)`
 then selects that identity in the full board list without opening it, leaving
 any previous subset before searching. The author query is sent only after the
 actual native author prompt is recognized.
+
+Same-thread search uses native uppercase `S` after selecting the source AID in
+the full board list. Unlike slash keyword search, this needs no prompt and uses
+PTT's `subject` semantics. Verified upstream `read.c` (`read_cmd_search_title`,
+`ask_filter_predicate`) supplies the selected header's normalized subject;
+`common/bbs/search.c` compares subjects case-insensitively. No client-side title
+normalization or whole-title keyword approximation is used. The completed drawer
+orders these five equal-height actions: same-thread search, previous, first,
+next, then same-author search. Coverage is in
+`mobile_article_thread_search.offline.spec.js`.
 
 Back from a result article first returns natively to its results. Back from that
 matching result list reopens the source by AID and restores its reading bookmark.

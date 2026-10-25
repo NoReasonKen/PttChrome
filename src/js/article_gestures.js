@@ -9,6 +9,7 @@ import '../css/article_gestures.css';
 
 const MODAL_SOURCE = 'articleShortcutDrawer';
 const ACTIONS = [
+  { key: 'thread', label: 'articleShortcutSearch_thread' },
   { key: '[', label: 'mobileToolbar_threadPrev' },
   { key: '=', label: 'mobileToolbar_threadFirst' },
   { key: ']', label: 'mobileToolbar_threadNext' },
@@ -270,7 +271,7 @@ export class ArticleGestures {
         this.close(true);
         if (!mobileToolbarContext(this.core).threadNav) return;
         this.core.noteUserAction();
-        if (action.key === 'author') this.core.articleShortcutSearch.start('author');
+        if (action.key === 'author' || action.key === 'thread') this.core.articleShortcutSearch.start(action.key);
         else this.core.view.sendKeyAsUser(action.key);
       });
       this.panel.appendChild(button);

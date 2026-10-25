@@ -1421,6 +1421,8 @@
     "message": "文章捷徑"
   },
   "articleShortcutSearch_author": { "message": "找同作者同看板" },
+  "articleShortcutSearch_thread": { "message": "找同主題同看板" },
+  "articleShortcutSearch_threadResults": { "message": "同主題搜尋結果；返回可回到原文章。" },
   "articleShortcutSearch_busy": { "message": "搜尋或返回原文章中，請稍候…" },
   "articleShortcutSearch_results": { "message": "同作者搜尋結果；返回可回到原文章。" },
   "articleShortcutSearch_empty": { "message": "找不到符合條件的文章，已返回原文。" },

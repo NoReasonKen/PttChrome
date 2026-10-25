@@ -44,13 +44,14 @@ export class ArticleShortcutSearch {
   start(kind = 'author') {
     const core = this.core;
     const view = core.view;
-    if (kind !== 'author' || serializedOpHint(core) || core.modalShown ||
+    if (!['author', 'thread'].includes(kind) || serializedOpHint(core) || core.modalShown ||
         !core.conn?.isConnected || core.buf.pageState !== 3 ||
-        !view._articleBoard || !view._articleAuthor) return false;
+        !view._articleBoard || (kind === 'author' ? !view._articleAuthor : !view._articleTitle)) return false;
     const bookmark = recordFor(core).begin('article-shortcut-search');
     const origin = {
       board: view._articleBoard,
       author: view._articleAuthor,
+      title: view._articleTitle,
       bookmark
     };
     this.active = true;
@@ -74,7 +75,7 @@ export class ArticleShortcutSearch {
         const select = () => {
           if (!core.aidNavigation.selectArticle(origin.board, origin.aid, result => {
             if (!result.ok) return this._stopMissing(origin);
-            this._query(origin);
+            this._query(origin, kind);
           })) this._fail();
         };
         if (meta.boxOpen) this._dismissToList(origin, select);
@@ -104,15 +105,15 @@ export class ArticleShortcutSearch {
     });
   }
 
-  _query(origin) {
+  _query(origin, kind) {
     // The AID navigation has released its list hold. Reacquire synchronously
     // before queuing our query, so list paging cannot interleave commands.
     this.core.listSession?.beginExternalNavigation({ fromIdle: true });
-    const steps = buildSearchSteps('author', origin.author);
-    if (!steps) return this._restore(origin, 'articleShortcutSearch_failed');
+    const steps = kind === 'author' ? buildSearchSteps('author', origin.author) : null;
+    if (kind === 'author' && !steps) return this._restore(origin, 'articleShortcutSearch_failed');
     const submit = () => this._enqueue({
-      ...steps[1],
-      kind: 'shortcut-author-submit',
+      ...(steps ? steps[1] : { keys: 'S', fullRepaint: true }),
+      kind: `shortcut-${kind}-submit`,
       expect: (snapshot, facts) => {
         const last = facts.rowTexts[facts.rows - 1] || '';
         // vmsg prints this known result on the input row and waits for a key,
@@ -127,13 +128,16 @@ export class ArticleShortcutSearch {
           this._dismissToList(origin, () => this._restore(origin, result.notice));
           return;
         }
-        this.route = { origin, phase: 'results', query: { kind: 'author', value: origin.author } };
+        this.route = { origin, phase: 'results', query: { kind, value: kind === 'author' ? origin.author : origin.title } };
         recordFor(this.core).end(origin.bookmark, 'done');
         this._finish();
-        this._hint('articleShortcutSearch_results');
+        this._hint(kind === 'author' ? 'articleShortcutSearch_results' : 'articleShortcutSearch_threadResults');
       }
     });
-    this._enqueue({ ...steps[0], kind: 'shortcut-author-open', fullRepaint: true, onDone: submit });
+    // Native S uses subject(selectedHeader.title), without a prompt. It is
+    // different from slash keyword search and must follow verified selection.
+    if (steps) this._enqueue({ ...steps[0], kind: 'shortcut-author-open', fullRepaint: true, onDone: submit });
+    else submit();
   }
 
   handleBack(event) {

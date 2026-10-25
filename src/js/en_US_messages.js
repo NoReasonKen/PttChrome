@@ -1422,6 +1422,8 @@ export const en_US = {
     "message": "Article shortcuts"
   },
   "articleShortcutSearch_author": { "message": "Search this board for the same author" },
+  "articleShortcutSearch_thread": { "message": "Search this board for the same thread" },
+  "articleShortcutSearch_threadResults": { "message": "Same-thread search results. Back returns to the source article." },
   "articleShortcutSearch_busy": { "message": "Searching or returning to the source article…" },
   "articleShortcutSearch_results": { "message": "Same-author search results. Back returns to the source article." },
   "articleShortcutSearch_empty": { "message": "No matching articles. Returned to the source article." },
