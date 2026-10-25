@@ -1,7 +1,8 @@
 const { expect } = require('@playwright/test');
 const ptt = require('./ptt');
 const { waitScreenSettled } = require('./replay');
-const { bootGestureArticle, revealArticleDrawer } = require('./article_gestures');
+const { bootGestureArticle, revealArticleDrawer, beginArticleTouch } = require('./article_gestures');
+const { nextFrames } = require('./real_input');
 
 // Controlled PTT boundary, derived from upstream read.c select_read,
 // read_cmd_quit, read_loader and bbs.c view_postinfo. The actual application,
@@ -374,6 +375,38 @@ async function waitList(page, { has = [], lacks = [] } = {}) {
   await waitIdle(page);
 }
 
+// The first article row at the top of the reading viewport.
+const topLine = page => page.evaluate(() => {
+  const view = window.__app.view;
+  const row = document.querySelector(`#mainContainer [type="bbsrow"][srow="${Math.floor(view.currentLineIndex())}"]`);
+  return row ? row.textContent.trim().slice(0, 16) : null;
+});
+
+const scrollTop = page => page.locator('.main').evaluate(el => el.scrollTop);
+
+// The reader scrolls the first nested article to its middle with a real touch
+// drag. Holding still before release leaves no fling, so the position is
+// deterministic once the browser's own scrolling settles.
+async function readToMiddle(page) {
+  const main = await page.locator('.main').boundingBox();
+  const x = main.x + main.width / 2;
+  const from = main.y + main.height - 20;
+  const to = main.y + 20;
+  const contact = await beginArticleTouch(page, { x, y: from });
+  for (let step = 1; step <= 10; step++) await contact.move({ x, y: from + (to - from) * step / 10 });
+  await contact.release();
+  let last = -1;
+  await expect.poll(async () => {
+    const now = await scrollTop(page);
+    const settled = now === last;
+    last = now;
+    if (!settled) await nextFrames(page, 4);
+    return settled;
+  }).toBe(true);
+  await expect.poll(() => topLine(page)).toMatch(/^Alpha line (0[5-9]|1\d)/);
+  return topLine(page);
+}
+
 async function tapShortcut(page, key) {
   await revealArticleDrawer(page);
   await page.locator(`[data-article-shortcut="${key}"]`).tap();
@@ -381,5 +414,5 @@ async function tapShortcut(page, key) {
 
 module.exports = {
   bootShortcutSearch, searchAuthor, nativeBack, openSearchResult, visibleText, waitSearchResults,
-  bootNestedShortcutSearch, nestedSessionAfterLogin, waitArticle, waitList, waitIdle, tapShortcut
+  bootNestedShortcutSearch, nestedSessionAfterLogin, waitArticle, waitList, waitIdle, tapShortcut, topLine, readToMiddle
 };

@@ -1,27 +1,11 @@
 const { test, expect } = require('@playwright/test');
 const { gestureSent } = require('../helpers/article_gestures');
 const {
-  bootNestedShortcutSearch, nativeBack, visibleText, waitArticle, waitList, waitIdle, tapShortcut
+  bootNestedShortcutSearch, nativeBack, visibleText, waitArticle, waitList, readToMiddle, topLine, waitIdle, tapShortcut
 } = require('../helpers/article_shortcut_search');
 const ptt = require('../helpers/ptt');
 
 const bodyText = page => page.locator('body').innerText();
-
-// The first article row at the top of the reading viewport.
-const topLine = page => page.evaluate(() => {
-  const view = window.__app.view;
-  const row = document.querySelector(`#mainContainer [type="bbsrow"][srow="${Math.floor(view.currentLineIndex())}"]`);
-  return row ? row.textContent.trim().slice(0, 16) : null;
-});
-
-async function readToMiddle(page) {
-  await page.evaluate(() => {
-    const display = window.__app.view.mainDisplay;
-    display.scrollTop = Math.round((display.scrollHeight - display.clientHeight) / 2);
-  });
-  await expect.poll(() => topLine(page)).toMatch(/^Alpha line (0[5-9]|1\d)/);
-  return topLine(page);
-}
 
 // A -> same author -> B -> same thread -> C -> same author -> D.
 async function exploreThreeLevels(page) {
