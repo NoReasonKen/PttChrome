@@ -13,6 +13,9 @@ The design interview has confirmed these decisions; they do not authorize implem
 - Map horizontal finger displacement to drawer reveal one-to-one. Retain the 50%-of-viewport release threshold. Accept that a slow drag starting in the left half may run out of screen space before reaching that threshold; a deliberate fast fling can still open the drawer.
 - Allow opening drags to start on inline preview images and article links as well as text and blank article space. Preserve ordinary taps and long presses, and suppress activation caused by a completed drawer drag. Separate controls such as an open image viewer, video controls, editable fields, and text selection retain their own input behavior.
 - Use the direction and velocity of the final recent movement before release for fling decisions, rather than the whole gesture's average. A fast final left fling opens; a fast final right fling closes; otherwise apply the position threshold. Exact sampling and intentional-movement thresholds remain undecided.
+- Enable the first version only in mobile layout during article easy reading, for both the Android app and mobile browser. Article lists, mail, desktop layout, and other reading surfaces retain their current behavior.
+- Classify intentional initial movement into up, down, left, or right sectors. Up/down belongs to article scrolling; left/right belongs to drawer interaction. Once scrolling or a long press has taken ownership, do not convert that contact into a drawer drag. Keep the chosen axis for the contact while allowing direction reversal within the horizontal axis. Initial movement tolerance and exact diagonal ties remain to be specified.
+- On touch cancellation or a second contact interrupting the drawer drag, restore the drawer's state from before that drag instead of applying normal release or fling rules. Leaving the original article closes the drawer.
 
 ## Reuse and additional work
 
