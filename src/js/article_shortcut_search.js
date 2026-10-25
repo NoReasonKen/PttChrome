@@ -126,8 +126,11 @@ export class ArticleShortcutSearch {
   _selectThenQuery(origin, dismissFirst, mode) {
     const select = () => {
       if (!this.core.aidNavigation.selectArticle(origin.board, origin.aid, result => {
-        if (!result.ok) return this._stopMissing(origin);
-        this._query(origin, mode);
+        if (result.ok) return this._query(origin, mode);
+        // Rebuilt author results do not need their source: the author is known.
+        // Same-thread search reads the selected source header, so it stops.
+        if (mode === 'rebuild' && origin.query.kind === 'author') return this._queryWithoutSource(origin, mode);
+        this._stopMissing(origin);
       })) this._fail();
     };
     if (dismissFirst) this._dismissToList(origin, select);
@@ -253,17 +256,32 @@ export class ArticleShortcutSearch {
     })) this._fail();
   }
 
-  _stopMissing(origin) {
+  // Failed #AID pauses with a known message above the full board list.
+  _missingPause(origin) {
     const facts = searchGateFacts(this.core);
     const rows = facts?.rowTexts || [];
-    const paused = PRESS_ANY_KEY.test(rows[facts?.rows - 1] || '') &&
+    return PRESS_ANY_KEY.test(rows[facts?.rows - 1] || '') &&
       AID_NOT_FOUND_RE.test(rows[facts?.rows - 2] || '') &&
       sameBoard(parseBoardName(rows[0]), origin.board);
+  }
+
+  _stopMissing(origin) {
     const missing = this.op.missing;
-    // Failed #AID pauses above the list; leave that known message before
-    // handing control back, never press Enter on the replacement selection.
-    if (paused) this._dismissToList(origin, () => this._fail('articleShortcutSearch_missing', missing));
+    // Leave the known message before handing control back, never press Enter
+    // on the replacement selection.
+    if (this._missingPause(origin)) this._dismissToList(origin, () => this._fail('articleShortcutSearch_missing', missing));
     else this._fail('articleShortcutSearch_missing', missing);
+  }
+
+  // The source could not be selected, but its query can still run from the
+  // verified full board list. Its own Back later finds the source missing.
+  _queryWithoutSource(origin, mode) {
+    const query = () => {
+      if (fullBoardList(searchGateFacts(this.core), origin.board)) this._query(origin, mode);
+      else this._stopMissing(origin);
+    };
+    if (this._missingPause(origin)) this._dismissToList(origin, query);
+    else query();
   }
 
   _finish() {

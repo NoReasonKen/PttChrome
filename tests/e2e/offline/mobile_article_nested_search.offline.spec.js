@@ -106,6 +106,29 @@ test('an unrelated search from the search sheet replaces the route instead of bo
   expect(await visibleText(page)).not.toContain('Alpha line 04:');
 });
 
+test('a deleted author-search source still rebuilds its author results before stopping on the board list', async ({ page }) => {
+  await bootNestedShortcutSearch(page);
+  await tapShortcut(page, 'author');
+  await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
+  await ptt.sendKey(page, 'Enter');
+  await waitArticle(page, 'Beta');
+  await tapShortcut(page, 'thread');
+  await waitList(page, { has: ['Re: [Talk] Beta topic'], lacks: ['Alpha topic'] });
+  await nativeBack(page);
+  await waitArticle(page, 'Beta');
+  await page.evaluate(() => window.__shortcutServer.state.deleted.add('1gIeu-3A'));
+
+  // The author query does not need its deleted source article.
+  await nativeBack(page);
+  await waitList(page, { has: ['□ [Talk] Beta topic'], lacks: ['Alpha topic', 'Delta topic'] });
+  await expect(page.locator('#mainContainer')).toContainText('系列文章');
+
+  await nativeBack(page);
+  await expect.poll(() => bodyText(page), { timeout: 15000 }).toContain('The source article could not be verified or was deleted');
+  await waitList(page, { has: ['Beta topic', 'Delta topic'] });
+  await expect(page.locator('#mainContainer')).toContainText('文章列表');
+});
+
 test('an in-article search key in a result article keeps the route', async ({ page }) => {
   await bootNestedShortcutSearch(page);
   await tapShortcut(page, 'author');
