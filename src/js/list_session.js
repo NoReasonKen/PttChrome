@@ -1205,6 +1205,8 @@ ListSession.prototype = {
         // no-op（同一次 settle 裡 _onPageStateSettled 先跑）。
         const er = this._core.easyReading;
         if (er && er.ensureEnabledOnArticle) er.ensureEnabledOnArticle(true, 'listOpen');
+        // Parked-list entry may establish the article header key only here.
+        this._core.articleGestures?.bindListPreview();
         return;
       }
       case 'enter-function-mode':
@@ -3387,7 +3389,6 @@ ListSession.prototype = {
   // buffer maps are KEPT — coming back re-seeds from the server's landing
   // (suspended → clean-list → resume-buffer), no saved anchors needed (v5/M4).
   _handoffArticle: function() {
-    this._core.articleGestures?.bindListPreview();
     this._dropPendingViewport('article');
     this._holdReason = null; // context change: the article releases the hold
     this._cancelResumeProbe();

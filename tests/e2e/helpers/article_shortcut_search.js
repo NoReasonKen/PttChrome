@@ -59,6 +59,8 @@ async function bootShortcutSearch(page, options = {}) {
       for (const [index, text] of Object.entries(rows)) {
         const inverse = state.surface !== 'source' && state.surface !== 'child' && [0, 2].includes(Number(index));
         const encoded = encode(text);
+        // Native title/header bars fill the whole row. Partial inversion is
+        // deliberately rejected by the application's list fingerprint.
         data += `\x1b[${Number(index) + 1};1H${inverse ? '\x1b[7m' : ''}${inverse ? encoded.padEnd(80) : encoded}\x1b[0m`;
       }
       return data + `\x1b[${cursor[0]};${cursor[1]}H`;

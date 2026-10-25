@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const { waitRectStable } = require('../helpers/layout');
+const { nextFrames } = require('../helpers/real_input');
 const { bootGestureArticle, beginArticleTouch, gestureSent } = require('../helpers/article_gestures');
 const ptt = require('../helpers/ptt');
 const { bootOffline, loadCassette, replayListCassette } = require('../helpers/replay');
@@ -59,28 +60,41 @@ test('short retractions, a second contact and resizing never exit the article', 
   expect(await gestureSent(page)).toBe('');
 });
 
+test('resizing during the accepted exit animation cancels navigation and restores the article', async ({ page }) => {
+  await bootGestureArticle(page);
+  const main = await waitRectStable(page, '.main');
+  const y = main.top + 100;
+  const contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: page.viewportSize().width - 20, y });
+  await contact.release();
+  await page.setViewportSize({ width: 360, height: 480 });
+  await expect(page.locator('[data-article-exit-underlay]')).toHaveCount(0);
+  await nextFrames(page, 20);
+  expect(await gestureSent(page)).toBe('');
+  expect((await waitRectStable(page, '.main')).left).toBeCloseTo(0, 0);
+  expect((await waitRectStable(page, '#mobileAppBar')).left).toBeCloseTo(0, 0);
+  await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
+});
+
 test('entering from a real list preserves only a bounded inert matching preview and exits to that list', async ({ page }, testInfo) => {
   const nav = loadCassette('cchat-list-nav');
   await bootOffline(page, ptt, { articleGestures: true });
   await ptt.applyPrefs(page, {
     enableEasyReading: true,
-    enableEasyReadingList: true,
-    easyReadingListPrefetchCount: 0,
+    enableEasyReadingList: false,
     useMouseBrowsing: true,
     mouseLeftClick: true,
   });
-  await replayListCassette(page, {
-    ...nav,
-    steps: [
-      { ...nav.steps[5], on: 'start' },
-      nav.steps[5],
-      nav.steps[6],
-      nav.steps[7],
-    ],
+  await replayListCassette(page, nav);
+  await page.waitForFunction(() => window.__app.buf.pageState === 2);
+  await ptt.applyPrefs(page, {
+    enableEasyReadingList: true,
+    easyReadingListPrefetchCount: 200,
   });
+  await page.waitForFunction(() => window.__app.listSession.state === 'active' &&
+    window.__app.commandQueue.idle && window.__app.buf.listLines.length > 50);
   await expect(page.locator('#mainContainer .listBodyView')).toBeVisible();
-  await page.locator('#t').focus();
-  await page.keyboard.press('Enter');
+  await page.locator('.listCard[data-list-author="kylin936"] .listCardBody').first().tap();
   await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
   const sentBefore = await page.evaluate(() => window.__replay.sent.length);
   const main = await waitRectStable(page, '.main');

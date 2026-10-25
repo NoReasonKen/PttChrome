@@ -351,7 +351,7 @@ export class ArticleGestures {
 
   _resize() {
     this.exitPreview.clear();
-    if (this.track) this.close(true);
+    if (this.track || this.exitUnderlay) this.close(true);
     else if (this.root) {
       this._geometry();
       this._paint(this.opened ? window.innerWidth * 0.75 : 0);
