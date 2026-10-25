@@ -6,6 +6,14 @@ A right-side drawer that follows a finger is feasible in the shared web applicat
 
 The proposed interaction is an article-content left drag from any horizontal starting position, up to 75% viewport coverage. On release, coverage greater than 50% of the viewport opens it fully; otherwise it closes. A sufficiently fast left fling overrides the position threshold. An open drawer can be dragged right or dismissed by tapping the remaining 25% backdrop. Exact fling, direction-lock, cancellation, and input-exclusion rules remain design decisions.
 
+## Confirmed interaction decisions
+
+The design interview has confirmed these decisions; they do not authorize implementation:
+
+- Map horizontal finger displacement to drawer reveal one-to-one. Retain the 50%-of-viewport release threshold. Accept that a slow drag starting in the left half may run out of screen space before reaching that threshold; a deliberate fast fling can still open the drawer.
+- Allow opening drags to start on inline preview images and article links as well as text and blank article space. Preserve ordinary taps and long presses, and suppress activation caused by a completed drawer drag. Separate controls such as an open image viewer, video controls, editable fields, and text selection retain their own input behavior.
+- Use the direction and velocity of the final recent movement before release for fling decisions, rather than the whole gesture's average. A fast final left fling opens; a fast final right fling closes; otherwise apply the position threshold. Exact sampling and intentional-movement thresholds remain undecided.
+
 ## Reuse and additional work
 
 | Area | Assessment |
@@ -27,7 +35,7 @@ The current `MobileSheet` is specifically a bottom/floating sheet. It only track
 
 With a literal one-to-one mapping between finger displacement and drawer reveal, a slow left drag starting in the left half cannot reveal more than half the screen before the finger leaves the display. Starting very far left also cannot fully reveal a 75%-wide drawer. Fast-fling override helps but does not make every slow starting position equivalent.
 
-This is a geometry consequence of the proposed percentages, not a framework limitation. A later specification should choose whether to accept this behavior, amplify movement, or revise the release-distance rule. The feasibility assessment does not silently change the agreed 50%-of-screen threshold.
+This is a geometry consequence of the proposed percentages, not a framework limitation. The confirmed interaction decision accepts this limitation and keeps the one-to-one mapping and 50%-of-screen threshold.
 
 ### Gesture arbitration
 
@@ -53,4 +61,4 @@ Before shipping, real browser touch tests should cover slow threshold release in
 
 The existing toolbar explicitly exposes same-thread previous (`[`), first (`=`), and next (`]`) navigation with article/prompt/mail gating. Same-title/same-board and same-author/same-board search shortcuts have not been located as equivalent article-view actions; the existing search availability gate is oriented around lists. Clarify and verify their navigation before estimating the complete five-action feature as simple UI relocation. This uncertainty does not block drawer feasibility. [Toolbar actions and gates](../src/js/mobile_toolbar.js), [Toolbar dispatch](../src/components/MobileToolbar/index.jsx), [Search availability](../src/js/article_search.js).
 
-Recommendation: the drawer is a reasonable enhancement to pursue after resolving the start-position geometry and interaction exclusions. Preserve the current menu as an alternate entry. Choose gesture constants through a small isolated prototype and real touch checks rather than committing to unmeasured thresholds now. No implementation is authorized or included by this note.
+Recommendation: the drawer is a reasonable enhancement to pursue after resolving the remaining interaction exclusions and lifecycle decisions. Preserve the current menu as an alternate entry. Choose gesture constants through a small isolated prototype and real touch checks rather than committing to unmeasured thresholds now. No implementation is authorized or included by this note.
