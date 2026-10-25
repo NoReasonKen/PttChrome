@@ -144,12 +144,16 @@ test('vertical reading retains browser scrolling without opening article shortcu
   expect(await gestureSent(page)).toBe('');
 });
 
-test('drawer gestures coexist with slow inline image loading', async ({ page }) => {
-  await bootGestureArticle(page, { imageProfile: 'slow', waitForPreviews: false });
-  await expect(page.locator('#mainContainer .previewLoading').first()).toBeVisible();
-  await revealArticleDrawer(page);
-  await page.keyboard.press('Escape');
-  await expect(page.locator(DRAWER)).toHaveCount(0);
-  await waitPreviewsSettled(page);
-  expect(await gestureSent(page)).toBe('');
-});
+for (const imageProfile of ['slow', 'broken', 'mixed']) {
+  test(`drawer gestures coexist with ${imageProfile} inline images`, async ({ page }) => {
+    await bootGestureArticle(page, { imageProfile, waitForPreviews: false });
+    if (imageProfile === 'slow') {
+      await expect(page.locator('#mainContainer .previewLoading').first()).toBeVisible();
+    }
+    await revealArticleDrawer(page);
+    await page.keyboard.press('Escape');
+    await expect(page.locator(DRAWER)).toHaveCount(0);
+    await waitPreviewsSettled(page);
+    expect(await gestureSent(page)).toBe('');
+  });
+}
