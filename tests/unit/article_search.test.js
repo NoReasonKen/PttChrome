@@ -24,6 +24,7 @@ import { BoardListSession } from "../../src/js/board_list_session";
 import { SLOW_STEP_BUDGET } from "../../src/js/aid_navigation";
 import { serializedOpHint } from "../../src/js/serialized_op_gate";
 import { writeValues, readValuesWithDefault } from "../../src/js/pref_storage";
+import { recordSearchResults, readSearchResultsContext } from "../../src/js/search_results_context";
 
 beforeAll(() => {
   loadBig5Tables();
@@ -34,6 +35,17 @@ beforeEach(() => {
 });
 
 const ROWS = 24;
+
+test.each(['ctrlKey', 'altKey', 'metaKey'])('a modified search letter preserves the current results context (%s)', modifier => {
+  const core = {
+    openSearchModal: vi.fn(),
+    buf: { rows: ROWS, cols: 80, pageState: 2, getRowText: () => '', isCursorOnInputField: () => false }
+  };
+  const context = { board: 'Test', filters: [{ kind: 'author', value: 'alice' }] };
+  recordSearchResults(core, context);
+  expect(tryOpenSearchModal(core, 'a', { [modifier]: true })).toBe(false);
+  expect(readSearchResultsContext(core)).toEqual(context);
+});
 const blank = () => Array.from({ length: ROWS }, () => "");
 
 function articleList(over) {
@@ -240,6 +252,48 @@ describe("submitSearch（原生：共用 CommandQueue）", () => {
     });
     return { core: { commandQueue: queue, activeListSession: () => null }, queue, sent };
   }
+
+  test('a partial repaint cannot complete a new condition or leave only its preceding query saved', () => {
+    const { core, queue } = nativeCore();
+    let current = articleList();
+    core.buf = {
+      rows: ROWS, cols: 80, pageState: 2,
+      getRowText: row => current.rowTexts[row],
+      isCursorOnInputField: () => current.inputField,
+      get cur_y() { return current.curY; }
+    };
+    core.listSession = { state: 'active', readingPosition: () => ({ board: 'Test', mode: 'select' }) };
+    const settle = frame => { current = frame; queue.onSettle(null, frame); };
+    for (const [index, kind, value, prompt] of [
+      [0, 'title', 'topic', '搜尋標題: '],
+      [1, 'author', 'alice', '增加條件 作者: ']
+    ]) {
+      // A background number jump may blank the terminal header, while the
+      // buffered list and its board identity remain visible to the reader.
+      if (index === 1) current.rowTexts[0] = '';
+      submitSearch(core, kind, value);
+      const input = articleList({ curY: 23, inputField: true });
+      input.rowTexts[23] = prompt;
+      settle(input);
+      const partial = articleList();
+      partial.rowTexts[23] = '';
+      settle(partial);
+      expect(core.searchInFlight).toBe(true);
+      expect(readSearchResultsContext(core)?.filters.length || 0).toBe(index);
+      const unparked = articleList({ curX: 60, curY: 23 });
+      unparked.rowTexts[23] = ' 系列文章 [←]離開 [→]閱讀';
+      settle(unparked);
+      expect(core.searchInFlight).toBe(true);
+      const results = articleList();
+      results.rowTexts[23] = ' 系列文章 [←]離開 [→]閱讀';
+      settle(results);
+      expect(core.searchInFlight).toBe(false);
+      expect(readSearchResultsContext(core).filters).toHaveLength(index + 1);
+    }
+    expect(readSearchResultsContext(core).filters).toEqual([
+      { kind: 'title', value: 'topic' }, { kind: 'author', value: 'alice' }
+    ]);
+  });
 
   test("prompt 出現後才送關鍵字", () => {
     const { core, queue, sent } = nativeCore();

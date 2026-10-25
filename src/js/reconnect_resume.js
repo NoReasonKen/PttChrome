@@ -35,6 +35,8 @@ import { recordFor } from './reading_record';
 import { boardNameFromKey } from './screen_titles';
 import { readEffectivePrefs } from './pref_storage';
 import { isAndroidApp, androidRestored, STOP_EVENT } from './android_bridge';
+import { readSearchResultsContext, validateSearchResultsContext } from './search_results_context';
+import { resumeSearchResults } from './resume_search_results';
 
 // 開站接回時，登入回到主功能表後先倒數這麼久（提示上有「取消」）才出發。
 export const OPEN_RESUME_DELAY_MS = 2500;
@@ -62,6 +64,7 @@ export function planFromSnapshot(snap, now) {
   if (!plan || typeof plan.board !== 'string' || !plan.board) return null;
   if (plan.kind !== 'article' && plan.kind !== 'list') return null;
   if (plan.kind === 'article' && !plan.aid) return null;
+  if (plan.search && (plan.kind !== 'list' || !validateSearchResultsContext(plan.search, plan.board))) return null;
   return plan;
 }
 
@@ -96,7 +99,7 @@ export function isResumeToastTarget(el) {
 // post：{ board, aid } | null（aid_navigation.currentPostAid）。
 // 文章沒有 AID 時退回那篇所在的列表，但只在列表的板就是文章的板時（身後的列表
 // 可能是跳文之前的另一個板）。
-export function resumePlanFrom(bm, post) {
+export function resumePlanFrom(bm, post, searchContext) {
   if (!bm) return null;
   const art = bm.article;
   if (art && post && post.aid && post.board)
@@ -105,14 +108,20 @@ export function resumePlanFrom(bm, post) {
   const board = list ? boardNameFromKey(list.board) : null;
   if (!board) return null;
   if (art && !(art.board && String(art.board).toLowerCase() === board.toLowerCase())) return null;
-  const plain = list.mode === 'plain';
-  return {
+  // A tracked query also proves the result space on legacy captions, whose
+  // generic footer cannot distinguish search results from ordinary lists.
+  const search = !art && validateSearchResultsContext(searchContext, board);
+  const plain = list.mode === 'plain' && !search;
+  const plan = {
     kind: 'list',
     board: board,
     num: plain && list.cursorNum > 0 ? list.cursorNum : null,
     // 搜尋結果／文摘：回到的是完整列表（另一個編號空間），不還原視野。
     bookmark: plain ? bm : Object.assign({}, bm, { list: null })
   };
+  // A known query can be reconstructed; its old result numbers cannot.
+  if (search) plan.search = search;
+  return plan;
 }
 
 export function ReconnectResume(core, view, termBuf) {
@@ -180,7 +189,7 @@ ReconnectResume.prototype = {
     const bm = recordFor(core).begin('reconnect-resume', { view: this._view, buf: this._termBuf });
     const nav = core.aidNavigation;
     const post = bm.article && nav && nav.currentPostAid ? nav.currentPostAid() : null;
-    this._pending = resumePlanFrom(bm, post);
+    this._pending = resumePlanFrom(bm, post, readSearchResultsContext(core));
     this._core?.articleShortcutSearch?.suspendForRecovery(this._pending);
     this._diag('capture', this._pending
       ? { kind: this._pending.kind, board: this._pending.board, aid: this._pending.aid || null, num: this._pending.num || null }
@@ -197,7 +206,7 @@ ReconnectResume.prototype = {
       const bm = recordFor(core).begin('reconnect-resume', { view: this._view, buf: this._termBuf });
       const nav = core.aidNavigation;
       const post = bm.article && nav && nav.currentPostAid ? nav.currentPostAid() : null;
-      plan = resumePlanFrom(bm, post);
+      plan = resumePlanFrom(bm, post, readSearchResultsContext(core));
     }
     this._core?.articleShortcutSearch?.persistForRecovery(plan);
     try {
@@ -315,7 +324,9 @@ ReconnectResume.prototype = {
     this._diag('dispatch', { kind: plan.kind, board: plan.board, fromOpen: !!plan.fromOpen });
     const self = this;
     const started = nav.startResume(plan, function(result) {
-      self._core?.articleShortcutSearch?.recoveryEnded(plan, result);
+      const ended = outcome => self._core?.articleShortcutSearch?.recoveryEnded(plan, outcome);
+      if (result?.ok && plan.search) resumeSearchResults(core, plan.search, ended);
+      else ended(result);
     });
     if (!started) this._core?.articleShortcutSearch?.abandonRecovery('superseded');
   },

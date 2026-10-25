@@ -142,22 +142,22 @@ async function openSearchResult(page, { thread = false } = {}) {
 // native S is case-insensitive equality of the reply-stripped subject, and a
 // new result list selects its newest entry.
 const NESTED_ARTICLES = [
-  { aid: '1gIeu-3A', author: 'alice', title: '[Talk] Alpha topic', body: 'Alpha' },
-  { aid: '1gIeu-3B', author: 'alice', title: '[Talk] Beta topic', body: 'Beta' },
-  { aid: '1gIeu-3C', author: 'bob', title: 'Re: [Talk] Beta topic', body: 'Charlie' },
-  { aid: '1gIeu-3D', author: 'bob', title: '[Talk] Delta topic', body: 'Delta' }
+  { aid: '1gIeu-3A', author: 'alice', title: '[Talk] Alpha topic', body: 'Alpha', push: 10 },
+  { aid: '1gIeu-3B', author: 'alice', title: '[Talk] Beta topic', body: 'Beta', push: 20 },
+  { aid: '1gIeu-3C', author: 'bob', title: 'Re: [Talk] Beta topic', body: 'Charlie', push: 30 },
+  { aid: '1gIeu-3D', author: 'bob', title: '[Talk] Delta topic', body: 'Delta', push: 40 }
 ];
 
 // options.easyList: the reader's default list owner (cards).
 // options.loggedIn: this connection first passes the main menu, as a real
 //   login does, so reconnect/open resume may capture and store a plan.
 // options.resumeLastPlace: reloads resume the last place (the product default).
-async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false } = {}) {
+async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false, legacyCaptions = false } = {}) {
   await bootGestureArticle(page, { resumeLastPlace });
   // The image-article boot disables the easy-reading list; the reader's
   // default enables it before any list from this server is seen.
   if (easyList) await ptt.applyPrefs(page, { enableEasyReadingList: true });
-  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article' });
+  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article', legacyCaptions });
   if (loggedIn) {
     await waitScreenSettled(page, { 0: '主功能表' });
     await page.evaluate(() => {
@@ -172,8 +172,8 @@ async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = fal
 
 // A new PTT session on the same board data: it starts at the main menu after
 // login with a fresh cursor and no search. `deleted` carries over.
-async function nestedSessionAfterLogin(page, { deleted = [] } = {}) {
-  await installNestedServer(page, { surface: 'main', deleted });
+async function nestedSessionAfterLogin(page, { deleted = [], legacyCaptions = false } = {}) {
+  await installNestedServer(page, { surface: 'main', deleted, legacyCaptions });
 }
 
 async function installNestedServer(page, session) {
@@ -219,7 +219,8 @@ async function installNestedServer(page, session) {
           0: `【板主：test】看板《${state.board}》`,
           1: '[←]離開 [→]閱讀 [^P]發表文章 [b]備忘錄',
           2: '  編號    日 期 作  者       文  章  標  題',
-          23: state.filter ? ' 系列文章  [←]離開 [→]閱讀' : ' 文章列表  [←]離開 [→]閱讀'
+          23: session.legacyCaptions ? ' 文章選讀 [←]離開 [→]閱讀'
+            : state.filter ? ' 系列文章  [←]離開 [→]閱讀' : ' 文章列表  [←]離開 [→]閱讀'
         };
         inverse = [0, 2];
         entries.forEach((article, index) => {
@@ -277,7 +278,9 @@ async function installNestedServer(page, session) {
         state.prompt = null;
         search(prompt.kind === 'author'
           ? article => article.author.toLowerCase().includes(text.toLowerCase())
-          : article => article.title.toLowerCase().includes(text.toLowerCase()));
+          : prompt.kind === 'push'
+            ? article => Number(text) > 0 ? article.push >= Number(text) : article.push <= Number(text)
+            : article => article.title.toLowerCase().includes(text.toLowerCase()));
         return rest.slice(end + 1);
       }
       if (rest.startsWith('\x1b[D')) {
@@ -311,10 +314,13 @@ async function installNestedServer(page, session) {
         state.surface = 'article';
       } else if (head === 'a' && state.surface === 'list') {
         state.surface = 'prompt';
-        state.prompt = { kind: 'author', label: '搜尋作者: ' };
+        state.prompt = { kind: 'author', label: state.filter ? '增加條件 作者: ' : '搜尋作者: ' };
       } else if (head === '/' && state.surface === 'list') {
         state.surface = 'prompt';
-        state.prompt = { kind: 'title', label: '搜尋標題: ' };
+        state.prompt = { kind: 'title', label: state.filter ? '增加條件 標題: ' : '搜尋標題: ' };
+      } else if (head === 'Z' && state.surface === 'list') {
+        state.surface = 'prompt';
+        state.prompt = { kind: 'push', label: state.filter ? '增加條件 推文數: ' : '搜尋推文數高於多少: ' };
       } else if (head === 'S' && state.surface === 'list') {
         const wanted = subject(selected().title);
         search(article => subject(article.title) === wanted);

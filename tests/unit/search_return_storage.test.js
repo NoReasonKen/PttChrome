@@ -10,6 +10,7 @@ import { searchedFrom, SEARCH_RETURN_MAX_AGE_MS } from "../../src/js/search_retu
 import { readValuesWithDefault } from "../../src/js/pref_storage";
 import { sanitizeForCloud } from "../../src/js/pref_sync_logic";
 import { i18n } from "../../src/js/i18n";
+import { recordSearchResults, readSearchResultsContext } from "../../src/js/search_results_context";
 
 const ORIGIN = {
   board: "Test",
@@ -54,6 +55,46 @@ function closePageOnResults() {
 afterEach(() => {
   vi.useRealTimers();
   window.localStorage.removeItem(SEARCH_RETURN_KEY);
+});
+
+test("background list filling cannot invalidate a query through a transient input cursor", () => {
+  const { core, search } = app({ ...FULL_LIST, 23: ' 系列文章 [←]離開 [→]閱讀' });
+  const context = { board: 'Test', filters: [{ kind: 'title', value: 'topic' }] };
+  recordSearchResults(core, context);
+  core.listSession = { state: 'active', readingPosition: () => ({ board: 'Test', mode: 'select' }) };
+  core.buf.isCursorOnInputField = () => true;
+  search.noteSettle();
+  expect(readSearchResultsContext(core)).toEqual(context);
+  // A genuine unowned native input invalidates the query instead.
+  core.listSession.state = 'functionMode';
+  search.noteSettle();
+  expect(readSearchResultsContext(core)).toBeNull();
+});
+
+test("digest navigation discards old search metadata even though both use select numbering", () => {
+  const { core, search } = app({ ...FULL_LIST, 23: ' 文摘列表 [←]離開 [→]閱讀' });
+  recordSearchResults(core, { board: 'Test', filters: [{ kind: 'author', value: 'alice' }] });
+  core.listSession = { state: 'active', readingPosition: () => ({ board: 'Test', mode: 'select' }) };
+  search.noteSettle();
+  expect(readSearchResultsContext(core)).toBeNull();
+});
+
+test('leaving ordinary results clears the query even when legacy captions look unchanged', () => {
+  const { core, search } = app();
+  recordSearchResults(core, { board: 'Test', filters: [{ kind: 'author', value: 'alice' }] });
+  search.noteSearchKey({ key: 'ArrowLeft' });
+  expect(readSearchResultsContext(core)).toBeNull();
+});
+
+test('a background cursor excursion does not turn visible results into a full-board history exit', () => {
+  const { core, search } = app({ ...FULL_LIST, 23: ' 系列文章 [←]離開 [→]閱讀' });
+  search.route = searchedFrom(null, ORIGIN);
+  core.listSession = { state: 'active', readingPosition: () => ({ board: 'Test', mode: 'select' }) };
+  core.buf.cur_y = 23;
+  core.buf.cur_x = 40;
+  search.noteSettle();
+  expect(search.route?.phase).toBe('results');
+  expect(search.route.origins).toHaveLength(1);
 });
 
 test("the stored route stays out of the preferences that sync to the cloud or export", () => {

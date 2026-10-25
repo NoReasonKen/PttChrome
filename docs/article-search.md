@@ -10,6 +10,44 @@ list search key or a search-sheet submission, clears that route
 article do not. Rules and implementation notes are in
 [the article shortcut specification](article-swipe-drawer-spec.md).
 
+### Recovering search results
+
+Resume-last-place and reconnect recovery reconstruct searches submitted through
+the search dialog or mobile sheet (`title`, `author`, and `push`) and the
+article drawer (`author` and native same-thread `S`). Successful searches record
+local query metadata through `search_results_context.js`; the keyword MRU is
+not evidence of the current results. The verified native prompt distinguishes
+a fresh search from an added condition, so recovery preserves an ordered chain
+of up to eight filters. Overflow invalidates recovery rather than silently
+dropping earlier conditions. Raw native prompt input and digests are not
+reconstructed because their accepted query is not tracked.
+
+For tracked article searches, submission retains input ownership until a
+same-board result list with its cursor parked on an entry, or a known rejection,
+is verified. A disappearing prompt with an incomplete repaint is not completion.
+This prevents the visible new results from being paired with the preceding
+query in a close/reload snapshot. Legacy captions use the proven query context
+instead of assuming that their generic footer means an ordinary list.
+
+Metadata travels inside the existing local resume snapshot, with its preferences
+and twelve-hour expiry. After the existing board-resume operation succeeds,
+`resume_search_results.js` uses the shared command queue to reconstruct each
+filter. Native same-thread recovery first selects the source by verified AID;
+an unavailable source stops recovery instead of substituting a keyword search.
+No source-return history entry is added by reconstruction. Successful shortcut
+results reactivate the existing return route only after both the saved query
+and its actual destination are verified.
+
+Result numbers can change when articles are added or deleted. Recovery starts
+at the server's newest matching result; it does not reuse an old result number
+or claim to restore an unverified article position. Empty results and protocol
+failures stop with an explanation and leave the shortcut return path inactive.
+An external recovery failure supplies its notice through reading-record's
+`releaseExternal({ listNotice })` to `ListSession.endExternalNavigation(notice)`.
+The list owner repeats that error notice when its automatic switch back to easy
+reading finishes, instead of replacing it with a generic success hint. New
+navigation or list cleanup discards the pending notice.
+
 動 `article_search.js`、`search_history.js`、`SearchModal.jsx`、term_view 的搜尋鍵攔截前先讀。
 
 ## 為什麼

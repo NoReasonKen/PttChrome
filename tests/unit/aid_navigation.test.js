@@ -18,6 +18,7 @@ import {
 import { subjectOfListText } from "../../src/js/list_session";
 import { parseStatusRow } from "../../src/js/string_util";
 import { serializedOpHint } from "../../src/js/serialized_op_gate";
+import { recordSearchResults, readSearchResultsContext } from "../../src/js/search_results_context";
 
 vi.useFakeTimers();
 
@@ -212,6 +213,12 @@ function answerOriginInfo(queue, aid, board = "C_Chat") {
 }
 
 describe("AidNavigation", () => {
+  test('external AID navigation invalidates the query of the list it leaves', () => {
+    const h = makeHarness();
+    recordSearchResults(h.core, { board: 'C_Chat', filters: [{ kind: 'author', value: 'alice' }] });
+    h.nav.start('1gIeu-3A', 'Android');
+    expect(readSearchResultsContext(h.core)).toBeNull();
+  });
   test("happy path: Q → s board ⏎ (from inside the article) → # aid ⏎ → ⏎, active toggles, mirrors entered", () => {
     const { nav, queue, sent, core, hints } = makeHarness();
     nav.start("1gIeu-3A", "Android");

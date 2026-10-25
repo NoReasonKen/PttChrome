@@ -71,6 +71,7 @@ import { MAIN_MENU, boardNameFromKey, parseBoardKey, rowHasTitle, sameBoard } fr
 import { isSubListFooter } from './screen_captions';
 import { HINT_ERROR } from './status_hint';
 import { recordFor } from './reading_record';
+import { clearSearchResultsContext } from './search_results_context';
 
 // AID search rejected: pttbbs answers with a press-any-key message instead of
 // a clean list. Belt-and-braces text guard for the (unlikely) case the message
@@ -966,6 +967,9 @@ AidNavigation.prototype = {
   // Shared entry for every run: lock input, put the REAL native screen on
   // screen, then pick the fast (in-article s) or slow (escape preamble) path.
   _begin: function(run) {
+    // External navigation leaves the result set; its query no longer owns
+    // the server list, even if a legacy footer still looks identical.
+    clearSearchResultsContext(this._core);
     this.active = true;
     this._updateBackButton(); // active → hidden: no second run mid-flight
     // Claim the leaveCurrentPost that our own landing will produce — see

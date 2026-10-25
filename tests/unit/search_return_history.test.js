@@ -189,6 +189,18 @@ describe("recovery after disconnection, reload or reopen", () => {
   const stored = (route, plan, article, at = now) =>
     JSON.parse(JSON.stringify(recoveryRecord(route, recoveryTarget(plan, article), at)));
 
+  test("a reconstructed results target binds the exact query and skips the fallback Back level", () => {
+    const route = searchedFrom(null, a);
+    const plan = { ...listPlan, search: { board: 'Test', filters: [{ kind: 'author', value: a.author }] } };
+    const record = readRecoveryRecord(stored(route, plan, null), now);
+    expect(recovered(record.route, record.target, plan, { kind: 'results', board: 'Test' })).toEqual(route);
+    expect(recovered(record.route, record.target, plan, { kind: 'boardList', board: 'Test' })).toBeNull();
+    const changed = { ...plan, search: { board: 'Test', filters: [{ kind: 'title', value: 'other' }] } };
+    expect(recovered(record.route, record.target, changed, { kind: 'results', board: 'Test' })).toBeNull();
+    const caseChanged = { ...plan, board: 'test', search: { ...plan.search, board: 'test' } };
+    expect(recovered(record.route, record.target, caseChanged, { kind: 'results', board: 'test' })).toEqual(route);
+  });
+
   test("records stay valid for exactly the twelve hours open-resume uses", () => {
     expect(SEARCH_RETURN_MAX_AGE_MS).toBe(SNAPSHOT_MAX_AGE_MS);
     const record = stored(searchedFrom(null, a), listPlan, null);

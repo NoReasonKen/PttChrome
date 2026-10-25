@@ -139,6 +139,12 @@ N1 本身沒有變：探針仍然不碰 external，只有序列的擁有者能�
 
 ## 開站回到上次的地方
 
+Search results with tracked query metadata are reconstructed after the shared
+board-resume transaction; see [search-result recovery](article-search.md#recovering-search-results).
+The full-list fallback described above still applies when the accepted query
+is unknown, and to unidentified result articles. Search result numbers are
+never reused across reconnection.
+
 同一支 `reconnect_resume.js`、同一個 `startResume` 與 `'reconnect-resume'` 決策表列，只是書籤存在本機、下次開站才用。手機瀏覽器回收分頁、APK 被系統關掉、使用者自己關掉再開，原生 App 會回到上次的畫面，這裡也一樣。
 
 - 存：`visibilitychange`→hidden 與 `pagehide`（APK 另有 `pttandroid:stop`）呼叫 `saveSnapshot`。只在「已登入、連線中」時存「現在斷線的話要回哪」（`resumePlanFrom`），否則清掉存檔 ⇒ 登出後關掉、還在登入畫面關掉，下次都不會跳走。不上雲。

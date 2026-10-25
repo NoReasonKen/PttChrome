@@ -13,6 +13,7 @@ const ptt = require('../helpers/ptt');
 
 const RESTORED = 'Search return history restored';
 const INACTIVE = 'Search return history was not restored';
+const RESUME_FAILED = 'The previous search results could not be restored';
 const bodyText = page => page.locator('body').innerText();
 
 async function tapCard(page, title) {
@@ -26,6 +27,13 @@ async function disconnectAndReconnect(page, session = {}) {
   await page.locator('#reactAlert button', { hasText: 'Reconnect' }).tap();
   await waitConnected(page);
   await nestedSessionAfterLogin(page, session);
+  // The old results can remain visible while the new main-menu frame is
+  // settling. Wait for actual recovery, not the retained DOM from before close.
+  await expect.poll(() => page.evaluate(() => {
+    const app = window.__app;
+    return !app.reconnectResume.hasPending() && !app.articleShortcutSearch.suspended &&
+      !app.aidNavigation.active && !app.searchInFlight;
+  }), { timeout: 15000 }).toBe(true);
 }
 
 async function reloadAndLogin(page, session = {}) {
@@ -37,6 +45,106 @@ async function reloadAndLogin(page, session = {}) {
 // After a reload the browser's Back traverses history entries the previous
 // page left behind, which the back guard does not own; use the keyboard Back.
 const keyboardBack = page => ptt.sendKey(page, 'ArrowLeft');
+
+for (const kind of ['author', 'thread']) {
+  test(`reopening from ${kind} shortcut results reconstructs them without Back`, async ({ page }) => {
+    await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
+    const position = await readToMiddle(page);
+    await tapShortcut(page, kind);
+    await waitList(page, { has: ['Alpha topic'], lacks: ['Delta topic'] });
+
+    await reloadAndLogin(page);
+    await waitList(page, { has: ['Alpha topic'], lacks: ['Delta topic'] });
+    if (kind === 'author') await page.screenshot({ path: test.info().outputPath('restored-author-results.png') });
+    await expect.poll(() => bodyText(page)).toContain(RESTORED);
+    await keyboardBack(page);
+    await waitArticle(page, 'Alpha');
+    await expect.poll(() => topLine(page)).toBe(position);
+  });
+}
+
+for (const legacyCaptions of [false, true]) {
+  test(`reopening ordinary title and author results reapplies every filter without Back (legacy: ${legacyCaptions})`, async ({ page }) => {
+    await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true, legacyCaptions });
+    await keyboardBack(page);
+    await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
+    for (const [key, value] of [['/', 'Beta'], ['a', 'bob']]) {
+      await ptt.sendKey(page, key);
+      const input = page.locator('input[name="searchKeyword"]');
+      await input.fill(value);
+      await input.press('Enter');
+      await expect.poll(() => page.evaluate(() => !window.__app.searchInFlight)).toBe(true);
+    }
+    await waitList(page, { has: ['Re: [Talk] Beta topic'], lacks: ['alice', 'Alpha topic', 'Delta topic'] });
+
+    await reloadAndLogin(page, { legacyCaptions });
+    await waitList(page, { has: ['Re: [Talk] Beta topic'], lacks: ['alice', 'Alpha topic', 'Delta topic'] });
+    // Ordinary results have no source article to restore.
+    await keyboardBack(page);
+    await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
+  });
+}
+
+test('disconnecting from shortcut results reconstructs them before reactivating Back', async ({ page }) => {
+  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true });
+  const position = await readToMiddle(page);
+  await tapShortcut(page, 'author');
+  await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
+  await disconnectAndReconnect(page);
+  await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
+  await nativeBack(page);
+  await waitArticle(page, 'Alpha');
+  await expect.poll(() => topLine(page)).toBe(position);
+});
+
+test('ordinary recommendation search resumes without using old result numbers', async ({ page }) => {
+  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
+  await keyboardBack(page);
+  await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
+  await ptt.sendKey(page, 'Z');
+  const input = page.locator('input[name="searchKeyword"]');
+  await input.fill('25');
+  await input.press('Enter');
+  await waitList(page, { has: ['Re: [Talk] Beta topic', 'Delta topic'], lacks: ['alice', 'Alpha topic'] });
+  await reloadAndLogin(page);
+  await waitList(page, { has: ['Re: [Talk] Beta topic', 'Delta topic'], lacks: ['alice', 'Alpha topic'] });
+});
+
+test('reopening nested thread results preserves the parent results and source position', async ({ page }) => {
+  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
+  const position = await readToMiddle(page);
+  await tapShortcut(page, 'author');
+  await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
+  await tapCard(page, '[Talk] Beta topic');
+  await waitArticle(page, 'Beta');
+  await tapShortcut(page, 'thread');
+  await waitList(page, { has: ['Re: [Talk] Beta topic'], lacks: ['Alpha topic'] });
+  await reloadAndLogin(page);
+  await waitList(page, { has: ['Re: [Talk] Beta topic'], lacks: ['Alpha topic'] });
+  await keyboardBack(page);
+  await waitArticle(page, 'Beta');
+  await keyboardBack(page);
+  await waitList(page, { has: ['Alpha topic', '□ [Talk] Beta topic'], lacks: ['Re: [Talk] Beta topic'] });
+  await keyboardBack(page);
+  await waitArticle(page, 'Alpha');
+  await expect.poll(() => topLine(page)).toBe(position);
+});
+
+for (const kind of ['author', 'thread']) {
+  test(`unavailable ${kind} recovery stops without activating stale history or retrying`, async ({ page }) => {
+    await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
+    await tapShortcut(page, kind);
+    await waitList(page, { has: ['Alpha topic'], lacks: ['Delta topic'] });
+    await reloadAndLogin(page, { deleted: kind === 'author' ? ['1gIeu-3A', '1gIeu-3B'] : ['1gIeu-3A'] });
+    await expect.poll(() => bodyText(page)).toContain(RESUME_FAILED);
+    await waitList(page, { has: ['Delta topic'], lacks: ['Alpha topic'] });
+    const sent = await gestureSent(page);
+    expect(sent.match(kind === 'author' ? /alice\r/g : /#1gIeu-3A\r/g)).toHaveLength(1);
+    if (kind === 'thread') expect(sent).not.toContain('S');
+    await keyboardBack(page);
+    await expect.poll(() => visibleText(page)).toContain('主功能表');
+  });
+}
 
 // A -> same author -> B -> same thread -> B's results -> Back reopens B by AID.
 async function reopenNestedSource(page) {

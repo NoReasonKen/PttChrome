@@ -20,6 +20,7 @@
 
 import { sameBoard } from './screen_titles';
 import { BOARD_RE, isAidc } from './aid_codec';
+import { validateSearchResultsContext } from './search_results_context';
 
 export const MAX_SEARCH_ORIGINS = 8;
 
@@ -132,7 +133,8 @@ export const SEARCH_RETURN_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 // reader saw: { kind: 'article', board, aid, author, title } | { kind: 'list', board }.
 export function recoveryTarget(plan, article) {
   if (!plan || typeof plan.board !== 'string' || !plan.board) return null;
-  if (plan.kind === 'list') return { kind: 'list', board: plan.board };
+  if (plan.kind === 'list') return { kind: 'list', board: plan.board,
+    ...(plan.search ? { search: validateSearchResultsContext(plan.search, plan.board) } : {}) };
   if (plan.kind !== 'article' || !plan.aid || !article || !sameBoard(article.board, plan.board) ||
       typeof article.author !== 'string' || typeof article.title !== 'string') return null;
   return { kind: 'article', board: plan.board, aid: plan.aid, author: article.author, title: article.title };
@@ -170,7 +172,7 @@ function validRoute(route) {
 
 function validTarget(target, board) {
   if (!isObject(target) || !sameBoard(target.board, board)) return false;
-  if (target.kind === 'list') return true;
+  if (target.kind === 'list') return !target.search || !!validateSearchResultsContext(target.search, board);
   return target.kind === 'article' && isAidc(target.aid) && isArticle(target);
 }
 
@@ -185,7 +187,9 @@ export function readRecoveryRecord(record, now) {
 // Whether `plan` is the reconnect-resume plan a target was stored with.
 export function followsPlan(target, plan) {
   if (!target || !plan || plan.kind !== target.kind || !sameBoard(plan.board, target.board)) return false;
-  return target.kind === 'list' || plan.aid === target.aid;
+  if (target.kind !== 'list') return plan.aid === target.aid;
+  return JSON.stringify(validateSearchResultsContext(target.search, target.board)?.filters || null) ===
+    JSON.stringify(validateSearchResultsContext(plan.search, plan.board)?.filters || null);
 }
 
 // The route after its resume `plan` ended successfully on `landed` (a screen
@@ -200,7 +204,10 @@ export function followsPlan(target, plan) {
 export function recovered(route, target, plan, landed) {
   if (!route || !followsPlan(target, plan) || !landed || !sameBoard(route.board, target.board) ||
       !sameBoard(landed.board, target.board)) return null;
-  if (target.kind === 'list') return landed.kind === 'boardList' ? withPhase(route, 'fallback') : null;
+  if (target.kind === 'list') {
+    if (target.search) return landed.kind === 'results' && route.phase === 'results' ? withPhase(route, 'results') : null;
+    return landed.kind === 'boardList' ? withPhase(route, 'fallback') : null;
+  }
   if (landed.kind !== 'article' || landed.author !== target.author || landed.title !== target.title) return null;
   if (route.phase === 'article') return withPhase(route, 'reopened', target);
   if (route.phase === 'reopened' && route.at.author === target.author && route.at.title === target.title) return route;

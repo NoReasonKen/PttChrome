@@ -73,6 +73,22 @@ describe("TermView.flashListHint", () => {
   });
 });
 
+test('an external recovery failure survives the automatic switch back to list easy reading', () => {
+  const notice = { message: 'Search recovery failed', duration: 6000, level: HINT_ERROR };
+  const session = {
+    state: 'functionMode', _holdReason: 'external',
+    _diag() {}, _scheduleResumeProbe() {},
+    _autoResumeEnabled: () => true, _lastServerActivityAt: 0, _lastUserByteAt: 0,
+    _queue: { inFlightKind: null }, _collectFacts: () => ({ kind: 'clean-list' }),
+    _settleEvent: () => ({}), _dispatch() { this.state = 'active'; },
+    _view: { flashListHint: vi.fn() }
+  };
+  ListSession.prototype.endExternalNavigation.call(session, notice);
+  ListSession.prototype._tryResumeProbe.call(session);
+  expect(session._view.flashListHint).toHaveBeenCalledExactlyOnceWith(notice.message, notice.duration, notice.level);
+  expect(session._externalResumeNotice).toBeNull();
+});
+
 describe("TermView.setListLoading（讀取中）", () => {
   test("開關關掉時不顯示", () => {
     const v = fakeView(false);

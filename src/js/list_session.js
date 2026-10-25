@@ -938,6 +938,7 @@ export function ListSession(core, view, termBuf, queue) {
   // 兩者一定要分開：把黏性直接拿掉會靜默弄壞 deep link 與長推文（它們要的是
   // 「在我這條序列跑完之前你不准自己彈回 buffer、不准自己排命令」）。
   this._holdReason = null;
+  this._externalResumeNotice = null;
   // 靜置探針的 timer handle 與它的兩個時鐘來源（見 RESUME_QUIET_MS）。
   // _lastServerActivityAt 只在 settle 上更新（settle 本身就是「server 活動後靜止
   // SETTLE_MS」）——**不要**去 term_buf 另外開 hook，那會踩到不變量 2/2b。
@@ -1171,8 +1172,11 @@ ListSession.prototype = {
     this._dispatch(event, facts);
     // 換畫面永不靜默（不變量 N7）：使用者沒按任何鍵，畫面卻從原生換回好讀，
     // 一定要說一聲。
-    if (before !== this.state && this.state === 'active' && this._view.flashListHint)
-      this._view.flashListHint('操作完成，已回到好讀列表', 2000);
+    if (before !== this.state && this.state === 'active' && this._view.flashListHint) {
+      const notice = this._externalResumeNotice;
+      this._externalResumeNotice = null;
+      this._view.flashListHint(notice?.message || '操作完成，已回到好讀列表', notice?.duration || 2000, notice?.level);
+    }
   },
 
   _dispatch: function(event, facts) {
@@ -1274,8 +1278,11 @@ ListSession.prototype = {
   // 換成 'passthrough'，交回靜置探針自動回好讀（不變量 N1 不變：探針仍然不碰
   // external，只有序列的擁有者自己說「我做完了」才放開）。落在文章時 handoff
   // 已經解除 hold ⇒ 這裡什麼都不做。
-  endExternalNavigation: function() {
+  endExternalNavigation: function(notice) {
     if (this.state !== 'functionMode' || this._holdReason !== 'external') return;
+    // A failed external transaction must remain explained after the native
+    // mirror changes back to easy reading; the generic resume hint would hide it.
+    this._externalResumeNotice = notice || null;
     this._holdReason = 'passthrough';
     this._diag('listSession.externalEnd', {});
     this._scheduleResumeProbe();
@@ -3412,6 +3419,7 @@ ListSession.prototype = {
   // internal callers) — no banner.
   // opts.hold: 'passthrough'（預設，靜置後自動回好讀）| 'external'（永不自動解除）。
   _enterFunctionMode: function(facts, opts) {
+    this._externalResumeNotice = null;
     // 閱讀紀錄凍結：下面會清掉看板身分、鏡像期間也沒有列表視口 ⇒ 之後任何人問
     // 「使用者在看哪裡」都拿這一刻的視野（reading_record.freeze）。
     const pos = this.readingPosition();
@@ -3555,6 +3563,7 @@ ListSession.prototype = {
   },
 
   _cleanup: function() {
+    this._externalResumeNotice = null;
     this._cancelScroll();
     this._holdReason = null;
     this._cancelResumeProbe();

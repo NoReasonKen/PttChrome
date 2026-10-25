@@ -1432,6 +1432,7 @@ export const en_US = {
   "articleShortcutSearch_returned": { "message": "Returned to the source article." },
   "articleShortcutSearch_recovered": { "message": "Search return history restored. Back continues along the search route." },
   "articleShortcutSearch_recoveryInactive": { "message": "Search return history was not restored because the article or search could not be verified. Back works normally." },
+  "searchResults_resumeFailed": { "message": "The previous search results could not be restored. Navigation has stopped safely; search again to continue." },
   "tooltip_mobileAppBarScrollTop": {
     "message": "In the mobile layout, tapping the title at the top scrolls the article, list or home page back to the top. It only scrolls; no keys are sent."
   },

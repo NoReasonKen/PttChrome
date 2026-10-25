@@ -14,10 +14,12 @@
 import { u2b, ansiHalfColorConv } from './string_util';
 import { boardListContextKind } from './board_list_parse';
 import { listRenderOwnerOf, OWNER_ARTICLE_LIST } from './list_render_owner';
-import { rowHasTitle, MAIN_MENU } from './screen_titles';
+import { rowHasTitle, MAIN_MENU, parseBoardName, boardNameFromKey } from './screen_titles';
 import { readEffectivePrefs } from './pref_storage';
 import { recordFor } from './reading_record';
 import { SLOW_STEP_BUDGET } from './aid_navigation';
+import { candidateSearchResults, recordSearchResults, clearSearchResultsContext } from './search_results_context';
+import { isSearchResultsFrame, searchResultsLanded, SEARCH_RESULT_NOTICE } from './search_results_screen';
 
 // 種類 → PTT 端的按鍵。`?` 與 `/` 是同一個指令（read.c:1430-1431），送出一律用 `/`。
 // `Z` 是推文數（大寫；小寫 z 是精華區，bbs.c:4406）。
@@ -146,8 +148,11 @@ export function tryOpenSearchModal(core, key, e) {
       prefs: readEffectivePrefs(),
       facts: searchGateFacts(core)
     })
-  )
+  ) {
+    if (!(e?.ctrlKey || e?.altKey || e?.metaKey) && core.buf?.pageState === 2 && !searchGateFacts(core)?.inputField)
+      clearSearchResultsContext(core);
     return false;
+  }
   return !!core.openSearchModal(kind);
 }
 
@@ -238,11 +243,18 @@ function trackInFlight(core, steps, flag) {
 //   - 原生 ⇒ 直接排進共用 CommandQueue，第二步只在第一步 onDone 才排。
 // 回 false ＝ 沒送（沒有可送的內容或沒有佇列）。
 //
-// 閱讀紀錄（決策表 'article-search'；看板 `s` 走一般兩步時是 'board-search'）：送出前領
-// 書籤（列表好讀接著會切原生、丟掉緩衝）。prompt 沒開出來＝'fail'，送出後第一個回應
-// ＝'done'；回到哪裡、認不認得出來由決策表＋列表 session 的落點驗證決定。
+// Capture the reading bookmark before handing over the list. Article searches
+// finish on verified results or a known rejection; board navigation retains
+// its existing prompt-exit contract. Restoration follows the reading-record
+// policies for 'article-search' and 'board-search'.
 export function submitSearch(core, kind, text, cb) {
   const c = cb || {};
+  const facts = searchGateFacts(core);
+  const shown = core?.listSession?.state === 'active' ? core.listSession.readingPosition?.() : null;
+  // The visible list owns its board while background fill rewrites the raw
+  // terminal header. The latter can be blank when the search sheet submits.
+  const board = boardNameFromKey(shown?.board) || parseBoardName(facts?.rowTexts[0]);
+  let candidate = null;
   let bm = null;
   const end = function(outcome) {
     if (bm) recordFor(core).end(bm, outcome);
@@ -250,6 +262,7 @@ export function submitSearch(core, kind, text, cb) {
   };
   const built = buildSearchSteps(kind, text, {
     onDone: function(a, b) {
+      if (a?.searchResults || isSearchResultsFrame(searchGateFacts(core), board)) recordSearchResults(core, candidate);
       end('done');
       if (c.onDone) c.onDone(a, b);
     },
@@ -259,6 +272,23 @@ export function submitSearch(core, kind, text, cb) {
     }
   });
   if (!built || !core) return false;
+  // The native prompt distinguishes a new search from an added condition even
+  // on legacy captions. A generic select-mode list may instead be a digest.
+  built[0].onDone = () => {
+    const prompt = searchGateFacts(core);
+    const append = /^增加條件 /.test(prompt?.rowTexts[prompt.rows - 1] || '');
+    candidate = candidateSearchResults(core, board, { kind, value: normalizeSearchText(kind, text) }, append);
+  };
+  if (kind !== 'board' && board) {
+    // Prompt disappearance can precede the results repaint. Keep ownership
+    // until results or a known rejection are verified, so a close/reload cannot
+    // persist the preceding query while the new results are already visible.
+    built[1].expect = (snapshot, landing) => {
+      const last = landing.rowTexts[landing.rows - 1] || '';
+      if (landing.curY === landing.rows - 1 && SEARCH_RESULT_NOTICE.test(last)) return { searchNotice: true };
+      return searchResultsLanded(landing, board) ? { searchResults: true } : false;
+    };
+  }
   bm = recordFor(core).begin(kind === 'board' ? 'board-search' : 'article-search');
   // 列表好讀接管中：凍結交易、結果列表一落地就回好讀（最後一步從 prompt 送出，
   // 見 list_session._beginLandingTransaction）。認不出（找不到的 vmsg、進板畫面）

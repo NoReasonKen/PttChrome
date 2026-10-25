@@ -60,6 +60,21 @@ describe("resumePlanFrom（斷線那一刻要回哪）", () => {
     expect(plan.bookmark.list).toBeNull();
   });
 
+  test("verified search metadata accompanies list recovery without reusing result numbers", () => {
+    const search = { board: "C_Chat", filters: [{ kind: "title", value: "topic" }, { kind: "author", value: "alice" }] };
+    const plan = resumePlanFrom({ article: null, list: { ...LIST, mode: "select" } }, null, search);
+    expect(plan.search).toEqual(search);
+    expect(plan.num).toBeNull();
+    expect(plan.bookmark.list).toBeNull();
+    const legacy = resumePlanFrom({ article: null, list: LIST }, null, search);
+    expect(legacy.search).toEqual(search);
+    expect(legacy.num).toBeNull();
+    expect(legacy.bookmark.list).toBeNull();
+    expect(resumePlanFrom({ article: ARTICLE, list: { ...LIST, mode: "select" } }, null, search).search).toBeUndefined();
+    expect(resumePlanFrom({ article: null, list: { ...LIST, mode: "select" } }, null,
+      { ...search, board: "Other" }).search).toBeUndefined();
+  });
+
   test("游標在置底文（沒有編號）⇒ 進板就停", () => {
     const plan = resumePlanFrom({ article: null, list: { ...LIST, cursorNum: null } }, null);
     expect(plan.num).toBeNull();

@@ -1,6 +1,5 @@
 import { searchGateFacts, buildSearchSteps, searchKindOfKey } from './article_search';
-import { SLOW_STEP_BUDGET, isSubListTitle, AID_NOT_FOUND_RE } from './aid_navigation';
-import { isArticleListFooter, isSubListFooter } from './screen_captions';
+import { SLOW_STEP_BUDGET, AID_NOT_FOUND_RE } from './aid_navigation';
 import { parseBoardName, boardNameFromKey, sameBoard } from './screen_titles';
 import { serializedOpHint } from './serialized_op_gate';
 import { recordFor } from './reading_record';
@@ -11,8 +10,10 @@ import {
 } from './search_return_history';
 import { takeStoredRecovery, storeRecovery } from './search_return_storage';
 import { i18n } from './i18n';
+import { isBoardArticleList as boardList, isSearchResultsFrame as resultList, searchResultsLanded, SEARCH_RESULT_NOTICE as MESSAGE } from './search_results_screen';
+import { recordSearchResults, readSearchResultsContext, clearSearchResultsContext } from './search_results_context';
+import { footerCaption } from './screen_captions';
 
-const MESSAGE = /找不到符合條件的文章|搜尋服務異常|已達搜尋條件上限/;
 const PRESS_ANY_KEY = /(?:請)?按任意鍵繼續|請按 空白鍵 繼續/;
 const LIST_BACK_KEYS = ['ArrowLeft', 'q', 'e'];
 const ARTICLE_BACK_KEYS = ['ArrowLeft', 'q'];
@@ -22,21 +23,6 @@ const keep = route => route;
 export function articleIdentity(core) {
   const view = core.view;
   return { board: view._articleBoard, author: view._articleAuthor, title: view._articleTitle };
-}
-
-function boardList(facts, board) {
-  const rows = facts?.rowTexts || [];
-  return sameBoard(parseBoardName(rows[0]), board) &&
-    isArticleListFooter(rows[(facts?.rows || rows.length) - 1] || '');
-}
-
-function resultList(facts, board) {
-  if (!boardList(facts, board)) return false;
-  const rows = facts.rowTexts;
-  // Old PTT captions do not distinguish search lists. This path is only armed
-  // after our verified search prompt/query and invalidated by another search.
-  return isSubListFooter(rows[facts.rows - 1]) || isSubListTitle(rows[0]) ||
-    /^\s*文章選讀(?:\s|$)/.test(rows[facts.rows - 1]);
 }
 
 const fullBoardList = (facts, board) => boardList(facts, board) && !resultList(facts, board);
@@ -164,7 +150,7 @@ export class ArticleShortcutSearch {
         if (facts.curY === facts.rows - 1 && MESSAGE.test(last)) {
           return { notice: /找不到符合條件的文章/.test(last) ? 'articleShortcutSearch_empty' : 'articleShortcutSearch_failed' };
         }
-        return resultList(facts, origin.board) ? { results: true } : false;
+        return searchResultsLanded(facts, origin.board) ? { results: true } : false;
       },
       onDone: result => {
         if (result.notice) {
@@ -177,6 +163,9 @@ export class ArticleShortcutSearch {
         } else {
           this.route = rebuilt(this.route);
         }
+        recordSearchResults(this.core, { board: origin.board, filters: [kind === 'thread'
+          ? { kind, aid: origin.aid, title: origin.title }
+          : { kind, value: origin.query.value }] });
         this._finish();
         this._resultsHint(kind);
       }
@@ -195,6 +184,7 @@ export class ArticleShortcutSearch {
     const board = this.route.board;
     if (step.kind === 'restore') {
       if (!LIST_BACK_KEYS.includes(event.key) || this._listShown(board) !== 'results') return false;
+      clearSearchResultsContext(core);
       this.pending = null;
       this._begin({ missing: returnMissing });
       this._reopen(step.origin, 'articleShortcutSearch_returned', returned);
@@ -298,6 +288,8 @@ export class ArticleShortcutSearch {
     const article = this._currentArticle();
     if (article) return { kind: 'article', ...article };
     if (core.buf.pageState === 1) return { kind: 'menu' };
+    const shown = this._listShown(this.route.board);
+    if (shown) return { kind: shown === 'results' ? 'results' : 'boardList', board: this.route.board };
     const facts = searchGateFacts(core);
     const board = parseBoardName(facts?.rowTexts[0]);
     if (!board) return { kind: 'other' };
@@ -311,6 +303,20 @@ export class ArticleShortcutSearch {
       this._explainLater = false;
       this._hint('articleShortcutSearch_recoveryInactive');
     }
+    // Query metadata belongs to the current results even without a shortcut
+    // return route. Automatic navigation and background paging own transients.
+    if (!this.active && !this.core.searchInFlight && !this.core.aidNavigation?.active) {
+      const context = readSearchResultsContext(this.core);
+      const facts = context && searchGateFacts(this.core);
+      const board = parseBoardName(facts?.rowTexts[0]);
+      if (context && (this.core.buf.pageState === 1 ||
+          (facts?.inputField && this.core.listSession?.state !== 'active' && !this.core.commandQueue?.inFlightKind) ||
+          footerCaption(facts?.rowTexts[facts.rows - 1]) === '文摘列表' ||
+          (this.core.buf.pageState === 2 && this._listShown(context.board) === 'full') ||
+          (board && !sameBoard(board, context.board)))) {
+        clearSearchResultsContext(this.core);
+      }
+    }
     if (this.active || !this.route) return;
     this.route = observe(this.route, this._screen());
   }
@@ -320,7 +326,9 @@ export class ArticleShortcutSearch {
   // reading commands. `S` is the native same-thread search of the list.
   noteSearchKey(event) {
     if (event.ctrlKey || event.altKey || event.metaKey || this.core.buf.pageState !== 2) return;
+    if (LIST_BACK_KEYS.includes(event.key)) clearSearchResultsContext(this.core);
     if (searchKindOfKey(event.key) || event.key === 'S') this.noteOtherSearch();
+    if (event.key === 'S') clearSearchResultsContext(this.core);
   }
 
   noteOtherSearch() {
@@ -330,6 +338,7 @@ export class ArticleShortcutSearch {
   // Disconnection. A route captured by suspendForRecovery stays suspended.
   reset() {
     this.route = null;
+    clearSearchResultsContext(this.core);
     if (this.active) this._fail();
   }
 
@@ -393,7 +402,8 @@ export class ArticleShortcutSearch {
   _landed(board) {
     const article = this._currentArticle();
     if (article) return { kind: 'article', ...article };
-    return this._listShown(board) === 'full' ? { kind: 'boardList', board } : { kind: 'other' };
+    const shown = this._listShown(board);
+    return shown ? { kind: shown === 'full' ? 'boardList' : 'results', board } : { kind: 'other' };
   }
 
   _explain() {
