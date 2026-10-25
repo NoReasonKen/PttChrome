@@ -25,6 +25,7 @@ for (const filtered of [false, true]) {
     await expect(page.locator('input[name="searchKeyword"]')).toHaveCount(0);
     await openSearchResult(page, { thread: true });
     await nativeBack(page);
+    await expect(page.locator('#mainContainer')).toContainText('看板《Test》');
     await expect.poll(() => visibleText(page)).toContain('Source article');
     await nativeBack(page);
     await expect.poll(() => visibleText(page)).toContain('Original reading position.');

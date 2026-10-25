@@ -43,7 +43,7 @@
 }
 
 .articleShortcutDrawer button:last-child {
-  border-bottom: 0;
+  border-bottom-color: transparent;
 }
 
 .articleShortcutDrawer button:active {
