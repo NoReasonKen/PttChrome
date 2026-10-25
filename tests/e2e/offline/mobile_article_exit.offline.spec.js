@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const { waitRectStable } = require('../helpers/layout');
+const { nextFrames } = require('../helpers/real_input');
 const { bootGestureArticle, beginArticleTouch, gestureSent } = require('../helpers/article_gestures');
 const ptt = require('../helpers/ptt');
 const { bootOffline, loadCassette, replayListCassette } = require('../helpers/replay');
@@ -57,6 +58,22 @@ test('short retractions, a second contact and resizing never exit the article', 
   await contact.release();
   await expect(page.locator('[data-article-exit-underlay]')).toHaveCount(0);
   expect(await gestureSent(page)).toBe('');
+});
+
+test('resizing during the accepted exit animation cancels navigation and restores the article', async ({ page }) => {
+  await bootGestureArticle(page);
+  const main = await waitRectStable(page, '.main');
+  const y = main.top + 100;
+  const contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: page.viewportSize().width - 20, y });
+  await contact.release();
+  await page.setViewportSize({ width: 360, height: 480 });
+  await expect(page.locator('[data-article-exit-underlay]')).toHaveCount(0);
+  await nextFrames(page, 20);
+  expect(await gestureSent(page)).toBe('');
+  expect((await waitRectStable(page, '.main')).left).toBeCloseTo(0, 0);
+  expect((await waitRectStable(page, '#mobileAppBar')).left).toBeCloseTo(0, 0);
+  await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
 });
 
 test('entering from a real list preserves only a bounded inert matching preview and exits to that list', async ({ page }, testInfo) => {
