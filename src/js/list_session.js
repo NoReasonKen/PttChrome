@@ -3146,6 +3146,11 @@ ListSession.prototype = {
     const lrIdx = (this._termBuf.listLineNums || []).indexOf(num);
     const lrSubject =
       lrIdx >= 0 ? subjectOfListRow(this._termBuf.listLines[lrIdx]) : null;
+    // The tapped article's identity (author + title). The number alone can
+    // point at another article once earlier ones are deleted; the landing is
+    // checked against this before Enter opens anything.
+    const wantKey = lrIdx >= 0 ? this._pinnedKeyAt(lrIdx) : null;
+    let landed = null;
     // The article WE are opening, by number — the only number that is known to
     // match the post actually on screen. _selectedNum is not: while the list is
     // rendered natively (functionMode / list easy reading off) the cursor moves
@@ -3169,12 +3174,13 @@ ListSession.prototype = {
         // clean-list (a \f redraw repaints that same virtual screen, §6).
         // newui (read.c#read_cmd_num) repaints the footer ⇒ clean-list.
         // Accept the landing by the cursor PARK position on the target.
-        return (
+        const parked =
           facts.cursorRowNum === num &&
           facts.curY >= 3 &&
           facts.curY <= facts.rows - 2 &&
-          facts.curX <= 1
-        );
+          facts.curX <= 1;
+        if (parked) landed = facts;
+        return parked;
       },
       // 跳號腿一律 fullRepaint（詳見 _enqueueCursorSyncJump）.
       fullRepaint: true,
@@ -3182,6 +3188,7 @@ ListSession.prototype = {
       probeTimeoutMs: CMD_PROBE_WINDOW_MS,
       hardTimeoutMs: CMD_HARD_MS,
       onDone: function() {
+        if (self._landedOtherArticle(landed, wantKey)) return self._openMismatched(landed);
         self._queue.enqueue({
           keys: '\r',
           kind: 'open-enter',
@@ -3381,6 +3388,25 @@ ListSession.prototype = {
       onDone: enqueueEnd,
       onFail: fail
     });
+  },
+
+  // PTT's entry at the jumped-to number is not the tapped article (author or
+  // title differ): the list changed underneath. Unknown identities never block.
+  _landedOtherArticle: function(landed, wantKey) {
+    if (!landed || !wantKey || wantKey === '|') return false;
+    const row = landed.rowTexts && landed.rowTexts[landed.curY];
+    if (!row) return false;
+    return pinnedRowKey(row) !== wantKey;
+  },
+
+  // Nothing is opened: stay on the list, merge PTT's current page into the
+  // buffer at the reader's position, and say why.
+  _openMismatched: function(landed) {
+    this._core.articleGestures?.clearListPreview();
+    this.state = 'active';
+    this._resumeInPlace(landed);
+    if (this._view.flashListHint)
+      this._view.flashListHint('列表已更新：這個位置已經不是剛剛點的文章', 4000);
   },
 
   _openFailed: function() {
