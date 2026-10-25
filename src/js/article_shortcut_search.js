@@ -117,12 +117,14 @@ export class ArticleShortcutSearch {
         const last = facts.rowTexts[facts.rows - 1] || '';
         // vmsg prints this known result on the input row and waits for a key,
         // even when its floating pause label does not fit the terminal width.
-        if (facts.curY === facts.rows - 1 && MESSAGE.test(last)) return { empty: true };
+        if (facts.curY === facts.rows - 1 && MESSAGE.test(last)) {
+          return { notice: /找不到符合條件的文章/.test(last) ? 'articleShortcutSearch_empty' : 'articleShortcutSearch_failed' };
+        }
         return resultList(facts, origin.board) ? { results: true } : false;
       },
       onDone: result => {
-        if (result.empty) {
-          this._dismissToList(origin, () => this._restore(origin, 'articleShortcutSearch_empty'));
+        if (result.notice) {
+          this._dismissToList(origin, () => this._restore(origin, result.notice));
           return;
         }
         this.route = { origin, phase: 'results', query: { kind: 'author', value: origin.author } };
