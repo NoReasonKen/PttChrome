@@ -113,17 +113,7 @@ async function searchAuthor(page) {
 const visibleText = page => page.locator('#mainContainer').innerText();
 
 async function waitSearchResults(page) {
-  try {
-    await expect.poll(() => page.locator('body').innerText()).toContain('Same-author search results');
-  } catch (error) {
-    console.log('Shortcut replay state:', await page.evaluate(() => ({
-      sent: window.__gestureSent,
-      server: window.__shortcutServer.state,
-      command: window.__app.commandQueue.inFlightKind,
-      cursor: [window.__app.buf.cur_y, window.__app.buf.cur_x]
-    })));
-    throw error;
-  }
+  await expect.poll(() => page.locator('body').innerText()).toContain('Same-author search results');
   await expect.poll(() => visibleText(page)).toContain('Source article');
 }
 
