@@ -206,6 +206,61 @@ async function pickClassSublist(page) {
   await waitWireQuiet(page);
 }
 
+const listActive = async (page) => {
+  await page.waitForFunction(() => window.__app.buf.pageState === 2 && window.__app.listSession.state === 'active', null, {
+    timeout: 30000,
+  });
+  await waitWireQuiet(page);
+};
+
+// 進板：可能先停在進板畫面（pressanykey）；照原生按一下空白鍵，再等文章列表好讀接管。
+const enteredBoardList = async (page) => {
+  await page.waitForFunction(
+    () => window.__app.buf.isPassScreenNow() || (window.__app.buf.pageState === 2 && window.__app.listSession.state === 'active'),
+    null,
+    { timeout: 30000 }
+  );
+  await waitWireQuiet(page);
+  if (await page.evaluate(() => window.__app.buf.isPassScreenNow())) {
+    await sendKey(page, 'Space');
+    await waitWireQuiet(page);
+  }
+  await listActive(page);
+};
+
+const boardListEngaged = async (page) => {
+  await page.waitForFunction(() => window.__app.buf.listRenderOwner === 'board-list', null, { timeout: 20000 });
+  await waitWireQuiet(page);
+};
+
+// 目前這份（原生）看板清單裡，第一個 Enter 會進到文章列表的看板號碼。試完退回清單。
+async function pickPlainBoard(page) {
+  const rows = await page.evaluate(() => {
+    const b = window.__app.buf;
+    const out = [];
+    for (let r = 3; r < b.rows - 1; r++) {
+      const m = /^[>\s]*(\d+)/.exec(b.getRowText(r, 0, b.cols));
+      if (m) out.push(parseInt(m[1], 10));
+    }
+    return out;
+  });
+  for (const num of rows) {
+    await jumpTo(page, num);
+    await sendKey(page, 'Enter');
+    await waitWireQuiet(page);
+    // 進板畫面（pressanykey）先按一下。
+    if (await page.evaluate(() => window.__app.buf.isPassScreenNow())) {
+      await sendKey(page, 'Space');
+      await waitWireQuiet(page);
+    }
+    const isArticleList = await page.evaluate(() => /編號/.test(window.__app.buf.getRowText(2, 0, 80)));
+    await sendKey(page, 'ArrowLeft');
+    await waitWireQuiet(page);
+    if (isArticleList) return num;
+  }
+  throw new Error('這份看板清單裡找不到一般看板');
+}
+
 // ---- 錄製骨架 ----
 
 async function record(page, name, meta, act) {
@@ -442,6 +497,70 @@ const SCENARIOS = {
       await sendKey(page, 'Enter');
       await waitWireQuiet(page);
       await sendKey(page, 'ArrowLeft');
+    });
+  },
+
+  // 疊頁導覽（#25／#29）：列表好讀開文 → 退出 → 同一篇再開一次 → 再退出。
+  // 既有卷只錄了一次開文，重放端沒辦法回第二次（同一篇的開文回應只有一份）。
+  'stack-article-reopen': async (page) => {
+    const prefs = { enableEasyReading: true, enableEasyReadingList: true, mergeSameAuthorComments: false };
+    await resetSession(page);
+    await gotoBoard(page, 'C_Chat');
+    const num = await pickArticle(page, { min: 0, max: 30 });
+    await jumpTo(page, num);
+    await applyPrefs(page, { enableEasyReading: true, mergeSameAuthorComments: false });
+    await record(page, 'stack-article-reopen', { board: 'C_Chat', prefs }, async () => {
+      await applyPrefs(page, { enableEasyReadingList: true });
+      await listActive(page);
+      for (let round = 0; round < 2; round++) {
+        await inArticleEasyReading(page);
+        await sendKey(page, 'ArrowLeft');
+        await listActive(page);
+      }
+    });
+  },
+
+  // 首頁儀表板 → 開看板（s<板>）→ 文章列表好讀 → ← 回主功能表（面板重新出現）。
+  // 我的最愛是個人資料：只在準備階段把面板標成「剛抓過」（不送任何鍵、不抓最愛），
+  // 開的是公開看板 C_Chat，素材裡不會有使用者的最愛清單。
+  'stack-home-board': async (page) => {
+    const prefs = { enableHomeDashboard: true, enableEasyReading: true, enableEasyReadingList: true };
+    await resetSession(page);
+    await applyPrefs(page, prefs);
+    await page.evaluate(() => {
+      window.__app.homeDashboard._state.fetchedAt = Date.now();
+    });
+    await page.waitForFunction(() => window.__app.homeDashboard.state.visible === true, null, { timeout: 15000 });
+    await waitWireQuiet(page);
+    await record(page, 'stack-home-board', { board: 'C_Chat', prefs }, async () => {
+      await page.waitForFunction(() => window.__app.homeDashboard.state.visible === true, null, { timeout: 15000 });
+      await waitWireQuiet(page);
+      await page.evaluate(() => window.__app.homeDashboard.openBoard('C_Chat'));
+      await enteredBoardList(page);
+      await sendKey(page, 'ArrowLeft');
+      await page.waitForFunction(() => window.__app.homeDashboard.state.visible === true, null, { timeout: 15000 });
+    });
+  },
+
+  // 看板列表平滑捲動（分類子清單，guest 也有）→ 跳號選一個一般看板 → Enter → 文章列表好讀
+  // → ← 回看板列表（平滑捲動重新接管）。看板號碼在準備階段試出來（不錄）。
+  'stack-boardlist-board': async (page) => {
+    const prefs = { enableBoardListSmoothScroll: true, enableEasyReading: true, enableEasyReadingList: true };
+    await resetSession(page);
+    await pickClassSublist(page);
+    const num = await pickPlainBoard(page);
+    await applyPrefs(page, { enableEasyReading: true, enableEasyReadingList: true });
+    await waitWireQuiet(page);
+    await record(page, 'stack-boardlist-board', { boardNum: num, prefs }, async () => {
+      await applyPrefs(page, { enableBoardListSmoothScroll: true });
+      await boardListEngaged(page);
+      for (const d of String(num)) await sendKey(page, d);
+      await sendKey(page, 'Enter');
+      await waitWireQuiet(page);
+      await sendKey(page, 'Enter');
+      await enteredBoardList(page);
+      await sendKey(page, 'ArrowLeft');
+      await boardListEngaged(page);
     });
   },
 
