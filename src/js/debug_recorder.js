@@ -79,7 +79,10 @@ export function cursorGeomSample(view, doc) {
         h: Math.round(b.height * 10) / 10,
       };
     };
-    const cont = d.getElementById('mainContainer');
+    // The view's own screen: other copies (stacked-page layers) share the id.
+    const main0 = view.mainDisplay;
+    const cont = view.mainContainer ||
+      (main0 && typeof main0.querySelector === 'function' ? main0.querySelector('#mainContainer') : null);
     const cy = view.buf && view.buf.cur_y;
     const rowEl = cont
       ? cont.querySelector('[type="bbsrow"][srow="' + cy + '"]')

@@ -1593,7 +1593,7 @@ App.prototype.getWindowInnerBounds = function() {
 };
 
 App.prototype.getFirstGridOffsets = function() {
-  var container = document.querySelector(".main");
+  var container = this.view.mainDisplay;
   return {
     top: container.offsetTop,
     left: container.offsetLeft

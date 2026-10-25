@@ -183,7 +183,8 @@ function measureIntrinsic(node) {
 }
 
 // 好讀長頁的捲動容器。slot 建立當下還沒接進 DOM（closest 找不到），所以直接查文件；
-// 萬一 slot 最後不在它裡面，onIntersect 會改綁隱式 root（見 rebindIfOutsideRoot）。
+// 萬一 slot 最後不在它裡面（例如另一個 `.main` 疊頁層排在前面），onIntersect 會改綁
+// slot 自己所在的 `.main`，不在任何 `.main` 裡才用隱式 root（見 rebindIfOutsideRoot）。
 function scrollRoot() {
   return document.querySelector(".main");
 }
@@ -468,7 +469,7 @@ export function createInlinePreviewSlot(href, sizeMode = "normal") {
     if (!pair || !pair.root || !node.isConnected || pair.root.contains(node))
       return false;
     unobserve();
-    observe(observersFor(null));
+    observe(observersFor(node.parentElement?.closest(".main") || null));
     return true;
   }
 

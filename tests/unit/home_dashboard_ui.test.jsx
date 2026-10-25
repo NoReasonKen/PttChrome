@@ -250,3 +250,21 @@ test("閱讀紀錄：那張卡片不在了 ⇒ 不動（認不出就不還原）
   expect(el.scrollTop).toBe(0);
   expect(homeAnchorOf(el)).toEqual({ kind: "home", key: null, offset: 0, scrollTop: 0 });
 });
+
+test("閱讀紀錄：文件裡另有一份排在前面的面板時，仍量真正畫著的那一份", () => {
+  // A second dashboard copy (for example a stacked-page layer) earlier in the
+  // document must not be mistaken for the real one.
+  const decoy = document.createElement("div");
+  decoy.id = HOME_DASHBOARD_ID;
+  document.body.prepend(decoy);
+  const { home, show } = realHome();
+  act(() => home._set({ boards: manyBoards(1, 300) }));
+  const { container } = render(<HomeDashboard pttchrome={{ homeDashboard: home }} />);
+  show(menuFrame());
+  const el = container.querySelector(".homeDashboard");
+  el.scrollTop = el.querySelector('[data-home-board="Board90"]').offsetTop - 7;
+  expect(home.readingPosition()).toEqual(homeAnchorOf(el));
+  expect(home.readingPosition().key).toMatch(/^board:Board/);
+  expect(home.rootElement()).toBe(el);
+  decoy.remove();
+});

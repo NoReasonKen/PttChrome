@@ -508,8 +508,18 @@ HomeDashboard.prototype = {
 
   // 面板畫著時，視窗頂端是哪張卡片；沒畫 ⇒ null（主功能表收起時不是首頁紀錄）。
   readingPosition: function() {
-    if (!this._state.visible || typeof document === 'undefined') return null;
-    return homeAnchorOf(document.getElementById(HOME_DASHBOARD_ID));
+    if (!this._state.visible) return null;
+    return homeAnchorOf(this.rootElement());
+  },
+
+  // The dashboard view registers the root it rendered. Other copies, such as a
+  // stacked-page layer, may carry the same id, so nothing looks it up by id.
+  attachRoot: function(el) {
+    this._root = el || null;
+  },
+
+  rootElement: function() {
+    return this._root && this._root.isConnected ? this._root : null;
   },
 
   // 閱讀紀錄交回來的錨：面板下一次畫出來（或這次更新完重畫）時套用。

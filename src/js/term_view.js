@@ -499,8 +499,14 @@ export function TermView() {
   // 閃爍前的原始 document.title，停止時還原用。null = 現在沒在閃。
   this._flashBaseTitle = null;
 
+  // The screen this view renders. Other screen copies (stacked-page layers)
+  // carry the same id, so it is never looked up document-wide.
   Object.defineProperty(this, 'mainContainer', {
-    get: function() { return document.getElementById('mainContainer') },
+    get: function() {
+      var screen = this.componentScreen;
+      if (screen && screen.container) return screen.container;
+      return this.screenRoot ? this.screenRoot.querySelector('#mainContainer') : null;
+    },
   });
 
   var mainDisplay = document.createElement('div');

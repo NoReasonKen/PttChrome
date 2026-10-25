@@ -607,6 +607,24 @@ describe("延遲載入佔位盒（掛載/卸載）", () => {
       expect(contentKids(slot)).toBeGreaterThan(0);
     });
 
+    test("另一個 .main 排在前面（疊頁的下層）⇒ 改綁到 slot 自己所在的 .main", () => {
+      const other = document.createElement("div");
+      other.className = "main";
+      document.body.prepend(other);
+      onTestFinished(() => other.remove());
+      const handle = createInlinePreviewSlot(HREF);
+      liveSlots.push(handle);
+      main.appendChild(handle.el);
+      const [n] = pairFor(other).filter((o) =>
+        o.rootMargin.startsWith(String(LAZY_MOUNT_MARGIN_PX)),
+      );
+      n.emit(false);
+      expect(pairFor(other)).toHaveLength(0);
+      const used = observers.filter((o) => o.targets.has(handle.el));
+      expect(used).toHaveLength(2);
+      expect(used.every((o) => o.root === main)).toBe(true);
+    });
+
     test("destroy 解除的是改綁後的那組", () => {
       const handle = mountSlot(HREF);
       pairFor(main)[0].emit(false);

@@ -8,11 +8,9 @@
 //      scrollTop 會殺掉平滑動畫，也會把保留區算進去（見 render/screen.js）。
 //   3. 其餘（好讀文章、原生畫面）⇒ view.mainDisplay。
 // 回傳捲了哪一個（'home'／'list'／'main'），已經在頂端或沒有可捲的回傳 null。
-import { HOME_DASHBOARD_ID } from './home_dashboard';
-
-export function scrollContentToTop({ doc, view, reducedMotion }) {
+// `home` is the rendered home dashboard root (HomeDashboard.rootElement()), or null.
+export function scrollContentToTop({ home, view, reducedMotion }) {
   const smooth = !reducedMotion;
-  const home = doc.getElementById(HOME_DASHBOARD_ID);
   // 看得到＝有 client rect（面板是 position:fixed，offsetParent 恆為 null，不能拿來判斷）。
   if (home && home.getClientRects().length > 0) {
     if (home.scrollTop <= 0) return null;

@@ -123,6 +123,16 @@ describe("cursorGeomSample", () => {
     expect(cursorGeomSample(view, document).row).toBe(null);
   });
 
+  it("文件裡另有一份排在前面的畫面（疊頁的下層）⇒ 量的仍是 view 自己的那一份", () => {
+    const main = mountGrid();
+    const decoy = document.createElement("div");
+    decoy.className = "main";
+    decoy.innerHTML = '<div id="mainContainer"></div>';
+    document.body.prepend(decoy);
+    const view = { buf: { cur_x: 1, cur_y: 3 }, mainDisplay: main };
+    expect(cursorGeomSample(view, document).row).not.toBe(null);
+  });
+
   it("view 缺席回 null", () => {
     expect(cursorGeomSample(null, document)).toBe(null);
   });

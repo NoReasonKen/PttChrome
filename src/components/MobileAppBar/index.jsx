@@ -62,7 +62,7 @@ export const MobileAppBar = ({ pttchrome }) => {
       typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     scrollContentToTop({
-      doc: document,
+      home: pttchrome.homeDashboard?.rootElement?.() || null,
       view: pttchrome.view,
       reducedMotion: reduced,
     });

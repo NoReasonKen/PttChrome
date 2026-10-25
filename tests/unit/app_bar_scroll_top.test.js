@@ -38,7 +38,7 @@ describe('scrollContentToTop', () => {
     main.scrollTop = 200;
     const screen = fakeListScreen(500);
     const r = scrollContentToTop({
-      doc: document,
+      home,
       view: { componentScreen: screen, mainDisplay: main },
       reducedMotion: true,
     });
@@ -56,7 +56,7 @@ describe('scrollContentToTop', () => {
     main.scrollTop = 50;
     expect(
       scrollContentToTop({
-        doc: document,
+        home,
         view: { componentScreen: screen, mainDisplay: main },
         reducedMotion: false,
       })
@@ -67,7 +67,7 @@ describe('scrollContentToTop', () => {
 
   test('reduced-motion ⇒ 列表直接跳（不帶 smooth）', () => {
     const screen = fakeListScreen(480);
-    scrollContentToTop({ doc: document, view: { componentScreen: screen }, reducedMotion: true });
+    scrollContentToTop({ home: null, view: { componentScreen: screen }, reducedMotion: true });
     expect(screen.scrollListTo).toHaveBeenCalledWith(0, undefined);
   });
 
@@ -77,7 +77,7 @@ describe('scrollContentToTop', () => {
     main.scrollTop = 120;
     expect(
       scrollContentToTop({
-        doc: document,
+        home: null,
         view: { componentScreen: screen, mainDisplay: main },
         reducedMotion: true,
       })
@@ -92,7 +92,7 @@ describe('scrollContentToTop', () => {
     main.scrollTop = 400;
     expect(
       scrollContentToTop({
-        doc: document,
+        home: null,
         view: { componentScreen: screen, mainDisplay: main },
         reducedMotion: true,
       })
@@ -102,8 +102,22 @@ describe('scrollContentToTop', () => {
   });
 
   test('沒有可捲的東西 ⇒ null，不丟例外', () => {
-    expect(scrollContentToTop({ doc: document, view: null, reducedMotion: true })).toBe(null);
+    expect(scrollContentToTop({ home: null, view: null, reducedMotion: true })).toBe(null);
     const main = scroller();
-    expect(scrollContentToTop({ doc: document, view: { mainDisplay: main }, reducedMotion: true })).toBe(null);
+    expect(scrollContentToTop({ home: null, view: { mainDisplay: main }, reducedMotion: true })).toBe(null);
+  });
+
+  test('文件裡另有一份排在前面的面板 ⇒ 只捲真正畫著的那一份', () => {
+    // A second dashboard copy earlier in the document (a stacked-page layer).
+    const decoy = scroller(HOME_DASHBOARD_ID);
+    Object.assign(decoy.style, { position: 'fixed', top: '0', left: '0', width: '200px' });
+    decoy.scrollTop = 400;
+    const home = scroller();
+    Object.assign(home.style, { position: 'fixed', top: '0', left: '0', width: '200px' });
+    home.scrollTop = 300;
+    const r = scrollContentToTop({ home, view: { componentScreen: fakeListScreen(0) }, reducedMotion: true });
+    expect(r).toBe('home');
+    expect(home.scrollTop).toBe(0);
+    expect(decoy.scrollTop).toBe(400);
   });
 });

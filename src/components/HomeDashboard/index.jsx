@@ -63,6 +63,13 @@ export const HomeDashboard = ({ pttchrome }) => {
     return pttchrome.onMobileChange((m) => setMobile(!!m));
   }, [pttchrome]);
 
+  // The controller finds the dashboard through this registration, never by id.
+  useLayoutEffect(() => {
+    if (!home || typeof home.attachRoot !== "function") return undefined;
+    home.attachRoot(rootRef.current);
+    return () => home.attachRoot(null);
+  }, [home, state && state.visible]);
+
   useLayoutEffect(() => {
     if (
       rootRef.current &&
