@@ -263,7 +263,12 @@ export function submitSearch(core, kind, text, cb) {
   // 列表好讀接管中：凍結交易、結果列表一落地就回好讀（最後一步從 prompt 送出，
   // 見 list_session._beginLandingTransaction）。認不出（找不到的 vmsg、進板畫面）
   // 照舊停在原生鏡像。
-  if (submitSerializedSteps(core, built, { kind: 'search', resumeOnLanding: true })) return true;
+  if (submitSerializedSteps(core, built, { kind: 'search', resumeOnLanding: true })) {
+    // An unrelated search replaces any article shortcut search route, whether
+    // it came from a key or from the search sheet.
+    if (core.articleShortcutSearch) core.articleShortcutSearch.noteOtherSearch();
+    return true;
+  }
   bm = null;
   return false;
 }

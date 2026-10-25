@@ -26,11 +26,28 @@ next, then same-author search. Coverage is in
 
 Back from a result article first returns natively to its results. Back from that
 matching result list reopens the source by AID and restores its reading bookmark.
-Another search, a user board change or disconnection invalidates this initial
-in-memory route. Missing identities never fall back to an article number. Empty
-searches restore the source with a notice; unknown screens stop visibly without
-blind retries. Real-app controlled-response coverage lives in
-`mobile_article_shortcut_search.offline.spec.js`.
+Searching again from a result article extends a bounded search return history
+(`search_return_history.js`): at most eight lightweight origins (board, AID,
+author/title, query kind/value and a sanitized reading bookmark), oldest evicted
+first. Rebuilding a query resets PTT's cursor to the newest result, so the route
+never reopens an article inside reconstructed results. Instead, a reopened source
+stays in the full board list; its next Back resubmits the parent query (native
+`S` after selecting the parent's AID, or the author prompt), and the Back after
+that reopens the parent by AID. Mixed author/thread chains therefore unwind
+article -> results -> source at each level.
+
+A deleted source stops on the verified full board list with an explanation and
+consumes only its own origin; Back from that list continues with the parent's
+results. Other failures keep origins only when they stop on the verified full
+board list, and a failed forward search adds none. Another search (key or search
+sheet submission), a user board change, the main menu or disconnection clears the
+route; a matching board name never reattaches it. Leaving a reopened source for
+another article also ends its claim on Back. Missing identities never fall back to
+an article number. Empty searches restore the source with a notice; unknown
+screens stop visibly without blind retries. Real-app controlled-response coverage
+lives in `mobile_article_shortcut_search.offline.spec.js` and
+`mobile_article_nested_search.offline.spec.js`; exact bound and transition rules in
+`tests/unit/search_return_history.test.js`.
 
 動 `article_search.js`、`search_history.js`、`SearchModal.jsx`、term_view 的搜尋鍵攔截前先讀。
 
