@@ -16,6 +16,13 @@ const ACTIONS = [
   { key: 'author', label: 'articleShortcutSearch_author' }
 ];
 const EXCLUDED = 'input, textarea, select, button, [contenteditable="true"], video, audio, iframe, [role="slider"], .easyReadingVideo';
+// Drawer geometry (docs/article-swipe-drawer-spec.md): a share of the viewport
+// width, and of the usable height above the toolbar, centered in that height.
+const DRAWER_WIDTH = 0.75;
+const DRAWER_HEIGHT = 0.6;
+const DRAWER_TOP = (1 - DRAWER_HEIGHT) / 2;
+
+const settleDuration = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ARTICLE_SETTLE_MS;
 
 // Own the contact outside the portal so mounting/focus changes cannot lose it.
 // Article exit and search shortcuts extend this owner rather than add listeners.
@@ -81,9 +88,7 @@ export class ArticleGestures {
       this._cancel();
       return;
     }
-    if (!event.isPrimary || !this.available() || this.settling) return;
-    if (this.core.modalShown && !this.root && !this.exitUnderlay) return;
-    if (this.core._openModals?.size > (this.root || this.exitUnderlay ? 1 : 0)) return;
+    if (!event.isPrimary || !this.available() || this.settling || this._otherModalOpen()) return;
     const target = event.target;
     if (!this.opened && (!this.core.view.mainDisplay.contains(target) || target.closest(EXCLUDED))) return;
     if (!this.opened && (this.core.mobileSelectMode || !window.getSelection().isCollapsed)) return;
@@ -97,8 +102,7 @@ export class ArticleGestures {
   _move(event) {
     const track = this.track;
     if (!track || event.pointerId !== track.id) return;
-    if (!this.available() || (this.core.modalShown && !this.root && !this.exitUnderlay) ||
-        this.core._openModals?.size > (this.root || this.exitUnderlay ? 1 : 0)) return this._cancel();
+    if (!this.available() || this._otherModalOpen()) return this._cancel();
     const snapshot = track.gesture.move(event.clientX, event.clientY, event.timeStamp);
     if (this.opened || snapshot.operation) {
       this._consume(event);
@@ -153,6 +157,20 @@ export class ArticleGestures {
     }
   }
 
+  // Another modal owns input; an open drawer or exit underlay is our own.
+  _otherModalOpen() {
+    const own = this.root || this.exitUnderlay ? 1 : 0;
+    return (this.core.modalShown && !own) || this.core._openModals?.size > own;
+  }
+
+  // Stop the pending paint frame and settle timer of the current surface.
+  _stopMotion() {
+    if (this.frame) cancelAnimationFrame(this.frame);
+    this.frame = null;
+    clearTimeout(this.timer);
+    this.timer = null;
+  }
+
   _consume(event) {
     if (event.cancelable) event.preventDefault();
     event.stopImmediatePropagation();
@@ -198,12 +216,10 @@ export class ArticleGestures {
 
   _settleExit(commit) {
     if (!this.exitUnderlay) return;
-    if (this.frame) cancelAnimationFrame(this.frame);
-    this.frame = null;
-    clearTimeout(this.timer);
+    this._stopMotion();
     this.settling = true;
     const identity = this.identity;
-    const duration = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ARTICLE_SETTLE_MS;
+    const duration = settleDuration();
     for (const { node } of this.exitSurfaces) node.style.transition = `translate ${duration}ms ease-out`;
     this._paintExit(commit ? window.innerWidth : 0);
     this.timer = setTimeout(() => {
@@ -225,10 +241,7 @@ export class ArticleGestures {
 
   _removeExit() {
     if (!this.exitUnderlay) return;
-    if (this.frame) cancelAnimationFrame(this.frame);
-    this.frame = null;
-    clearTimeout(this.timer);
-    this.timer = null;
+    this._stopMotion();
     for (const surface of this.exitSurfaces) {
       surface.node.style.translate = surface.translate;
       surface.node.style.transition = surface.transition;
@@ -289,29 +302,28 @@ export class ArticleGestures {
     const top = viewport?.offsetTop || 0;
     const bottom = Math.min(top + (viewport?.height || window.innerHeight),
       document.getElementById('mobileToolbar')?.getBoundingClientRect().top ?? window.innerHeight);
-    this.panel.style.height = Math.max(0, bottom - top) * 0.6 + 'px';
-    this.panel.style.top = top + Math.max(0, bottom - top) * 0.2 + 'px';
-    this.panel.style.width = window.innerWidth * 0.75 + 'px';
+    const height = Math.max(0, bottom - top);
+    this.panel.style.height = height * DRAWER_HEIGHT + 'px';
+    this.panel.style.top = top + height * DRAWER_TOP + 'px';
+    this.panel.style.width = window.innerWidth * DRAWER_WIDTH + 'px';
   }
 
   _paint(reveal) {
     if (!this.panel) return;
-    this.panel.style.transform = `translateX(${window.innerWidth * 0.75 - reveal}px)`;
+    this.panel.style.transform = `translateX(${window.innerWidth * DRAWER_WIDTH - reveal}px)`;
   }
 
   _settle(opened) {
     if (!this.root && !opened) return;
     this._ensurePanel();
-    if (this.frame) cancelAnimationFrame(this.frame);
-    this.frame = null;
-    clearTimeout(this.timer);
+    this._stopMotion();
     this.opened = opened;
     this.settling = true;
     this.root.dataset.state = opened ? 'opening' : 'closing';
     this.panel.inert = true;
-    const duration = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ARTICLE_SETTLE_MS;
+    const duration = settleDuration();
     this.panel.style.transition = `transform ${duration}ms ease-out`;
-    this._paint(opened ? window.innerWidth * 0.75 : 0);
+    this._paint(opened ? window.innerWidth * DRAWER_WIDTH : 0);
     this.timer = setTimeout(() => {
       this.timer = null;
       this.settling = false;
@@ -327,10 +339,7 @@ export class ArticleGestures {
 
   _remove() {
     if (!this.root) return;
-    if (this.frame) cancelAnimationFrame(this.frame);
-    this.frame = null;
-    clearTimeout(this.timer);
-    this.timer = null;
+    this._stopMotion();
     this.unregisterDismiss?.();
     this.unregisterDismiss = null;
     this.root?.remove();
@@ -356,7 +365,7 @@ export class ArticleGestures {
     if (this.track || this.exitUnderlay) this.close(true);
     else if (this.root) {
       this._geometry();
-      this._paint(this.opened ? window.innerWidth * 0.75 : 0);
+      this._paint(this.opened ? window.innerWidth * DRAWER_WIDTH : 0);
     }
   }
 
