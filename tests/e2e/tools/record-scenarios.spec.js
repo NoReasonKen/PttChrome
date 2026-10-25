@@ -530,6 +530,10 @@ const SCENARIOS = {
     await page.evaluate(() => {
       window.__app.homeDashboard._state.fetchedAt = Date.now();
     });
+    // The dashboard decides to show itself on a screen settle; turning the pref
+    // on changes nothing on screen, so redraw once to get that settle.
+    await page.evaluate(() => window.__app.conn.send('\x0c'));
+    await waitWireQuiet(page);
     await page.waitForFunction(() => window.__app.homeDashboard.state.visible === true, null, { timeout: 15000 });
     await waitWireQuiet(page);
     await record(page, 'stack-home-board', { board: 'C_Chat', prefs }, async () => {
