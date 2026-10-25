@@ -20,6 +20,7 @@ import {
   MENU_TITLES,
   rowHasAnyTitle,
   rowHasTitle,
+  sameBoard,
 } from "../../src/js/screen_titles";
 
 describe("rowHasTitle（row 0 標題指紋）", () => {
@@ -110,4 +111,10 @@ describe("rowHasAnyTitle / MENU_TITLES", () => {
     expect(rowHasAnyTitle("【主功能表】", null)).toBe(false);
     expect(rowHasAnyTitle("【主功能表】", [])).toBe(false);
   });
+});
+
+test("board names compare case-insensitively and missing names never match", () => {
+  expect(sameBoard("C_Chat", "c_chat")).toBe(true);
+  expect(sameBoard(null, null)).toBe(false);
+  expect(sameBoard("Test", "")).toBe(false);
 });

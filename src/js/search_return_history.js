@@ -18,9 +18,10 @@
 // never reopens an article inside reconstructed results; it only restores
 // articles by verified AID. Every transition returns a new route or null.
 
-export const MAX_SEARCH_ORIGINS = 8;
+import { sameBoard } from './screen_titles';
+import { BOARD_RE, isAidc } from './aid_codec';
 
-const sameBoard = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+export const MAX_SEARCH_ORIGINS = 8;
 
 function lightweight(position) {
   if (!position) return null;
@@ -144,8 +145,6 @@ export function recoveryRecord(route, target, now) {
 }
 
 const PHASES = ['results', 'article', 'reopened', 'fallback'];
-const BOARD_RE = /^[A-Za-z0-9_-]{1,32}$/;
-const AID_RE = /^[0-9A-Za-z_-]{8}$/;
 const MAX_TEXT = 200;
 const MAX_POSITION_JSON = 4096;
 
@@ -154,7 +153,7 @@ const isText = value => typeof value === 'string' && value.length <= MAX_TEXT;
 const isArticle = value => isObject(value) && isText(value.author) && isText(value.title);
 
 function validOrigin(origin, board) {
-  if (!isArticle(origin) || origin.board !== board || !AID_RE.test(origin.aid)) return false;
+  if (!isArticle(origin) || !sameBoard(origin.board, board) || !isAidc(origin.aid)) return false;
   const query = origin.query;
   if (!isObject(query) || !['author', 'thread'].includes(query.kind) || !isText(query.value) || !query.value) return false;
   if (origin.position === null) return true;
@@ -170,9 +169,9 @@ function validRoute(route) {
 }
 
 function validTarget(target, board) {
-  if (!isObject(target) || target.board !== board) return false;
+  if (!isObject(target) || !sameBoard(target.board, board)) return false;
   if (target.kind === 'list') return true;
-  return target.kind === 'article' && AID_RE.test(target.aid) && isArticle(target);
+  return target.kind === 'article' && isAidc(target.aid) && isArticle(target);
 }
 
 // A stored record, or null when expired, damaged or out of bounds.

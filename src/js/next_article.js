@@ -21,7 +21,8 @@
 
 import { isArticleListTitleRow } from './screen_titles';
 import { isArticleListFooter } from './screen_captions';
-import { listPageOf, listEntryOf, mergeSnapshot, sameBoard, findCurrentNum, cursorHintFresh } from './split_reader';
+import { listPageOf, listEntryOf, mergeSnapshot, findCurrentNum, cursorHintFresh } from './split_reader';
+import { sameBoard } from './screen_titles';
 import { subjectKey, subjectMatches } from './long_push_anchor';
 import { hiddenReason, listFilterOf } from './list_row_filter';
 import { serializedOpHint } from './serialized_op_gate';

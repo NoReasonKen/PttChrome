@@ -15,7 +15,6 @@ import {
   findCurrentNum,
   cursorHintFresh,
   paneWidthFor,
-  sameBoard,
   SplitReader,
   SPLIT_MIN_PANE_PX,
   SPLIT_MAX_PANE_PX,
@@ -200,11 +199,6 @@ test("paneWidthFor：放得下才給寬度，有上限", () => {
   expect(paneWidthFor(SPLIT_MIN_PANE_PX + SPLIT_GAP_PX)).toBe(SPLIT_MIN_PANE_PX);
   expect(paneWidthFor(2000)).toBe(SPLIT_MAX_PANE_PX);
   expect(paneWidthFor(0)).toBe(0);
-});
-
-test("sameBoard 不分大小寫，空的不算", () => {
-  expect(sameBoard("C_Chat", "c_chat")).toBe(true);
-  expect(sameBoard(null, null)).toBe(false);
 });
 
 test("閱讀紀錄：split-open 不還原（目的地就是結果；失敗停在 PTT 給的畫面）", () => {

@@ -94,3 +94,8 @@ export function isArticleListTitleRow(row0Text) {
 export function boardNameFromKey(key) {
   return key != null && key.charAt(0) !== '【' ? key : null;
 }
+
+// PTT board names are case-insensitive; missing names never match.
+export function sameBoard(a, b) {
+  return !!a && !!b && String(a).toLowerCase() === String(b).toLowerCase();
+}

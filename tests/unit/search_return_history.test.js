@@ -221,6 +221,14 @@ describe("recovery after disconnection, reload or reopen", () => {
     expect(readRecoveryRecord("{}", now)).toBeNull();
   });
 
+  test("board names compare case-insensitively when a stored record is read back", () => {
+    // PTT board names are case-insensitive; one route may meet several spellings.
+    const route = searchedFrom(searchedFrom(null, a), origin("B", "thread", "TEST"));
+    const record = stored(route, { kind: "list", board: "test", num: null }, null);
+    expect(record).not.toBeNull();
+    expect(readRecoveryRecord(record, now)).not.toBeNull();
+  });
+
   describe("validating the landed screen", () => {
     const boardList = { kind: "boardList", board: "Test" };
     // The reader was in result article B of A's search when interrupted.

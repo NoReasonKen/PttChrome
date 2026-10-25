@@ -64,9 +64,10 @@ import {
   parsePostInfoUrl,
   isCrossPostHeaderLine
 } from './aid_parse';
+import { isAidc } from './aid_codec';
 import { isPinnedListRow } from './comment_parse';
 import { parseListEntry } from './agent_parse';
-import { MAIN_MENU, boardNameFromKey, parseBoardKey, rowHasTitle } from './screen_titles';
+import { MAIN_MENU, boardNameFromKey, parseBoardKey, rowHasTitle, sameBoard } from './screen_titles';
 import { isSubListFooter } from './screen_captions';
 import { HINT_ERROR } from './status_hint';
 import { recordFor } from './reading_record';
@@ -647,14 +648,14 @@ AidNavigation.prototype = {
   // Select a stable article identity in the full board list without opening
   // it. Search shortcuts need its native header for same-thread matching.
   selectArticle: function(board, aid, onEnd) {
-    if (this.active || !board || !/^[\w-]{8}$/.test(aid || '')) return false;
+    if (this.active || !board || !isAidc(aid)) return false;
     this._onRunEnd = onEnd || null;
     const run = makeRun({ board, aid, kind: 'aid', listOnly: true }, 'goto');
     run.external = true;
     const buf = this._termBuf;
     const here = boardNameFromKey(parseBoardKey(buf.getRowText(0, 0, buf.cols)));
     // A fresh repaint verifies the actual list after parking its renderer.
-    run.picked = buf.pageState === 2 && here && here.toLowerCase() === board.toLowerCase();
+    run.picked = buf.pageState === 2 && sameBoard(here, board);
     this._begin(run);
     return true;
   },

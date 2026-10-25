@@ -13,7 +13,7 @@
 //   3. **只用空白處**：終端機恆 80 欄、水平置中（docs/terminal-size.md LOCKED），左欄只放
 //      在終端機左邊的空白裡，放不下（視窗太窄、字太大、手機）就不出現，不推動終端機。
 
-import { isArticleListTitleRow, parseBoardName } from './screen_titles';
+import { isArticleListTitleRow, parseBoardName, sameBoard } from './screen_titles';
 import { isArticleListFooter, isSubListFooter } from './screen_captions';
 import { parseListEntry } from './agent_parse';
 import { parseListArticleNumLoose, isPinnedListRow } from './comment_parse';
@@ -114,10 +114,6 @@ export function listEntryOf(text) {
     // 列原文：黑名單判定（list_row_filter）吃整列文字，用的時候才比（使用者隨時可能改名單）。
     text: text
   };
-}
-
-export function sameBoard(a, b) {
-  return !!a && !!b && String(a).toLowerCase() === String(b).toLowerCase();
 }
 
 // 把一頁併進快照（照編號排序）。換板就整份換掉；超過上限丟離 pivot 最遠的。
