@@ -76,7 +76,7 @@ test('resizing during the accepted exit animation cancels navigation and restore
   await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
 });
 
-async function enterArticleFromList(page) {
+async function enterArticleFromList(page, beforeOpen = async () => {}) {
   const nav = loadCassette('cchat-list-nav');
   await bootOffline(page, ptt, { articleGestures: true });
   await ptt.applyPrefs(page, {
@@ -94,9 +94,52 @@ async function enterArticleFromList(page) {
   await page.waitForFunction(() => window.__app.listSession.state === 'active' &&
     window.__app.commandQueue.idle && window.__app.buf.listLines.length > 50);
   await expect(page.locator('#mainContainer .listBodyView')).toBeVisible();
+  await page.locator('.listCard[data-list-author="kylin936"] .listCardBody').first().scrollIntoViewIfNeeded();
+  await waitRectStable(page, '.listCard[data-list-author="kylin936"] .listCardBody');
+  await beforeOpen();
   await page.locator('.listCard[data-list-author="kylin936"] .listCardBody').first().tap();
   await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
 }
+
+async function visibleTextMetrics(page, selector) {
+  return page.locator(selector).evaluate(root => {
+    const viewport = root.getBoundingClientRect();
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const samples = [];
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      if (!node.textContent.trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const rect = range.getBoundingClientRect();
+      if (!rect.height || rect.bottom <= viewport.top || rect.top >= viewport.bottom) continue;
+      samples.push({ text: node.textContent, width: rect.width, height: rect.height,
+        fontSize: getComputedStyle(node.parentElement).fontSize,
+        font: getComputedStyle(node.parentElement).font,
+        textSizeAdjust: getComputedStyle(node.parentElement).textSizeAdjust });
+    }
+    return samples;
+  });
+}
+
+test('the static list preview preserves the original rendered text size', async ({ page }, testInfo) => {
+  let original;
+  await enterArticleFromList(page, async () => {
+    original = await visibleTextMetrics(page, '.main');
+    await page.screenshot({ path: testInfo.outputPath('original-list.png') });
+  });
+  const main = await waitRectStable(page, '.main');
+  const contact = await beginArticleTouch(page, { x: 20, y: main.top + 100 });
+  await contact.move({ x: page.viewportSize().width - 20, y: main.top + 100 });
+  const preview = await visibleTextMetrics(page, '.articleExitListPreview');
+  await testInfo.attach('text-metrics', { body: JSON.stringify({ original, preview }, null, 2), contentType: 'application/json' });
+  expect(preview.length).toBeGreaterThan(10);
+  const originalByText = new Map(original.map(sample => [sample.text, sample]));
+  const shared = preview.filter(sample => sample.text.trim().length > 2 && originalByText.has(sample.text));
+  expect(shared.length).toBeGreaterThan(10);
+  for (const sample of shared) expect(sample).toEqual(originalByText.get(sample.text));
+  await contact.release({ cancel: true });
+});
 
 test('entering from a real list preserves only a bounded inert matching preview and exits to that list', async ({ page }, testInfo) => {
   await enterArticleFromList(page);

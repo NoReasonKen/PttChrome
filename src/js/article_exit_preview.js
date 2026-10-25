@@ -14,7 +14,7 @@ const PRESENTATION = [
   'flex', 'flex-direction', 'align-items', 'justify-content', 'gap'
 ];
 
-function copyTextPresentation(source, budget) {
+function copyTextPresentation(source, budget, textZoom) {
   if (--budget.nodes < 0) return null;
   if (source.nodeType === Node.TEXT_NODE) {
     const text = source.textContent.slice(0, Math.max(0, budget.text));
@@ -24,10 +24,16 @@ function copyTextPresentation(source, budget) {
   if (source.nodeType !== Node.ELEMENT_NODE || !TEXT_TAGS.has(source.tagName)) return null;
   const copy = document.createElement(source.tagName === 'BR' ? 'br' : 'span');
   const style = getComputedStyle(source);
-  for (const property of PRESENTATION) copy.style.setProperty(property, style.getPropertyValue(property));
+  for (const property of PRESENTATION) {
+    let value = style.getPropertyValue(property);
+    if ((property === 'font-size' || property === 'line-height') && value.endsWith('px')) {
+      value = parseFloat(value) / textZoom + 'px';
+    }
+    copy.style.setProperty(property, value);
+  }
   for (const child of source.childNodes) {
     if (budget.nodes <= 0 || budget.text <= 0) break;
-    const part = copyTextPresentation(child, budget);
+    const part = copyTextPresentation(child, budget, textZoom);
     if (part) copy.appendChild(part);
   }
   return copy;
@@ -55,6 +61,13 @@ export class ArticleExitPreview {
     if (!core.mobile || !board || !core.view.componentScreen?.hasListViewport()) return;
     const viewport = main.getBoundingClientRect();
     if (!viewport.width || !viewport.height) return;
+    // TermView declares a pixel font size. WebView's computed font and line
+    // height include system text zoom; remove it before writing CSS so the
+    // preview receives that zoom once. Keep measured box geometry unchanged.
+    const declaredFont = parseFloat(main.style.fontSize);
+    const computedFont = parseFloat(getComputedStyle(main).fontSize);
+    const ratio = computedFont / declaredFont;
+    const textZoom = Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
     const root = document.createElement('div');
     root.className = 'articleExitListPreview';
     root.style.cssText = `left:${viewport.left}px;top:${viewport.top}px;width:${viewport.width}px;height:${viewport.height}px`;
@@ -64,7 +77,7 @@ export class ArticleExitPreview {
       const rect = row.getBoundingClientRect();
       if (!rect.height || rect.bottom <= viewport.top || rect.top >= viewport.bottom) continue;
       if (count++ >= MAX_ROWS || budget.nodes <= 0 || budget.text <= 0) break;
-      const copy = copyTextPresentation(row, budget);
+      const copy = copyTextPresentation(row, budget, textZoom);
       if (!copy) continue;
       copy.style.position = 'absolute';
       copy.style.left = rect.left - viewport.left + 'px';
