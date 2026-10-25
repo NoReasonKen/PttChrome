@@ -46,6 +46,66 @@ async function reloadAndLogin(page, session = {}) {
 // page left behind, which the back guard does not own; use the keyboard Back.
 const keyboardBack = page => ptt.sendKey(page, 'ArrowLeft');
 
+test('ordinary article recovery without searches restores a known article and reading position', async ({ page }) => {
+  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true });
+  // Set up a verified article identity through the actual navigation owner;
+  // unlike shortcut tests, no search or search-return route is involved.
+  await page.evaluate(() => window.__app.aidNavigation.startResume({
+    kind: 'article', board: 'Test', aid: '1gIeu-3A'
+  }));
+  await waitArticle(page, 'Alpha');
+  const position = await readToMiddle(page);
+  await disconnectAndReconnect(page);
+  await waitArticle(page, 'Alpha');
+  await expect.poll(() => topLine(page)).toBe(position);
+});
+
+test('ordinary list recovery without searches restores its board and selection', async ({ page }) => {
+  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true });
+  await keyboardBack(page);
+  await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
+  await ptt.sendKey(page, 'Home');
+  await expect.poll(() => page.evaluate(() => window.__app.listSession.readingPosition()?.cursorNum)).toBe(101);
+  await disconnectAndReconnect(page);
+  await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
+  await expect.poll(() => page.evaluate(() => window.__app.listSession.readingPosition()?.cursorNum)).toBe(101);
+});
+
+test('ordinary article recovery without a known identity falls back to its board without searches', async ({ page }) => {
+  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true });
+  await keyboardBack(page);
+  await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
+  await tapCard(page, '[Talk] Alpha topic');
+  await waitArticle(page, 'Alpha');
+  await disconnectAndReconnect(page);
+  await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
+  expect(await gestureSent(page)).toContain('sTest\r');
+});
+
+test('ordinary article recovery on reopening shows the countdown and restores the known article', async ({ page }) => {
+  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
+  await page.evaluate(() => window.__app.aidNavigation.startResume({
+    kind: 'article', board: 'Test', aid: '1gIeu-3A'
+  }));
+  await waitArticle(page, 'Alpha');
+  const position = await readToMiddle(page);
+  await reloadAndLogin(page);
+  await expect(page.locator('#resumeLastPlace')).toBeVisible();
+  await expect(page.locator('#resumeLastPlace')).toContainText('Test');
+  await waitArticle(page, 'Alpha');
+  await expect.poll(() => topLine(page)).toBe(position);
+});
+
+test('ordinary list recovery on reopening shows the countdown and restores the board', async ({ page }) => {
+  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
+  await keyboardBack(page);
+  await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
+  await reloadAndLogin(page);
+  await expect(page.locator('#resumeLastPlace')).toBeVisible();
+  await expect(page.locator('#resumeLastPlace')).toContainText('Test');
+  await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
+});
+
 for (const kind of ['author', 'thread']) {
   test(`reopening from ${kind} shortcut results reconstructs them without Back`, async ({ page }) => {
     await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
