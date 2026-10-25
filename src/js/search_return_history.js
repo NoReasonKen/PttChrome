@@ -120,7 +120,7 @@ export function observe(route, screen) {
   }
 }
 
-// Recovery after disconnection, reload or app reopen (docs/article-search.md).
+// Recovery after disconnection, reload or app reopen (docs/article-swipe-drawer-spec.md).
 // The route is kept beside the reconnect-resume plan captured at the same
 // moment. After that plan's own resume transaction ends, the route is
 // reactivated only when the landed screen is exactly what the plan aimed at.

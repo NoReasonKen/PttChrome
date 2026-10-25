@@ -1,5 +1,5 @@
 // Search return history kept on this device across reloads and app reopening
-// (docs/article-search.md). Local device state, deliberately outside the
+// (docs/article-swipe-drawer-spec.md). Local device state, deliberately outside the
 // preference document: it is never exported or synchronized to the cloud.
 import { readRecoveryRecord } from './search_return_history';
 

@@ -1,7 +1,7 @@
 // @unit-env browser
 // Search return history kept on this device across reloads
 // (search_return_storage.js through article_shortcut_search.js;
-// docs/article-search.md). The real-browser lifecycle is covered by
+// docs/article-swipe-drawer-spec.md). The real-browser lifecycle is covered by
 // tests/e2e/offline/mobile_article_search_recovery.offline.spec.js; these
 // cases pin local-only storage and startup expiry deterministically.
 import { ArticleShortcutSearch } from "../../src/js/article_shortcut_search";

@@ -2,93 +2,13 @@
 
 ## Article shortcut searches
 
-The mobile article drawer can search the whole current board for the article's
-author or thread without an editable dialog. `article_shortcut_search.js` owns identity
-capture, the serialized search and its return route. It reuses the native `a`
-search semantics, including case-insensitive substring author matching.
-
-Capture the source reading bookmark before entering native mode. Reuse
-`AidNavigation.resolvePostAid` and its `boxOpen` metadata; only a Q response needs
-the information box dismissed. `AidNavigation.selectArticle(board, aid, onEnd)`
-then selects that identity in the full board list without opening it, leaving
-any previous subset before searching. The author query is sent only after the
-actual native author prompt is recognized.
-
-Same-thread search uses native uppercase `S` after selecting the source AID in
-the full board list. Unlike slash keyword search, this needs no prompt and uses
-PTT's `subject` semantics. Verified upstream `read.c` (`read_cmd_search_title`,
-`ask_filter_predicate`) supplies the selected header's normalized subject;
-`common/bbs/search.c` compares subjects case-insensitively. No client-side title
-normalization or whole-title keyword approximation is used. The completed drawer
-orders these five equal-height actions: same-thread search, previous, first,
-next, then same-author search. Coverage is in
-`mobile_article_thread_search.offline.spec.js`.
-
-Back from a result article first returns natively to its results. Back from that
-matching result list reopens the source by AID and restores its reading bookmark.
-Searching again from a result article extends a bounded search return history
-(`search_return_history.js`): at most eight lightweight origins (board, AID,
-author/title, query kind/value and a sanitized reading bookmark), oldest evicted
-first. Rebuilding a query resets PTT's cursor to the newest result, so the route
-never reopens an article inside reconstructed results. Instead, a reopened source
-stays in the full board list; its next Back resubmits the parent query (native
-`S` after selecting the parent's AID, or the author prompt), and the Back after
-that reopens the parent by AID. Mixed author/thread chains therefore unwind
-article -> results -> source at each level.
-
-A deleted source stops on the verified full board list with an explanation and
-consumes only its own origin; Back from that list continues with the parent's
-results. Other failures keep origins only when they stop on the verified full
-board list, and a failed forward search adds none. Another search (key or search
-sheet submission), a user board change or the main menu clears the route; a
-matching board name never reattaches it. Leaving a reopened source for
-another article also ends its claim on Back. Missing identities never fall back to
-an article number. Empty searches restore the source with a notice; unknown
-screens stop visibly without blind retries. Real-app controlled-response coverage
-lives in `mobile_article_shortcut_search.offline.spec.js` and
-`mobile_article_nested_search.offline.spec.js` (native list and easy-reading list
-cards); exact bound and transition rules in `tests/unit/search_return_history.test.js`.
-
-While the easy-reading list shows cards, Back judges results versus the full list
-from the list session's own board and numbering space: its background fill keeps
-rewriting the terminal behind the cards (blank footers after number jumps, rows
-not yet decoded), so reading the raw screen at that moment sent Back natively.
-
-### Recovery after disconnection, reload or reopen
-
-The route recovers only through reconnect resume (`reconnect_resume.js`), never by
-board name. When the connection closes after login, `capture` hands the route its
-resume plan (`suspendForRecovery`); when the page is hidden or closed,
-`saveSnapshot` stores it beside the resume snapshot under the separate local key
-`pttchrome.searchReturn.v1` (`persistForRecovery`), outside the preference
-document, so it is never synchronized or exported. Startup reads it once and
-deletes it; records older than twelve hours (the open-resume limit) or damaged
-are dropped silently. A suspended route ignores every screen until that plan's
-own `startResume` transaction ends, so login, the main menu and board entry are
-not board switches.
-
-The route reactivates only when the resume succeeded on exactly its stored
-target (`search_return_history.recovered`):
-
-- article target: the same verified AID with the same author and title. A
-  result article or reopened source becomes a reopened member of the newest
-  origin's results, so Back rebuilds them and the next Back reopens the origin
-  at its reading position. Articles reopened by AID (resume or search return)
-  are now remembered by `aidNavigation.currentPostAid`, so a later interruption
-  resumes the article itself rather than its board.
-- list target (results, URL-less result articles, fallbacks): the full board list
-  of the route's board, treated as a fallback whose Back rebuilds the results.
-
-Anything else (no plan, superseded or canceled resume, the reader moving first,
-a deleted article, another screen) leaves the route inactive with the notice
-`articleShortcutSearch_recoveryInactive` and no retry; logout clears it silently.
-Origins that disappear later follow the ordinary deleted-source fallback.
-Coverage: `mobile_article_search_recovery.offline.spec.js` (real socket close and
-reconnect, real reload with the stored state), `search_return_history.test.js`
-(expiry, validation) and `search_return_storage.test.js` (local-only storage).
-After a reload the browser's own Back can traverse an older back-guard entry, so
-the reload cases use the keyboard Back; installed Android close/reopen remains
-device acceptance.
+The mobile article drawer searches the whole current board for the article's
+author (native `a`) or thread (native `S`) without an editable dialog, and Back
+unwinds a bounded, board-scoped search return route. Another list search, from a
+list search key or a search-sheet submission, clears that route
+(`ArticleShortcutSearch.noteSearchKey` / `noteOtherSearch`); keys inside an
+article do not. Rules and implementation notes are in
+[the article shortcut specification](article-swipe-drawer-spec.md).
 
 動 `article_search.js`、`search_history.js`、`SearchModal.jsx`、term_view 的搜尋鍵攔截前先讀。
 

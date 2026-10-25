@@ -2,13 +2,7 @@
 
 ## Article horizontal gestures
 
-The enabled-by-default `articleHorizontalGestures` preference applies only to mobile article easy reading. `article_gestures.js` owns each contact across the article and its separately mounted shortcut drawer; it uses the existing named modal source and sheet-dismissal registration for background gating, Escape and system Back. `article_horizontal_gesture.js` supplies direction locking, net displacement and release decisions independently of DOM mounting.
-
-The drawer follows leftward movement one-to-one and settles at 75% of viewport width. Its height is 60% of the usable web area above the bottom toolbar, with vertical centering and a half-transparent dark background. Opening requires strictly more than half the viewport; closing requires strictly more than half the panel. A recent deliberate fling overrides distance. The initial calibration is 10px movement tolerance, a 100ms velocity window, 0.65px/ms fling speed and 180ms settling; Android feedback remains required. A stationary release contributes to the velocity window so a pause does not preserve an old fling.
-
-Only the three existing same-thread navigation shortcuts are exposed in the initial slice. Search actions and article retraction extend the same owner in subsequent slices. Taps and long presses remain ordinary article interactions; vertical movement, selection, video controls, editing, other modals and an open image viewer keep their ownership. Cancellation or a second contact restores the starting state, while resizing during a drawer drag closes it. An already open drawer adapts to viewport changes. Core rendering remains the sole writer of the article DOM.
-
-Offline verification uses `tests/e2e/helpers/article_gestures.js` to drive actual touch input and replay screens through the complete app. Pure release boundaries are covered by `tests/unit/article_horizontal_gesture.test.js`; platform edge gestures and perceived responsiveness still require installed Android acceptance.
+The enabled-by-default `articleHorizontalGestures` preference applies only to mobile article easy reading. A leftward drag reveals a right drawer with five actions (same-thread search, previous, first and next same-thread article, same-author search); a rightward drag retracts the article above a static preview of the list it came from, or a dark fallback. Taps, long presses, vertical scrolling, selection, video controls, editing, other modals and an open image viewer keep their ownership. `article_gestures.js` owns each contact; core rendering remains the sole writer of the article DOM. Rules, geometry, thresholds and coverage are in [the article shortcut specification](article-swipe-drawer-spec.md).
 
 目標裝置：Android Chrome 現代版（iOS Safari `unknown`，未驗）；Android APK 殼（背景不斷線）見 `docs/android-app.md`，其鍵盤高度由原生回報（`keyboardInset` 的 `hostInset`）。動 `mobile_layout.js`、
 `App.applyMobileLayout`、`MobileToolbar`、`#t` 的 `inputmode` 前先讀。

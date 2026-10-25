@@ -6,7 +6,7 @@ const {
 const { waitConnected } = require('../helpers/replay');
 const ptt = require('../helpers/ptt');
 
-// Search return history through interruption (docs/article-search.md): the
+// Search return history through interruption (docs/article-swipe-drawer-spec.md): the
 // complete app with real touch, a controlled PTT board, a real socket close
 // and reconnect, and a real page reload with the state the app stored.
 
