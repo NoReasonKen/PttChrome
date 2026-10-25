@@ -108,7 +108,7 @@ test('a preview tap still opens the viewer while a horizontal preview drag opens
   await page.getByRole('button', { name: 'Close image viewer', exact: true }).tap();
   await expect(page.locator(VIEWER)).toHaveCount(0);
   const image = await waitRectStable(page, PREVIEW);
-  const from = { x: Math.min(image.right - 4, page.viewportSize().width - 24), y: image.top + image.height / 2 };
+  const from = { x: Math.min(image.left + image.width - 4, page.viewportSize().width - 24), y: image.top + image.height / 2 };
   const contact = await beginArticleTouch(page, from);
   await contact.move({ x: Math.max(8, from.x - 120), y: from.y });
   await contact.release({ pause: false });
@@ -138,7 +138,7 @@ test('vertical reading retains browser scrolling without opening article shortcu
   await bootGestureArticle(page);
   const main = await waitRectStable(page, '.main');
   const before = await page.locator('.main').evaluate(el => el.scrollTop);
-  await touchDrag(page, { x: 60, y: main.bottom - 30 }, { x: 60, y: main.top + 20 }, 12);
+  await touchDrag(page, { x: 60, y: main.top + main.height - 30 }, { x: 60, y: main.top + 20 }, 12);
   await expect.poll(() => page.locator('.main').evaluate(el => el.scrollTop)).toBeGreaterThan(before);
   await expect(page.locator(DRAWER)).toHaveCount(0);
   expect(await gestureSent(page)).toBe('');
