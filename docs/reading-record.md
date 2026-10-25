@@ -130,7 +130,7 @@ N1 本身沒有變：探針仍然不碰 external，只有序列的擁有者能�
 - 去哪（`resumePlanFrom`，純函式）：
   - 在文章且知道本篇 AID（`aidNavigation.currentPostAid`：免費網址列，落空用跳文落地記下的那篇——回到原處與搜尋返回以 AID 開回的那篇也算；**不按 Q**，斷線當下沒有連線可問）⇒ `s<板>` → `#<aid>` → ⏎，落地照決策表還原列。
   - 在文章但問不到 AID ⇒ 退回那篇所在的列表（列表的板要等於文章的板）。只准用 AID 開文，編號會因刪文漂移。
-  - 文章列表 ⇒ `s<板>` → `<編號>⏎`（游標放回那篇，不開文）→ 停在列表，rebuild 時用 `matchBoardOnly` 還原視野。搜尋結果或文摘回到完整列表，不帶編號也不還原視野。
+  - 文章列表 ⇒ `s<板>` → `<編號>⏎`（游標放回那篇，不開文）→ 停在列表，rebuild 時用 `matchBoardOnly` 還原視野。搜尋結果或文摘回到完整列表，不帶編號也不還原視野（搜尋結果改為自動重建，見 #22）。
   - 主功能表、看板列表、站內信、精華區 ⇒ 不回。
 - 列表 session 在斷線時被 disable 成 idle。`beginExternalNavigation({ fromIdle: true })` 讓它照樣停進外部 hold；否則 `s<板>` 落地那一幀 idle 會直接 seed，採用 server 的預設游標，之後的 `<編號>⏎` 就和本地選取對不上。列表好讀沒開時維持 idle。
 - 收手：自己登出不回；這條連線從沒登入過（重連失敗）就保留上一份；登入後離開主功能表、或 deep link 也在等登入（使用者剛給的連結較新）就作廢。`ReconnectResume` 要建在 `DeepLinkController` 之後，同一次 settle 讓 deep link 先跑。

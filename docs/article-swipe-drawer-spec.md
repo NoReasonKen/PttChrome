@@ -1,6 +1,6 @@
 # Article Shortcut Drawer and Swipe Exit
 
-Status: owner-approved specification and test approach, tracked by [issue #11](https://github.com/NoReasonKen/PttChrome/issues/11) and its slices #12–#17. Source evidence and implementation constraints are in [the feasibility research](article-swipe-drawer-research.md); implementation notes follow the product rules below.
+Status: implemented and accepted on the installed Android app, tracked by [issue #11](https://github.com/NoReasonKen/PttChrome/issues/11) and its slices #12–#17. Rotation acceptance moved to [#18](https://github.com/NoReasonKen/PttChrome/issues/18). Source evidence and implementation constraints are in [the feasibility research](article-swipe-drawer-research.md); implementation notes follow the product rules below.
 
 ## Scope and actions
 
@@ -70,7 +70,7 @@ If a source article is deleted or cannot be located reliably, stop on its verifi
 
 History is scoped to one board and compares board names case-insensitively, as PTT does. Clear it when the user switches boards, starts another list search (a search key on a list or a search-sheet submission), or returns to the main menu. Keys pressed inside an article, such as PTT's in-article text search `/`, are not list searches and keep it. Retain it through disconnection, reload, and app close/reopen on the same device, with a 12-hour validity window aligned with the existing open-resume mechanism. Do not sync it to the cloud. Temporary intermediate screens during automatic reconnection, including its main menu and board entry, are not user board switches.
 
-After recovery, validate the restored board and article/search context before reactivating history. Matching a board name alone is insufficient. If validation cannot establish the context, keep the return path inactive and explain instead of applying it blindly. Recovery from search results, or from a result article whose identity is unknown, lands on the full board list; Back there rebuilds the results, and the search is never resubmitted automatically. The route stays active only when that landing verifies its context; otherwise it stays inactive with the explanation.
+After recovery, validate the restored board and article/search context before reactivating history. Matching a board name alone is insufficient. If validation cannot establish the context, keep the return path inactive and explain instead of applying it blindly. Recovery from search results, or from a result article whose identity is unknown, lands on the full board list; Back there rebuilds the results, and the search is never resubmitted automatically. The route stays active only when that landing verifies its context; otherwise it stays inactive with the explanation. This landing comes from reconnect resume's existing results fallback, which [#22](https://github.com/NoReasonKen/PttChrome/issues/22) replaces with automatic reconstruction of the results.
 
 Reuse existing article identity, reading-position, serialized navigation, and resume machinery. The owner permits improving the existing resume implementation when a concrete benefit is established; a speculative rewrite is not required.
 
@@ -80,9 +80,9 @@ Permit one search/navigation operation at a time and reject duplicate starts. Wi
 
 ## Acceptance coverage
 
-These are required future checks, not claims of completed verification:
+The owner accepted these on the installed Android app through #12–#17, except rotation; exceptional paths such as eight-entry eviction rely on the automated coverage below.
 
-Installed-Android rotation acceptance is deferred pending [#18](https://github.com/NoReasonKen/PttChrome/issues/18): the owner reports that rotation exits article easy reading. Automated viewport checks do not establish that this underlying device behavior is fixed.
+Installed-Android rotation acceptance moved to [#18](https://github.com/NoReasonKen/PttChrome/issues/18): the owner reports that rotation exits article easy reading. Automated viewport checks do not establish that this underlying device behavior is fixed.
 
 - Real touch input from different starting positions, links, and previews; ordinary tap, long press, vertical scrolling, selection, and pinch remain functional.
 - Both sides and exact equality of all distance thresholds; deliberate fast flings, slow release after an earlier fast segment, and final reversals.
