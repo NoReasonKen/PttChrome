@@ -13,7 +13,7 @@
 //                水球、ofo＝一對一（UF_PAGER_OFO）。之後送 ^R 就是 upstream 的回水球畫面。
 // seed 檔（Big5，tab 分隔）：
 //   B <brdname> <class> <desc> <BM>                       開一個看板（之後的 A／N 屬於它）
-//   A <owner> <date> <recommend> <flags> <title>          一篇文章；flags: m=marked b=置底
+//   A <owner> <date> <rating>    <flags> <title>          一篇文章；flags: m=marked b=置底
 //   G <count> <owner> <title>                             批次 count 篇「<title> <i>」（無內文）
 //   N <text>                                              一列進板畫面（notes）
 //   F <brdname>                                           加進我的最愛
@@ -182,7 +182,7 @@ static void seed(const char *path)
             serial++;
             STRLCPY(fh.owner, f[1]);
             STRLCPY(fh.date, f[2]);
-            fh.recommend = atoi(f[3]);
+            fh.rating = atoi(f[3]);
             if (strchr(f[4], 'm')) fh.filemode |= FILE_MARKED;
             STRLCPY(fh.title, f[5]);
             // 置底：upstream 的置底是 boardheader_t.bottom[] 裡的 AID 參照（指回 .DIR 裡

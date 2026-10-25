@@ -4,6 +4,9 @@
 # 產出：tests/unit/fixtures/ptt_src_screens/<場景>.json
 # exit 2 ＝ build／driver 環境問題（不是本專案解析器壞）。
 set -u
+# The status bar renders the fixed clock in local time. Pin UTC so local runs
+# reproduce CI's fixtures instead of reporting a timezone shift as a change.
+export TZ=UTC
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 P=$(cd "${1:-$ROOT/3rd_script/pttbbs}" && pwd) || exit 2

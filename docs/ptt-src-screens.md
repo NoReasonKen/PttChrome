@@ -101,6 +101,13 @@ pfterm 只在阻塞讀鍵前 flush。鍵送早了會被 typeahead 吃掉中間�
 - driver 要先 `init_io()`（否則 pfterm 沒輸出緩衝）、`currboard` 先清空再 `enter_board`（`brc_initial_board`
   同名會走捷徑不設 `currbid`）。
 - driver.c 本身是 UTF-8：要寫 Big5 字串用跳脫序列，且拆開寫（`"\xc3" "D"`，否則 `\xc3D` 被吃成一個跳脫）。
+- driver.c writes upstream structs directly, so upstream field renames break the build. Example: 2026-10-24
+  `b500faf7` merged `fileheader_t.pad` and `recommend` into `int16_t rating`; the article command now sets `rating`.
+- generate.sh pins `TZ=UTC`: the status-bar clock renders in local time, so a local run in another timezone
+  would rewrite every fixture with a shifted clock.
+- Local runs need a `python` executable (upstream generates `common/sys/big5.c` with it). On Ubuntu install
+  `python-is-python3`. A failed run without it leaves an incomplete generated file; run `git clean -fdx` in the
+  pttbbs checkout before retrying, otherwise linking fails with an undefined `b2u_table`.
 
 upstream 再弄壞 build（新的必要 conf、新的需要排除的物件）時 generate 會紅（exit 2）：修法補進
 generate.sh 並記在這節。
