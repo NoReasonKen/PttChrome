@@ -51,7 +51,7 @@ test('a different article at the tapped number is not opened; the list is refres
   await page.locator(CARD).first().tap();
   await expect(page.locator('.ListHint')).toBeVisible();
   await expect(page.locator('.listCard[data-list-author="someone8"]')).toHaveCount(1);
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(1500); // sleep-ok: 確認之後也沒有送出開文的 Enter，否定式斷言只能等時間
   // Still on the list and usable. (On the recorded older server a number jump
   // leaves PTT's footer empty, so the screen is not classified until redrawn.)
   expect(await page.evaluate(() => window.__app.buf.pageState)).not.toBe(3);
