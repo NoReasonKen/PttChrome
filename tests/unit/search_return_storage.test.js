@@ -1,10 +1,11 @@
 // @unit-env browser
 // Search return history kept on this device across reloads
-// (article_shortcut_search.js; docs/article-search.md). The real-browser
-// lifecycle is covered by
+// (search_return_storage.js through article_shortcut_search.js;
+// docs/article-search.md). The real-browser lifecycle is covered by
 // tests/e2e/offline/mobile_article_search_recovery.offline.spec.js; these
 // cases pin local-only storage and startup expiry deterministically.
-import { ArticleShortcutSearch, SEARCH_RETURN_KEY } from "../../src/js/article_shortcut_search";
+import { ArticleShortcutSearch } from "../../src/js/article_shortcut_search";
+import { SEARCH_RETURN_KEY } from "../../src/js/search_return_storage";
 import { searchedFrom, SEARCH_RETURN_MAX_AGE_MS } from "../../src/js/search_return_history";
 import { readValuesWithDefault } from "../../src/js/pref_storage";
 import { sanitizeForCloud } from "../../src/js/pref_sync_logic";

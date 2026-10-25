@@ -7,8 +7,9 @@ import { recordFor } from './reading_record';
 import {
   searchedFrom, backStep, returned, returnMissing, rebuilt,
   stoppedAtBoardList, reopenedAfterEmptySearch, observe,
-  recoveryTarget, recoveryRecord, readRecoveryRecord, recovered, followsPlan
+  recoveryTarget, recoveryRecord, recovered, followsPlan
 } from './search_return_history';
+import { takeStoredRecovery, storeRecovery } from './search_return_storage';
 import { i18n } from './i18n';
 
 const MESSAGE = /找不到符合條件的文章|搜尋服務異常|已達搜尋條件上限/;
@@ -21,21 +22,6 @@ const keep = route => route;
 export function articleIdentity(core) {
   const view = core.view;
   return { board: view._articleBoard, author: view._articleAuthor, title: view._articleTitle };
-}
-
-// Local device state, deliberately outside the preference document: it is
-// never exported or synchronized to the cloud.
-export const SEARCH_RETURN_KEY = 'pttchrome.searchReturn.v1';
-
-// Read once at startup and delete, like the reconnect-resume snapshot.
-function takeStoredRecovery() {
-  try {
-    const raw = window.localStorage.getItem(SEARCH_RETURN_KEY);
-    window.localStorage.removeItem(SEARCH_RETURN_KEY);
-    return raw ? readRecoveryRecord(JSON.parse(raw), Date.now()) : null;
-  } catch (e) {
-    return null;
-  }
 }
 
 function boardList(facts, board) {
@@ -71,7 +57,7 @@ export class ArticleShortcutSearch {
     // lands on exactly its target (search_return_history.recovered).
     this.suspended = null;
     this._explainLater = false;
-    this._stored = typeof window !== 'undefined' && window.localStorage ? takeStoredRecovery() : null;
+    this._stored = takeStoredRecovery();
     this._settled = () => this.noteSettle();
     core.buf.addEventListener('screenSettled', this._settled);
   }
@@ -373,12 +359,7 @@ export class ArticleShortcutSearch {
     else if (this.suspended && plan && plan.board === this.suspended.target.board) {
       record = recoveryRecord(this.suspended.route, this.suspended.target, Date.now());
     }
-    try {
-      if (record) window.localStorage.setItem(SEARCH_RETURN_KEY, JSON.stringify(record));
-      else window.localStorage.removeItem(SEARCH_RETURN_KEY);
-    } catch (e) {
-      // Storage blocked or full: the route simply does not survive a reload.
-    }
+    storeRecovery(record);
   }
 
   // Startup: `plan` is the reconnect-resume plan restored from its snapshot,
