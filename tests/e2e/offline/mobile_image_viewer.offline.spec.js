@@ -134,6 +134,42 @@ test('the image viewer reaches unmounted images across a long article and center
   expect(await sentText(page)).toBe('');
 });
 
+test('an image that finishes loading while it is the current slide opens fitted to the viewport', async ({ page }, testInfo) => {
+  test.setTimeout(120000);
+  await bootImageArticle(page, {
+    galleryImages: [
+      'https://i.urusai.cc/viewer-one.png',
+      'https://i.urusai.cc/viewer-two.png',
+      'https://i.urusai.cc/viewer-three.png',
+    ],
+  });
+  // Hold the third image so the swipe reaches it while its loading placeholder is shown.
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  await page.route('**/viewer-three.png', async (route) => {
+    await gate;
+    await route.fulfill(TALL_TRANSPARENT_IMAGE);
+  });
+  try {
+    await openPreviewViewer(page, { touch: true });
+    await swipeImage(page, 'next', /viewer-two\.png$/);
+    const { width, height } = page.viewportSize();
+    await touchDrag(page, { x: width * 0.8, y: height * 0.55 }, { x: width * 0.2, y: height * 0.55 }, 16);
+    await expect(page.locator(`${VIEWER} .pswp__item[aria-hidden="false"] .imageViewerLoading`)).toBeVisible();
+    release();
+    await expect(page.locator(VIEWER_IMAGE)).toHaveAttribute('src', /viewer-three\.png$/);
+    const box = await waitRectStable(page, VIEWER_IMAGE);
+    // The 1200x2400 image would cover several viewports at natural size.
+    expect(box.height).toBeLessThanOrEqual(height + 1);
+    expect(box.width).toBeLessThanOrEqual(width + 1);
+    expect(Math.abs(box.width * 2 - box.height)).toBeLessThan(3);
+    expect(Math.abs(box.left + box.width / 2 - width / 2)).toBeLessThan(2);
+    await page.screenshot({ path: testInfo.outputPath('loaded-image-fit.png') });
+  } finally {
+    release();
+  }
+});
+
 test('album images follow article order and closing centers the image currently being viewed', async ({ page }) => {
   test.setTimeout(120000);
   await bootImageArticle(page, {

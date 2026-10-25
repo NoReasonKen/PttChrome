@@ -240,7 +240,9 @@ export class ImageViewer {
   _refreshSlides(viewer, index, indices) {
     const slide = viewer.currSlide;
     const selected = slide?.data;
-    const zoom = slide?.currZoomLevel;
+    // A loading or error placeholder sits at zoom 1; carrying that over would
+    // open the loaded image at natural size instead of fitted.
+    const zoom = slide?.isZoomable() ? slide.currZoomLevel : 0;
     const pan = slide ? { ...slide.pan } : null;
     this._refreshing = true;
     try {
