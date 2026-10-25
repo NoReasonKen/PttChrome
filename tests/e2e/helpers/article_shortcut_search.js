@@ -381,5 +381,5 @@ async function tapShortcut(page, key) {
 
 module.exports = {
   bootShortcutSearch, searchAuthor, nativeBack, openSearchResult, visibleText, waitSearchResults,
-  bootNestedShortcutSearch, nestedSessionAfterLogin, waitArticle, waitList, tapShortcut
+  bootNestedShortcutSearch, nestedSessionAfterLogin, waitArticle, waitList, waitIdle, tapShortcut
 };

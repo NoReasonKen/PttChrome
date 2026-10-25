@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const { gestureSent } = require('../helpers/article_gestures');
 const {
-  bootNestedShortcutSearch, nativeBack, visibleText, waitArticle, waitList, tapShortcut
+  bootNestedShortcutSearch, nativeBack, visibleText, waitArticle, waitList, waitIdle, tapShortcut
 } = require('../helpers/article_shortcut_search');
 const ptt = require('../helpers/ptt');
 
@@ -104,6 +104,22 @@ test('an unrelated search from the search sheet replaces the route instead of bo
   await expect.poll(async () => (await gestureSent(page)).slice(sent)).toBe('\x1b[D');
   await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
   expect(await visibleText(page)).not.toContain('Alpha line 04:');
+});
+
+test('an in-article search key in a result article keeps the route', async ({ page }) => {
+  await bootNestedShortcutSearch(page);
+  await tapShortcut(page, 'author');
+  await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
+  await ptt.sendKey(page, 'Enter');
+  await waitArticle(page, 'Beta');
+  // Inside an article `/` is PTT's in-article text search, not a board search.
+  await ptt.sendKey(page, '/');
+  await waitIdle(page);
+
+  await nativeBack(page);
+  await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
+  await nativeBack(page);
+  await waitArticle(page, 'Alpha');
 });
 
 // The reader's default: the easy-reading list (cards) owns every list screen,

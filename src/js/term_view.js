@@ -1457,14 +1457,13 @@ TermView.prototype = {
     }
     // Search-result Back belongs to its route before normal article/list
     // navigation dispatch, but after sticky Ctrl conversion, so a combination
-    // is never read as a plain Back or search key. An unrelated search
+    // is never read as a plain Back or search key. An unrelated list search
     // replaces the route.
     if (this.bbscore.articleShortcutSearch?.handleBack(e)) {
       e.preventDefault();
       return;
     }
-    if (!e.ctrlKey && !e.altKey && !e.metaKey && ['/', '?', 'a', 'Z', 's', 'S'].includes(e.key))
-      this.bbscore.articleShortcutSearch?.noteOtherSearch();
+    this.bbscore.articleShortcutSearch?.noteSearchKey(e);
     // "返回原文" hotkey (pref aidNavBackKey, default F9). Claimed BEFORE every
     // other handler because it must work in easy reading AND native, in a post
     // or on a list. Safe to claim: F-keys have no KeyMap entry, so they never

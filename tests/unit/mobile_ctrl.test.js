@@ -54,11 +54,11 @@ describe("onKeyDown", () => {
   test("an armed Ctrl converts q and a before search-return Back or search invalidation sees them", () => {
     for (const key of ["q", "a"]) {
       const { core, view } = ctx();
-      core.articleShortcutSearch = { handleBack: vi.fn(() => true), noteOtherSearch: vi.fn() };
+      core.articleShortcutSearch = { handleBack: vi.fn(() => true), noteSearchKey: vi.fn() };
       TermView.prototype.onKeyDown.call(view, keyEvent(key));
       expect(view.sendKeyAsUser).toHaveBeenCalledWith(key, { key, altKey: true });
       expect(core.articleShortcutSearch.handleBack).not.toHaveBeenCalled();
-      expect(core.articleShortcutSearch.noteOtherSearch).not.toHaveBeenCalled();
+      expect(core.articleShortcutSearch.noteSearchKey).not.toHaveBeenCalled();
       expect(core.mobileCtrlArmed).toBe(false);
     }
   });

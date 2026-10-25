@@ -1,7 +1,7 @@
-import { searchGateFacts, buildSearchSteps } from './article_search';
+import { searchGateFacts, buildSearchSteps, searchKindOfKey } from './article_search';
 import { SLOW_STEP_BUDGET, isSubListTitle, AID_NOT_FOUND_RE } from './aid_navigation';
 import { isArticleListFooter, isSubListFooter } from './screen_captions';
-import { parseBoardName, boardNameFromKey } from './screen_titles';
+import { parseBoardName, boardNameFromKey, sameBoard } from './screen_titles';
 import { serializedOpHint } from './serialized_op_gate';
 import { recordFor } from './reading_record';
 import {
@@ -11,7 +11,6 @@ import {
 } from './search_return_history';
 import { i18n } from './i18n';
 
-const sameBoard = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 const MESSAGE = /找不到符合條件的文章|搜尋服務異常|已達搜尋條件上限/;
 const PRESS_ANY_KEY = /(?:請)?按任意鍵繼續|請按 空白鍵 繼續/;
 const LIST_BACK_KEYS = ['ArrowLeft', 'q', 'e'];
@@ -308,6 +307,14 @@ export class ArticleShortcutSearch {
     }
     if (this.active || !this.route) return;
     this.route = observe(this.route, this._screen());
+  }
+
+  // A search key pressed by the reader. Only list searches replace the route:
+  // inside an article the same keys are PTT's in-article text search and
+  // reading commands. `S` is the native same-thread search of the list.
+  noteSearchKey(event) {
+    if (event.ctrlKey || event.altKey || event.metaKey || this.core.buf.pageState !== 2) return;
+    if (searchKindOfKey(event.key) || event.key === 'S') this.noteOtherSearch();
   }
 
   noteOtherSearch() {
