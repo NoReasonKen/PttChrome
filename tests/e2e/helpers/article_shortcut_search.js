@@ -14,14 +14,14 @@ async function bootShortcutSearch(page, options = {}) {
       const c = ch.charCodeAt(0);
       return c < 128 ? ch : String.fromCharCode(window.lib.u2bArray[2 * c], window.lib.u2bArray[2 * c + 1]);
     }).join('');
-    const state = { surface: 'source', filtered: !!options.filtered, selected: 'source', searched: false };
+    const state = { surface: 'source', filtered: !!options.filtered, selected: 'source', searched: false, kind: 'author' };
     const frame = () => {
       let rows = {}, cursor = [24, 80];
       if (state.surface === 'source' || state.surface === 'child') {
         const source = state.surface === 'source';
         rows = {
           0: '作者  test (Reader) 看板 Test',
-          1: '標題  [Test] ' + (source ? 'Source article' : 'Result article'),
+          1: '標題  ' + (source ? '[Test] Source article' : state.kind === 'thread' ? 'Re: [Test] Source article' : '[Test] Result article'),
           2: '時間  Mon Sep  1 12:00:00 2025',
           4: source ? 'Original reading position.' : 'A matching result article.',
           23: '  瀏覽 第 1/1 頁 (100%)  目前顯示: 第 01~23 行  (y)回應(X%)推文(h)說明(←)離開 '
@@ -35,7 +35,7 @@ async function bootShortcutSearch(page, options = {}) {
           1: '[←]離開 [→]閱讀 [^P]發表文章 [b]備忘錄',
           2: '  編號    日 期 作  者       文  章  標  題',
           3: '    101       9/01 test         □ [Test] Source article',
-          4: '    102       9/01 test         □ [Test] Result article',
+          4: '    102       9/01 test         □ ' + (state.kind === 'thread' ? 'Re: [Test] Source article' : '[Test] Result article'),
           23: state.filtered ? ' 系列文章  [←]離開 [→]閱讀' : ' 文章列表  [←]離開 [→]閱讀'
         };
         cursor = [state.selected === 'source' ? 4 : 5, 1];
@@ -58,7 +58,8 @@ async function bootShortcutSearch(page, options = {}) {
       let data = '\x1b[2J';
       for (const [index, text] of Object.entries(rows)) {
         const inverse = state.surface !== 'source' && state.surface !== 'child' && [0, 2].includes(Number(index));
-        data += `\x1b[${Number(index) + 1};1H${inverse ? '\x1b[7m' : ''}${encode(text)}\x1b[0m`;
+        const encoded = encode(text);
+        data += `\x1b[${Number(index) + 1};1H${inverse ? '\x1b[7m' : ''}${inverse ? encoded.padEnd(80) : encoded}\x1b[0m`;
       }
       return data + `\x1b[${cursor[0]};${cursor[1]}H`;
     };
@@ -78,6 +79,13 @@ async function bootShortcutSearch(page, options = {}) {
         state.surface = options.deleted && state.searched ? 'missing' : 'list';
         state.selected = 'source';
       } else if (command === 'a') state.surface = 'authorPrompt';
+      else if (command === 'S' && state.surface === 'list') {
+        state.surface = options.empty ? 'empty' : 'list';
+        state.filtered = !options.empty;
+        state.selected = 'child';
+        state.searched = true;
+        state.kind = 'thread';
+      }
       else if (command === 'test\r' && state.surface === 'authorPrompt') {
         state.surface = options.empty ? 'empty' : 'list';
         state.filtered = !options.empty;
@@ -110,7 +118,7 @@ async function searchAuthor(page) {
 const visibleText = page => page.locator('#mainContainer').innerText();
 
 async function waitSearchResults(page) {
-  await expect.poll(() => page.locator('body').innerText()).toContain('同作者搜尋結果');
+  await expect.poll(() => page.locator('body').innerText()).toContain('Same-author search results');
   await expect.poll(() => visibleText(page)).toContain('Source article');
 }
 
@@ -118,9 +126,9 @@ async function nativeBack(page) {
   await page.goBack();
 }
 
-async function openSearchResult(page) {
+async function openSearchResult(page, { thread = false } = {}) {
   await ptt.sendKey(page, 'Enter');
-  await expect.poll(() => visibleText(page)).toContain('Result article');
+  await expect.poll(() => visibleText(page)).toContain(thread ? 'Re: [Test] Source article' : 'Result article');
   await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
 }
 
