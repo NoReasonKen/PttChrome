@@ -105,3 +105,65 @@ test('an unrelated search from the search sheet replaces the route instead of bo
   await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
   expect(await visibleText(page)).not.toContain('Alpha line 04:');
 });
+
+// The reader's default: the easy-reading list (cards) owns every list screen,
+// including search results and rebuilt results. Result articles open by tap.
+test.describe('with the easy-reading list', () => {
+  const tapCard = async (page, title) => {
+    await expect(page.locator('#mainContainer .listBodyView')).toBeVisible();
+    await page.locator('#mainContainer .listCard', { hasText: title }).locator('.listCardBody').tap();
+  };
+
+  test('single-level author and thread searches return to the source position', async ({ page }) => {
+    await bootNestedShortcutSearch(page, { easyList: true });
+    const position = await readToMiddle(page);
+    await tapShortcut(page, 'author');
+    await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
+    await expect(page.locator('#mainContainer .listBodyView')).toBeVisible();
+    await tapCard(page, '[Talk] Beta topic');
+    await waitArticle(page, 'Beta');
+    await nativeBack(page);
+    await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
+    await nativeBack(page);
+    await waitArticle(page, 'Alpha');
+    await expect.poll(() => topLine(page)).toBe(position);
+
+    await tapShortcut(page, 'thread');
+    await waitList(page, { has: ['Alpha topic'], lacks: ['Beta topic', 'Delta topic'] });
+    await nativeBack(page);
+    await waitArticle(page, 'Alpha');
+    await expect.poll(() => topLine(page)).toBe(position);
+  });
+
+  test('mixed exploration unwinds one step at a time to the first source position', async ({ page }) => {
+    await bootNestedShortcutSearch(page, { easyList: true });
+    const position = await readToMiddle(page);
+    await tapShortcut(page, 'author');
+    await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
+    await tapCard(page, '[Talk] Beta topic');
+    await waitArticle(page, 'Beta');
+    await tapShortcut(page, 'thread');
+    await waitList(page, { has: ['Re: [Talk] Beta topic'], lacks: ['Alpha topic'] });
+    await tapCard(page, 'Re: [Talk] Beta topic');
+    await waitArticle(page, 'Charlie');
+    await tapShortcut(page, 'author');
+    await waitList(page, { has: ['Re: [Talk] Beta topic', 'Delta topic'], lacks: ['Alpha topic', '□ [Talk] Beta topic'] });
+    await tapCard(page, 'Delta topic');
+    await waitArticle(page, 'Delta');
+
+    await nativeBack(page);
+    await waitList(page, { has: ['Delta topic'], lacks: ['Alpha topic'] });
+    await nativeBack(page);
+    await waitArticle(page, 'Charlie');
+    await nativeBack(page);
+    await waitList(page, { has: ['Re: [Talk] Beta topic'], lacks: ['Alpha topic', 'Delta topic'] });
+    await expect(page.locator('#mainContainer .listBodyView')).toBeVisible();
+    await nativeBack(page);
+    await waitArticle(page, 'Beta');
+    await nativeBack(page);
+    await waitList(page, { has: ['Alpha topic', '□ [Talk] Beta topic'], lacks: ['Re: [Talk] Beta topic'] });
+    await nativeBack(page);
+    await waitArticle(page, 'Alpha');
+    await expect.poll(() => topLine(page)).toBe(position);
+  });
+});

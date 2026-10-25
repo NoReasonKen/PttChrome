@@ -147,8 +147,11 @@ const NESTED_ARTICLES = [
   { aid: '1gIeu-3D', author: 'bob', title: '[Talk] Delta topic', body: 'Delta' }
 ];
 
-async function bootNestedShortcutSearch(page) {
+async function bootNestedShortcutSearch(page, { easyList = false } = {}) {
   await bootGestureArticle(page);
+  // The image-article boot disables the easy-reading list; the reader's
+  // default enables it before any list from this server is seen.
+  if (easyList) await ptt.applyPrefs(page, { enableEasyReadingList: true });
   await page.evaluate(articles => {
     const app = window.__app;
     const encode = text => [...text].map(ch => {
@@ -193,7 +196,9 @@ async function bootNestedShortcutSearch(page) {
         inverse = [0, 2];
         entries.forEach((article, index) => {
           const num = String(state.filter ? index + 1 : 101 + index).padStart(7);
-          rows[3 + index] = `${num}       9/01 ${article.author.padEnd(12)} □ ${article.title}`;
+          // The current-generation cursor marker replaces the first column.
+          const mark = index === state.cursor ? '>' : ' ';
+          rows[3 + index] = `${mark}${num.slice(1)}     9/01 ${article.author.padEnd(12)} □ ${article.title}`;
         });
         cursor = [4 + state.cursor, 1];
         if (state.surface === 'info') {
@@ -252,6 +257,23 @@ async function bootNestedShortcutSearch(page) {
         else if (state.filter) leaveFilter();
         else state.surface = 'main';
         return rest.slice(3);
+      }
+      // List navigation used by the easy-reading list: number jumps, Home,
+      // End, paging and single-row moves (four articles fit on one page).
+      const jump = /^(\d+)\r/.exec(rest);
+      if (jump && state.surface === 'list') {
+        const num = Number(jump[1]);
+        const index = state.filter ? num - 1 : num - 101;
+        state.cursor = Math.min(Math.max(0, index), listed().length - 1);
+        return rest.slice(jump[0].length);
+      }
+      const nav = ['\x1b[1~', '\x1b[4~', '\x1b[5~', '\x1b[6~', '\x1b[A', '\x1b[B'].find(key => rest.startsWith(key));
+      if (nav && state.surface === 'list') {
+        const last = listed().length - 1;
+        if (nav === '\x1b[1~' || nav === '\x1b[5~') state.cursor = 0;
+        else if (nav === '\x1b[4~' || nav === '\x1b[6~') state.cursor = last;
+        else state.cursor = Math.min(Math.max(0, state.cursor + (nav === '\x1b[A' ? -1 : 1)), last);
+        return rest.slice(nav.length);
       }
       const head = rest[0];
       if (head === ' ' && ['info', 'empty', 'missing'].includes(state.surface)) state.surface = 'list';
@@ -318,7 +340,10 @@ async function waitArticle(page, body) {
 async function waitList(page, { has = [], lacks = [] } = {}) {
   await expect.poll(async () => {
     const text = await visibleText(page);
-    return text.includes('看板《Test》') && !/ line 04:/.test(text) &&
+    // Native lists show the board caption; easy-reading list cards show a
+    // board header above their own scrolling card view.
+    const list = text.includes('看板《Test》') || await page.locator('#mainContainer .listBodyView').isVisible();
+    return list && !/ line 04:/.test(text) &&
       has.every(item => text.includes(item)) && !lacks.some(item => text.includes(item));
   }).toBe(true);
   await waitIdle(page);
