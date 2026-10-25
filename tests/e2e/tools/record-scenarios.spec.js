@@ -213,7 +213,7 @@ const listActive = async (page) => {
   await waitWireQuiet(page);
 };
 
-// 進板：可能先停在進板畫面（pressanykey）；照原生按一下空白鍵，再等文章列表好讀接管。
+// Entering a board may stop at its entry screen (pressanykey); press Space as natively, then wait for list easy reading to take over.
 const enteredBoardList = async (page) => {
   await page.waitForFunction(
     () => window.__app.buf.isPassScreenNow() || (window.__app.buf.pageState === 2 && window.__app.listSession.state === 'active'),
@@ -233,7 +233,7 @@ const boardListEngaged = async (page) => {
   await waitWireQuiet(page);
 };
 
-// 目前這份（原生）看板清單裡，第一個 Enter 會進到文章列表的看板號碼。試完退回清單。
+// The number of the first board in this (native) board list whose Enter lands on an article list. Each try returns to the list.
 async function pickPlainBoard(page) {
   const rows = await page.evaluate(() => {
     const b = window.__app.buf;
@@ -248,17 +248,17 @@ async function pickPlainBoard(page) {
     await jumpTo(page, num);
     await sendKey(page, 'Enter');
     await waitWireQuiet(page);
-    // 進板畫面（pressanykey）先按一下。
+    // Dismiss the board entry screen (pressanykey) first.
     if (await page.evaluate(() => window.__app.buf.isPassScreenNow())) {
       await sendKey(page, 'Space');
       await waitWireQuiet(page);
     }
-    const isArticleList = await page.evaluate(() => /編號/.test(window.__app.buf.getRowText(2, 0, 80)));
+    const isArticleList = await page.evaluate(() => /編號/.test(window.__app.buf.getRowText(2, 0, window.__app.buf.cols)));
     await sendKey(page, 'ArrowLeft');
     await waitWireQuiet(page);
     if (isArticleList) return num;
   }
-  throw new Error('這份看板清單裡找不到一般看板');
+  throw new Error('no ordinary board in this board list');
 }
 
 // ---- 錄製骨架 ----
@@ -500,8 +500,9 @@ const SCENARIOS = {
     });
   },
 
-  // 疊頁導覽（#25／#29）：列表好讀開文 → 退出 → 同一篇再開一次 → 再退出。
-  // 既有卷只錄了一次開文，重放端沒辦法回第二次（同一篇的開文回應只有一份）。
+  // Stacked navigation (#25, #29): open an article from list easy reading, leave, open
+  // the same article again, leave. Existing cassettes hold one open, and replay serves
+  // each reply once, so a second open needs its own recording.
   'stack-article-reopen': async (page) => {
     const prefs = { enableEasyReading: true, enableEasyReadingList: true, mergeSameAuthorComments: false };
     await resetSession(page);
@@ -520,9 +521,10 @@ const SCENARIOS = {
     });
   },
 
-  // 首頁儀表板 → 開看板（s<板>）→ 文章列表好讀 → ← 回主功能表（面板重新出現）。
-  // 我的最愛是個人資料：只在準備階段把面板標成「剛抓過」（不送任何鍵、不抓最愛），
-  // 開的是公開看板 C_Chat，素材裡不會有使用者的最愛清單。
+  // Home dashboard → open a board (s<board>) → list easy reading → ← back to the main
+  // menu, where the dashboard shows again. Favorites are personal data, so prep only
+  // marks the dashboard as freshly fetched (no keys, no favorites fetch) and the route
+  // opens the public board C_Chat; the cassette holds no favorites list.
   'stack-home-board': async (page) => {
     const prefs = { enableHomeDashboard: true, enableEasyReading: true, enableEasyReadingList: true };
     await resetSession(page);
@@ -546,9 +548,11 @@ const SCENARIOS = {
     });
   },
 
-  // 看板列表平滑捲動（分類子清單，guest 也有）→ Enter 進一個一般看板 → 文章列表好讀
-  // → ← 回看板列表（平滑捲動重新接管）。看板在準備階段試出來，原生游標先停在它上面（不錄）：
-  // 接管時採用這個落點當選取，素材裡就不必有輸入數字跳號那一段。
+  // Board-list smooth scrolling (a class sublist, available to guests too) → Enter an
+  // ordinary board → list easy reading → ← back to the board list, where smooth
+  // scrolling engages again. Prep finds the board and parks the native cursor on it
+  // (not recorded); the engage adopts that position as the selection, so the cassette
+  // needs no typed number jump.
   'stack-boardlist-board': async (page) => {
     const prefs = { enableBoardListSmoothScroll: true, enableEasyReading: true, enableEasyReadingList: true };
     await resetSession(page);

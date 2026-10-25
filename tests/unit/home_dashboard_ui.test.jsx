@@ -251,7 +251,7 @@ test("閱讀紀錄：那張卡片不在了 ⇒ 不動（認不出就不還原）
   expect(homeAnchorOf(el)).toEqual({ kind: "home", key: null, offset: 0, scrollTop: 0 });
 });
 
-test("閱讀紀錄：文件裡另有一份排在前面的面板時，仍量真正畫著的那一份", () => {
+test("reading position measures the dashboard being shown when another comes earlier in the document", () => {
   // A second dashboard copy (for example a stacked-page layer) earlier in the
   // document must not be mistaken for the real one.
   const decoy = document.createElement("div");
@@ -267,4 +267,16 @@ test("閱讀紀錄：文件裡另有一份排在前面的面板時，仍量真�
   expect(home.readingPosition().key).toMatch(/^board:Board/);
   expect(home.rootElement()).toBe(el);
   decoy.remove();
+});
+
+test("another dashboard copy unmounting leaves the shown dashboard registered", () => {
+  const { home, show } = realHome();
+  const { container } = render(<HomeDashboard pttchrome={{ homeDashboard: home }} />);
+  show(menuFrame());
+  const el = container.querySelector(".homeDashboard");
+  const copy = document.createElement("div");
+  document.body.append(copy);
+  home.detachRoot(copy);
+  expect(home.rootElement()).toBe(el);
+  copy.remove();
 });

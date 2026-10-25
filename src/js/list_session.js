@@ -3149,7 +3149,8 @@ ListSession.prototype = {
     // The tapped article's identity (author + title). The number alone can
     // point at another article once earlier ones are deleted; the landing is
     // checked against this before Enter opens anything.
-    const wantKey = lrIdx >= 0 ? this._pinnedKeyAt(lrIdx) : null;
+    const wantKey =
+      lrIdx >= 0 ? articleIdentity(rowToText(this._termBuf.listLines[lrIdx])) : null;
     let landed = null;
     // The article WE are opening, by number — the only number that is known to
     // match the post actually on screen. _selectedNum is not: while the list is
@@ -3393,10 +3394,9 @@ ListSession.prototype = {
   // PTT's entry at the jumped-to number is not the tapped article (author or
   // title differ): the list changed underneath. Unknown identities never block.
   _landedOtherArticle: function(landed, wantKey) {
-    if (!landed || !wantKey || wantKey === '|') return false;
-    const row = landed.rowTexts && landed.rowTexts[landed.curY];
-    if (!row) return false;
-    return pinnedRowKey(row) !== wantKey;
+    if (!landed || !wantKey) return false;
+    const got = articleIdentity(landed.rowTexts && landed.rowTexts[landed.curY]);
+    return !!got && got !== wantKey;
   },
 
   // Nothing is opened: stay on the list, merge PTT's current page into the
@@ -4488,6 +4488,15 @@ ListSession.prototype = {
 // generations (old ● shifts the columns and gets re-padded; new '>' is half-width
 // and shifts nothing). Used by BOTH term_view.accumulateListLines (map key) and
 // ListSession._pinnedKeyAt (selection identity) — must stay the same function.
+// An article row's identity (author + title), or null when either cannot be
+// read from the row. Unlike pinnedRowKey there is no whole-row fallback, so a
+// cursor marker can never make two rows of the same article differ.
+export function articleIdentity(text) {
+  const author = parseListAuthor(text);
+  const title = parseListTitle(text);
+  return author && title ? author + '|' + title : null;
+}
+
 export function pinnedRowKey(text) {
   const author = parseListAuthor(text) || '';
   const title = parseListTitle(text) || text || '';

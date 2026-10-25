@@ -80,9 +80,9 @@ export function cursorGeomSample(view, doc) {
       };
     };
     // The view's own screen: other copies (stacked-page layers) share the id.
-    const main0 = view.mainDisplay;
+    const screen = view.mainDisplay;
     const cont = view.mainContainer ||
-      (main0 && typeof main0.querySelector === 'function' ? main0.querySelector('#mainContainer') : null);
+      (screen && typeof screen.querySelector === 'function' ? screen.querySelector('#mainContainer') : null);
     const cy = view.buf && view.buf.cur_y;
     const rowEl = cont
       ? cont.querySelector('[type="bbsrow"][srow="' + cy + '"]')

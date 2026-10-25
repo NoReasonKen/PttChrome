@@ -607,7 +607,7 @@ describe("延遲載入佔位盒（掛載/卸載）", () => {
       expect(contentKids(slot)).toBeGreaterThan(0);
     });
 
-    test("另一個 .main 排在前面（疊頁的下層）⇒ 改綁到 slot 自己所在的 .main", () => {
+    test("with another .main earlier (a stacked layer below), rebinds to the slot's own .main", () => {
       const other = document.createElement("div");
       other.className = "main";
       document.body.prepend(other);

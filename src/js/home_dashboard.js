@@ -518,6 +518,12 @@ HomeDashboard.prototype = {
     this._root = el || null;
   },
 
+  // Only the copy that is registered may clear the registration, so another
+  // copy unmounting leaves the shown dashboard registered.
+  detachRoot: function(el) {
+    if (this._root === el) this._root = null;
+  },
+
   rootElement: function() {
     return this._root && this._root.isConnected ? this._root : null;
   },

@@ -123,7 +123,7 @@ describe("cursorGeomSample", () => {
     expect(cursorGeomSample(view, document).row).toBe(null);
   });
 
-  it("文件裡另有一份排在前面的畫面（疊頁的下層）⇒ 量的仍是 view 自己的那一份", () => {
+  it("with another screen earlier in the document (a stacked layer below), measures the view's own screen", () => {
     const main = mountGrid();
     const decoy = document.createElement("div");
     decoy.className = "main";

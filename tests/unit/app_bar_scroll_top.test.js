@@ -107,7 +107,7 @@ describe('scrollContentToTop', () => {
     expect(scrollContentToTop({ home: null, view: { mainDisplay: main }, reducedMotion: true })).toBe(null);
   });
 
-  test('文件裡另有一份排在前面的面板 ⇒ 只捲真正畫著的那一份', () => {
+  test('with another dashboard earlier in the document, scrolls only the one being shown', () => {
     // A second dashboard copy earlier in the document (a stacked-page layer).
     const decoy = scroller(HOME_DASHBOARD_ID);
     Object.assign(decoy.style, { position: 'fixed', top: '0', left: '0', width: '200px' });

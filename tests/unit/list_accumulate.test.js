@@ -7,7 +7,7 @@
 //       列」（无 ★）时仍须排除（避免 ● 列被误档成置底，v3 坑 4）。
 // 直接以 stub buf 呼叫真的 TermView.prototype.accumulateListLines（逻辑不碰 DOM）。
 import { TermView } from "../../src/js/term_view";
-import { pinnedRowKey, subjectOfListRow, listRowMarkFg } from "../../src/js/list_session";
+import { articleIdentity, pinnedRowKey, subjectOfListRow, listRowMarkFg } from "../../src/js/list_session";
 import { loadBig5Tables } from "./helpers/load_big5_tables";
 
 function chRow(text, cols = 80) {
@@ -103,6 +103,20 @@ describe("pinnedRowKey", () => {
     const clean = "    ★  m 1 6/01 arrenwu      轉 [公告] 板規";
     const cursor = ">   ★  m 1 6/01 arrenwu      轉 [公告] 板規";
     expect(pinnedRowKey(cursor)).toBe(pinnedRowKey(clean));
+  });
+});
+
+describe("articleIdentity", () => {
+  test("the cursor row and the clean row of one article match; another author does not", () => {
+    const clean = " 353689    10/26 boss0322     R: [閒聊] 會普通的使用肉體改造的泉之女神";
+    const cursor = ">353689    10/26 boss0322     R: [閒聊] 會普通的使用肉體改造的泉之女神";
+    const other = " 353689    10/26 someone8     R: [閒聊] 會普通的使用肉體改造的泉之女神";
+    expect(articleIdentity(cursor)).toBe(articleIdentity(clean));
+    expect(articleIdentity(other)).not.toBe(articleIdentity(clean));
+  });
+  test("a row without a readable author or title has no identity", () => {
+    expect(articleIdentity("")).toBeNull();
+    expect(articleIdentity(">353689")).toBeNull();
   });
 });
 

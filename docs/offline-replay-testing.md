@@ -132,9 +132,9 @@ yarn test:e2e           # 仍連真實 PTT 的 live e2e（共存，--project=liv
 | `scn-deep-link` | hashchange deep link 完整落地＋F2（需帳號） | `deep_link_landing.offline` |
 | `scn-boardlist-class`／`scn-board-search-prompt` | 分類看板子清單平滑捲動、按 s 搜尋 prompt | `board_list.offline` |
 | `scn-board-note-movie` | 看板列表 ⏎ → Android 動畫進板畫面＋pressanykey → 文章列表（80×48，**首幀合成**：原檔首幀是使用者的我的最愛）；`scn-board-note-select` 全合成（主功能表→s→選擇看板 prompt），spec 把它接在前者的 recv 前面 | `board_note_skip.offline` |
-| `scn-stack-article-reopen`／`scn-stack-home-board`／`scn-stack-boardlist-board` | 疊頁導覽（#25）的三條路線：列表好讀開同一篇兩次、首頁面板 → 看板 → 返回、看板列表平滑捲動 → 看板 → 返回（需帳號） | `stack_scenarios.offline` |
+| `scn-stack-article-reopen`／`scn-stack-home-board`／`scn-stack-boardlist-board` | The three stacked-page routes (#25): open the same article twice from list easy reading; home dashboard → board → back; board-list smooth scrolling → board → back (account required) | `stack_scenarios.offline` |
 
-開文落點已是別篇（列表在底下變了，#27）的路線沒有錄：真實 PTT 上無法照時序重現，`mobile_list_open_verify.offline` 在數字跳號的回應之後用 `onData` 改寫落點那一列的作者來模擬。
+The route where an open lands on a different article because the list changed underneath (#27) is not recorded: real PTT cannot reproduce that timing. `mobile_list_open_verify.offline` simulates it by rewriting the author on the cursor row through `onData` as soon as the open's number jump is sent, so the replayed reply is followed by the changed row.
 
 ## live 錄製檔分流（`yarn triage:recordings`）
 live 核心只驗幾個畫面；這個工具把整卷 live 錄製檔**每一幀**都驗一次，紅幀自動切成待轉素材。

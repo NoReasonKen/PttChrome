@@ -18,7 +18,7 @@
 - **進看板**＝搜尋彈窗的「前往看板」同一條（`submitSearch(core, 'board', name)`，`s<板>⏎`，閱讀紀錄 `board-search`）。**開信箱**＝`Ctrl+Z m`。
 - **手機**：標題「首頁」與「原生主選單」都放在 App Bar（`MobileAppBar` 訂 `homeDashboard.onChange`，面板開著就把標題換成「首頁」、右邊多一顆「原生主選單」）；面板自己不再畫那一行大標題，只有新信時留一行放「開信箱」。理由：App Bar 寫「主功能表」、底下又一行「首頁」，兩行標題吃掉一排卡片。桌機照舊。
 - 閱讀紀錄：面板的捲動位置是 `home` 紀錄（`readingPosition`：面板頂端那張卡片＋離上緣幾 px，只存身分不存像素）。從面板出發的交易——點看板／最近看板（`board-search`）、抓最愛（`home-favorites`）、開信箱（`home-mail`）——不論結果都交回待還原錨，面板下一次畫出來（或更新完重畫）時由外殼的 `useLayoutEffect` 呼叫 `applyPendingViewport` 套用；那張卡片不在了就不動。按「原生主選單」或打字收起面板 ⇒ 作廢。debug 錄製檔 `homeDashboard.viewportRestore`（saved／applied／dropped）。
-- 找面板一律經控制器：外殼畫完以 `attachRoot` 登記根節點，`readingPosition`、App Bar 捲回頂端都用 `rootElement()`，不以 `#homeDashboard` 在整份文件查——疊頁層（#25）會有同 id 的另一份面板。`#homeDashboard` 只留給 `closest` 這類從事件目標往上找的判斷。
+- The dashboard is always found through its controller: the view registers its root with `attachRoot` after rendering, and `readingPosition` and the App Bar's scroll-to-top use `rootElement()` instead of looking up `#homeDashboard` in the document, because a stacked-page layer (#25) carries another dashboard with the same id. `#homeDashboard` is only used by `closest`-style checks that walk up from an event target.
 - 快取：`pttchrome.homeFavorites.v1`（清單＋時間，跨重整保留只為了先畫出來；已讀標記只對這次登入有意義，所以「新鮮」只算這一頁抓過的）、`pttchrome.homeRecentBoards.v1`（最近看板，文章列表 settle 時記）。
 - 滑鼠：面板在 `#BBSWindow` 外。App 的滑鼠入口在 window（滾輪是 capture），`_onUploadLayer` 認 `#homeDashboard` 放過；按鈕 mousedown `preventDefault`（不搶 `#t` 焦點）＋ stopPropagation。
 - e2e：`installReplay` 預設把 `enableHomeDashboard` 關掉（畫主功能表的 spec 不能被面板擋住、多送 byte），live 的自動登入 prefs 也關掉；只有 `home_dashboard.offline.spec.js` 以 `bootOffline(page, ptt, { homeDashboard: true })` 打開。
