@@ -36,7 +36,7 @@ test('an empty author search restores the source and explains the result', async
   await searchAuthor(page);
   await expect.poll(() => visibleText(page)).toContain('Original reading position.');
   await expect(page.locator('#mainContainer')).toContainText('Source article');
-  await expect.poll(() => page.locator('body').innerText()).toContain('找不到符合條件的文章，已返回原文');
+  await expect.poll(() => page.locator('body').innerText()).toContain('No matching articles. Returned to the source article.');
 });
 
 test('a deleted origin never opens a replacement article', async ({ page }) => {
@@ -44,7 +44,7 @@ test('a deleted origin never opens a replacement article', async ({ page }) => {
   await searchAuthor(page);
   await waitSearchResults(page);
   await nativeBack(page);
-  await expect.poll(() => page.locator('body').innerText(), { timeout: 15000 }).toContain('無法確認原文章');
+  await expect.poll(() => page.locator('body').innerText(), { timeout: 15000 }).toContain('The source article could not be verified or was deleted');
   expect(await visibleText(page)).not.toContain('Original reading position.');
   expect(await visibleText(page)).toContain('看板《Test》');
 });
@@ -63,6 +63,6 @@ test('input cannot submit or replace a query while the native prompt is still lo
 test('an unrecognized native prompt stops without sending the author as commands', async ({ page }) => {
   await bootShortcutSearch(page, { wrongPrompt: true });
   await searchAuthor(page);
-  await expect.poll(() => page.locator('body').innerText(), { timeout: 12000 }).toContain('無法確認目前畫面');
+  await expect.poll(() => page.locator('body').innerText(), { timeout: 12000 }).toContain('Article search stopped because the current screen could not be verified');
   expect(await gestureSent(page)).not.toContain('test\r');
 });
