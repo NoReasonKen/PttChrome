@@ -3,6 +3,8 @@ import { mobileToolbarContext } from './mobile_toolbar';
 import { i18n } from './i18n';
 import { serializedOpHint } from './serialized_op_gate';
 import { ArticleHorizontalGesture, ARTICLE_SETTLE_MS } from './article_horizontal_gesture';
+import { ArticleExitPreview } from './article_exit_preview';
+import { recordFor } from './reading_record';
 import '../css/article_gestures.css';
 
 const MODAL_SOURCE = 'articleShortcutDrawer';
@@ -27,6 +29,7 @@ export class ArticleGestures {
     this.timer = null;
     this.suppressClickUntil = 0;
     this.listeners = [];
+    this.exitPreview = new ArticleExitPreview(core);
     this._listen(window, 'pointerdown', event => this._start(event), true);
     this._listen(window, 'pointermove', event => this._move(event), { capture: true, passive: false });
     this._listen(window, 'pointerup', event => this._end(event), true);
@@ -61,10 +64,11 @@ export class ArticleGestures {
   }
 
   update() {
+    this.exitPreview.update();
     const available = this.available();
     this.core.view.mainDisplay.classList.toggle('articleHorizontalGestures', available);
     const view = this.core.view;
-    const identity = [view._articleBoard, view._articleAuthor, view._articleTitle].join('\n');
+    const identity = [view._articleBoard, view._articleAuthor, view._articleTitle, this.core.easyReading?._articleKey].join('\n');
     if (!available || (this.identity && identity !== this.identity)) this.close(true);
     this.identity = identity;
   }
@@ -77,27 +81,36 @@ export class ArticleGestures {
       return;
     }
     if (!event.isPrimary || !this.available() || this.settling) return;
-    if (this.core.modalShown && !this.root) return;
-    if (this.core._openModals?.size > (this.root ? 1 : 0)) return;
+    if (this.core.modalShown && !this.root && !this.exitUnderlay) return;
+    if (this.core._openModals?.size > (this.root || this.exitUnderlay ? 1 : 0)) return;
     const target = event.target;
     if (!this.opened && (!this.core.view.mainDisplay.contains(target) || target.closest(EXCLUDED))) return;
     if (!this.opened && (this.core.mobileSelectMode || !window.getSelection().isCollapsed)) return;
     const width = window.innerWidth;
     this.track = {
       id: event.pointerId,
-      gesture: new ArticleHorizontalGesture({ width, opened: this.opened, x: event.clientX, y: event.clientY, t: event.timeStamp })
+      gesture: new ArticleHorizontalGesture({ width, opened: this.opened, allowExit: true, x: event.clientX, y: event.clientY, t: event.timeStamp })
     };
   }
 
   _move(event) {
     const track = this.track;
     if (!track || event.pointerId !== track.id) return;
-    if (!this.available() || (this.core.modalShown && !this.root) ||
-        this.core._openModals?.size > (this.root ? 1 : 0)) return this._cancel();
+    if (!this.available() || (this.core.modalShown && !this.root && !this.exitUnderlay) ||
+        this.core._openModals?.size > (this.root || this.exitUnderlay ? 1 : 0)) return this._cancel();
     const snapshot = track.gesture.move(event.clientX, event.clientY, event.timeStamp);
     if (this.opened || snapshot.operation) {
       this._consume(event);
       if (snapshot.operation) {
+        if (snapshot.operation === 'exit') {
+          this._ensureExit();
+          this.exitDistance = snapshot.distance;
+          if (!this.frame) this.frame = requestAnimationFrame(() => {
+            this.frame = null;
+            this._paintExit(this.exitDistance);
+          });
+          return;
+        }
         this._ensurePanel();
         this.core.setModalOpen(MODAL_SOURCE, true);
         this.reveal = snapshot.reveal;
@@ -123,6 +136,7 @@ export class ArticleGestures {
     this._consume(event);
     this.suppressClickUntil = performance.now() + 400;
     const result = track.gesture.release(event.timeStamp, canceled);
+    if (track.gesture.operation === 'exit') return this._settleExit(result.exit);
     this._settle(result.opened);
   }
 
@@ -133,6 +147,7 @@ export class ArticleGestures {
     this.track = null;
     if (recognized) {
       this.suppressClickUntil = performance.now() + 400;
+      if (this.exitUnderlay) return this._settleExit(false);
       this._settle(opened);
     }
   }
@@ -140,6 +155,89 @@ export class ArticleGestures {
   _consume(event) {
     if (event.cancelable) event.preventDefault();
     event.stopImmediatePropagation();
+  }
+
+  captureListPreview() {
+    if (readEffectivePrefs().articleHorizontalGestures) this.exitPreview.capture();
+    else this.exitPreview.clear();
+  }
+
+  bindListPreview() {
+    this.exitPreview.enterArticle();
+  }
+
+  clearListPreview() {
+    this.exitPreview.clear();
+  }
+
+  _ensureExit() {
+    if (this.exitUnderlay) return;
+    this.exitUnderlay = document.createElement('div');
+    this.exitUnderlay.className = 'articleExitUnderlay';
+    this.exitUnderlay.setAttribute('data-article-exit-underlay', '');
+    this.exitUnderlay.setAttribute('aria-hidden', 'true');
+    this.exitUnderlay.inert = true;
+    this.exitUnderlay.dataset.preview = this.exitPreview.appendTo(this.exitUnderlay) ? 'list' : 'fallback';
+    const toolbar = document.getElementById('mobileToolbar');
+    this.exitUnderlay.style.height = (toolbar?.getBoundingClientRect().top ?? window.innerHeight) + 'px';
+    this.core.view.mainDisplay.parentNode.appendChild(this.exitUnderlay);
+    this.exitSurfaces = [this.core.view.mainDisplay, document.getElementById('mobileAppBar')].filter(Boolean).map(node => ({
+      node, translate: node.style.translate, transition: node.style.transition, zIndex: node.style.zIndex
+    }));
+    for (const { node } of this.exitSurfaces) {
+      node.classList.add('articleExitMoving');
+      node.style.zIndex = '152';
+    }
+    this.core.setModalOpen(MODAL_SOURCE, true);
+  }
+
+  _paintExit(distance) {
+    for (const { node } of this.exitSurfaces || []) node.style.translate = `${distance}px 0`;
+  }
+
+  _settleExit(commit) {
+    if (!this.exitUnderlay) return;
+    if (this.frame) cancelAnimationFrame(this.frame);
+    this.frame = null;
+    clearTimeout(this.timer);
+    this.settling = true;
+    const identity = this.identity;
+    const duration = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ARTICLE_SETTLE_MS;
+    for (const { node } of this.exitSurfaces) node.style.transition = `translate ${duration}ms ease-out`;
+    this._paintExit(commit ? window.innerWidth : 0);
+    this.timer = setTimeout(() => {
+      const valid = commit && this.available() && identity === this.identity;
+      this._removeExit();
+      if (valid) {
+        const record = recordFor(this.core);
+        const bookmark = record.begin('article-swipe-exit');
+        this.core.noteUserAction();
+        let sent = false;
+        try {
+          sent = this.core.sendNavKeyAsUser('ArrowLeft');
+        } finally {
+          record.end(bookmark, sent ? 'done' : 'cancel');
+        }
+      }
+    }, duration);
+  }
+
+  _removeExit() {
+    if (!this.exitUnderlay) return;
+    if (this.frame) cancelAnimationFrame(this.frame);
+    this.frame = null;
+    clearTimeout(this.timer);
+    this.timer = null;
+    for (const surface of this.exitSurfaces) {
+      surface.node.style.translate = surface.translate;
+      surface.node.style.transition = surface.transition;
+      surface.node.style.zIndex = surface.zIndex;
+      surface.node.classList.remove('articleExitMoving');
+    }
+    this.exitUnderlay.remove();
+    this.exitUnderlay = this.exitSurfaces = null;
+    this.settling = false;
+    this.core.setModalOpen(MODAL_SOURCE, false);
   }
 
   _ensurePanel() {
@@ -246,11 +344,13 @@ export class ArticleGestures {
 
   close(immediate = false) {
     this.track = null;
+    if (this.exitUnderlay) return this._removeExit();
     if (immediate) this._remove();
     else this._settle(false);
   }
 
   _resize() {
+    this.exitPreview.clear();
     if (this.track) this.close(true);
     else if (this.root) {
       this._geometry();
@@ -274,6 +374,7 @@ export class ArticleGestures {
 
   destroy() {
     this.close(true);
+    this.exitPreview.clear();
     this.listeners.forEach(remove => remove());
     this.core.buf.removeEventListener('viewUpdate', this._refresh);
     this.core.buf.removeEventListener('screenSettled', this._refresh);

@@ -78,7 +78,7 @@ async function openArticle(page, { full, imageViewer }) {
 const COMBOS = [
   [], ['nextArticle'], ['commentBar', 'nextArticle'], ['commentBarFold', 'nextArticle'],
   ['commentBarFold', 'nextArticle', 'imageViewer'],
-  ['commentBarFold', 'nextArticle', 'articleGestures'],
+  ['commentBar', 'nextArticle', 'articleGestures'],
 ];
 
 test.describe('手機：浮層不蓋住文末', () => {
