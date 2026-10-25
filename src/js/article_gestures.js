@@ -41,6 +41,11 @@ export class ArticleGestures {
     this.exitPreview = new ArticleExitPreview(core);
     this._listen(window, 'pointerdown', event => this._start(event), true);
     this._listen(window, 'pointermove', event => this._move(event), { capture: true, passive: false });
+    this._nativeTouchMove = event => {
+      // Cancel native scrolling only after horizontal intent is established.
+      // Canceling pointermove alone can leave a native fling that eats the next tap.
+      if (event.touches.length === 1 && this.track?.gesture.operation) this._consume(event);
+    };
     this._listen(window, 'pointerup', event => this._end(event), true);
     this._listen(window, 'pointercancel', event => this._end(event, true), true);
     this._listen(window, 'click', event => {
@@ -76,10 +81,19 @@ export class ArticleGestures {
     this.exitPreview.update();
     const available = this.available();
     this.core.view.mainDisplay.classList.toggle('articleHorizontalGestures', available);
+    this._setNativeTouchMove(available);
     const { board, author, title } = articleIdentity(this.core);
     const identity = [board, author, title, this.core.easyReading?._articleKey].join('\n');
     if (!available || (this.identity && identity !== this.identity)) this.close(true);
     this.identity = identity;
+  }
+
+  _setNativeTouchMove(enabled) {
+    if (this.nativeTouchMoveEnabled === enabled) return;
+    this.nativeTouchMoveEnabled = enabled;
+    const surface = this.core.view.mainDisplay;
+    if (enabled) surface.addEventListener('touchmove', this._nativeTouchMove, { capture: true, passive: false });
+    else surface.removeEventListener('touchmove', this._nativeTouchMove, true);
   }
 
   _start(event) {
@@ -266,6 +280,7 @@ export class ArticleGestures {
     this.root = document.createElement('div');
     this.root.className = 'articleDrawerRoot nomouse_command';
     this.root.setAttribute('data-article-drawer', '');
+    this.root.addEventListener('touchmove', this._nativeTouchMove, { capture: true, passive: false });
     this.root.addEventListener('click', event => {
       if (event.target === this.root && !this.settling) {
         this._consume(event);
@@ -394,6 +409,7 @@ export class ArticleGestures {
   }
 
   destroy() {
+    this._setNativeTouchMove(false);
     this.close(true);
     this.exitPreview.clear();
     this.listeners.forEach(remove => remove());

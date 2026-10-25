@@ -74,6 +74,40 @@ async function tapDuringOpening(page, target) {
   await page.clock.resume();
 }
 
+async function flingOpenDrawer(page) {
+  const width = page.viewportSize().width;
+  const main = await waitRectStable(page, '.main');
+  const start = { x: width * 0.8, y: main.top + 70 };
+  const session = await cdp(page);
+  // Supply the contact's time at the input boundary so driver latency cannot
+  // turn a quick fling into a slow drag. Do not pause before releasing.
+  const timestamp = Date.now() / 1000;
+  await session.send('Input.dispatchTouchEvent', { type: 'touchStart', timestamp, touchPoints: [{ id: 0, ...start }] });
+  for (let step = 1; step <= 5; step++) {
+    await session.send('Input.dispatchTouchEvent', {
+      type: 'touchMove', timestamp: timestamp + step * 0.03,
+      touchPoints: [{ id: 0, x: start.x - width * 0.375 * step / 5, y: start.y + 10 * step }]
+    });
+  }
+  await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', timestamp: timestamp + 0.16, touchPoints: [] });
+  await expect(page.locator(DRAWER)).toHaveAttribute('data-state', 'open');
+  return { x: 10, y: start.y };
+}
+
+for (const target of ['backdrop', '[']) {
+  test(`the first ${target} tap after a short diagonal opening fling responds without another tap`, async ({ page }) => {
+    await bootGestureArticle(page);
+    const point = await flingOpenDrawer(page);
+    if (target === 'backdrop') await page.touchscreen.tap(point.x, point.y);
+    else {
+      const button = await waitRectStable(page, `[data-article-shortcut="${target}"]`);
+      await page.touchscreen.tap(button.left + button.width / 2, button.top + button.height / 2);
+    }
+    await expect(page.locator(DRAWER)).toHaveCount(0);
+    await expect.poll(() => gestureSent(page)).toBe(target === 'backdrop' ? '' : target);
+  });
+}
+
 for (const side of ['left', 'above', 'below']) {
   test(`the first fresh ${side} backdrop tap during drawer opening dismisses it without navigation`, async ({ page }) => {
     await bootGestureArticle(page);
