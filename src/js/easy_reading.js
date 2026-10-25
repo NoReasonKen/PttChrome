@@ -2197,6 +2197,11 @@ EasyReading.prototype.requestScrollRestore = function(lineIndex) {
   if (!lineIndex) return;
   this._pendingScrollRestore = { lineIndex: lineIndex, tries: 0 };
   this._diagScrollRestore('request', { lineIndex: lineIndex });
+  // A short article can be fully accumulated before the request arrives (one
+  // PTT page that still scrolls on a phone): no further page will update the
+  // view, so apply now instead of waiting forever.
+  if (this._enabled && this.startedEasyReading && !this._functionMode && this.easyReadingReachedPageEnd)
+    this._advanceScrollRestore();
 };
 
 // debug 錄製檔 `easyReading.scrollRestore`：request／apply／giveup／settled。settled ＝
