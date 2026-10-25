@@ -1,3 +1,5 @@
+import { sameBoard } from './screen_titles';
+
 const MAX_ROWS = 64;
 const MAX_NODES = 1200;
 const MAX_TEXT = 24000;
@@ -86,7 +88,7 @@ export class ArticleExitPreview {
     const pending = this.pending;
     this.pending = null;
     const identity = articleIdentity(this.core);
-    this.current = pending && identity && pending.board === this.core.view._articleBoard
+    this.current = pending && identity && sameBoard(pending.board, this.core.view._articleBoard)
       ? { ...pending, identity } : null;
   }
 

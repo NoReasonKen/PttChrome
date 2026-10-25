@@ -356,7 +356,7 @@ export class ArticleShortcutSearch {
   persistForRecovery(plan) {
     let record = null;
     if (this.route) record = recoveryRecord(this.route, recoveryTarget(plan, this._currentArticle()), Date.now());
-    else if (this.suspended && plan && plan.board === this.suspended.target.board) {
+    else if (this.suspended && plan && sameBoard(plan.board, this.suspended.target.board)) {
       record = recoveryRecord(this.suspended.route, this.suspended.target, Date.now());
     }
     storeRecovery(record);

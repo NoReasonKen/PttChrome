@@ -122,3 +122,11 @@ test("a user board switch before closing the page removes the stored route", () 
   search.persistForRecovery({ kind: "list", board: "Other", num: null });
   expect(window.localStorage.getItem(SEARCH_RETURN_KEY)).toBeNull();
 });
+
+test("a suspended route is stored for its plan whatever the board name's case", () => {
+  const { search } = app();
+  search.route = searchedFrom(null, ORIGIN);
+  search.suspendForRecovery(LIST_PLAN);
+  search.persistForRecovery({ ...LIST_PLAN, board: "test" });
+  expect(window.localStorage.getItem(SEARCH_RETURN_KEY)).toContain(ORIGIN.aid);
+});
