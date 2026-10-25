@@ -117,6 +117,9 @@ export const RESTORE_TABLE = {
     cancel: NONE,
     fail: cell(null, 'origin')
   },
+  // Searching changes the destination; a verified return restores its origin.
+  'article-shortcut-search': { done: NONE, cancel: cell('origin'), fail: NONE },
+  'article-shortcut-return': { done: cell('origin'), cancel: NONE, fail: cell(null, 'origin') },
   // 說明選單（help_menu.js）：從列表按 h 會切原生、丟掉緩衝；離開（q／原生畫面裡自己
   // 離開）回到同一份列表 ⇒ 原處。執行某一項＝那個指令的結果就是目的地（不還原）。
   // 文章裡按 h 不在這裡還原：那是 easy_reading 自己的 functionMode 來回

@@ -1,5 +1,27 @@
 # 搜尋彈窗（`article_search.js`）
 
+## Article shortcut searches
+
+The mobile article drawer can search the whole current board for the article's
+author without an editable dialog. `article_shortcut_search.js` owns identity
+capture, the serialized search and its return route. It reuses the native `a`
+search semantics, including case-insensitive substring author matching.
+
+Capture the source reading bookmark before entering native mode. Reuse
+`AidNavigation.resolvePostAid` and its `boxOpen` metadata; only a Q response needs
+the information box dismissed. `AidNavigation.selectArticle(board, aid, onEnd)`
+then selects that identity in the full board list without opening it, leaving
+any previous subset before searching. The author query is sent only after the
+actual native author prompt is recognized.
+
+Back from a result article first returns natively to its results. Back from that
+matching result list reopens the source by AID and restores its reading bookmark.
+Another search, a user board change or disconnection invalidates this initial
+in-memory route. Missing identities never fall back to an article number. Empty
+searches restore the source with a notice; unknown screens stop visibly without
+blind retries. Real-app controlled-response coverage lives in
+`mobile_article_shortcut_search.offline.spec.js`.
+
 動 `article_search.js`、`search_history.js`、`SearchModal.jsx`、term_view 的搜尋鍵攔截前先讀。
 
 ## 為什麼

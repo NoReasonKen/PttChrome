@@ -644,6 +644,21 @@ AidNavigation.prototype = {
     return true;
   },
 
+  // Select a stable article identity in the full board list without opening
+  // it. Search shortcuts need its native header for same-thread matching.
+  selectArticle: function(board, aid, onEnd) {
+    if (this.active || !board || !/^[\w-]{8}$/.test(aid || '')) return false;
+    this._onRunEnd = onEnd || null;
+    const run = makeRun({ board, aid, kind: 'aid', listOnly: true }, 'goto');
+    run.external = true;
+    const buf = this._termBuf;
+    const here = boardNameFromKey(parseBoardKey(buf.getRowText(0, 0, buf.cols)));
+    // A fresh repaint verifies the actual list after parking its renderer.
+    run.picked = buf.pageState === 2 && here && here.toLowerCase() === board.toLowerCase();
+    this._begin(run);
+    return true;
+  },
+
   // 置底文開文（agent ptt_read_article 的 pinned）：板跳 → End（游標停在最後一篇置底）
   // → ↑ 移到板尾畫面第 index 篇置底 → ⏎。置底文沒有編號、跳號跳不到，只能這樣走。
   startPinned: function(board, index, onEnd) {
@@ -1786,7 +1801,8 @@ AidNavigation.prototype = {
         return aidSearchLanded(facts);
       },
       onDone: function() {
-        self._enqueueOpen(run);
+        if (run.target.listOnly) self._finishGoto(run);
+        else self._enqueueOpen(run);
       },
       onFail: function(reason) {
         // Going back, a miss means the post is really gone (deleted) — a

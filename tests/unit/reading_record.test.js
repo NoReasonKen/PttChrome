@@ -67,6 +67,11 @@ describe("決策表", () => {
     ["article-search", "done", "none", "origin", "none"],
     ["article-search", "cancel", "none", "none", "none"],
     ["article-search", "fail", "none", "origin", "none"],
+    ["article-shortcut-search", "done", "none", "none", "none"],
+    ["article-shortcut-search", "cancel", "origin", "none", "none"],
+    ["article-shortcut-search", "fail", "none", "none", "none"],
+    ["article-shortcut-return", "done", "origin", "none", "none"],
+    ["article-shortcut-return", "fail", "none", "origin", "none"],
     // 說明選單：離開回原處；執行某一項＝指令的結果就是目的地。文章裡的 h 由
     // easy_reading 的 functionMode 來回自己保住捲動位置。
     ["help-menu", "cancel", "none", "origin", "origin"],

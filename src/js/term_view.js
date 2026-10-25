@@ -1443,6 +1443,14 @@ TermView.prototype = {
       this.flashListHint(busyHint);
       return;
     }
+    // Search-result Back belongs to its originating article before normal
+    // article/list navigation dispatch. An unrelated search replaces the route.
+    if (this.bbscore.articleShortcutSearch?.handleBack(e)) {
+      e.preventDefault();
+      return;
+    }
+    if (!e.ctrlKey && !e.altKey && !e.metaKey && ['/', '?', 'a', 'Z', 's', 'S'].includes(e.key))
+      this.bbscore.articleShortcutSearch?.noteOtherSearch();
     // 手機黏滯 Ctrl：下一個按鍵改送組合鍵（用一次就解除）。重新走 sendKeyAsUser ⇒
     // 整條分派（好讀／列表好讀／原生）照組合鍵的語意處理。
     if (this.bbscore.mobileCtrlArmed && !e.ctrlKey && !e.altKey && !e.metaKey &&

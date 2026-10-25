@@ -59,6 +59,8 @@ do not count as reader input. See `src/js/scroll_restore_follow.js` and
 | `mark-all-read` 設為全部已讀 | 列表：原處 | 列表：原處 |
 | `board-search` `s` 看板搜尋（含首頁點看板） | 首頁：原處（回到首頁時）；其餘不還原（換板） | 列表、看板列表、首頁：原處 |
 | `article-search` 文章搜尋 | 列表：原處（有結果時落在搜尋結果，編號空間比對不符自動丟棄；找不到時 PTT `vmsg` 後回原列表） | 取消：不還原（零送出）；失敗（prompt 沒開出來）：列表原處 |
+| `article-shortcut-search` article shortcut search | No restore: results are the destination | Cancel: article origin; failure: leave the verified current screen |
+| `article-shortcut-return` return from shortcut results | Article origin | Failure: matching list origin; cancellation: no restore |
 | `help-menu` 說明選單（`h`） | 不還原（執行的指令就是目的地） | 離開：列表、看板列表原處 |
 | `unread-jump` 跳到第一篇未讀 | 不還原（目的就是移動） | 不還原：停在翻到的那頁（使用者拍板） |
 | `home-favorites` 首頁抓我的最愛（含重新整理／下拉） | 首頁：原處（清單換新後停在同一張卡片） | 首頁：原處（停在 PTT 給的畫面，回到首頁時） |

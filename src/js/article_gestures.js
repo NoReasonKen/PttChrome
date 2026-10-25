@@ -9,7 +9,8 @@ const MODAL_SOURCE = 'articleShortcutDrawer';
 const ACTIONS = [
   { key: '[', label: 'mobileToolbar_threadPrev' },
   { key: '=', label: 'mobileToolbar_threadFirst' },
-  { key: ']', label: 'mobileToolbar_threadNext' }
+  { key: ']', label: 'mobileToolbar_threadNext' },
+  { key: 'author', label: 'articleShortcutSearch_author' }
 ];
 const EXCLUDED = 'input, textarea, select, button, [contenteditable="true"], video, audio, iframe, [role="slider"], .easyReadingVideo';
 
@@ -171,7 +172,8 @@ export class ArticleGestures {
         this.close(true);
         if (!mobileToolbarContext(this.core).threadNav) return;
         this.core.noteUserAction();
-        this.core.view.sendKeyAsUser(action.key);
+        if (action.key === 'author') this.core.articleShortcutSearch.start('author');
+        else this.core.view.sendKeyAsUser(action.key);
       });
       this.panel.appendChild(button);
     }

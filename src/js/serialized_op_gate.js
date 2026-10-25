@@ -15,8 +15,11 @@
 // 刻意不含 commandQueue.inFlightKind：那道在 App.onFunctionKey 裡排在
 // functionKeyClickPlan **之後**（_enterFunctionMode / stopEasyReading 要先跑），位置
 // 本身有語意，搬進來會改行為。
+import { i18n } from './i18n';
+
 export function serializedOpHint(core) {
   if (!core) return null;
+  if (core.articleShortcutSearch?.active) return i18n('articleShortcutSearch_busy');
   if (core.aidNavigation && core.aidNavigation.active)
     return core.aidNavigation.opHint || 'AID 跳文中，請稍候…';
   // 提示字隨階段不同（探路／送出），由 session 自己給——active 為真時一定有值。

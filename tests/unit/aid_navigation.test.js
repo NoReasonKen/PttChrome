@@ -168,6 +168,35 @@ function makeHarness({
 
 const settle = (queue, f) => queue.onSettle({}, f);
 
+describe('select an article identity for a whole-board shortcut search', () => {
+  test('selects the verified AID without opening its article or adding a return entry', () => {
+    const h = makeHarness({ screenRows: MAIN_MENU_SCREEN });
+    const finished = [];
+    expect(h.nav.selectArticle('Test', '1gIeu-3A', result => finished.push(result))).toBe(true);
+    expect(h.sent).toEqual(['sTest\r\f']);
+    settle(h.queue, facts('clean-list', { boardName: 'Test' }));
+    expect(h.sent).toEqual(['sTest\r\f', '#1gIeu-3A\r\f']);
+    settle(h.queue, facts('clean-list', { boardName: 'Test', cursorRowNum: 101, curY: 3 }));
+    expect(finished).toEqual([{ ok: true }]);
+    expect(h.nav.active).toBe(false);
+    expect(h.nav.canGoBack()).toBe(false);
+    expect(h.sent).toEqual(['sTest\r\f', '#1gIeu-3A\r\f']);
+  });
+
+  test('leaves an existing subset before selecting the identity in the full board', () => {
+    const rows = screen({ row0: '【板主：test】看板《Test》', last: ' 系列文章 [←]離開' });
+    const h = makeHarness({ pageState: 2, screenRows: rows });
+    h.nav.selectArticle('Test', '1gIeu-3A');
+    expect(h.sent).toEqual(['\f']);
+    settle(h.queue, facts('clean-list', { boardName: 'Test', rowTexts: rows }));
+    expect(h.sent).toEqual(['\f', '\x1b[D\f']);
+    settle(h.queue, facts('clean-list', { boardName: 'Test' }));
+    expect(h.sent).toEqual(['\f', '\x1b[D\f', '#1gIeu-3A\r\f']);
+    settle(h.queue, facts('clean-list', { boardName: 'Test', cursorRowNum: 101, curY: 3 }));
+    expect(h.nav.active).toBe(false);
+  });
+});
+
 // 正向跳轉的第 0 步：在文章裡按 Q 叫出文章資訊框，讀出「本篇自己的 AID」當返回
 // 錨點（mbbsd/more.c:70 → bbs.c#view_postinfo:3691-3705）。收尾是 pressanykey()，
 // 所以框在畫面上時末列一定是「請按任意鍵繼續」。
