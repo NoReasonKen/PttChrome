@@ -164,6 +164,12 @@ NavHistory.prototype = {
         : null;
   },
 
+  // A non-jump run (reconnect or search return) landed on this article by
+  // verified AID. It identifies the article without changing the stack.
+  noteLanded: function(board, aid) {
+    this._landed = board && aid ? { board: board, aid: aid } : null;
+  },
+
   // Returns the anchor to navigate to, or null when there is nothing to go
   // back to. The entry stays on the stack until commitBack(): a failed back
   // must not consume it (it is cleared by abort() instead — see the header).

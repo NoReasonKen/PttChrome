@@ -2153,6 +2153,19 @@ describe("startResume（斷線重連後回到原處）", () => {
     expect(h.hints[h.hints.length - 1]).toContain("已回到斷線前的文章");
   });
 
+  test("an article landed by verified AID is identified for the next disconnect without Q", () => {
+    const h = resumeHarness();
+    h.nav.startResume(articlePlan(ARTICLE));
+    settle(h.queue, facts("clean-list", { boardName: "c_chat" }));
+    settle(h.queue, facts("clean-list", { boardName: "c_chat", cursorRowNum: 353218, curY: 10 }));
+    h.termBuf.pageState = 3;
+    h.view._articleBoard = "C_Chat";
+    settle(h.queue, facts("article"));
+    expect(h.nav.currentPostAid()).toEqual({ board: "C_Chat", aid: "1gIeu-3A" });
+    // Still not a jump: nothing to go back to.
+    expect(h.nav.canGoBack()).toBe(false);
+  });
+
   test("一般跳文不會從 idle 停泊列表 session（fromIdle 只給回到原處）", () => {
     const h = resumeHarness();
     h.nav.startExternal("1gIeu-3A", "C_Chat");

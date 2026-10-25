@@ -1909,6 +1909,9 @@ AidNavigation.prototype = {
         } else if (run.dir === 'resume') {
           self.opHint = null;
           self._resuming = false;
+          // Verified by #AID: a later disconnect resumes this article, and a jump
+          // from it gets an exact back anchor, without asking Q.
+          self._history.noteLanded(run.target.board, run.target.aid);
           // 決策表 'reconnect-resume' done：文章 'auto'（斷線前在文末就黏回文末，否則
           // 原列）。好讀的還原是請求，累積到位才套用。
           recordFor(self._core).end(run.bookmark, 'done', { only: 'article' });

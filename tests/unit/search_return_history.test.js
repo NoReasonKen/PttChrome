@@ -12,8 +12,14 @@ import {
   rebuilt,
   stoppedAtBoardList,
   reopenedAfterEmptySearch,
-  observe
+  observe,
+  SEARCH_RETURN_MAX_AGE_MS,
+  recoveryTarget,
+  recoveryRecord,
+  readRecoveryRecord,
+  recovered
 } from "../../src/js/search_return_history";
+import { SNAPSHOT_MAX_AGE_MS } from "../../src/js/reconnect_resume";
 
 const origin = (name, kind = "author", board = "Test") => ({
   board,
@@ -170,5 +176,108 @@ describe("settled screens", () => {
     const fallback = stoppedAtBoardList(observe(atResults(), article(b)));
     expect(observe(fallback, { kind: "boardList", board: "Test" })).not.toBeNull();
     expect(observe(fallback, article(origin("Other")))).toBeNull();
+  });
+});
+
+describe("recovery after disconnection, reload or reopen", () => {
+  const a = origin("A");
+  const b = origin("B", "thread");
+  const now = Date.UTC(2026, 9, 25, 12);
+  const listPlan = { kind: "list", board: "Test", num: null };
+  const articlePlan = (o) => ({ kind: "article", board: o.board, aid: o.aid });
+  // Persist through JSON exactly as localStorage would.
+  const stored = (route, plan, article, at = now) =>
+    JSON.parse(JSON.stringify(recoveryRecord(route, recoveryTarget(plan, article), at)));
+
+  test("records stay valid for exactly the twelve hours open-resume uses", () => {
+    expect(SEARCH_RETURN_MAX_AGE_MS).toBe(SNAPSHOT_MAX_AGE_MS);
+    const record = stored(searchedFrom(null, a), listPlan, null);
+    expect(readRecoveryRecord(record, now + SEARCH_RETURN_MAX_AGE_MS)).not.toBeNull();
+    expect(readRecoveryRecord(record, now + SEARCH_RETURN_MAX_AGE_MS + 1)).toBeNull();
+    expect(readRecoveryRecord(record, now - 1)).toBeNull();
+  });
+
+  test("damaged or oversized stored records are rejected as a whole", () => {
+    const good = stored(searchedFrom(searchedFrom(null, a), b), listPlan, null);
+    const damaged = (change) => {
+      const record = JSON.parse(JSON.stringify(good));
+      change(record);
+      return readRecoveryRecord(record, now);
+    };
+    expect(damaged(() => {})).not.toBeNull();
+    expect(damaged((r) => { r.v = 2; })).toBeNull();
+    expect(damaged((r) => { r.route.phase = "unknown"; })).toBeNull();
+    expect(damaged((r) => { r.route.origins = []; })).toBeNull();
+    expect(damaged((r) => { r.route.origins = Array(9).fill(r.route.origins[0]); })).toBeNull();
+    expect(damaged((r) => { r.route.origins[0].aid = "#1gIeu-3A\r"; })).toBeNull();
+    expect(damaged((r) => { r.route.origins[1].board = "Other"; })).toBeNull();
+    expect(damaged((r) => { r.route.origins[0].query.kind = "push"; })).toBeNull();
+    expect(damaged((r) => { r.route.origins[0].query.value = "x".repeat(500); })).toBeNull();
+    expect(damaged((r) => { r.route.origins[0].position = "line 4"; })).toBeNull();
+    expect(damaged((r) => { r.target = { kind: "list", board: "Other" }; })).toBeNull();
+    expect(damaged((r) => { r.target = { kind: "article", board: "Test", aid: "1gIeu-3A" }; })).toBeNull();
+    expect(damaged((r) => { r.route.phase = "reopened"; })).toBeNull();
+    expect(readRecoveryRecord(null, now)).toBeNull();
+    expect(readRecoveryRecord("{}", now)).toBeNull();
+  });
+
+  describe("validating the landed screen", () => {
+    const boardList = { kind: "boardList", board: "Test" };
+    // The reader was in result article B of A's search when interrupted.
+    const inResult = () => observe(searchedFrom(null, a), article(b));
+    const recover = (route, plan, article, landed) => {
+      const record = readRecoveryRecord(stored(route, plan, article), now);
+      return recovered(record.route, record.target, plan, landed);
+    };
+
+    test("a result article reopened by its verified AID stands on rebuilt results", () => {
+      const route = recover(inResult(), articlePlan(b), article(b), article(b));
+      expect(unwind(route).visits).toEqual(["results of [Talk] A", "article [Talk] A"]);
+    });
+
+    test("a reopened source keeps unwinding through its parent's results", () => {
+      const reopened = returned(searchedFrom(searchedFrom(null, a), b));
+      const route = recover(reopened, articlePlan(b), article(b), article(b));
+      expect(unwind(route).visits).toEqual(["results of [Talk] A", "article [Talk] A"]);
+    });
+
+    test("results recovered as their full board list rebuild them before the source", () => {
+      const route = recover(searchedFrom(null, a), listPlan, null, boardList);
+      expect(unwind(route).visits).toEqual(["results of [Talk] A", "article [Talk] A"]);
+      const urlLess = recover(inResult(), listPlan, null, boardList);
+      expect(unwind(urlLess).visits).toEqual(["results of [Talk] A", "article [Talk] A"]);
+    });
+
+    test("anything other than the planned screen leaves the route inactive", () => {
+      const other = { ...article(origin("Other")) };
+      expect(recover(inResult(), articlePlan(b), article(b), other)).toBeNull();
+      expect(recover(inResult(), articlePlan(b), article(b), { ...article(b), board: "Elsewhere" })).toBeNull();
+      expect(recover(inResult(), articlePlan(b), article(b), boardList)).toBeNull();
+      expect(recover(searchedFrom(null, a), listPlan, null, { kind: "results", board: "Test" })).toBeNull();
+      expect(recover(searchedFrom(null, a), listPlan, null, { kind: "boardList", board: "Other" })).toBeNull();
+      expect(recover(searchedFrom(null, a), listPlan, null, { kind: "menu" })).toBeNull();
+      expect(recover(searchedFrom(null, a), listPlan, null, article(a))).toBeNull();
+    });
+
+    test("a route only follows the resume plan it was stored with", () => {
+      const record = readRecoveryRecord(stored(inResult(), articlePlan(b), article(b)), now);
+      expect(recovered(record.route, record.target, articlePlan(a), article(b))).toBeNull();
+      expect(recovered(record.route, record.target, { kind: "list", board: "Test" }, boardList)).toBeNull();
+      expect(recovered(record.route, record.target, null, article(b))).toBeNull();
+    });
+
+    test("a reopened source cannot be attached to a different article identity", () => {
+      const reopened = returned(searchedFrom(searchedFrom(null, a), b));
+      const record = readRecoveryRecord(stored(reopened, articlePlan(b), article(b)), now);
+      const renamed = { ...record.route, at: { author: "x", title: "y" } };
+      expect(recovered(renamed, record.target, articlePlan(b), article(b))).toBeNull();
+    });
+
+    test("nothing is stored for an empty route or a plan on another board", () => {
+      expect(recoveryRecord(null, recoveryTarget(listPlan, null), now)).toBeNull();
+      expect(recoveryRecord(searchedFrom(null, a), recoveryTarget({ kind: "list", board: "Other" }, null), now)).toBeNull();
+      expect(recoveryTarget({ kind: "article", board: "Test", aid: b.aid }, null)).toBeNull();
+      expect(recoveryTarget(null, article(b))).toBeNull();
+    });
   });
 });

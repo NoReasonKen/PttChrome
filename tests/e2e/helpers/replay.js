@@ -783,6 +783,7 @@ async function bootOffline(page, ptt, opts = {}) {  // eslint-disable-line no-un
     commentBarFold: !!opts.commentBarFold,
     nextArticle: !!opts.nextArticle,
     articleGestures: !!opts.articleGestures,
+    resumeLastPlace: !!opts.resumeLastPlace,
   });
   await installOfflineNetwork(page, { profile: offlineImageProfile(opts.imageProfile) });
   await page.goto('/');

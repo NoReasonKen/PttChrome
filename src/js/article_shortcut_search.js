@@ -1,12 +1,13 @@
 import { searchGateFacts, buildSearchSteps } from './article_search';
 import { SLOW_STEP_BUDGET, isSubListTitle, AID_NOT_FOUND_RE } from './aid_navigation';
 import { isArticleListFooter, isSubListFooter } from './screen_captions';
-import { parseBoardName } from './screen_titles';
+import { parseBoardName, boardNameFromKey } from './screen_titles';
 import { serializedOpHint } from './serialized_op_gate';
 import { recordFor } from './reading_record';
 import {
   searchedFrom, backStep, returned, returnMissing, rebuilt,
-  stoppedAtBoardList, reopenedAfterEmptySearch, observe
+  stoppedAtBoardList, reopenedAfterEmptySearch, observe,
+  recoveryTarget, recoveryRecord, readRecoveryRecord, recovered, followsPlan
 } from './search_return_history';
 import { i18n } from './i18n';
 
@@ -16,6 +17,21 @@ const PRESS_ANY_KEY = /(?:請)?按任意鍵繼續|請按 空白鍵 繼續/;
 const LIST_BACK_KEYS = ['ArrowLeft', 'q', 'e'];
 const ARTICLE_BACK_KEYS = ['ArrowLeft', 'q'];
 const keep = route => route;
+
+// Local device state, deliberately outside the preference document: it is
+// never exported or synchronized to the cloud.
+export const SEARCH_RETURN_KEY = 'pttchrome.searchReturn.v1';
+
+// Read once at startup and delete, like the reconnect-resume snapshot.
+function takeStoredRecovery() {
+  try {
+    const raw = window.localStorage.getItem(SEARCH_RETURN_KEY);
+    window.localStorage.removeItem(SEARCH_RETURN_KEY);
+    return raw ? readRecoveryRecord(JSON.parse(raw), Date.now()) : null;
+  } catch (e) {
+    return null;
+  }
+}
 
 function boardList(facts, board) {
   const rows = facts?.rowTexts || [];
@@ -45,6 +61,12 @@ export class ArticleShortcutSearch {
     this.core = core;
     this.active = false;
     this.route = null;
+    // A route waiting for its reconnect-resume plan: { route, target }. It is
+    // inactive (Back and settles ignore it) until that plan's own transaction
+    // lands on exactly its target (search_return_history.recovered).
+    this.suspended = null;
+    this._explainLater = false;
+    this._stored = typeof window !== 'undefined' && window.localStorage ? takeStoredRecovery() : null;
     this._settled = () => this.noteSettle();
     core.buf.addEventListener('screenSettled', this._settled);
   }
@@ -178,10 +200,9 @@ export class ArticleShortcutSearch {
     const step = backStep(this.route);
     if (!step) return false;
     const core = this.core;
-    const facts = searchGateFacts(core);
     const board = this.route.board;
     if (step.kind === 'restore') {
-      if (!LIST_BACK_KEYS.includes(event.key) || !resultList(facts, board)) return false;
+      if (!LIST_BACK_KEYS.includes(event.key) || this._listShown(board) !== 'results') return false;
       this.pending = null;
       this._begin({ missing: returnMissing });
       this._reopen(step.origin, 'articleShortcutSearch_returned', returned);
@@ -192,7 +213,7 @@ export class ArticleShortcutSearch {
     const here = this.route.phase === 'reopened'
       ? core.buf.pageState === 3 && ARTICLE_BACK_KEYS.includes(event.key) && sameBoard(view._articleBoard, board) &&
         !!at && view._articleAuthor === at.author && view._articleTitle === at.title
-      : fullBoardList(facts, board) && LIST_BACK_KEYS.includes(event.key);
+      : this._listShown(board) === 'full' && LIST_BACK_KEYS.includes(event.key);
     if (!here) return false;
     // Rebuilding results selects the newest entry; never reopen an article
     // inside them. The following Back restores their source by AID instead.
@@ -200,6 +221,24 @@ export class ArticleShortcutSearch {
     this._begin({ missing: returnMissing, emptied: returned });
     this._selectThenQuery(step.origin, false, 'rebuild');
     return true;
+  }
+
+  // Which list of `board` the reader sees: 'results', 'full' or null. While
+  // the easy-reading list shows its accumulated cards, its background fill
+  // keeps rewriting the terminal behind them (blank footers after number
+  // jumps, rows not yet decoded); its own board and numbering space are then
+  // the evidence. Legacy captions cannot tell results from the full list, so
+  // a raw result caption still counts as results.
+  _listShown(board) {
+    const facts = searchGateFacts(this.core);
+    const session = this.core.listSession;
+    if (session?.state === 'active') {
+      const shown = session.readingPosition();
+      if (!shown || !sameBoard(boardNameFromKey(shown.board), board)) return null;
+      return shown.mode === 'select' || resultList(facts, board) ? 'results' : 'full';
+    }
+    if (resultList(facts, board)) return 'results';
+    return boardList(facts, board) ? 'full' : null;
   }
 
   _reopen(origin, notice, transition) {
@@ -263,6 +302,10 @@ export class ArticleShortcutSearch {
   }
 
   noteSettle() {
+    if (this._explainLater && this.core.conn?.isConnected) {
+      this._explainLater = false;
+      this._hint('articleShortcutSearch_recoveryInactive');
+    }
     if (this.active || !this.route) return;
     this.route = observe(this.route, this._screen());
   }
@@ -271,8 +314,85 @@ export class ArticleShortcutSearch {
     if (!this.active) this.route = null;
   }
 
+  // Disconnection. A route captured by suspendForRecovery stays suspended.
   reset() {
     this.route = null;
     if (this.active) this._fail();
+  }
+
+  // Recovery hooks, called by reconnect_resume.js with the plan it will
+  // resume. Automatic recovery's intermediate screens (login, main menu, board
+  // entry) never reach the suspended route; only the plan's outcome does.
+
+  _currentArticle() {
+    const view = this.core.view;
+    return this.core.buf.pageState === 3
+      ? { board: view._articleBoard, author: view._articleAuthor, title: view._articleTitle }
+      : null;
+  }
+
+  // The connection closed after login; `plan` is where reconnection returns.
+  suspendForRecovery(plan) {
+    const route = this.route;
+    this.route = null;
+    const target = route && recoveryTarget(plan, this._currentArticle());
+    const had = !!this.suspended;
+    this.suspended = target && sameBoard(route.board, target.board) ? { route, target } : null;
+    if (!this.suspended && (route || had)) this._explain();
+  }
+
+  // The page may be closed or discarded: store the live (or still suspended)
+  // route beside the reconnect-resume snapshot taken for the same `plan`.
+  persistForRecovery(plan) {
+    let record = null;
+    if (this.route) record = recoveryRecord(this.route, recoveryTarget(plan, this._currentArticle()), Date.now());
+    else if (this.suspended && plan && plan.board === this.suspended.target.board) {
+      record = recoveryRecord(this.suspended.route, this.suspended.target, Date.now());
+    }
+    try {
+      if (record) window.localStorage.setItem(SEARCH_RETURN_KEY, JSON.stringify(record));
+      else window.localStorage.removeItem(SEARCH_RETURN_KEY);
+    } catch (e) {
+      // Storage blocked or full: the route simply does not survive a reload.
+    }
+  }
+
+  // Startup: `plan` is the reconnect-resume plan restored from its snapshot,
+  // or null. An expired or damaged record was already discarded silently.
+  restoreForRecovery(plan) {
+    const stored = this._stored;
+    this._stored = null;
+    if (!stored) return;
+    if (followsPlan(stored.target, plan)) this.suspended = stored;
+    else this._explain();
+  }
+
+  // The resume transaction for `plan` ended with `result`.
+  recoveryEnded(plan, result) {
+    const suspended = this.suspended;
+    this.suspended = null;
+    if (!suspended) return;
+    const route = result?.ok ? recovered(suspended.route, suspended.target, plan, this._landed(suspended.target.board)) : null;
+    if (!route) return this._explain();
+    this.route = route;
+    this._hint('articleShortcutSearch_recovered');
+  }
+
+  // Recovery will not run (logout, canceled, superseded, user moved first).
+  abandonRecovery(reason) {
+    if (!this.suspended) return;
+    this.suspended = null;
+    if (reason !== 'logout') this._explain();
+  }
+
+  _landed(board) {
+    const article = this._currentArticle();
+    if (article) return { kind: 'article', ...article };
+    return this._listShown(board) === 'full' ? { kind: 'boardList', board } : { kind: 'other' };
+  }
+
+  _explain() {
+    if (this.core.conn?.isConnected) this._hint('articleShortcutSearch_recoveryInactive');
+    else this._explainLater = true;
   }
 }

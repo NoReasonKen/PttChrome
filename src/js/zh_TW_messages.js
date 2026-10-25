@@ -1429,6 +1429,8 @@
   "articleShortcutSearch_failed": { "message": "無法確認目前畫面，已停止文章搜尋。" },
   "articleShortcutSearch_missing": { "message": "無法確認原文章或文章已刪除，已安全停止，不會開啟其他文章。" },
   "articleShortcutSearch_returned": { "message": "已返回原文。" },
+  "articleShortcutSearch_recovered": { "message": "已恢復搜尋返回路線，返回會沿著搜尋路線回去。" },
+  "articleShortcutSearch_recoveryInactive": { "message": "無法確認文章或搜尋，未恢復搜尋返回路線；返回維持一般行為。" },
   "tooltip_mobileAppBarScrollTop": {
     "message": "手機版面點最上面的標題，文章、列表或首頁就捲回最上面。只捲畫面，不會送任何按鍵。"
   },

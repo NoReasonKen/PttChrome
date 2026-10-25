@@ -1430,6 +1430,8 @@ export const en_US = {
   "articleShortcutSearch_failed": { "message": "Article search stopped because the current screen could not be verified." },
   "articleShortcutSearch_missing": { "message": "The source article could not be verified or was deleted. Stopped safely without opening a replacement." },
   "articleShortcutSearch_returned": { "message": "Returned to the source article." },
+  "articleShortcutSearch_recovered": { "message": "Search return history restored. Back continues along the search route." },
+  "articleShortcutSearch_recoveryInactive": { "message": "Search return history was not restored because the article or search could not be verified. Back works normally." },
   "tooltip_mobileAppBarScrollTop": {
     "message": "In the mobile layout, tapping the title at the top scrolls the article, list or home page back to the top. It only scrolls; no keys are sent."
   },

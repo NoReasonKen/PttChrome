@@ -147,12 +147,36 @@ const NESTED_ARTICLES = [
   { aid: '1gIeu-3D', author: 'bob', title: '[Talk] Delta topic', body: 'Delta' }
 ];
 
-async function bootNestedShortcutSearch(page, { easyList = false } = {}) {
-  await bootGestureArticle(page);
+// options.easyList: the reader's default list owner (cards).
+// options.loggedIn: this connection first passes the main menu, as a real
+//   login does, so reconnect/open resume may capture and store a plan.
+// options.resumeLastPlace: reloads resume the last place (the product default).
+async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false } = {}) {
+  await bootGestureArticle(page, { resumeLastPlace });
   // The image-article boot disables the easy-reading list; the reader's
   // default enables it before any list from this server is seen.
   if (easyList) await ptt.applyPrefs(page, { enableEasyReadingList: true });
-  await page.evaluate(articles => {
+  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article' });
+  if (loggedIn) {
+    await waitScreenSettled(page, { 0: '主功能表' });
+    await page.evaluate(() => {
+      const server = window.__shortcutServer;
+      server.state.surface = 'article';
+      window.__app.onData(server.frame());
+    });
+  }
+  await waitScreenSettled(page, { 1: 'Alpha topic' });
+  await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
+}
+
+// A new PTT session on the same board data: it starts at the main menu after
+// login with a fresh cursor and no search. `deleted` carries over.
+async function nestedSessionAfterLogin(page, { deleted = [] } = {}) {
+  await installNestedServer(page, { surface: 'main', deleted });
+}
+
+async function installNestedServer(page, session) {
+  await page.evaluate(({ articles, session }) => {
     const app = window.__app;
     const encode = text => [...text].map(ch => {
       const c = ch.charCodeAt(0);
@@ -160,7 +184,10 @@ async function bootNestedShortcutSearch(page, { easyList = false } = {}) {
     }).join('');
     const subject = title => title.replace(/^(?:(?:Re|Fw):\s*)+/i, '').toLowerCase();
     // surface: article | list | info | prompt | empty | missing | main
-    const state = { surface: 'article', board: 'Test', filter: null, cursor: 0, open: articles[0], deleted: new Set(), prompt: null };
+    const state = {
+      surface: session.surface, board: 'Test', filter: null, cursor: 0, open: articles[0],
+      deleted: new Set(session.deleted || []), prompt: null
+    };
     const listed = () => {
       const all = articles.filter(article => !state.deleted.has(article.aid));
       return state.filter ? all.filter(state.filter.match) : all;
@@ -317,9 +344,7 @@ async function bootNestedShortcutSearch(page, { easyList = false } = {}) {
     };
     window.__shortcutServer = { state, frame };
     app.onData(frame());
-  }, NESTED_ARTICLES);
-  await waitScreenSettled(page, { 1: 'Alpha topic' });
-  await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
+  }, { articles: NESTED_ARTICLES, session });
 }
 
 // Input is deliberately swallowed while a serialized navigation owns the
@@ -356,5 +381,5 @@ async function tapShortcut(page, key) {
 
 module.exports = {
   bootShortcutSearch, searchAuthor, nativeBack, openSearchResult, visibleText, waitSearchResults,
-  bootNestedShortcutSearch, waitArticle, waitList, tapShortcut
+  bootNestedShortcutSearch, nestedSessionAfterLogin, waitArticle, waitList, tapShortcut
 };

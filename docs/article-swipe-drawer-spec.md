@@ -1,6 +1,6 @@
 # Article Shortcut Drawer and Swipe Exit
 
-Status: owner-approved specification and test approach, tracked by [issue #11](https://github.com/NoReasonKen/PttChrome/issues/11). The local integration branch `codex/article-gestures` implements the drawer, swipe exit, author/thread search return routes (#12–#15) and in-memory bounded nested return (#16). Persistent recovery (#17) remains unimplemented; the route still clears on disconnection. Final combined review and Android acceptance remain pending. Source evidence and implementation constraints are in [the feasibility research](article-swipe-drawer-research.md).
+Status: owner-approved specification and test approach, tracked by [issue #11](https://github.com/NoReasonKen/PttChrome/issues/11). The local integration branch `codex/article-gestures` implements the drawer, swipe exit, author/thread search return routes (#12–#15), bounded nested return (#16) and its validated recovery through disconnection and reload (#17). Final combined review and Android acceptance, including installed close/reopen, remain pending. Source evidence and implementation constraints are in [the feasibility research](article-swipe-drawer-research.md).
 
 ## Scope and actions
 

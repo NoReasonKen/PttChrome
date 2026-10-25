@@ -136,6 +136,8 @@ export function ReconnectResume(core, view, termBuf) {
       this._pending = plan && mode === 'open' ? Object.assign({}, plan, { fromOpen: true }) : plan;
       this._diag('restoreSnapshot', { mode: mode, kind: this._pending ? this._pending.kind : null });
     }
+    // Search return history stored beside the snapshot follows only this plan.
+    this._searchReturn('restoreForRecovery', this._pending);
     const save = this.saveSnapshot.bind(this);
     if (typeof window.addEventListener === 'function') {
       if (isAndroidApp()) window.addEventListener(STOP_EVENT, save);
@@ -170,6 +172,7 @@ ReconnectResume.prototype = {
     // 還沒登入就斷了：畫面是登入流程，沒有閱讀位置；保留上一份。
     if (!wasLoggedIn) return;
     if (!enabled()) {
+      this._searchReturn('suspendForRecovery', null);
       this.discard('disabled');
       return;
     }
@@ -178,6 +181,7 @@ ReconnectResume.prototype = {
     const nav = core.aidNavigation;
     const post = bm.article && nav && nav.currentPostAid ? nav.currentPostAid() : null;
     this._pending = resumePlanFrom(bm, post);
+    this._searchReturn('suspendForRecovery', this._pending);
     this._diag('capture', this._pending
       ? { kind: this._pending.kind, board: this._pending.board, aid: this._pending.aid || null, num: this._pending.num || null }
       : { kind: null });
@@ -195,6 +199,7 @@ ReconnectResume.prototype = {
       const post = bm.article && nav && nav.currentPostAid ? nav.currentPostAid() : null;
       plan = resumePlanFrom(bm, post);
     }
+    this._searchReturn('persistForRecovery', plan);
     try {
       if (plan) {
         // 書籤裡的畫面擁有者是物件參照，存不下也用不到（還原走 core 上的現役擁有者）。
@@ -213,6 +218,7 @@ ReconnectResume.prototype = {
   },
 
   discard: function(reason) {
+    if (this._pending || this._countdown) this._searchReturn('abandonRecovery', reason);
     this._cancelCountdown();
     if (!this._pending) return;
     this._diag('discard', { reason: reason });
@@ -247,6 +253,7 @@ ReconnectResume.prototype = {
   // 使用者按了「取消」：停在主功能表，這次不回去。
   cancel: function() {
     if (!this._countdown && !this._pending) return;
+    this._searchReturn('abandonRecovery', 'cancel');
     this._diag('cancel', {});
     this._cancelCountdown();
     this._pending = null;
@@ -299,13 +306,25 @@ ReconnectResume.prototype = {
     const dl = core.deepLinkController;
     if (core.connectState !== 1 || !this._atMainMenu() || !nav || nav.active || (dl && dl.hasPending && dl.hasPending())) {
       this._diag('discard', { reason: 'superseded' });
+      this._searchReturn('abandonRecovery', 'superseded');
       return;
     }
     // 同 deep_link_controller._dispatch：AutoLogin 的「請按任意鍵 ⇒ 送空白」會踩到
     // 進板畫面，打亂序列正在等的那一幀。
     if (core.autoLogin && core.autoLogin.stop) core.autoLogin.stop();
     this._diag('dispatch', { kind: plan.kind, board: plan.board, fromOpen: !!plan.fromOpen });
-    nav.startResume(plan);
+    const self = this;
+    const started = nav.startResume(plan, function(result) {
+      self._searchReturn('recoveryEnded', plan, result);
+    });
+    if (!started) this._searchReturn('abandonRecovery', 'superseded');
+  },
+
+  // Search return history (article_shortcut_search.js) recovers with this
+  // plan: it is suspended while the plan waits and validated by its outcome.
+  _searchReturn: function(hook, a, b) {
+    const owner = this._core && this._core.articleShortcutSearch;
+    if (owner && typeof owner[hook] === 'function') owner[hook](a, b);
   },
 
   _atMainMenu: function() {
