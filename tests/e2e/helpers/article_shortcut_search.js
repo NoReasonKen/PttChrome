@@ -58,7 +58,10 @@ async function bootShortcutSearch(page, options = {}) {
       let data = '\x1b[2J';
       for (const [index, text] of Object.entries(rows)) {
         const inverse = state.surface !== 'source' && state.surface !== 'child' && [0, 2].includes(Number(index));
-        data += `\x1b[${Number(index) + 1};1H${inverse ? '\x1b[7m' : ''}${encode(text)}\x1b[0m`;
+        const encoded = encode(text);
+        // Native title/header bars fill the whole row. Partial inversion is
+        // deliberately rejected by the application's list fingerprint.
+        data += `\x1b[${Number(index) + 1};1H${inverse ? '\x1b[7m' : ''}${inverse ? encoded.padEnd(80) : encoded}\x1b[0m`;
       }
       return data + `\x1b[${cursor[0]};${cursor[1]}H`;
     };
@@ -110,7 +113,17 @@ async function searchAuthor(page) {
 const visibleText = page => page.locator('#mainContainer').innerText();
 
 async function waitSearchResults(page) {
-  await expect.poll(() => page.locator('body').innerText()).toContain('同作者搜尋結果');
+  try {
+    await expect.poll(() => page.locator('body').innerText()).toContain('Same-author search results');
+  } catch (error) {
+    console.log('Shortcut replay state:', await page.evaluate(() => ({
+      sent: window.__gestureSent,
+      server: window.__shortcutServer.state,
+      command: window.__app.commandQueue.inFlightKind,
+      cursor: [window.__app.buf.cur_y, window.__app.buf.cur_x]
+    })));
+    throw error;
+  }
   await expect.poll(() => visibleText(page)).toContain('Source article');
 }
 
