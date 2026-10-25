@@ -66,4 +66,23 @@ describe('article horizontal gesture release', () => {
     expect(gesture.move(300, 200, 150).reveal).toBe(50);
     expect(gesture.release(350).opened).toBe(false);
   });
+
+  it('requires strictly more than half the viewport to retract an article', () => {
+    for (const [distance, expected] of [[199, false], [200, false], [201, true]]) {
+      const gesture = new ArticleHorizontalGesture({ width: 400, opened: false, allowExit: true, x: 20, y: 200, t: 0 });
+      expect(gesture.move(20 + distance, 200, 50).distance).toBe(distance);
+      expect(gesture.release(700)).toEqual({ opened: false, exit: expected });
+    }
+  });
+
+  it('uses final article-exit velocity and restores on reversal or interruption', () => {
+    const gesture = new ArticleHorizontalGesture({ width: 400, opened: false, allowExit: true, x: 20, y: 200, t: 0 });
+    gesture.move(70, 200, 20);
+    expect(gesture.release(20).exit).toBe(true);
+    expect(gesture.release(200).exit).toBe(false);
+    gesture.move(300, 200, 300);
+    gesture.move(240, 200, 320);
+    expect(gesture.release(320).exit).toBe(false);
+    expect(gesture.release(700, true)).toEqual({ opened: false, exit: false });
+  });
 });

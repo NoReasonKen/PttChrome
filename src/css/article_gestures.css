@@ -49,3 +49,33 @@
 .articleShortcutDrawer button:active {
   background: rgb(255 255 255 / 12%);
 }
+
+.articleExitUnderlay {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 1;
+  overflow: hidden;
+  background: #141418;
+  pointer-events: none;
+}
+
+.articleExitListPreview {
+  position: absolute;
+  overflow: hidden;
+}
+
+.articleExitListTitle {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding: var(--safe-top, 0px) 16px 0;
+  background: #141418;
+  border-bottom: 1px solid #333;
+  color: #eee;
+  font: 600 17px/22px system-ui, sans-serif;
+}
+
+.articleExitMoving {
+  will-change: translate;
+  background-color: #141418;
+}

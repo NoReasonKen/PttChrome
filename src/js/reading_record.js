@@ -146,6 +146,9 @@ export const RESTORE_TABLE = {
   'split-open': { done: NONE, cancel: NONE, fail: NONE },
   // 讀完接著讀下一篇（next_article.js）：點文末的標題卡＝同一條 startNum 換文，理由同上。
   'next-article': { done: NONE, cancel: NONE, fail: NONE },
+  // Swipe exit delegates to the existing user-navigation route; it must not
+  // restore the departing article or override the server's destination list.
+  'article-swipe-exit': { done: NONE, cancel: NONE, fail: NONE },
   // 斷線重連後回到原處（reconnect_resume.js）：落在文章 ⇒ 斷線前在文末就黏回文末，
   // 否則原列；落在列表 ⇒ 原處。找不到原文（被刪）停在該板列表 ⇒ 列表回原處。
   // 取消（使用者登入後先動了、deep link 搶先）＝不動。

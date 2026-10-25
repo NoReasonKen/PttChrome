@@ -3129,6 +3129,7 @@ ListSession.prototype = {
   _beginOpen: function() {
     const num = this._selectedNum;
     if (num == null) return;
+    this._core.articleGestures?.captureListPreview();
     this._cancelScroll(); // 同 _freezeForTransaction
     // Active last-read teaching: opening this article sets the server's
     // currtitle to its subject (bbs.c:2424) — capture it now so the return
@@ -3219,6 +3220,7 @@ ListSession.prototype = {
       this._openFailed();
       return;
     }
+    this._core.articleGestures?.captureListPreview();
     this._renderMode = 'frozen';
     this._setLoading(true);
     this._armFrozenWatchdog();
@@ -3373,6 +3375,7 @@ ListSession.prototype = {
   },
 
   _openFailed: function() {
+    this._core.articleGestures?.clearListPreview();
     // v5 contract #5: failures are visible — banner, then the reducer routes
     // opening → functionMode (native mirror).
     if (this._view.flashListHint)
@@ -3384,6 +3387,7 @@ ListSession.prototype = {
   // buffer maps are KEPT — coming back re-seeds from the server's landing
   // (suspended → clean-list → resume-buffer), no saved anchors needed (v5/M4).
   _handoffArticle: function() {
+    this._core.articleGestures?.bindListPreview();
     this._dropPendingViewport('article');
     this._holdReason = null; // context change: the article releases the hold
     this._cancelResumeProbe();
