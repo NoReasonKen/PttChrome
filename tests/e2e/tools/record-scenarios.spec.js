@@ -546,21 +546,20 @@ const SCENARIOS = {
     });
   },
 
-  // 看板列表平滑捲動（分類子清單，guest 也有）→ 跳號選一個一般看板 → Enter → 文章列表好讀
-  // → ← 回看板列表（平滑捲動重新接管）。看板號碼在準備階段試出來（不錄）。
+  // 看板列表平滑捲動（分類子清單，guest 也有）→ Enter 進一個一般看板 → 文章列表好讀
+  // → ← 回看板列表（平滑捲動重新接管）。看板在準備階段試出來，原生游標先停在它上面（不錄）：
+  // 接管時採用這個落點當選取，素材裡就不必有輸入數字跳號那一段。
   'stack-boardlist-board': async (page) => {
     const prefs = { enableBoardListSmoothScroll: true, enableEasyReading: true, enableEasyReadingList: true };
     await resetSession(page);
     await pickClassSublist(page);
     const num = await pickPlainBoard(page);
+    await jumpTo(page, num);
     await applyPrefs(page, { enableEasyReading: true, enableEasyReadingList: true });
     await waitWireQuiet(page);
     await record(page, 'stack-boardlist-board', { boardNum: num, prefs }, async () => {
       await applyPrefs(page, { enableBoardListSmoothScroll: true });
       await boardListEngaged(page);
-      for (const d of String(num)) await sendKey(page, d);
-      await sendKey(page, 'Enter');
-      await waitWireQuiet(page);
       await sendKey(page, 'Enter');
       await enteredBoardList(page);
       await sendKey(page, 'ArrowLeft');
