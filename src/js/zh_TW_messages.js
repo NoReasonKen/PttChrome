@@ -1411,6 +1411,15 @@
   "options_mobileAppBarScrollTop": {
     "message": "點手機標題列捲回頂端"
   },
+  "options_articleHorizontalGestures": {
+    "message": "文章左右滑動手勢"
+  },
+  "tooltip_articleHorizontalGestures": {
+    "message": "手機文章好讀模式中，向左滑可拉出文章捷徑。保留一般上下捲動、點擊與長按操作。"
+  },
+  "articleShortcutDrawer_title": {
+    "message": "文章捷徑"
+  },
   "tooltip_mobileAppBarScrollTop": {
     "message": "手機版面點最上面的標題，文章、列表或首頁就捲回最上面。只捲畫面，不會送任何按鍵。"
   },

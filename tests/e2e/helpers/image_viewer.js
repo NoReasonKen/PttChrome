@@ -83,8 +83,10 @@ async function bootImageArticle(page, opts = {}) {
     }
     await page.locator('#mainContainer .inlinePreviewSlot').first().evaluate((slot) => slot.scrollIntoView({ block: 'center' }));
   }
-  await waitPreviewsSettled(page);
-  await expect(page.locator(PREVIEW).first()).toBeVisible();
+  if (opts.waitForPreviews !== false) {
+    await waitPreviewsSettled(page);
+    await expect(page.locator(PREVIEW).first()).toBeVisible();
+  }
 }
 
 async function openPreviewViewer(page, { touch = false, selector = PREVIEW } = {}) {

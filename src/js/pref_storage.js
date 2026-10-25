@@ -275,6 +275,7 @@ export const DEFAULT_PREFS = {
   mobileFontSize: 16,
   // 手機 App Bar：點標題捲回頂端（app_bar_scroll_top.js）。只捲畫面、不送鍵 ⇒ 不在安全模式清單。
   mobileAppBarScrollTop: true,
+  articleHorizontalGestures: true,
   // PTT 自己畫了 '>' 游標的畫面（列表／選單）不再疊一個閃爍游標 —— 兩個游標同框是
   // 重複資訊。輸入框／編輯器不走 pttbbs 的 cursor_show，閃爍游標照舊顯示，位置資訊
   // 不會消失，所以預設開。判定見 comment_parse.js#hasServerCursorMark。
@@ -422,6 +423,7 @@ export const readValuesWithDefault = () => {
 // 圖片上傳）不在內，自動登入有自己的開關也不在內。
 export const NATIVE_SAFE_MODE_KEYS = Object.freeze([
   "enableEasyReading",
+  "articleHorizontalGestures",
   "enableEasyReadingList",
   "enableBoardListSmoothScroll",
   "enableListNativeAutoResume",

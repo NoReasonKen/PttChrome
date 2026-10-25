@@ -86,6 +86,7 @@ const COMBOS = [
   ['commentBar', 'nextArticle'],
   ['commentBar', 'nextArticle', 'articleTools', 'splitReader'],
   ['commentBar', 'nextArticle', 'articleTools', 'splitReader', 'imageViewer'],
+  ['commentBar', 'nextArticle', 'articleTools', 'splitReader', 'articleGestures'],
 ];
 
 // 視窗大小也是一維：終端機字級跟著視窗高度走，em 寫的間距與 px 寫的浮層高度在某些尺寸才

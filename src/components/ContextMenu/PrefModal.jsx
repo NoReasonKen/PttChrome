@@ -1400,6 +1400,17 @@ export const PrefModal = ({
                 {values.mobileLayout !== "off" && (
                   <>
                     <PrefCheckbox
+                      name="articleHorizontalGestures"
+                      checked={values.articleHorizontalGestures}
+                      disabled={values.nativeSafeMode}
+                      onChange={onCheckboxChange}
+                    >
+                      {i18n("options_articleHorizontalGestures")}
+                    </PrefCheckbox>
+                    <Text size="xs" c="dimmed" mb="xs">
+                      {i18n("tooltip_articleHorizontalGestures")}
+                    </Text>
+                    <PrefCheckbox
                       name="mobileAppBarScrollTop"
                       checked={values.mobileAppBarScrollTop}
                       onChange={onCheckboxChange}

@@ -1,0 +1,51 @@
+.main.articleHorizontalGestures {
+  touch-action: pan-y pinch-zoom;
+}
+
+.main.articleHorizontalGestures :is(video, audio, iframe, input, textarea, select, [contenteditable="true"]) {
+  touch-action: auto;
+}
+
+.articleDrawerRoot {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  overflow: hidden;
+  touch-action: none;
+  overscroll-behavior-y: contain;
+}
+
+.articleShortcutDrawer {
+  position: absolute;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgb(20 20 24 / 50%);
+  color: #f1f1f3;
+  border-radius: 12px 0 0 12px;
+  box-shadow: -4px 0 16px rgb(0 0 0 / 25%);
+  will-change: transform;
+}
+
+.articleShortcutDrawer button {
+  flex: 1 1 0;
+  min-height: 0;
+  border: 0;
+  border-bottom: 1px solid rgb(255 255 255 / 15%);
+  background: transparent;
+  color: inherit;
+  padding: 4px 12px;
+  font: 500 16px/1.3 system-ui, sans-serif;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.articleShortcutDrawer button:last-child {
+  border-bottom: 0;
+}
+
+.articleShortcutDrawer button:active {
+  background: rgb(255 255 255 / 12%);
+}

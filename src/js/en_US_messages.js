@@ -1412,6 +1412,15 @@ export const en_US = {
   "options_mobileAppBarScrollTop": {
     "message": "Tap the mobile title bar to scroll to top"
   },
+  "options_articleHorizontalGestures": {
+    "message": "Article horizontal gestures"
+  },
+  "tooltip_articleHorizontalGestures": {
+    "message": "In mobile article easy reading, swipe left to reveal article shortcuts. Normal vertical scrolling, taps and long presses remain available."
+  },
+  "articleShortcutDrawer_title": {
+    "message": "Article shortcuts"
+  },
   "tooltip_mobileAppBarScrollTop": {
     "message": "In the mobile layout, tapping the title at the top scrolls the article, list or home page back to the top. It only scrolls; no keys are sent."
   },

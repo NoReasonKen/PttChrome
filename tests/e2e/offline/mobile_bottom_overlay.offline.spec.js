@@ -8,6 +8,7 @@ const ptt = require('../helpers/ptt');
 const { bootOffline, waitScreenSettled } = require('../helpers/replay');
 const { bottomOverlayViolations } = require('../helpers/overlay_guard');
 const { openPreviewViewer, VIEWER } = require('../helpers/image_viewer');
+const { revealArticleDrawer, DRAWER } = require('../helpers/article_gestures');
 
 async function feed(page, map, cursor, col) {
   await page.evaluate(
@@ -77,6 +78,7 @@ async function openArticle(page, { full, imageViewer }) {
 const COMBOS = [
   [], ['nextArticle'], ['commentBar', 'nextArticle'], ['commentBarFold', 'nextArticle'],
   ['commentBarFold', 'nextArticle', 'imageViewer'],
+  ['commentBarFold', 'nextArticle', 'articleGestures'],
 ];
 
 test.describe('手機：浮層不蓋住文末', () => {
@@ -102,6 +104,11 @@ test.describe('手機：浮層不蓋住文末', () => {
           await openPreviewViewer(page, { touch: true });
           await page.getByRole('button', { name: 'Close image viewer', exact: true }).tap();
           await expect(page.locator(VIEWER)).toHaveCount(0);
+        }
+        if (combo.includes('articleGestures')) {
+          await revealArticleDrawer(page);
+          await page.keyboard.press('Escape');
+          await expect(page.locator(DRAWER)).toHaveCount(0);
         }
         expect(await bottomOverlayViolations(page)).toEqual([]);
       });

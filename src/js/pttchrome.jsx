@@ -65,6 +65,7 @@ import { isHorizontalWheel } from './swipe_gesture';
 import { isPreviewTarget } from './preview_targets';
 import { ImageUploadController, isUploadLayerTarget } from './image_upload_controller';
 import { ImageViewer } from './image_viewer';
+import { ArticleGestures } from './article_gestures';
 import { HomeDashboard, isHomeDashboardTarget } from './home_dashboard';
 import { MessageInbox, isMessageInboxTarget } from './message_inbox';
 import { NewComments } from './new_comments';
@@ -359,6 +360,7 @@ export const App = function() {
   //   _busy           ：手機 App Bar 的等待進度條（mobile_busy.js），唯一寫入點 _busyEvent。
   this._busy = BUSY_IDLE;
   this._busyListeners = new Set();
+  this.articleGestures = new ArticleGestures(this);
 
   this.waterball = { userId: '', message: '' };
   this.appFocused = true;
@@ -618,6 +620,7 @@ App.prototype.onData = function(data) {
 };
 
 App.prototype.onClose = function() {
+  this.articleGestures?.close(true);
   console.info("pttchrome onClose");
   this.imageViewer?.close();
   this.debugRecorder?.log('app.onClose');
@@ -2103,6 +2106,9 @@ App.prototype.onPrefChange = function(name, value) {
       break;
     case 'enableOpenCache':
       applyOpenCache(value);
+      break;
+    case 'articleHorizontalGestures':
+      this.articleGestures?.update();
       break;
     case 'mobileLayout':
       this.mobileLayoutMode = value;
