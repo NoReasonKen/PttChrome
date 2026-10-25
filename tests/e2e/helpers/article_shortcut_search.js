@@ -47,11 +47,11 @@ async function bootShortcutSearch(page, options = {}) {
           rows[23] = '搜尋作者: ';
           cursor = [24, 11];
         } else if (state.surface === 'empty') {
-          rows[22] = '找不到符合條件的文章。';
-          rows[23] = '請按任意鍵繼續';
+          rows[23] = ' ◆ 找不到符合條件的文章。 [按任意鍵繼續]';
           cursor = [24, 1];
         } else if (state.surface === 'missing') {
           rows[22] = '找不到這個文章代碼(AID)，可能是文章已消失，或是你找錯看板了';
+          rows[23] = '請按任意鍵繼續';
           cursor = [24, 1];
         }
       }
@@ -67,6 +67,7 @@ async function bootShortcutSearch(page, options = {}) {
       if (command === 'Q') state.surface = 'info';
       else if (command === ' ' && state.surface === 'info') state.surface = 'list';
       else if (command === ' ' && state.surface === 'empty') state.surface = 'list';
+      else if (command === ' ' && state.surface === 'missing') state.surface = 'list';
       else if (command === '\x1b[D') {
         if (state.surface === 'source' || state.surface === 'child') state.surface = 'list';
         else if (state.filtered) state.filtered = false;

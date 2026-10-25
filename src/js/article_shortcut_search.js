@@ -1,5 +1,5 @@
 import { searchGateFacts, buildSearchSteps } from './article_search';
-import { SLOW_STEP_BUDGET, isSubListTitle } from './aid_navigation';
+import { SLOW_STEP_BUDGET, isSubListTitle, AID_NOT_FOUND_RE } from './aid_navigation';
 import { isArticleListFooter, isSubListFooter } from './screen_captions';
 import { parseBoardName } from './screen_titles';
 import { serializedOpHint } from './serialized_op_gate';
@@ -8,7 +8,7 @@ import { i18n } from './i18n';
 
 const sameBoard = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 const MESSAGE = /找不到符合條件的文章|搜尋服務異常|已達搜尋條件上限/;
-const PRESS_ANY_KEY = /請按任意鍵繼續|請按 空白鍵 繼續/;
+const PRESS_ANY_KEY = /(?:請)?按任意鍵繼續|請按 空白鍵 繼續/;
 
 function boardList(facts, board) {
   const rows = facts?.rowTexts || [];
@@ -66,25 +66,25 @@ export class ArticleShortcutSearch {
       onFail: fail,
       onDone: (info, meta) => {
         if (!info?.aid || !sameBoard(info.board, origin.board)) {
-          if (meta.boxOpen) this._dismissInfo(origin, () => this._fail('articleShortcutSearch_missing'));
+          if (meta.boxOpen) this._dismissToList(origin, () => this._fail('articleShortcutSearch_missing'));
           else this._fail('articleShortcutSearch_missing');
           return;
         }
         origin.aid = info.aid;
         const select = () => {
           if (!core.aidNavigation.selectArticle(origin.board, origin.aid, result => {
-            if (!result.ok) return this._fail('articleShortcutSearch_missing');
+            if (!result.ok) return this._stopMissing(origin);
             this._query(origin);
           })) this._fail();
         };
-        if (meta.boxOpen) this._dismissInfo(origin, select);
+        if (meta.boxOpen) this._dismissToList(origin, select);
         else select();
       }
     });
     return true;
   }
 
-  _dismissInfo(origin, done) {
+  _dismissToList(origin, done) {
     this._enqueue({
       keys: ' ',
       kind: 'shortcut-dismiss-info',
@@ -114,15 +114,15 @@ export class ArticleShortcutSearch {
       ...steps[1],
       kind: 'shortcut-author-submit',
       expect: (snapshot, facts) => {
-        const text = facts.rowTexts.join('\n');
-        if (MESSAGE.test(text)) return { empty: true, dismiss: PRESS_ANY_KEY.test(text) };
+        const last = facts.rowTexts[facts.rows - 1] || '';
+        // vmsg prints this known result on the input row and waits for a key,
+        // even when its floating pause label does not fit the terminal width.
+        if (facts.curY === facts.rows - 1 && MESSAGE.test(last)) return { empty: true };
         return resultList(facts, origin.board) ? { results: true } : false;
       },
       onDone: result => {
         if (result.empty) {
-          const restore = () => this._restore(origin, 'articleShortcutSearch_empty');
-          if (result.dismiss) this._dismissInfo(origin, restore);
-          else restore();
+          this._dismissToList(origin, () => this._restore(origin, 'articleShortcutSearch_empty'));
           return;
         }
         this.route = { origin, phase: 'results', query: { kind: 'author', value: origin.author } };
@@ -154,9 +154,22 @@ export class ArticleShortcutSearch {
     if (!this.core.aidNavigation.startResume({
       kind: 'article', board: origin.board, aid: origin.aid, bookmark
     }, result => {
+      if (!result.ok) return this._stopMissing(origin);
       this._finish();
-      this._hint(result.ok ? notice : 'articleShortcutSearch_missing');
+      this._hint(notice);
     })) this._fail();
+  }
+
+  _stopMissing(origin) {
+    const facts = searchGateFacts(this.core);
+    const rows = facts?.rowTexts || [];
+    const paused = PRESS_ANY_KEY.test(rows[facts?.rows - 1] || '') &&
+      AID_NOT_FOUND_RE.test(rows[facts?.rows - 2] || '') &&
+      sameBoard(parseBoardName(rows[0]), origin.board);
+    // Failed #AID pauses above the list; leave that known message before
+    // handing control back, never press Enter on the replacement selection.
+    if (paused) this._dismissToList(origin, () => this._fail('articleShortcutSearch_missing'));
+    else this._fail('articleShortcutSearch_missing');
   }
 
   _finish() {
