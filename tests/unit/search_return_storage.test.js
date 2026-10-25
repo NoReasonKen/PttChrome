@@ -31,11 +31,16 @@ function app(rows = FULL_LIST) {
       addEventListener() {}
     },
     view: { flashListHint: vi.fn() },
-    conn: { isConnected: true }
+    conn: { isConnected: true },
+    // A claimed Back starts rebuilding the results by selecting the source.
+    aidNavigation: { selectArticle: vi.fn(() => true) },
+    commandQueue: { enqueue: vi.fn() }
   };
   core.articleShortcutSearch = new ArticleShortcutSearch(core);
   const hints = () => core.view.flashListHint.mock.calls.map((call) => call[0]);
-  return { core, search: core.articleShortcutSearch, hints };
+  // Whether the reader's Back on this full board list belongs to the route.
+  const routeOwnsBack = () => core.articleShortcutSearch.handleBack(new KeyboardEvent("keydown", { key: "ArrowLeft" }));
+  return { core, search: core.articleShortcutSearch, hints, routeOwnsBack };
 }
 
 // The previous page was on A's results when the reader closed it.
@@ -63,41 +68,46 @@ test("a route stored within twelve hours waits for its resume plan and is restor
   vi.useFakeTimers({ now: Date.UTC(2026, 9, 25, 8) });
   closePageOnResults();
   vi.setSystemTime(Date.now() + SEARCH_RETURN_MAX_AGE_MS);
-  const { search, hints } = app();
+  const { search, hints, routeOwnsBack } = app();
   // Read once: a second startup finds nothing.
   expect(window.localStorage.getItem(SEARCH_RETURN_KEY)).toBeNull();
   search.restoreForRecovery(LIST_PLAN);
   search.recoveryEnded(LIST_PLAN, { ok: true });
   expect(hints()).toEqual([i18n("articleShortcutSearch_recovered")]);
+  // Back from the full board list rebuilds the stored origin's results.
+  expect(routeOwnsBack()).toBe(true);
 });
 
 test("an expired route is discarded silently at startup", () => {
   vi.useFakeTimers({ now: Date.UTC(2026, 9, 25, 8) });
   closePageOnResults();
   vi.setSystemTime(Date.now() + SEARCH_RETURN_MAX_AGE_MS + 1);
-  const { search, hints } = app();
+  const { search, hints, routeOwnsBack } = app();
   search.restoreForRecovery(LIST_PLAN);
   search.recoveryEnded(LIST_PLAN, { ok: true });
   expect(hints()).toEqual([]);
-  expect(search.route).toBeNull();
+  expect(routeOwnsBack()).toBe(false);
 });
 
 test("a stored route without its resume plan stays inactive with an explanation", () => {
   closePageOnResults();
-  const { search, hints } = app();
+  const { search, hints, routeOwnsBack } = app();
   search.restoreForRecovery(null);
   search.recoveryEnded(LIST_PLAN, { ok: true });
   expect(hints()).toEqual([i18n("articleShortcutSearch_recoveryInactive")]);
-  expect(search.route).toBeNull();
+  expect(routeOwnsBack()).toBe(false);
 });
 
 test("a resume that lands somewhere else leaves the route inactive with an explanation", () => {
   closePageOnResults();
-  const { search, hints } = app({ 0: "【主功能表】", 23: "" });
+  const rows = { 0: "【主功能表】", 23: "" };
+  const { search, hints, routeOwnsBack } = app(rows);
   search.restoreForRecovery(LIST_PLAN);
   search.recoveryEnded(LIST_PLAN, { ok: true });
   expect(hints()).toEqual([i18n("articleShortcutSearch_recoveryInactive")]);
-  expect(search.route).toBeNull();
+  // Even once the reader reaches the board list, a matching name never reattaches it.
+  Object.assign(rows, FULL_LIST);
+  expect(routeOwnsBack()).toBe(false);
 });
 
 test("a user board switch before closing the page removes the stored route", () => {
