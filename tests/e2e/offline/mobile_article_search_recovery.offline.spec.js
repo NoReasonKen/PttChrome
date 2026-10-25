@@ -4,6 +4,7 @@ const {
   bootNestedShortcutSearch, nestedSessionAfterLogin, nativeBack, visibleText, waitArticle, waitList, readToMiddle, topLine, tapShortcut
 } = require('../helpers/article_shortcut_search');
 const { waitConnected } = require('../helpers/replay');
+const { pauseClockNow } = require('../helpers/clock');
 const ptt = require('../helpers/ptt');
 
 // Search return history through interruption (docs/article-swipe-drawer-spec.md): the
@@ -113,7 +114,7 @@ test('canceling the resume after a reload explains that the route stays inactive
   await page.clock.install();
   await page.reload();
   await waitConnected(page);
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 100));
+  await pauseClockNow(page);
   await nestedSessionAfterLogin(page);
   await page.clock.runFor(1000);
   await page.locator('#resumeLastPlace button').tap();
