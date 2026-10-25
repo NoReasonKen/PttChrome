@@ -17,6 +17,12 @@ const LIST_BACK_KEYS = ['ArrowLeft', 'q', 'e'];
 const ARTICLE_BACK_KEYS = ['ArrowLeft', 'q'];
 const keep = route => route;
 
+// The parsed identity of the article header on screen: { board, author, title }.
+export function articleIdentity(core) {
+  const view = core.view;
+  return { board: view._articleBoard, author: view._articleAuthor, title: view._articleTitle };
+}
+
 // Local device state, deliberately outside the preference document: it is
 // never exported or synchronized to the cloud.
 export const SEARCH_RETURN_KEY = 'pttchrome.searchReturn.v1';
@@ -89,17 +95,15 @@ export class ArticleShortcutSearch {
 
   start(kind = 'author') {
     const core = this.core;
-    const view = core.view;
+    const article = articleIdentity(core);
     if (!['author', 'thread'].includes(kind) || serializedOpHint(core) || core.modalShown ||
         !core.conn?.isConnected || core.buf.pageState !== 3 ||
-        !view._articleBoard || (kind === 'author' ? !view._articleAuthor : !view._articleTitle)) return false;
+        !article.board || (kind === 'author' ? !article.author : !article.title)) return false;
     // The route is board-scoped; an article elsewhere starts a new one.
-    if (this.route && !sameBoard(this.route.board, view._articleBoard)) this.route = null;
+    if (this.route && !sameBoard(this.route.board, article.board)) this.route = null;
     const origin = {
-      board: view._articleBoard,
-      author: view._articleAuthor,
-      title: view._articleTitle,
-      query: { kind, value: kind === 'author' ? view._articleAuthor : view._articleTitle },
+      ...article,
+      query: { kind, value: kind === 'author' ? article.author : article.title },
       position: recordFor(core).begin('article-shortcut-search')
     };
     this.pending = origin;
@@ -210,11 +214,11 @@ export class ArticleShortcutSearch {
       this._reopen(step.origin, 'articleShortcutSearch_returned', returned);
       return true;
     }
-    const view = core.view;
     const at = this.route.at;
+    const article = this._currentArticle();
     const here = this.route.phase === 'reopened'
-      ? core.buf.pageState === 3 && ARTICLE_BACK_KEYS.includes(event.key) && sameBoard(view._articleBoard, board) &&
-        !!at && view._articleAuthor === at.author && view._articleTitle === at.title
+      ? !!article && ARTICLE_BACK_KEYS.includes(event.key) && sameBoard(article.board, board) &&
+        !!at && article.author === at.author && article.title === at.title
       : this._listShown(board) === 'full' && LIST_BACK_KEYS.includes(event.key);
     if (!here) return false;
     // Rebuilding results selects the newest entry; never reopen an article
@@ -305,10 +309,8 @@ export class ArticleShortcutSearch {
 
   _screen() {
     const core = this.core;
-    const view = core.view;
-    if (core.buf.pageState === 3) {
-      return { kind: 'article', board: view._articleBoard, author: view._articleAuthor, title: view._articleTitle };
-    }
+    const article = this._currentArticle();
+    if (article) return { kind: 'article', ...article };
     if (core.buf.pageState === 1) return { kind: 'menu' };
     const facts = searchGateFacts(core);
     const board = parseBoardName(facts?.rowTexts[0]);
@@ -350,10 +352,7 @@ export class ArticleShortcutSearch {
   // entry) never reach the suspended route; only the plan's outcome does.
 
   _currentArticle() {
-    const view = this.core.view;
-    return this.core.buf.pageState === 3
-      ? { board: view._articleBoard, author: view._articleAuthor, title: view._articleTitle }
-      : null;
+    return this.core.buf.pageState === 3 ? articleIdentity(this.core) : null;
   }
 
   // The connection closed after login; `plan` is where reconnection returns.

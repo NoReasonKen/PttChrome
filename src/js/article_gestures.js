@@ -5,6 +5,7 @@ import { serializedOpHint } from './serialized_op_gate';
 import { ArticleHorizontalGesture, ARTICLE_SETTLE_MS } from './article_horizontal_gesture';
 import { ArticleExitPreview } from './article_exit_preview';
 import { recordFor } from './reading_record';
+import { articleIdentity } from './article_shortcut_search';
 import '../css/article_gestures.css';
 
 const MODAL_SOURCE = 'articleShortcutDrawer';
@@ -75,8 +76,8 @@ export class ArticleGestures {
     this.exitPreview.update();
     const available = this.available();
     this.core.view.mainDisplay.classList.toggle('articleHorizontalGestures', available);
-    const view = this.core.view;
-    const identity = [view._articleBoard, view._articleAuthor, view._articleTitle, this.core.easyReading?._articleKey].join('\n');
+    const { board, author, title } = articleIdentity(this.core);
+    const identity = [board, author, title, this.core.easyReading?._articleKey].join('\n');
     if (!available || (this.identity && identity !== this.identity)) this.close(true);
     this.identity = identity;
   }
