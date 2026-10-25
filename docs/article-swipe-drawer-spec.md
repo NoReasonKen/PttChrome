@@ -1,6 +1,6 @@
 # Article Shortcut Drawer and Swipe Exit
 
-Status: design interview decisions recorded; awaiting final owner review. This document does not authorize implementation. Source evidence and implementation constraints are in [the feasibility research](article-swipe-drawer-research.md).
+Status: owner-approved specification and test approach, published as [issue #11](https://github.com/NoReasonKen/PttChrome/issues/11), with six implementation slices tracked as its native sub-issues. Publication does not start implementation. Source evidence and implementation constraints are in [the feasibility research](article-swipe-drawer-research.md).
 
 ## Scope and actions
 

@@ -4,7 +4,7 @@
 
 A finger-following right drawer is feasible in the shared web application. The original drawer alone is moderate work; the agreed feature also includes article swipe-exit rendering and persistent chained-search return, which add navigation and lifecycle integration. No additional dependency or Android bridge has been established as necessary. This is a source-based assessment, not a prototype, device validation, or performance measurement.
 
-The [product specification](article-swipe-drawer-spec.md) is the single source for confirmed interaction decisions. It awaits final owner review and does not authorize implementation.
+The owner-approved [product specification](article-swipe-drawer-spec.md) records confirmed interaction decisions. The formal specification and its six implementation slices are published under [issue #11](https://github.com/NoReasonKen/PttChrome/issues/11). Publication does not start implementation.
 
 ## Reusable foundations
 
