@@ -79,7 +79,7 @@ export class ArticleExitPreview {
     heading.style.height = (title?.getBoundingClientRect().height || viewport.top) + 'px';
     const fragment = document.createDocumentFragment();
     fragment.append(heading, root);
-    this.pending = { board, fragment, width: window.innerWidth, height: window.innerHeight };
+    this.pending = { board, fragment, width: window.innerWidth };
   }
 
   enterArticle() {
@@ -97,8 +97,16 @@ export class ArticleExitPreview {
   appendTo(underlay) {
     this.update();
     const preview = this.current;
-    if (!preview || preview.width !== window.innerWidth || preview.height !== window.innerHeight) return false;
-    underlay.appendChild(preview.fragment.cloneNode(true));
+    // Rows wrap and scale with the width, so a width change (rotation) leaves
+    // no matching list. Height alone changes as mobile browsers show or hide
+    // their address bar; the copy stays valid and is clipped to the current
+    // list viewport.
+    if (!preview || preview.width !== window.innerWidth) return false;
+    const copy = preview.fragment.cloneNode(true);
+    const viewport = this.core.view.mainDisplay.getBoundingClientRect();
+    const list = copy.querySelector('.articleExitListPreview');
+    if (list && viewport.height) list.style.height = viewport.height + 'px';
+    underlay.appendChild(copy);
     return true;
   }
 

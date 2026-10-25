@@ -76,7 +76,7 @@ test('resizing during the accepted exit animation cancels navigation and restore
   await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
 });
 
-test('entering from a real list preserves only a bounded inert matching preview and exits to that list', async ({ page }, testInfo) => {
+async function enterArticleFromList(page) {
   const nav = loadCassette('cchat-list-nav');
   await bootOffline(page, ptt, { articleGestures: true });
   await ptt.applyPrefs(page, {
@@ -96,6 +96,10 @@ test('entering from a real list preserves only a bounded inert matching preview 
   await expect(page.locator('#mainContainer .listBodyView')).toBeVisible();
   await page.locator('.listCard[data-list-author="kylin936"] .listCardBody').first().tap();
   await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
+}
+
+test('entering from a real list preserves only a bounded inert matching preview and exits to that list', async ({ page }, testInfo) => {
+  await enterArticleFromList(page);
   const sentBefore = await page.evaluate(() => window.__replay.sent.length);
   const main = await waitRectStable(page, '.main');
   const y = main.top + 100;
@@ -112,4 +116,37 @@ test('entering from a real list preserves only a bounded inert matching preview 
   await expect(page.locator('#mainContainer .listBodyView')).toBeVisible();
   const outgoing = await page.evaluate(n => window.__replay.sent.slice(n).join(''), sentBefore);
   expect(outgoing.match(/\x1b\[D/g) || []).toHaveLength(1);
+});
+
+test('browser bar height changes keep the matching list preview, while a width change discards it', async ({ page }, testInfo) => {
+  await enterArticleFromList(page);
+  const { width, height } = page.viewportSize();
+  const underlay = page.locator('[data-article-exit-underlay]');
+  const dragToPreview = async () => {
+    const main = await waitRectStable(page, '.main');
+    const y = main.top + 100;
+    const contact = await beginArticleTouch(page, { x: 20, y });
+    await contact.move({ x: 200, y });
+    return contact;
+  };
+
+  // Mobile browsers show and hide their address bar while the article scrolls.
+  for (const change of [-56, 56]) {
+    await page.setViewportSize({ width, height: height + change });
+    await nextFrames(page, 4);
+    const contact = await dragToPreview();
+    await expect(underlay).toHaveAttribute('data-preview', 'list');
+    await expect(underlay.locator('.articleExitListTitle')).toHaveText('C_Chat');
+    if (change < 0) await page.screenshot({ path: testInfo.outputPath('article-exit-preview-after-resize.png') });
+    await contact.release({ cancel: true });
+    await expect(underlay).toHaveCount(0);
+  }
+
+  // Rotation re-lays out the list, so the old copy no longer matches it.
+  await page.setViewportSize({ width: width - 52, height });
+  await nextFrames(page, 4);
+  const contact = await dragToPreview();
+  await expect(underlay).toHaveAttribute('data-preview', 'fallback');
+  await contact.release({ cancel: true });
+  await expect(underlay).toHaveCount(0);
 });
