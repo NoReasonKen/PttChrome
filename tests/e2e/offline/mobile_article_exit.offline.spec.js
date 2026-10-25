@@ -64,23 +64,20 @@ test('entering from a real list preserves only a bounded inert matching preview 
   await bootOffline(page, ptt, { articleGestures: true });
   await ptt.applyPrefs(page, {
     enableEasyReading: true,
-    enableEasyReadingList: true,
-    easyReadingListPrefetchCount: 0,
+    enableEasyReadingList: false,
     useMouseBrowsing: true,
     mouseLeftClick: true,
   });
-  await replayListCassette(page, {
-    ...nav,
-    steps: [
-      { ...nav.steps[5], on: 'start' },
-      nav.steps[5],
-      nav.steps[6],
-      nav.steps[7],
-    ],
+  await replayListCassette(page, nav);
+  await page.waitForFunction(() => window.__app.buf.pageState === 2);
+  await ptt.applyPrefs(page, {
+    enableEasyReadingList: true,
+    easyReadingListPrefetchCount: 200,
   });
+  await page.waitForFunction(() => window.__app.listSession.state === 'active' &&
+    window.__app.commandQueue.idle && window.__app.buf.listLines.length > 50);
   await expect(page.locator('#mainContainer .listBodyView')).toBeVisible();
-  await page.locator('#t').focus();
-  await page.keyboard.press('Enter');
+  await page.locator('.listCard[data-list-author="kylin936"] .listCardBody').first().tap();
   await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
   const sentBefore = await page.evaluate(() => window.__replay.sent.length);
   const main = await waitRectStable(page, '.main');
