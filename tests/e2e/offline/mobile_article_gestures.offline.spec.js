@@ -108,6 +108,23 @@ for (const target of ['backdrop', '[']) {
   });
 }
 
+// On Android, a tap that stops native momentum left by the opening drag gets
+// no click; the browser keeps only the pointer and touch events.
+for (const target of ['backdrop', '[']) {
+  test(`a ${target} tap the browser gives no click still responds once`, async ({ page }) => {
+    await bootGestureArticle(page);
+    const point = await flingOpenDrawer(page);
+    await page.evaluate(() => window.addEventListener('click', event => event.stopImmediatePropagation(), true));
+    if (target !== 'backdrop') {
+      const button = await waitRectStable(page, `[data-article-shortcut="${target}"]`);
+      Object.assign(point, { x: button.left + button.width / 2, y: button.top + button.height / 2 });
+    }
+    await page.touchscreen.tap(point.x, point.y);
+    await expect(page.locator(DRAWER)).toHaveCount(0);
+    await expect.poll(() => gestureSent(page)).toBe(target === 'backdrop' ? '' : target);
+  });
+}
+
 for (const side of ['left', 'above', 'below']) {
   test(`the first fresh ${side} backdrop tap during drawer opening dismisses it without navigation`, async ({ page }) => {
     await bootGestureArticle(page);
@@ -235,3 +252,18 @@ for (const imageProfile of ['slow', 'broken', 'mixed']) {
     expect(await gestureSent(page)).toBe('');
   });
 }
+
+test('a debug recording traces each contact, click and settle of the drawer', async ({ page }) => {
+  await bootGestureArticle(page);
+  await page.evaluate(() => {
+    window.__diag = [];
+    window.__app.debugRecorder = { isRecording: true, log: (tag, info) => window.__diag.push({ tag, ...info }) };
+  });
+  await tapDuringOpening(page, '[data-article-shortcut="["]');
+  await expect.poll(() => gestureSent(page)).toBe('[');
+  const trace = await page.evaluate(() => window.__diag.filter(e => e.tag.startsWith('articleGestures.')));
+  const names = trace.map(e => e.tag.slice('articleGestures.'.length));
+  expect(names).toEqual(expect.arrayContaining(['pointerdown', 'settle', 'tapUp']));
+  expect(trace.find(e => e.tag === 'articleGestures.settle')).toMatchObject({ to: 'opening' });
+  expect(trace.find(e => e.tag === 'articleGestures.tapUp')).toMatchObject({ target: 'shortcut:[', action: '[' });
+});

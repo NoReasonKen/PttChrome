@@ -2,7 +2,7 @@ import { readEffectivePrefs } from './pref_storage';
 import { mobileToolbarContext } from './mobile_toolbar';
 import { i18n } from './i18n';
 import { serializedOpHint } from './serialized_op_gate';
-import { ArticleHorizontalGesture, ARTICLE_SETTLE_MS } from './article_horizontal_gesture';
+import { ArticleHorizontalGesture, ARTICLE_GESTURE_SLOP, ARTICLE_SETTLE_MS } from './article_horizontal_gesture';
 import { NavigationStack } from './navigation_stack';
 import { OWNER_ARTICLE_LIST } from './list_render_owner';
 import { recordFor } from './reading_record';
@@ -24,6 +24,18 @@ const DRAWER_WIDTH = 0.75;
 const DRAWER_HEIGHT = 0.6;
 const DRAWER_TOP = (1 - DRAWER_HEIGHT) / 2;
 
+// What a debug recording names an event's target by.
+function diagTarget(target) {
+  const el = target?.nodeType === 1 ? target : target?.parentElement;
+  if (!el) return null;
+  const shortcut = el.closest('[data-article-shortcut]');
+  if (shortcut) return 'shortcut:' + shortcut.getAttribute('data-article-shortcut');
+  if (el.matches('[data-article-drawer]')) return 'backdrop';
+  if (el.closest('.articleShortcutDrawer')) return 'panel';
+  if (el.closest('.main')) return 'article';
+  return el.tagName.toLowerCase();
+}
+
 const settleDuration = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ARTICLE_SETTLE_MS;
 
 // Own the contact outside the portal so mounting/focus changes cannot lose it.
@@ -38,6 +50,7 @@ export class ArticleGestures {
     this.frame = null;
     this.timer = null;
     this.suppressClickUntil = 0;
+    this.tap = null;
     this.listeners = [];
     this.stack = new NavigationStack(core);
     this._listen(window, 'pointerdown', event => this._start(event), true);
@@ -50,12 +63,15 @@ export class ArticleGestures {
     this._listen(window, 'pointerup', event => this._end(event), true);
     this._listen(window, 'pointercancel', event => this._end(event, true), true);
     this._listen(window, 'click', event => {
-      if (performance.now() < this.suppressClickUntil) this._consume(event);
+      if (performance.now() >= this.suppressClickUntil) return;
+      this._consume(event);
+      this._diag('clickSuppressed', event);
     }, true);
     this._listen(window, 'contextmenu', event => {
       if (this.track?.gesture.operation || this.opened) this._consume(event);
     }, true);
     this._listen(window, 'keydown', event => this._key(event), true);
+    this._diagInput();
     this._listen(window, 'resize', () => this._resize());
     if (window.visualViewport) this._listen(window.visualViewport, 'resize', () => this._resize());
     this._refresh = () => this.update();
@@ -63,6 +79,49 @@ export class ArticleGestures {
     core.buf.addEventListener('screenSettled', this._refresh);
     this.unsubscribeMobile = core.onMobileChange(this._refresh);
     this.update();
+  }
+
+  // A debug recording keeps what each contact and click on the drawer met, so
+  // a tap that does nothing on a device can be traced (taps right after the
+  // drawer opens). Listeners run after the ones above, so states are after
+  // handling.
+  _diagInput() {
+    let contact = null;
+    const drawerInput = () => this.root || this.track;
+    for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'touchstart', 'touchend', 'touchcancel', 'click']) {
+      this._listen(window, type, event => {
+        if (type === 'touchstart' && event.touches.length === 1) contact = { uncancelable: false, scrolled: false };
+        if (drawerInput()) this._diag(type, event);
+      }, true);
+    }
+    // Native scrolling that took the contact over leaves later moves
+    // uncancelable; record the first such move and scroll of each contact.
+    this._listen(window, 'touchmove', event => {
+      if (!contact || contact.uncancelable || event.cancelable || !drawerInput()) return;
+      contact.uncancelable = true;
+      this._diag('touchmoveUncancelable', event);
+    }, { capture: true, passive: true });
+    this._listen(window, 'scroll', event => {
+      if (!contact || contact.scrolled || !drawerInput()) return;
+      contact.scrolled = true;
+      this._diag('scroll', event);
+    }, { capture: true, passive: true });
+  }
+
+  _diag(name, event, info) {
+    const rec = this.core.debugRecorder;
+    if (!rec?.isRecording) return;
+    const now = performance.now();
+    rec.log('articleGestures.' + name, {
+      t: Math.round(event?.timeStamp ?? now),
+      target: event ? diagTarget(event.target) : null,
+      cancelable: event?.cancelable, prevented: event?.defaultPrevented,
+      primary: event?.isPrimary, pointer: event?.pointerType,
+      state: this.root?.dataset.state || null, settling: !!this.settling, opened: this.opened,
+      suppressMs: Math.max(0, Math.round(this.suppressClickUntil - now)),
+      operation: this.track?.gesture.operation || null,
+      ...info
+    });
   }
 
   _listen(target, type, listener, options) {
@@ -377,6 +436,25 @@ export class ArticleGestures {
         this.close();
       }
     });
+    // A tap acts when the finger lifts: on Android, a tap that stops native
+    // momentum left by the opening drag gets no click. A click that still
+    // follows is suppressed; keyboard activation keeps the click handlers.
+    this.root.addEventListener('pointerdown', event => {
+      this.tap = event.pointerType === 'mouse' ? null : { id: event.pointerId, x: event.clientX, y: event.clientY, target: event.target };
+    });
+    this.root.addEventListener('pointerup', event => {
+      const tap = this.tap;
+      this.tap = null;
+      if (!tap || tap.id !== event.pointerId) return;
+      if (Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > ARTICLE_GESTURE_SLOP) return;
+      const button = tap.target.closest?.('[data-article-shortcut]');
+      if (button ? !button.contains(event.target) : tap.target !== this.root || event.target !== this.root || this.settling) return;
+      this._consume(event);
+      this.suppressClickUntil = performance.now() + 400;
+      this._diag('tapUp', event, { action: button?.getAttribute('data-article-shortcut') || null });
+      if (button) this._runShortcut(ACTIONS.find(action => action.key === button.getAttribute('data-article-shortcut')));
+      else this.close();
+    });
     this.panel = document.createElement('div');
     this.panel.className = 'articleShortcutDrawer';
     this.panel.setAttribute('role', 'dialog');
@@ -391,12 +469,8 @@ export class ArticleGestures {
       button.textContent = i18n(action.label);
       button.addEventListener('click', event => {
         this._consume(event);
-        if (!this.opened || this.settling || !this.available()) return;
-        this.close(true);
-        if (!mobileToolbarContext(this.core).threadNav) return;
-        this.core.noteUserAction();
-        if (action.key === 'author' || action.key === 'thread') this.core.articleShortcutSearch.start(action.key);
-        else this.core.view.sendKeyAsUser(action.key);
+        this._diag('shortcutClick', event, { action: action.key });
+        this._runShortcut(action);
       });
       this.panel.appendChild(button);
     }
@@ -405,6 +479,16 @@ export class ArticleGestures {
     this._geometry();
     this._paint(0);
     this.unregisterDismiss = this.core.registerSheetDismiss(() => this.close());
+  }
+
+  _runShortcut(action) {
+    const gate = !this.opened ? 'closed' : this.settling ? 'settling' : !this.available() ? 'unavailable' : null;
+    if (gate) return this._diag('shortcutRefused', null, { action: action.key, gate });
+    this.close(true);
+    if (!mobileToolbarContext(this.core).threadNav) return;
+    this.core.noteUserAction();
+    if (action.key === 'author' || action.key === 'thread') this.core.articleShortcutSearch.start(action.key);
+    else this.core.view.sendKeyAsUser(action.key);
   }
 
   _geometry() {
@@ -431,6 +515,7 @@ export class ArticleGestures {
     this.opened = opened;
     this.settling = true;
     this.root.dataset.state = opened ? 'opening' : 'closing';
+    this._diag('settle', null, { to: this.root.dataset.state });
     // Keep opening buttons as touch targets; their click handlers remain gated
     // until settling finishes or a fresh contact completes it early.
     this.panel.inert = !opened;
@@ -446,6 +531,7 @@ export class ArticleGestures {
     if (!opened) this._remove();
     else {
       this.root.dataset.state = 'open';
+      this._diag('settle', null, { to: 'open' });
       this.panel.style.transition = '';
       this.panel.inert = false;
       this.panel.querySelector('button').focus({ preventScroll: true });
