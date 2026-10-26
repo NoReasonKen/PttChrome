@@ -13,6 +13,7 @@ import { StackListLayer } from './stack_list_layer';
 import { EMPTY_TOOLBAR_CONTEXT } from './mobile_toolbar';
 import { searchGateFacts } from './article_search';
 import { isSearchResultsFrame } from './search_results_screen';
+import { readSearchResultsContext } from './search_results_context';
 
 // Input on a usable layer stays on the layer; nothing reaches the terminal.
 const LOCAL_INPUT = ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'click', 'contextmenu', 'dblclick'];
@@ -39,9 +40,11 @@ export class ArticleStack {
     const core = this.core;
     const board = core.listSession?._boardName;
     if (!core.mobile || !board) return;
-    // Search results stack with their own return route later (#33).
+    // Search results stack with their own return route later (#33). The legacy
+    // caption is also an ordinary list's; it means results only after a
+    // verified search on this board.
     const facts = searchGateFacts(core);
-    if (facts && isSearchResultsFrame(facts, board)) return;
+    if (facts && isSearchResultsFrame(facts, board, !!readSearchResultsContext(core, board))) return;
     const layer = StackListLayer.capture(core.view);
     if (!layer) return;
     // The list's own toolbar, shown without actions while it is only revealed.
