@@ -26,12 +26,13 @@ export class StackHomeLayer {
   constructor(core, home, real) {
     this.width = window.innerWidth;
     this.parent = core.view.mainDisplay.parentNode;
-    // A zero-size stacking context above the real dashboard (z-index 140), so
-    // the real one can never cover this copy before the swap.
+    // Beside the terminal's surfaces, under the page that slides away from it.
+    // The real dashboard sits above the terminal, so it is held hidden while
+    // this copy is shown (`stackHoldHome`).
     this.el = document.createElement('div');
     this.el.setAttribute('aria-hidden', 'true');
     this.el.inert = true;
-    Object.assign(this.el.style, { position: 'fixed', left: '0', top: '0', width: '0', height: '0', zIndex: '145' });
+    Object.assign(this.el.style, { position: 'fixed', left: '0', top: '0', width: '0', height: '0', zIndex: '2' });
     const view = {
       get state() {
         return { ...home.state, visible: true };
@@ -60,12 +61,14 @@ export class StackHomeLayer {
       this.parent.appendChild(this.el);
       if (this.root) applyHomeAnchor(this.root, this.anchor);
     }
+    document.body.classList.add('stackHoldHome');
     this.el.inert = !usable;
     this.el.removeAttribute('aria-hidden');
     if (!usable) this.el.setAttribute('aria-hidden', 'true');
   }
 
   hide() {
+    if (this.el.isConnected) document.body.classList.remove('stackHoldHome');
     this.el.remove();
     this.el.inert = true;
     this.el.setAttribute('aria-hidden', 'true');
