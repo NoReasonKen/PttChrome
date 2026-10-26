@@ -50,9 +50,14 @@ function readSnapshot() {
   try {
     const raw = window.localStorage.getItem(SNAPSHOT_KEY);
     window.localStorage.removeItem(SNAPSHOT_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return { snapshot: null, status: 'missing' };
+    try {
+      return { snapshot: JSON.parse(raw), status: 'read' };
+    } catch (e) {
+      return { snapshot: null, status: 'invalid-json' };
+    }
   } catch (e) {
-    return null;
+    return { snapshot: null, status: 'storage-error' };
   }
 }
 
@@ -130,6 +135,10 @@ export function ReconnectResume(core, view, termBuf) {
   this._termBuf = termBuf;
   // resumePlanFrom 的輸出 | null。
   this._pending = null;
+  // Keep startup decisions available when recording begins after login. This
+  // bounded, in-memory history contains no article text or navigation targets.
+  this._diagnostics = [];
+  this._bootDiagnostic = null;
   // 這條連線看過主功能表了嗎（＝登入完成）。capture() 時清掉。
   this._loggedIn = false;
   if (termBuf && termBuf.addEventListener)
@@ -138,10 +147,18 @@ export function ReconnectResume(core, view, termBuf) {
   this._countdown = null;
   if (typeof window !== 'undefined' && window.localStorage) {
     // 開機讀一次就刪：APK 回收重建或開站接回（各自的開關）才用，否則丟掉。
-    const snap = readSnapshot();
+    const saved = readSnapshot();
+    const snap = saved.snapshot;
     const mode = bootResumeMode(isAndroidApp() && androidRestored(), readEffectivePrefs());
+    const plan = planFromSnapshot(snap, Date.now());
+    this._bootDiagnostic = {
+      storage: saved.status,
+      mode: mode,
+      validPlan: !!plan,
+      kind: plan ? plan.kind : null,
+      ageMs: typeof snap?.at === 'number' ? Date.now() - snap.at : null
+    };
     if (mode) {
-      const plan = planFromSnapshot(snap, Date.now());
       this._pending = plan && mode === 'open' ? Object.assign({}, plan, { fromOpen: true }) : plan;
       this._diag('restoreSnapshot', { mode: mode, kind: this._pending ? this._pending.kind : null });
     }
@@ -162,8 +179,25 @@ export function ReconnectResume(core, view, termBuf) {
 
 ReconnectResume.prototype = {
   _diag: function(name, info) {
+    const { kind, mode, reason, fromOpen, storage } = info || {};
+    this._diagnostics.push({ at: Date.now(), event: name, kind, mode, reason, fromOpen, storage });
+    if (this._diagnostics.length > 24) this._diagnostics.shift();
     const rec = this._core && this._core.debugRecorder;
     if (rec && rec.log) rec.log('reconnectResume.' + name, info);
+  },
+
+  diagnostics: function() {
+    const prefs = readEffectivePrefs();
+    return {
+      boot: this._bootDiagnostic && { ...this._bootDiagnostic },
+      recent: this._diagnostics.map(event => ({ ...event })),
+      loggedIn: this._loggedIn,
+      connectState: this._core.connectState,
+      pendingKind: this._pending?.kind || this._countdown?.plan.kind || null,
+      countingDown: !!this._countdown,
+      resumeLastPlace: !!prefs.resumeLastPlace,
+      reconnectResume: !!prefs.reconnectResume
+    };
   },
 
   // App.onClose：**要在任何畫面擁有者被 disable／reset 之前**呼叫（列表 session 的
@@ -179,7 +213,10 @@ ReconnectResume.prototype = {
       return;
     }
     // 還沒登入就斷了：畫面是登入流程，沒有閱讀位置；保留上一份。
-    if (!wasLoggedIn) return;
+    if (!wasLoggedIn) {
+      this._diag('captureSkipped', { reason: 'not-logged-in' });
+      return;
+    }
     if (!enabled()) {
       this._core?.articleShortcutSearch?.suspendForRecovery(null);
       this.discard('disabled');
@@ -209,6 +246,7 @@ ReconnectResume.prototype = {
       plan = resumePlanFrom(bm, post, readSearchResultsContext(core));
     }
     this._core?.articleShortcutSearch?.persistForRecovery(plan);
+    let storage = plan ? 'written' : 'removed';
     try {
       if (plan) {
         // 書籤裡的畫面擁有者是物件參照，存不下也用不到（還原走 core 上的現役擁有者）。
@@ -221,15 +259,17 @@ ReconnectResume.prototype = {
         window.localStorage.removeItem(SNAPSHOT_KEY);
       }
     } catch (e) {
+      storage = 'storage-error';
       // 存不下（被擋／滿了）：回收後就回不去，跟以前一樣。
     }
-    this._diag('saveSnapshot', { kind: plan ? plan.kind : null });
+    this._diag('saveSnapshot', { kind: plan ? plan.kind : null, storage: storage });
   },
 
   discard: function(reason) {
-    if (this._pending || this._countdown) this._core?.articleShortcutSearch?.abandonRecovery(reason);
+    const hadPending = !!(this._pending || this._countdown);
+    if (hadPending) this._core?.articleShortcutSearch?.abandonRecovery(reason);
     this._cancelCountdown();
-    if (!this._pending) return;
+    if (!hadPending) return;
     this._diag('discard', { reason: reason });
     this._pending = null;
   },

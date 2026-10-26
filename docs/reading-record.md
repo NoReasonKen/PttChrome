@@ -153,6 +153,13 @@ never reused across reconnection.
 - deep link 進來時以 deep link 為準：同斷線重連的 superseded。
 - 開關：pref `resumeLastPlace`（設定 → 一般「開站回到上次的地方」，預設開；會送鍵 ⇒ 在安全模式名單內）。e2e 預設關（同一個 context 重整會自己送鍵），live 的共用 session 也關。
 
+Debug recordings include `reconnectResume.diagnostics` at recording start, even
+when recovery decisions preceded recording. It reports the boot snapshot read
+status, validity, age, effective recovery preferences, and up to 24 recent
+decisions. This summary stays in memory and excludes navigation targets and
+article text. `saveSnapshot` reports whether storage was written, removed, or
+failed; a non-null plan alone does not prove a successful write.
+
 ## 測試
 
 | 層 | 檔案 | 守什麼 |

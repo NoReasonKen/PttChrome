@@ -196,6 +196,8 @@ export class DebugRecorder {
     this._watchList();
 
     this.log('record.start', { url: app.connectedUrl && app.connectedUrl.url });
+    if (app.reconnectResume?.diagnostics)
+      this.log('reconnectResume.diagnostics', app.reconnectResume.diagnostics());
     // 錄製是中途開始的：之後只在「變了」才記 article.context／appBar（term_view
     // _setArticleContext、App._refreshScreenContext），起點的值要先補一筆。
     const view = app.view || {};

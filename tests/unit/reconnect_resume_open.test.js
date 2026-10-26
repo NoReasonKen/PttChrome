@@ -194,6 +194,55 @@ describe("開站接回", () => {
   });
 });
 
+describe("Recovery diagnostics available after startup", () => {
+  test("retains boot and discard decisions without navigation targets", () => {
+    leaveFromOldPage();
+    const h = harness();
+    h.settle(MAIN_MENU);
+    h.settle("【看板列表】");
+    const info = h.rr.diagnostics();
+    expect(info.boot).toMatchObject({ storage: "read", validPlan: true, kind: "article", mode: "open" });
+    expect(info.recent).toContainEqual(expect.objectContaining({ event: "discard", reason: "moved" }));
+    expect(info.pendingKind).toBeNull();
+    expect(JSON.stringify(info)).not.toContain(POST.aid);
+    expect(JSON.stringify(info)).not.toContain(POST.board);
+    info.recent[0].event = "modified";
+    expect(h.rr.diagnostics().recent[0].event).not.toBe("modified");
+  });
+
+  test("distinguishes missing, malformed, and expired snapshots", () => {
+    window.localStorage.removeItem(SNAPSHOT_KEY);
+    expect(harness().rr.diagnostics().boot.storage).toBe("missing");
+    window.localStorage.setItem(SNAPSHOT_KEY, "{");
+    expect(harness().rr.diagnostics().boot).toMatchObject({ storage: "invalid-json", validPlan: false });
+    window.localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({
+      at: Date.now() - 13 * 60 * 60 * 1000,
+      plan: { kind: "article", board: POST.board, aid: POST.aid }
+    }));
+    expect(harness().rr.diagnostics().boot).toMatchObject({ storage: "read", validPlan: false });
+  });
+
+  test("reports failed storage writes and bounds recent decisions", () => {
+    const h = harness();
+    h.settle(MAIN_MENU);
+    const write = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Storage unavailable", "QuotaExceededError");
+    });
+    try {
+      h.rr.saveSnapshot();
+      expect(h.rr.diagnostics().recent.at(-1)).toMatchObject({
+        event: "saveSnapshot", kind: "article", storage: "storage-error"
+      });
+    } finally {
+      write.mockRestore();
+    }
+    for (let i = 0; i < 30; i++) h.rr.saveSnapshot();
+    expect(h.rr.diagnostics().recent).toHaveLength(24);
+    expect(h.rr.diagnostics().boot).not.toBeNull();
+    expect(h.rr.diagnostics().recent.at(-1).storage).toBe("written");
+  });
+});
+
 test("預設開、會送鍵 ⇒ 在安全模式名單內", () => {
   expect(DEFAULT_PREFS.resumeLastPlace).toBe(true);
   expect(NATIVE_SAFE_MODE_KEYS).toContain("resumeLastPlace");
