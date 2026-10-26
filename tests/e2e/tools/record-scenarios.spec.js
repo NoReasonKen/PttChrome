@@ -228,6 +228,32 @@ const enteredBoardList = async (page) => {
   await listActive(page);
 };
 
+const dashboardShown = async (page) => {
+  await page.waitForFunction(() => window.__app.homeDashboard.state.visible === true, null, { timeout: 15000 });
+  await waitWireQuiet(page);
+};
+
+// Show the home dashboard without fetching favorites (personal data): mark it freshly
+// fetched. The dashboard decides to show itself on a screen settle; turning the pref
+// on changes nothing on screen, so redraw once to get that settle.
+async function prepFreshDashboard(page, prefs) {
+  await resetSession(page);
+  await applyPrefs(page, prefs);
+  await page.evaluate(() => {
+    window.__app.homeDashboard._state.fetchedAt = Date.now();
+  });
+  await page.evaluate(() => window.__app.conn.send('\x0c'));
+  await waitWireQuiet(page);
+  await dashboardShown(page);
+}
+
+// Open `board` the way a dashboard tap does (s<board>), into list easy reading.
+async function openBoardFromDashboard(page, board) {
+  await dashboardShown(page);
+  await page.evaluate((b) => window.__app.homeDashboard.openBoard(b), board);
+  await enteredBoardList(page);
+}
+
 const boardListEngaged = async (page) => {
   await page.waitForFunction(() => window.__app.buf.listRenderOwner === 'board-list', null, { timeout: 20000 });
   await waitWireQuiet(page);
@@ -527,24 +553,73 @@ const SCENARIOS = {
   // opens the public board C_Chat; the cassette holds no favorites list.
   'stack-home-board': async (page) => {
     const prefs = { enableHomeDashboard: true, enableEasyReading: true, enableEasyReadingList: true };
-    await resetSession(page);
-    await applyPrefs(page, prefs);
-    await page.evaluate(() => {
-      window.__app.homeDashboard._state.fetchedAt = Date.now();
-    });
-    // The dashboard decides to show itself on a screen settle; turning the pref
-    // on changes nothing on screen, so redraw once to get that settle.
-    await page.evaluate(() => window.__app.conn.send('\x0c'));
-    await waitWireQuiet(page);
-    await page.waitForFunction(() => window.__app.homeDashboard.state.visible === true, null, { timeout: 15000 });
-    await waitWireQuiet(page);
+    await prepFreshDashboard(page, prefs);
     await record(page, 'stack-home-board', { board: 'C_Chat', prefs }, async () => {
-      await page.waitForFunction(() => window.__app.homeDashboard.state.visible === true, null, { timeout: 15000 });
-      await waitWireQuiet(page);
-      await page.evaluate(() => window.__app.homeDashboard.openBoard('C_Chat'));
-      await enteredBoardList(page);
+      await openBoardFromDashboard(page, 'C_Chat');
       await sendKey(page, 'ArrowLeft');
-      await page.waitForFunction(() => window.__app.homeDashboard.state.visible === true, null, { timeout: 15000 });
+      await dashboardShown(page);
+    });
+  },
+
+  // Stacked navigation (#31 review): on a board entered from the dashboard, a `/` title
+  // search, ← back to the full list, ← back to the dashboard. The search results must
+  // not reveal the dashboard. 閒聊 always has results on C_Chat.
+  'stack-home-search': async (page) => {
+    const prefs = {
+      enableHomeDashboard: true, enableEasyReading: true, enableEasyReadingList: true,
+      // The native `/` prompt, typed as is (the search modal has its own specs).
+      searchKeyOpensModal: false,
+    };
+    const keyword = '閒聊';
+    await prepFreshDashboard(page, prefs);
+    await record(page, 'stack-home-search', { board: 'C_Chat', keyword, prefs }, async () => {
+      await openBoardFromDashboard(page, 'C_Chat');
+      await sendKey(page, 'Slash');
+      await waitWireQuiet(page);
+      await typeLine(page, keyword);
+      await listActive(page);
+      await sendKey(page, 'ArrowLeft');
+      await listActive(page);
+      await sendKey(page, 'ArrowLeft');
+      await dashboardShown(page);
+    });
+  },
+
+  // Stacked navigation (#31 review): on a board entered from the dashboard, open an
+  // article two above the newest, switch to the next one with the next-article card,
+  // ← back to the list, ← back to the dashboard. The next article keeps the dashboard
+  // below its list.
+  'stack-home-next': async (page) => {
+    const prefs = {
+      enableHomeDashboard: true, enableEasyReading: true, enableEasyReadingList: true,
+      mergeSameAuthorComments: false, enableNextArticleCard: true,
+    };
+    await prepFreshDashboard(page, prefs);
+    await record(page, 'stack-home-next', { board: 'C_Chat', prefs }, async () => {
+      await openBoardFromDashboard(page, 'C_Chat');
+      for (let i = 0; i < 2; i++) {
+        await sendKey(page, 'ArrowUp');
+        await waitWireQuiet(page);
+      }
+      await inArticleEasyReading(page);
+      await page.waitForFunction(() => {
+        const st = window.__app.nextArticle._state;
+        return st.visible && !!st.entry;
+      }, null, { timeout: 15000 });
+      const first = await page.evaluate(() => window.__app.easyReading._articleKey);
+      expect(await page.evaluate(() => window.__app.nextArticle.open())).toBe(true);
+      await page.waitForFunction((key) => {
+        const app = window.__app;
+        return app.aidNavigation.active === false && app.buf.pageState === 3 &&
+          !!app.easyReading._articleKey && app.easyReading._articleKey !== key;
+      }, first, { timeout: 60000 });
+      const acc = await waitEasyReadingComplete(page, { timeout: 60000 });
+      expect(acc.reachedEnd).toBe(true);
+      await waitWireQuiet(page);
+      await sendKey(page, 'ArrowLeft');
+      await listActive(page);
+      await sendKey(page, 'ArrowLeft');
+      await dashboardShown(page);
     });
   },
 
