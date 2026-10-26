@@ -1238,7 +1238,7 @@ ListSession.prototype = {
   // A landing action has rebuilt, scrolled and positioned the list. A leave
   // waiting to hand over to it may do so now (#28).
   _presented: function() {
-    if (this.state === 'active' && this._renderMode === 'buffer') this._core.articleGestures?.listPresented();
+    if (this.state === 'active' && this._renderMode === 'buffer') this._core.articleGestures?.pagePresented('articleList');
   },
 
   // ---- external entry points ------------------------------------------------

@@ -505,19 +505,22 @@ BoardListSession.prototype = {
   _runAction: function(action, facts) {
     switch (action) {
       case 'seed':
-        return this._seed(facts);
+        this._seed(facts);
+        return this._presented();
       case 'start-fill':
         return this._startFill();
       case 'continue-fill':
         return this._maybeFill();
       case 'rebuild':
-        return this._rebuild(facts);
+        this._rebuild(facts);
+        return this._presented();
       case 'enter-native':
         return this._enterNative(facts);
       case 'suspend':
         return this._suspend({ flush: true });
       case 'resume-in-place':
         this._resumeInPlace(facts);
+        this._presented();
         // 進板時被 flush 掉的背景填充要接回去（緩衝可能還沒填到 _fillTarget）。
         return this._maybeFill();
       case 'cleanup':
@@ -525,6 +528,12 @@ BoardListSession.prototype = {
       default:
         return; // move-selection / begin-* 帶鍵盤上下文，由 onKeyDown 執行
     }
+  },
+
+  // A board list the reader can use is on screen: a revealed one may hand off
+  // to it (#31).
+  _presented: function() {
+    if (this.state === 'active' && this._renderMode === 'buffer') this._core.articleGestures?.pagePresented('boardList');
   },
 
   // ---- 外部入口 --------------------------------------------------------------
@@ -1496,6 +1505,8 @@ BoardListSession.prototype = {
     if (num == null) return this._abortOpen('這一列不能進入');
     if (isBoardListSeparatorRow(text)) return this._abortOpen('這是分隔線，不能進入');
     if (isBoardListBlockedRow(text)) return this._abortOpen('這個看板目前無法進入');
+    // This board list stays alive under the board's article list (#31).
+    this._core.articleGestures?.captureBoardListLayer(parseBoardListName(text));
     this._freezeForTransaction();
     const self = this;
     const send = function() {

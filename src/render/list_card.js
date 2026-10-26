@@ -30,6 +30,7 @@ import {
   LIST_AUTHOR_COL_END,
   hasServerCursorMark,
 } from "../js/comment_parse";
+import { parseBoardListName } from "../js/board_list_parse";
 
 // [start, end) cell 範圍 → 一段上色的 DOM（沒有內容回 null）。邊界落在 DBCS 中間時
 // 往外擴成完整的字；前後空白剪掉（卡片的欄位不需要補齊寬度，右對齊的序號也不必）。
@@ -162,6 +163,17 @@ export function buildListCard({
         class: "listCard",
         "data-list-author": listAuthor,
         "data-list-title": listTitle,
+        // A board card's identity for a revealed board list (#31). Board names
+        // are ASCII and come right after the number, before any DBCS cell.
+        "data-list-board":
+          layout === CARD_LAYOUT.board
+            ? parseBoardListName(
+                chars
+                  .slice(0, 32)
+                  .map((c) => (c && c.ch) || " ")
+                  .join(""),
+              ) || undefined
+            : undefined,
         "data-list-read": listRead ? "" : undefined,
         "data-list-mark":
           layout === CARD_LAYOUT.article ? articleCardMark(chars) : undefined,

@@ -1,5 +1,5 @@
 import {
-  createPageStack, pushPage, popPage, revealTarget, handoffStep, HANDOFF_IDLE_MS, HANDOFF_TIMEOUT_MS
+  createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, HANDOFF_IDLE_MS, HANDOFF_TIMEOUT_MS
 } from '../../src/js/page_stack';
 
 const list = (board, extra) => ({ kind: 'articleList', board, layer: true, ...extra });
@@ -34,6 +34,20 @@ test('a lower page without a live layer is not revealed', () => {
   let stack = pushPage(createPageStack(), list('C_Chat', { layer: false }));
   stack = pushPage(stack, article('C_Chat'), { fromBelow: true });
   expect(revealTarget(stack)).toBeNull();
+});
+
+test('each Back reveals the next lower page, and a revealed page\'s layer is spent', () => {
+  let stack = withLayer(pushPage(createPageStack(), { kind: 'home', board: 'C_Chat' }));
+  stack = withLayer(pushPage(stack, { kind: 'articleList', board: 'C_Chat' }, { fromBelow: true }));
+  stack = pushPage(stack, article('C_Chat'), { fromBelow: true });
+  const fromArticle = popPage(stack);
+  expect(fromArticle.revealed).toMatchObject({ kind: 'articleList' });
+  expect(revealTarget(fromArticle.stack)).toMatchObject({ kind: 'home', board: 'C_Chat' });
+  // The list is now the real page: another article needs a fresh layer of it.
+  const reopened = pushPage(fromArticle.stack, article('C_Chat'), { fromBelow: true });
+  expect(revealTarget(reopened)).toBeNull();
+  expect(revealTarget(pushPage(withLayer(fromArticle.stack), article('C_Chat'), { fromBelow: true })))
+    .toMatchObject({ kind: 'articleList' });
 });
 
 describe('handoff readiness', () => {

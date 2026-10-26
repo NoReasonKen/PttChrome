@@ -3,17 +3,23 @@
 // its own scroll viewport, so revealing it shows the real list, scrollable at
 // once, instead of a static copy.
 import { renderScreen } from './term_ui';
+import { LIST_TITLE_COL_START } from './comment_parse';
+import { i18n } from './i18n';
 
-// Article identity of a list card: author and title. The number can move when
-// earlier articles are deleted.
+// Identity of a list card. An article is its author and title: its number can
+// move when earlier articles are deleted. A board is its name.
 export function cardIdentity(card) {
+  if (card.dataset.listBoard != null) return { board: card.dataset.listBoard };
   return { author: card.dataset.listAuthor || '', title: card.dataset.listTitle || '' };
+}
+
+function sameIdentity(a, b) {
+  return a.board != null || b.board != null ? a.board === b.board : a.author === b.author && a.title === b.title;
 }
 
 export function findCard(root, id) {
   for (const card of root.querySelectorAll('.listCard')) {
-    const own = cardIdentity(card);
-    if (own.author === id.author && own.title === id.title) return card;
+    if (sameIdentity(cardIdentity(card), id)) return card;
   }
   return null;
 }
@@ -28,13 +34,14 @@ function topCard(root, viewportTop) {
 }
 
 export class StackListLayer {
-  // Render `view`'s current list frame as a live copy over the list's box.
-  // Returns null when the view is not showing an easy-reading list.
-  static capture(view) {
+  // Render `view`'s current list frame of `kind` ('article' or 'board') as a
+  // live copy over the list's box. Returns null when the view is not showing
+  // such an easy-reading list.
+  static capture(view, kind = 'article') {
     const screen = view.componentScreen;
     const frame = screen && screen.props;
     const listScroll = frame && frame.enhance && frame.enhance.listScroll;
-    if (!listScroll || listScroll.kind !== 'article' || !screen.hasListViewport()) return null;
+    if (!listScroll || listScroll.kind !== kind || !screen.hasListViewport()) return null;
     const main = view.mainDisplay;
     const rect = main.getBoundingClientRect();
     if (!rect.width || !rect.height) return null;
@@ -51,7 +58,8 @@ export class StackListLayer {
       position: 'absolute', left: rect.left + 'px', top: rect.top + 'px',
       width: rect.width + 'px', height: rect.height + 'px', margin: '0', translate: 'none'
     });
-    this.el.setAttribute('data-stack-layer', 'articleList');
+    this.kind = frame.enhance.listScroll.kind;
+    this.el.setAttribute('data-stack-layer', this.kind === 'board' ? 'boardList' : 'articleList');
     this.el.setAttribute('aria-hidden', 'true');
     this.el.inert = true;
     this.el.style.zIndex = '2';
@@ -87,9 +95,11 @@ export class StackListLayer {
     this.el.setAttribute('aria-hidden', 'true');
   }
 
-  // Put the real list at this layer's reading position: the same article at
+  // Put the real list at this layer's reading position: the same entry at
   // the same offset from the top of the view.
-  alignReal(realScreen, realRoot) {
+  alignReal(core) {
+    const realScreen = core.view.componentScreen;
+    const realRoot = core.view.mainDisplay;
     const top = this.el.getBoundingClientRect().top;
     const anchor = topCard(this.el, top);
     const card = anchor && findCard(realRoot, anchor.id);
@@ -97,5 +107,24 @@ export class StackListLayer {
     const shift = card.getBoundingClientRect().top - realRoot.getBoundingClientRect().top - anchor.offset;
     realScreen.setListScrollTop(realScreen.getListScrollTop() + shift);
     return true;
+  }
+
+  // The entry a tap on this layer chose, or null.
+  tapOf(event) {
+    const card = event.type === 'click' && event.target.closest?.('.listCardBody') && event.target.closest('.listCard');
+    return card ? cardIdentity(card) : null;
+  }
+
+  // Open the remembered entry on the refreshed list, found by identity, through
+  // its list session's own open path.
+  openTapped(core, id) {
+    const row = findCard(core.view.mainDisplay, id)?.querySelector('.listCardBody')?.closest('[data-row]')?.dataset.row;
+    if (row == null) {
+      core.view.flashListHint?.(i18n('articleStack_tappedGone'), 4000);
+      return;
+    }
+    core.noteUserAction?.();
+    const session = this.kind === 'board' ? core.boardListSession : core.listSession;
+    session.onMouseClick(Number(row), LIST_TITLE_COL_START);
   }
 }

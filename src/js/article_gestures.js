@@ -3,7 +3,8 @@ import { mobileToolbarContext } from './mobile_toolbar';
 import { i18n } from './i18n';
 import { serializedOpHint } from './serialized_op_gate';
 import { ArticleHorizontalGesture, ARTICLE_SETTLE_MS } from './article_horizontal_gesture';
-import { ArticleStack } from './article_stack';
+import { NavigationStack } from './navigation_stack';
+import { OWNER_ARTICLE_LIST } from './list_render_owner';
 import { recordFor } from './reading_record';
 import { articleIdentity } from './article_shortcut_search';
 import '../css/article_gestures.css';
@@ -38,7 +39,7 @@ export class ArticleGestures {
     this.timer = null;
     this.suppressClickUntil = 0;
     this.listeners = [];
-    this.stack = new ArticleStack(core);
+    this.stack = new NavigationStack(core);
     this._listen(window, 'pointerdown', event => this._start(event), true);
     this._listen(window, 'pointermove', event => this._move(event), { capture: true, passive: false });
     this._nativeTouchMove = event => {
@@ -130,6 +131,7 @@ export class ArticleGestures {
       this._consume(event);
       if (snapshot.operation) {
         if (snapshot.operation === 'exit') {
+          this.exitLevel = 'article';
           this._ensureExit();
           this.exitDistance = snapshot.distance;
           if (!this.frame) this.frame = requestAnimationFrame(() => {
@@ -198,10 +200,18 @@ export class ArticleGestures {
     event.stopImmediatePropagation();
   }
 
-  // The list session opens an article from the shown list, enters it, or
-  // abandons the open: the list is kept, bound or dropped as the lower page.
+  // A session opens an entry from the shown page, enters it, or abandons the
+  // open: the shown page is kept, bound or dropped as the lower page.
   captureListLayer() {
     this.stack.captureList();
+  }
+
+  captureHomeLayer(board) {
+    this.stack.captureHome(board);
+  }
+
+  captureBoardListLayer(board) {
+    this.stack.captureBoardList(board);
   }
 
   bindListLayer() {
@@ -209,7 +219,7 @@ export class ArticleGestures {
   }
 
   clearListLayer() {
-    this.stack.clear();
+    this.stack.dropPending();
   }
 
   // A leave is on its way to PTT: other input waits for the swap.
@@ -217,20 +227,23 @@ export class ArticleGestures {
     return this.stack.handingOff && !this.sendingBack;
   }
 
-  // The list session presented a real article list.
-  listPresented() {
-    this.stack.listPresented();
+  // A session presented a real page: an article list, a board list or the
+  // home dashboard.
+  pagePresented(kind) {
+    this.stack.pagePresented(kind);
   }
 
-  // Back from an article (←, system Back, the toolbar) reveals the lower list
-  // the same way the swipe does. Returns true when it took the key.
+  // Back from an article or an article list (←, system Back, the toolbar)
+  // reveals the lower page the same way the article swipe does. Returns true
+  // when it took the key.
   handleBack(event) {
     if (event.key !== 'ArrowLeft' || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return false;
     if (this.sendingBack || this.stack.handingOff || this.track || this.exitUnderlay || this.root) return false;
     const core = this.core;
-    if (!core.mobile || !core.conn?.isConnected || !core.view.useEasyReadingMode || !core.buf.startedEasyReading ||
-      core.buf.easyReadingFunctionMode || core.buf.pageState !== 3 || serializedOpHint(core) || this._otherModalOpen()) return false;
-    if (!this.stack.revealable()) return false;
+    if (this._otherModalOpen()) return false;
+    const level = this._articleLeaveable() ? 'article' : this._listLeaveable() ? 'list' : null;
+    if (!level || core.buf.pageState !== (level === 'article' ? 3 : 2) || !this.stack.revealable()) return false;
+    this.exitLevel = level;
     this._ensureExit();
     this._settleExit(true);
     return true;
@@ -295,7 +308,7 @@ export class ArticleGestures {
     this.stack.begin({
       send: () => {
         const record = recordFor(core);
-        const bookmark = record.begin('article-swipe-exit');
+        const bookmark = record.begin(this.exitLevel === 'list' ? 'list-back-reveal' : 'article-swipe-exit');
         core.noteUserAction();
         // The exit surfaces hold the modal gate; release it only for the send.
         core.setModalOpen(MODAL_SOURCE, false);
@@ -316,17 +329,29 @@ export class ArticleGestures {
     });
   }
 
-  // The article can be left now, by any Back.
+  // The current page can be left now, by any Back.
   _leaveable() {
+    return this.exitLevel === 'list' ? this._listLeaveable() : this._articleLeaveable();
+  }
+
+  _articleLeaveable() {
     const core = this.core;
     return !!(core.mobile && core.conn?.isConnected && core.view.useEasyReadingMode && core.buf.startedEasyReading &&
       !core.buf.easyReadingFunctionMode && !serializedOpHint(core));
   }
 
+  // An easy-reading article list showing its cards, idle.
+  _listLeaveable() {
+    const core = this.core;
+    const ls = core.listSession;
+    return !!(core.mobile && core.conn?.isConnected && core.view.listCards && core.buf.listRenderOwner === OWNER_ARTICLE_LIST &&
+      ls?.state === 'active' && ls._renderMode === 'buffer' && !serializedOpHint(core));
+  }
+
   _removeExit() {
     if (!this.exitUnderlay) return;
     this._stopMotion();
-    this.stack.layer?.hide();
+    if (!this.stack.handingOff) this.stack.revealable()?.hide();
     for (const surface of this.exitSurfaces) {
       surface.node.style.translate = surface.translate;
       surface.node.style.transition = surface.transition;

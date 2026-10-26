@@ -16,8 +16,18 @@ export function pushPage(stack, page, { fromBelow = false } = {}) {
   return { pages: fromBelow ? [...stack.pages, page] : [page] };
 }
 
+// The current page is about to open something: a live layer of it is kept.
+export function withLayer(stack) {
+  const n = stack.pages.length;
+  if (!n) return stack;
+  return { pages: [...stack.pages.slice(0, -1), { ...stack.pages[n - 1], layer: true }] };
+}
+
+// Back: the lower page becomes the current, real page, so its layer is spent.
 export function popPage(stack) {
   const pages = stack.pages.slice(0, -1);
+  const n = pages.length;
+  if (n) pages[n - 1] = { ...pages[n - 1], layer: false };
   return { stack: { pages }, revealed: revealTarget(stack) };
 }
 
