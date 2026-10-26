@@ -5,10 +5,13 @@
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { loadCassette, bootScenario, waitFed } = require('../helpers/replay');
+const { fedBefore, openNextArticle } = require('../helpers/stack_routes');
 
 const reopen = loadCassette('scn-stack-article-reopen');
 const boardList = loadCassette('scn-stack-boardlist-board');
 const homeBoard = loadCassette('scn-stack-home-board');
+const homeSearch = loadCassette('scn-stack-home-search');
+const homeNext = loadCassette('scn-stack-home-next');
 
 // Each action waits for the product state the recorder waited for, and for the
 // wire to be quiet, as the recording discipline requires.
@@ -59,19 +62,54 @@ test('board list → board → back replays end to end', async ({ page }) => {
   expect(await page.evaluate(() => window.__app.buf.listRenderOwner)).toBe('board-list');
 });
 
-test('home dashboard → board → back replays end to end', async ({ page }) => {
-  await bootScenario(page, ptt, homeBoard);
+// Replay `cassette` from the home dashboard into C_Chat's list easy reading.
+async function openBoardFromDashboard(page, cassette) {
+  await bootScenario(page, ptt, cassette);
   // As in the recording: the dashboard's board data counts as fresh, so it
   // does not fetch, and a redraw gives it the settle it shows itself on.
   await page.evaluate(() => { window.__app.homeDashboard._state.fetchedAt = Date.now(); });
-  await ptt.applyPrefs(page, homeBoard.meta.prefs);
+  await ptt.applyPrefs(page, cassette.meta.prefs);
   await page.evaluate(() => window.__app.onData('\x1b[H'));
   await dashboardVisible(page);
   await page.evaluate(() => window.__app.homeDashboard.openBoard('C_Chat'));
   await page.waitForFunction(() => window.__app.buf.isPassScreenNow() || window.__app.buf.pageState === 2);
   if (await page.evaluate(() => window.__app.buf.isPassScreenNow())) await ptt.sendKey(page, 'Space');
   await listActive(page);
+}
+
+test('home dashboard → board → back replays end to end', async ({ page }) => {
+  await openBoardFromDashboard(page, homeBoard);
   await ptt.sendKey(page, 'ArrowLeft');
   await dashboardVisible(page);
   await waitFed(page, homeBoard.steps.length);
+});
+
+test('home dashboard → board → title search → back → back replays end to end', async ({ page }) => {
+  await openBoardFromDashboard(page, homeSearch);
+  await ptt.sendKey(page, 'Slash');
+  await waitFed(page, fedBefore(homeSearch, 'open', 1));
+  await ptt.typeLine(page, homeSearch.meta.keyword);
+  await waitFed(page, fedBefore(homeSearch, 'back', 1));
+  await listActive(page);
+  await ptt.sendKey(page, 'ArrowLeft');
+  await waitFed(page, fedBefore(homeSearch, 'back', 2));
+  await listActive(page);
+  await ptt.sendKey(page, 'ArrowLeft');
+  await dashboardVisible(page);
+  await waitFed(page, homeSearch.steps.length);
+});
+
+test('home dashboard → board → article → next article → back → back replays end to end', async ({ page }) => {
+  await openBoardFromDashboard(page, homeNext);
+  for (let i = 0; i < 2; i++) await ptt.sendKey(page, 'ArrowUp');
+  await ptt.sendKey(page, 'Enter');
+  await articleRead(page);
+  await openNextArticle(page, homeNext);
+  await articleRead(page);
+  await ptt.sendKey(page, 'ArrowLeft');
+  await waitFed(page, fedBefore(homeNext, 'back', 2));
+  await listActive(page);
+  await ptt.sendKey(page, 'ArrowLeft');
+  await dashboardVisible(page);
+  await waitFed(page, homeNext.steps.length);
 });

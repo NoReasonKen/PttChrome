@@ -7,6 +7,7 @@ const { beginArticleTouch } = require('../helpers/article_gestures');
 const { waitScrollStable, installPaintedFrameProbe } = require('../helpers/layout');
 const ptt = require('../helpers/ptt');
 const { loadCassette, bootScenario, waitFed } = require('../helpers/replay');
+const { fedBefore, openNextArticle } = require('../helpers/stack_routes');
 
 const homeBoard = loadCassette('scn-stack-home-board');
 const HOME_LAYER = '[data-stack-layer="home"]';
@@ -40,14 +41,14 @@ async function holdBackReply(page) {
 }
 
 // The recorded dashboard, shown with FAVORITES.
-async function bootDashboard(page) {
-  await bootScenario(page, ptt, homeBoard);
+async function bootDashboard(page, cassette = homeBoard) {
+  await bootScenario(page, ptt, cassette);
   await page.evaluate((boards) => {
     const home = window.__app.homeDashboard;
     home._state.fetchedAt = Date.now();
     home._set({ boards });
   }, FAVORITES);
-  await ptt.applyPrefs(page, homeBoard.meta.prefs);
+  await ptt.applyPrefs(page, cassette.meta.prefs);
   await page.evaluate(() => window.__app.onData('\x1b[H'));
   await dashboardVisible(page);
 }
@@ -60,8 +61,8 @@ async function boardOpened(page) {
 }
 
 // Open C_Chat by tapping its favorite card, as the recording did.
-async function enterBoardFromDashboard(page) {
-  await bootDashboard(page);
+async function enterBoardFromDashboard(page, cassette = homeBoard) {
+  await bootDashboard(page, cassette);
   await page.locator('#homeDashboard [data-home-board="C_Chat"]').tap();
   await boardOpened(page);
 }
@@ -281,4 +282,36 @@ test('system Back reveals the dashboard the same way as ←', async ({ page }) =
   await release();
   await dashboardVisible(page);
   await expect(page.locator(HOME_LAYER)).toHaveCount(0, { timeout: 10000 });
+});
+
+const homeNext = loadCassette('scn-stack-home-next');
+
+const articleRead = page => page.waitForFunction(() => {
+  const app = window.__app;
+  return app.buf.pageState === 3 && app.easyReading.easyReadingReachedPageEnd && app.commandQueue.idle && !app.buf._settleTimer;
+});
+
+// Back from the full list reveals the dashboard, which takes over after the swap.
+async function backRevealsDashboard(page, cassette) {
+  const release = await holdBackReply(page);
+  await ptt.sendKey(page, 'ArrowLeft');
+  await expect.poll(() => page.evaluate(() => !!window.__heldBack)).toBe(true);
+  await expect(page.locator(HOME_LAYER)).toBeVisible();
+  await release();
+  await dashboardVisible(page);
+  await expect(page.locator(HOME_LAYER)).toHaveCount(0, { timeout: 10000 });
+  await waitFed(page, cassette.steps.length);
+}
+
+test('after switching to the next article, its list still reveals the dashboard', async ({ page }) => {
+  await enterBoardFromDashboard(page, homeNext);
+  for (let i = 0; i < 2; i++) await ptt.sendKey(page, 'ArrowUp');
+  await ptt.sendKey(page, 'Enter');
+  await articleRead(page);
+  await openNextArticle(page, homeNext);
+  await articleRead(page);
+  await ptt.sendKey(page, 'ArrowLeft');
+  await waitFed(page, fedBefore(homeNext, 'back', 2));
+  await listActive(page);
+  await backRevealsDashboard(page, homeNext);
 });

@@ -133,6 +133,7 @@ yarn test:e2e           # 仍連真實 PTT 的 live e2e（共存，--project=liv
 | `scn-boardlist-class`／`scn-board-search-prompt` | 分類看板子清單平滑捲動、按 s 搜尋 prompt | `board_list.offline` |
 | `scn-board-note-movie` | 看板列表 ⏎ → Android 動畫進板畫面＋pressanykey → 文章列表（80×48，**首幀合成**：原檔首幀是使用者的我的最愛）；`scn-board-note-select` 全合成（主功能表→s→選擇看板 prompt），spec 把它接在前者的 recv 前面 | `board_note_skip.offline` |
 | `scn-stack-article-reopen`／`scn-stack-home-board`／`scn-stack-boardlist-board` | The three stacked-page routes (#25): open the same article twice from list easy reading; home dashboard → board → back; board-list smooth scrolling → board → back (account required) | `stack_scenarios.offline` |
+| `scn-stack-home-search`／`scn-stack-home-next` | On a board entered from the home dashboard (#31): a `/` title search for 閒聊 → back → back; an article → the next one by the next-article card's route → back → back (account required). The mobile list fills search results differently from this desktop recording, so search results do not replay on mobile yet | `stack_scenarios.offline`, `mobile_stack_board_reveal.offline` (next article) |
 
 The route where an open lands on a different article because the list changed underneath (#27) is not recorded: real PTT cannot reproduce that timing. `mobile_list_open_verify.offline` simulates it by rewriting the author on the cursor row through `onData` as soon as the open's number jump is sent, so the replayed reply is followed by the changed row.
 
