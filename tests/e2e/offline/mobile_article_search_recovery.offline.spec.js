@@ -1,7 +1,8 @@
 const { test, expect } = require('@playwright/test');
 const { gestureSent } = require('../helpers/article_gestures');
 const {
-  bootNestedShortcutSearch, nestedSessionAfterLogin, nativeBack, visibleText, waitArticle, waitList, readToMiddle, topLine, tapShortcut
+  bootNestedShortcutSearch, nestedSessionAfterLogin, nativeBack, visibleText, waitArticle, waitList, readToMiddle, topLine, tapShortcut,
+  tapCard, disconnectAndReconnect
 } = require('../helpers/article_shortcut_search');
 const { waitConnected } = require('../helpers/replay');
 const { pauseClockNow } = require('../helpers/clock');
@@ -15,26 +16,6 @@ const RESTORED = 'Search return history restored';
 const INACTIVE = 'Search return history was not restored';
 const RESUME_FAILED = 'The previous search results could not be restored';
 const bodyText = page => page.locator('body').innerText();
-
-async function tapCard(page, title) {
-  await expect(page.locator('#mainContainer .listBodyView')).toBeVisible();
-  await page.locator('#mainContainer .listCard', { hasText: title }).locator('.listCardBody').tap();
-}
-
-// The connection drops; the reader taps Reconnect and logs in again.
-async function disconnectAndReconnect(page, session = {}) {
-  await page.evaluate(() => window.__stubWS.close());
-  await page.locator('#reactAlert button', { hasText: 'Reconnect' }).tap();
-  await waitConnected(page);
-  await nestedSessionAfterLogin(page, session);
-  // The old results can remain visible while the new main-menu frame is
-  // settling. Wait for actual recovery, not the retained DOM from before close.
-  await expect.poll(() => page.evaluate(() => {
-    const app = window.__app;
-    return !app.reconnectResume.hasPending() && !app.articleShortcutSearch.suspended &&
-      !app.aidNavigation.active && !app.searchInFlight;
-  }), { timeout: 15000 }).toBe(true);
-}
 
 async function reloadAndLogin(page, session = {}) {
   await page.reload();

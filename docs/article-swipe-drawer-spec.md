@@ -66,7 +66,7 @@ Suspend background interaction once a panel drag is recognized and while the dra
 
 Retain at most eight recent search origins; discard the oldest on overflow. Store lightweight article identity, query/context, and reading-position metadata, never complete article buffers or a chain of recursive navigation callbacks.
 
-For article A -> search results -> article B, exiting B first returns to its results; the next Back reopens A. Nested searches unwind the same way, one step at a time. Reopening aims for the previous reading position without requiring identical pixel offsets.
+For article A -> search results -> article B, exiting B first returns to its results, revealed at once like any article list ([#33](https://github.com/NoReasonKen/PttChrome/issues/33)); the next Back reopens A, and Back from results reveals nothing. Results reconstructed by search return or recovery are a new base with no lower page. Nested searches unwind the same way, one step at a time. Reopening aims for the previous reading position without requiring identical pixel offsets.
 
 If a source article is deleted or cannot be located reliably, stop on its verified board list and explain; never open a guessed replacement. Only that source's origin is consumed: the older origins remain, so the next Back from that list continues with the parent's results. Rebuilding a level's results needs its source only when the query does: an author search still rebuilds from the known author when its source is gone, while a same-thread search, which reads the source's own header, stops on the board list instead.
 

@@ -52,9 +52,8 @@ export class NavigationStack {
     this.pending = { kind, board, layer, appBar: this.core._screenContext?.appBar, title };
   }
 
-  // Search results stack with their own return route later (#33). The legacy
-  // caption is also an ordinary list's; it means results only after a verified
-  // search on this board.
+  // The legacy caption is also an ordinary list's; it means results only after
+  // a verified search on this board.
   _showsSearchResults() {
     const core = this.core;
     const board = core.listSession?._boardName;
@@ -62,11 +61,12 @@ export class NavigationStack {
     return !!board && !!facts && isSearchResultsFrame(facts, board, !!readSearchResultsContext(core, board));
   }
 
-  // An article is about to be opened from the shown article list.
+  // An article is about to be opened from the shown article list, search
+  // results included (#33).
   captureList() {
     const core = this.core;
     const board = core.listSession?._boardName;
-    if (!core.mobile || !board || this._showsSearchResults()) return this.dropPending();
+    if (!core.mobile || !board) return this.dropPending();
     this._capture('articleList', board, StackListLayer.capture(core.view, 'article'));
   }
 
@@ -173,8 +173,8 @@ export class NavigationStack {
 
   _revealed() {
     this.update();
-    // An article list showing search results is not the list the board was
-    // opened with (#33 stacks results on their own).
+    // Back from search results follows search return history, and they are not
+    // the list the board was opened with: they reveal nothing (#33).
     if (this._top()?.kind === 'articleList' && this._showsSearchResults()) return null;
     const target = revealTarget(this.stack);
     const lower = target && this.lower[this.stack.pages.length - 2];

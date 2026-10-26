@@ -1,6 +1,6 @@
 const { expect } = require('@playwright/test');
 const ptt = require('./ptt');
-const { waitScreenSettled } = require('./replay');
+const { waitScreenSettled, waitConnected } = require('./replay');
 const { bootGestureArticle, revealArticleDrawer, beginArticleTouch } = require('./article_gestures');
 const { nextFrames } = require('./real_input');
 
@@ -118,7 +118,9 @@ async function searchAuthor(page) {
   await page.locator('[data-article-shortcut="author"]').tap();
 }
 
-const visibleText = page => page.locator('#mainContainer').innerText();
+// The real screen; a revealed stacked page is a second copy with the same ids.
+const SCREEN = '.main:not([data-stack-layer]) #mainContainer';
+const visibleText = page => page.locator(SCREEN).innerText();
 
 async function waitSearchResults(page) {
   await expect.poll(() => page.locator('body').innerText()).toContain('Same-author search results');
@@ -374,7 +376,7 @@ async function waitList(page, { has = [], lacks = [] } = {}) {
     const text = await visibleText(page);
     // Native lists show the board caption; easy-reading list cards show a
     // board header above their own scrolling card view.
-    const list = text.includes('看板《Test》') || await page.locator('#mainContainer .listBodyView').isVisible();
+    const list = text.includes('看板《Test》') || await page.locator(`${SCREEN} .listBodyView`).isVisible();
     return list && !/ line 04:/.test(text) &&
       has.every(item => text.includes(item)) && !lacks.some(item => text.includes(item));
   }).toBe(true);
@@ -413,6 +415,27 @@ async function readToMiddle(page) {
   return topLine(page);
 }
 
+// Tap a result card in the easy-reading list.
+async function tapCard(page, title) {
+  await expect(page.locator(`${SCREEN} .listBodyView`)).toBeVisible();
+  await page.locator(`${SCREEN} .listCard`, { hasText: title }).locator('.listCardBody').tap();
+}
+
+// The connection drops; the reader taps Reconnect and logs in again.
+async function disconnectAndReconnect(page, session = {}) {
+  await page.evaluate(() => window.__stubWS.close());
+  await page.locator('#reactAlert button', { hasText: 'Reconnect' }).tap();
+  await waitConnected(page);
+  await nestedSessionAfterLogin(page, session);
+  // The old results can remain visible while the new main-menu frame is
+  // settling. Wait for actual recovery, not the retained DOM from before close.
+  await expect.poll(() => page.evaluate(() => {
+    const app = window.__app;
+    return !app.reconnectResume.hasPending() && !app.articleShortcutSearch.suspended &&
+      !app.aidNavigation.active && !app.searchInFlight;
+  }), { timeout: 15000 }).toBe(true);
+}
+
 async function tapShortcut(page, key) {
   await revealArticleDrawer(page);
   await page.locator(`[data-article-shortcut="${key}"]`).tap();
@@ -420,5 +443,6 @@ async function tapShortcut(page, key) {
 
 module.exports = {
   bootShortcutSearch, searchAuthor, nativeBack, openSearchResult, visibleText, waitSearchResults,
-  bootNestedShortcutSearch, nestedSessionAfterLogin, waitArticle, waitList, waitIdle, tapShortcut, topLine, readToMiddle
+  bootNestedShortcutSearch, nestedSessionAfterLogin, waitArticle, waitList, waitIdle, tapShortcut, topLine, readToMiddle,
+  tapCard, disconnectAndReconnect
 };
