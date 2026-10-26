@@ -3,7 +3,7 @@ import { mobileToolbarContext } from './mobile_toolbar';
 import { i18n } from './i18n';
 import { serializedOpHint } from './serialized_op_gate';
 import { ArticleHorizontalGesture, ARTICLE_SETTLE_MS } from './article_horizontal_gesture';
-import { ArticleExitPreview } from './article_exit_preview';
+import { ArticleStack } from './article_stack';
 import { recordFor } from './reading_record';
 import { articleIdentity } from './article_shortcut_search';
 import '../css/article_gestures.css';
@@ -38,7 +38,7 @@ export class ArticleGestures {
     this.timer = null;
     this.suppressClickUntil = 0;
     this.listeners = [];
-    this.exitPreview = new ArticleExitPreview(core);
+    this.stack = new ArticleStack(core);
     this._listen(window, 'pointerdown', event => this._start(event), true);
     this._listen(window, 'pointermove', event => this._move(event), { capture: true, passive: false });
     this._nativeTouchMove = event => {
@@ -78,7 +78,7 @@ export class ArticleGestures {
   }
 
   update() {
-    this.exitPreview.update();
+    this.stack.update();
     const available = this.available();
     this.core.view.mainDisplay.classList.toggle('articleHorizontalGestures', available);
     this._setNativeTouchMove(available);
@@ -99,6 +99,8 @@ export class ArticleGestures {
   _start(event) {
     if (event.isPrimary) this.suppressClickUntil = 0;
     if (event.pointerType !== 'touch') return;
+    // A revealed list owns its input until the real list takes over.
+    if (this.stack.handingOff) return;
     if (this.track) {
       this._cancel();
       return;
@@ -196,17 +198,37 @@ export class ArticleGestures {
     event.stopImmediatePropagation();
   }
 
-  captureListPreview() {
-    if (readEffectivePrefs().articleHorizontalGestures) this.exitPreview.capture();
-    else this.exitPreview.clear();
+  // The list session opens an article from the shown list, enters it, or
+  // abandons the open: the list is kept, bound or dropped as the lower page.
+  captureListLayer() {
+    this.stack.captureList();
   }
 
-  bindListPreview() {
-    this.exitPreview.enterArticle();
+  bindListLayer() {
+    this.stack.enterArticle();
   }
 
-  clearListPreview() {
-    this.exitPreview.clear();
+  clearListLayer() {
+    this.stack.clear();
+  }
+
+  // The list session presented a real article list.
+  listPresented() {
+    this.stack.listPresented();
+  }
+
+  // Back from an article (←, system Back, the toolbar) reveals the lower list
+  // the same way the swipe does. Returns true when it took the key.
+  handleBack(event) {
+    if (event.key !== 'ArrowLeft' || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return false;
+    if (this.sendingBack || this.stack.handingOff || this.track || this.exitUnderlay || this.root) return false;
+    const core = this.core;
+    if (!core.mobile || !core.conn?.isConnected || !core.view.useEasyReadingMode || !core.buf.startedEasyReading ||
+      core.buf.easyReadingFunctionMode || core.buf.pageState !== 3 || serializedOpHint(core) || this._otherModalOpen()) return false;
+    if (!this.stack.revealable()) return false;
+    this._ensureExit();
+    this._settleExit(true);
+    return true;
   }
 
   _ensureExit() {
@@ -216,7 +238,18 @@ export class ArticleGestures {
     this.exitUnderlay.setAttribute('data-article-exit-underlay', '');
     this.exitUnderlay.setAttribute('aria-hidden', 'true');
     this.exitUnderlay.inert = true;
-    this.exitUnderlay.dataset.preview = this.exitPreview.appendTo(this.exitUnderlay) ? 'list' : 'fallback';
+    const layer = this.stack.revealable();
+    this.exitUnderlay.dataset.preview = layer ? 'layer' : 'fallback';
+    if (layer) {
+      // The title bar slides away with the article; the list's title stays.
+      const bar = document.getElementById('mobileAppBar');
+      const heading = document.createElement('div');
+      heading.className = 'articleExitListTitle';
+      heading.textContent = this.stack.title;
+      heading.style.height = (bar?.getBoundingClientRect().height || 0) + 'px';
+      this.exitUnderlay.appendChild(heading);
+      layer.show(false);
+    }
     const toolbar = document.getElementById('mobileToolbar');
     this.exitUnderlay.style.height = (toolbar?.getBoundingClientRect().top ?? window.innerHeight) + 'px';
     this.core.view.mainDisplay.parentNode.appendChild(this.exitUnderlay);
@@ -243,25 +276,52 @@ export class ArticleGestures {
     for (const { node } of this.exitSurfaces) node.style.transition = `translate ${duration}ms ease-out`;
     this._paintExit(commit ? window.innerWidth : 0);
     this.timer = setTimeout(() => {
-      const valid = commit && this.available() && identity === this.identity;
-      this._removeExit();
-      if (valid) {
-        const record = recordFor(this.core);
+      this.timer = null;
+      const valid = commit && this._leaveable() && identity === this.identity;
+      if (valid) this._handoff();
+      else this._removeExit();
+    }, duration);
+  }
+
+  // The article stays off screen over the revealed list, or the dark fallback,
+  // until the real list is presented (#20, #28).
+  _handoff() {
+    const core = this.core;
+    this.stack.begin({
+      send: () => {
+        const record = recordFor(core);
         const bookmark = record.begin('article-swipe-exit');
-        this.core.noteUserAction();
+        core.noteUserAction();
+        // The exit surfaces hold the modal gate; release it only for the send.
+        core.setModalOpen(MODAL_SOURCE, false);
+        this.sendingBack = true;
         let sent = false;
         try {
-          sent = this.core.sendNavKeyAsUser('ArrowLeft');
+          sent = core.sendNavKeyAsUser('ArrowLeft');
         } finally {
+          this.sendingBack = false;
           record.end(bookmark, sent ? 'done' : 'cancel');
+          if (sent) core.setModalOpen(MODAL_SOURCE, true);
         }
-      }
-    }, duration);
+        return sent;
+      },
+      finish: () => this._removeExit(),
+      cancel: () => this._settleExit(false),
+      hint: () => core.view.flashListHint?.('返回列表逾時，已停在 PTT 目前的畫面', 4000)
+    });
+  }
+
+  // The article can be left now, by any Back.
+  _leaveable() {
+    const core = this.core;
+    return !!(core.mobile && core.conn?.isConnected && core.view.useEasyReadingMode && core.buf.startedEasyReading &&
+      !core.buf.easyReadingFunctionMode && !serializedOpHint(core));
   }
 
   _removeExit() {
     if (!this.exitUnderlay) return;
     this._stopMotion();
+    this.stack.layer?.hide();
     for (const surface of this.exitSurfaces) {
       surface.node.style.translate = surface.translate;
       surface.node.style.transition = surface.transition;
@@ -379,6 +439,8 @@ export class ArticleGestures {
 
   close(immediate = false) {
     this.track = null;
+    // Leaving the article is what a handoff expects; it ends on its own.
+    if (this.stack.handingOff) return;
     if (this.exitUnderlay) return this._removeExit();
     if (immediate) this._remove();
     else this._settle(false);
@@ -411,7 +473,7 @@ export class ArticleGestures {
   destroy() {
     this._setNativeTouchMove(false);
     this.close(true);
-    this.exitPreview.clear();
+    this.stack.clear();
     this.listeners.forEach(remove => remove());
     this.core.buf.removeEventListener('viewUpdate', this._refresh);
     this.core.buf.removeEventListener('screenSettled', this._refresh);

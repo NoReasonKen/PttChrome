@@ -124,6 +124,9 @@ export function toolbarContextFromFacts(facts, pageState, opts) {
 }
 
 export function mobileToolbarContext(core) {
+  // A revealed lower page is not usable for actions until it takes over.
+  const revealed = core && core.articleGestures && core.articleGestures.stack.toolbarContext();
+  if (revealed) return revealed;
   const facts = searchGateFacts(core);
   const view = (core && core.view) || {};
   const prev = core && core._screenContext && core._screenContext.appBar;

@@ -1,0 +1,101 @@
+// A live article list kept underneath an article (#25, #28): a second instance
+// of the shared screen renderer re-renders the list's last presented frame in
+// its own scroll viewport, so revealing it shows the real list, scrollable at
+// once, instead of a static copy.
+import { renderScreen } from './term_ui';
+
+// Article identity of a list card: author and title. The number can move when
+// earlier articles are deleted.
+function cardIdentity(card) {
+  return { author: card.dataset.listAuthor || '', title: card.dataset.listTitle || '' };
+}
+
+function findCard(root, id) {
+  for (const card of root.querySelectorAll('.listCard')) {
+    const own = cardIdentity(card);
+    if (own.author === id.author && own.title === id.title) return card;
+  }
+  return null;
+}
+
+// The first card at the top of the viewport and its offset from that top.
+function topCard(root, viewportTop) {
+  for (const card of root.querySelectorAll('.listCard')) {
+    const r = card.getBoundingClientRect();
+    if (r.height && r.bottom > viewportTop + 1) return { id: cardIdentity(card), offset: r.top - viewportTop };
+  }
+  return null;
+}
+
+export class StackListLayer {
+  // Render `view`'s current list frame as a live copy over the list's box.
+  // Returns null when the view is not showing an easy-reading list.
+  static capture(view) {
+    const screen = view.componentScreen;
+    const frame = screen && screen.props;
+    const listScroll = frame && frame.enhance && frame.enhance.listScroll;
+    if (!listScroll || listScroll.kind !== 'article' || !screen.hasListViewport()) return null;
+    const main = view.mainDisplay;
+    const rect = main.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    return new StackListLayer(main, rect, screen, frame);
+  }
+
+  constructor(main, rect, screen, frame) {
+    this.width = window.innerWidth;
+    this.el = document.createElement('div');
+    // Same classes and inline geometry as the list surface, so list CSS applies.
+    this.el.className = main.className;
+    this.el.style.cssText = main.style.cssText;
+    Object.assign(this.el.style, {
+      position: 'absolute', left: rect.left + 'px', top: rect.top + 'px',
+      width: rect.width + 'px', height: rect.height + 'px', margin: '0', translate: 'none'
+    });
+    this.el.setAttribute('data-stack-layer', 'articleList');
+    this.el.setAttribute('aria-hidden', 'true');
+    this.el.inert = true;
+    this.el.style.zIndex = '2';
+    const enhance = Object.assign({}, frame.enhance, {
+      listScroll: Object.assign({}, frame.enhance.listScroll, { scrollable: true })
+    });
+    // Rendered now, so the reveal only attaches it. It stays out of the document
+    // until then: while the article is read there is one screen surface.
+    this.parent = main.parentNode;
+    this.screen = renderScreen(frame.lines, frame.forceWidth, false, false, this.el, enhance);
+    this.scrollTop = screen.getListScrollTop();
+  }
+
+  // Width changes re-lay out the list, so the copy no longer matches.
+  matchesViewport() {
+    return this.width === window.innerWidth;
+  }
+
+  // Visible, and usable when `usable`: it scrolls, and its input stays local.
+  show(usable) {
+    if (!this.el.isConnected) {
+      this.parent.appendChild(this.el);
+      this.screen.setListScrollTop(this.scrollTop);
+    }
+    this.el.inert = !usable;
+    this.el.removeAttribute('aria-hidden');
+    if (!usable) this.el.setAttribute('aria-hidden', 'true');
+  }
+
+  hide() {
+    this.el.remove();
+    this.el.inert = true;
+    this.el.setAttribute('aria-hidden', 'true');
+  }
+
+  // Put the real list at this layer's reading position: the same article at
+  // the same offset from the top of the view.
+  alignReal(realScreen, realRoot) {
+    const top = this.el.getBoundingClientRect().top;
+    const anchor = topCard(this.el, top);
+    const card = anchor && findCard(realRoot, anchor.id);
+    if (!card) return false;
+    const shift = card.getBoundingClientRect().top - realRoot.getBoundingClientRect().top - anchor.offset;
+    realScreen.setListScrollTop(realScreen.getListScrollTop() + shift);
+    return true;
+  }
+}

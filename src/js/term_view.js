@@ -1469,6 +1469,11 @@ TermView.prototype = {
       e.preventDefault();
       return;
     }
+    // Back from an article opened from a list reveals that list (#28).
+    if (this.bbscore.articleGestures?.handleBack(e)) {
+      e.preventDefault();
+      return;
+    }
     this.bbscore.articleShortcutSearch?.noteSearchKey(e);
     // "返回原文" hotkey (pref aidNavBackKey, default F9). Claimed BEFORE every
     // other handler because it must work in easy reading AND native, in a post
