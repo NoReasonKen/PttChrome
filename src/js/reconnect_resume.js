@@ -43,8 +43,30 @@ export const OPEN_RESUME_DELAY_MS = 2500;
 export const RESUME_TOAST_ID = 'resumeLastPlace';
 
 export const SNAPSHOT_KEY = 'pttchrome.rendererResume.v1';
+const DEBUG_TRACE_KEY = 'pttchrome.recoveryDebug.v1';
 // 回收後多久內回來還接得回去。再久的位置使用者多半不記得了，跳過去反而突兀。
 export const SNAPSHOT_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
+function takeDebugTrace() {
+  try {
+    const raw = window.localStorage.getItem(DEBUG_TRACE_KEY);
+    window.localStorage.removeItem(DEBUG_TRACE_KEY);
+    if (!raw || raw.length > 16384) return null;
+    const trace = JSON.parse(raw);
+    if (!Array.isArray(trace.events) || trace.events.length > 24 ||
+        !Number.isFinite(trace.at) || Date.now() - trace.at < 0 ||
+        Date.now() - trace.at > SNAPSHOT_MAX_AGE_MS) return null;
+    // Reapply the field whitelist when reading persisted diagnostic data.
+    return trace.events.map(event => diagnosticEvent(event.event, event, event.at));
+  } catch (e) {
+    return null;
+  }
+}
+
+function diagnosticEvent(name, info, at = Date.now()) {
+  const { kind, mode, reason, fromOpen, storage } = info || {};
+  return { at, event: name, kind, mode, reason, fromOpen, storage };
+}
 
 function readSnapshot() {
   try {
@@ -139,6 +161,7 @@ export function ReconnectResume(core, view, termBuf) {
   // bounded, in-memory history contains no article text or navigation targets.
   this._diagnostics = [];
   this._bootDiagnostic = null;
+  this._previousRecording = typeof window !== 'undefined' ? takeDebugTrace() : null;
   // 這條連線看過主功能表了嗎（＝登入完成）。capture() 時清掉。
   this._loggedIn = false;
   if (termBuf && termBuf.addEventListener)
@@ -179,11 +202,23 @@ export function ReconnectResume(core, view, termBuf) {
 
 ReconnectResume.prototype = {
   _diag: function(name, info) {
-    const { kind, mode, reason, fromOpen, storage } = info || {};
-    this._diagnostics.push({ at: Date.now(), event: name, kind, mode, reason, fromOpen, storage });
+    this._diagnostics.push(diagnosticEvent(name, info));
     if (this._diagnostics.length > 24) this._diagnostics.shift();
     const rec = this._core && this._core.debugRecorder;
     if (rec && rec.log) rec.log('reconnectResume.' + name, info);
+    // Only an explicitly started recording leaves a small trace across page
+    // destruction. Never persist wire data, bookmarks, or navigation targets.
+    if (rec?.isRecording) {
+      try {
+        window.localStorage.setItem(DEBUG_TRACE_KEY, JSON.stringify({ at: Date.now(), events: this._diagnostics }));
+      } catch (e) {
+        // Diagnostics must not interfere with recovery when storage is blocked.
+      }
+    }
+  },
+
+  recordingStarted: function() {
+    this._diag('recordingStarted', {});
   },
 
   diagnostics: function() {
@@ -191,6 +226,7 @@ ReconnectResume.prototype = {
     return {
       boot: this._bootDiagnostic && { ...this._bootDiagnostic },
       recent: this._diagnostics.map(event => ({ ...event })),
+      previousRecording: this._previousRecording?.map(event => ({ ...event })) || null,
       loggedIn: this._loggedIn,
       connectState: this._core.connectState,
       pendingKind: this._pending?.kind || this._countdown?.plan.kind || null,
@@ -262,7 +298,9 @@ ReconnectResume.prototype = {
       storage = 'storage-error';
       // 存不下（被擋／滿了）：回收後就回不去，跟以前一樣。
     }
-    this._diag('saveSnapshot', { kind: plan ? plan.kind : null, storage: storage });
+    const reason = plan ? null : !want ? 'disabled' : !this._loggedIn ? 'not-logged-in' :
+      this._core?.connectState !== 1 ? 'disconnected' : 'no-plan';
+    this._diag('saveSnapshot', { kind: plan ? plan.kind : null, storage: storage, reason: reason });
   },
 
   discard: function(reason) {

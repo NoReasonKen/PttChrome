@@ -156,8 +156,12 @@ never reused across reconnection.
 Debug recordings include `reconnectResume.diagnostics` at recording start, even
 when recovery decisions preceded recording. It reports the boot snapshot read
 status, validity, age, effective recovery preferences, and up to 24 recent
-decisions. This summary stays in memory and excludes navigation targets and
-article text. `saveSnapshot` reports whether storage was written, removed, or
+decisions. This summary excludes navigation targets and article text. While a
+Debug recording is active, its bounded recovery trace is also saved locally so
+the next page can report teardown decisions as `previousRecording`. It is read
+and removed on the next page load and expires after twelve hours; wire data and
+bookmarks are never persisted by this diagnostic trace.
+`saveSnapshot` reports whether storage was written, removed, or
 failed; a non-null plan alone does not prove a successful write.
 
 ## 測試

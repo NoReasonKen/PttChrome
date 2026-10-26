@@ -76,6 +76,7 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
   vi.useRealTimers();
   window.localStorage.removeItem(SNAPSHOT_KEY);
+  window.localStorage.removeItem("pttchrome.recoveryDebug.v1");
   window.localStorage.removeItem("pttchrome.pref.v1");
   if (toast()) toast().remove();
 });
@@ -195,6 +196,47 @@ describe("開站接回", () => {
 });
 
 describe("Recovery diagnostics available after startup", () => {
+  test("retains recorded teardown decisions across reopening when the resume snapshot is missing", () => {
+    const old = harness();
+    old.core.debugRecorder = { isRecording: true, log: vi.fn() };
+    old.rr.recordingStarted();
+    old.settle(MAIN_MENU);
+    old.rr.saveSnapshot();
+    old.rr.capture(false);
+    old.core.connectState = 2;
+    old.rr.saveSnapshot();
+    const next = harness();
+    const info = next.rr.diagnostics();
+    expect(info.boot.storage).toBe("missing");
+    expect(info.previousRecording).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event: "saveSnapshot", kind: "article", storage: "written" }),
+      expect.objectContaining({ event: "capture", kind: "article" }),
+      expect.objectContaining({ event: "saveSnapshot", kind: null, storage: "removed" })
+    ]));
+    expect(JSON.stringify(info.previousRecording)).not.toContain(POST.aid);
+    expect(JSON.stringify(info.previousRecording)).not.toContain(POST.board);
+    expect(window.localStorage.getItem("pttchrome.recoveryDebug.v1")).toBeNull();
+  });
+
+  test("does not persist teardown diagnostics without an active recording", () => {
+    const h = harness();
+    h.settle(MAIN_MENU);
+    h.rr.saveSnapshot();
+    expect(window.localStorage.getItem("pttchrome.recoveryDebug.v1")).toBeNull();
+    h.core.debugRecorder = { isRecording: false, log: vi.fn() };
+    h.rr.saveSnapshot();
+    expect(window.localStorage.getItem("pttchrome.recoveryDebug.v1")).toBeNull();
+  });
+
+  test("ignores malformed and expired diagnostic traces", () => {
+    window.localStorage.setItem("pttchrome.recoveryDebug.v1", "{");
+    expect(harness().rr.diagnostics().previousRecording).toBeNull();
+    window.localStorage.setItem("pttchrome.recoveryDebug.v1", JSON.stringify({
+      at: Date.now() - 13 * 60 * 60 * 1000, events: []
+    }));
+    expect(harness().rr.diagnostics().previousRecording).toBeNull();
+  });
+
   test("retains boot and discard decisions without navigation targets", () => {
     leaveFromOldPage();
     const h = harness();

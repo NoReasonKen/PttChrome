@@ -142,9 +142,10 @@ describe("DebugRecorder", () => {
   it("includes recovery decisions made before recording began", () => {
     const { app } = makeApp();
     const info = { boot: { storage: "missing", validPlan: false }, recent: [] };
-    app.reconnectResume = { diagnostics: () => info };
+    app.reconnectResume = { diagnostics: () => info, recordingStarted: vi.fn() };
     const rec = new DebugRecorder(app);
     rec.start();
+    expect(app.reconnectResume.recordingStarted).toHaveBeenCalledOnce();
     const out = JSON.parse(rec.stop());
     expect(out.events.find((event) => event.tag === "reconnectResume.diagnostics").info).toEqual(info);
   });
