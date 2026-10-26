@@ -70,16 +70,21 @@ export class NavigationStack {
     this._capture('articleList', board, StackListLayer.capture(core.view, 'article'));
   }
 
-  // `board` is about to be opened from the shown home dashboard.
+  // `board` is about to be opened from the shown home dashboard. Its article
+  // list stacks only under article-list easy reading.
   captureHome(board) {
-    if (!this.core.mobile || !board) return this.dropPending();
+    if (!this._stacksBoard(board)) return this.dropPending();
     this._capture('home', board, StackHomeLayer.capture(this.core));
   }
 
   // `board` is about to be opened from the shown board list.
   captureBoardList(board) {
-    if (!this.core.mobile || !board) return this.dropPending();
+    if (!this._stacksBoard(board)) return this.dropPending();
     this._capture('boardList', board, StackListLayer.capture(this.core.view, 'board'));
+  }
+
+  _stacksBoard(board) {
+    return !!(this.core.mobile && board && readEffectivePrefs().enableEasyReadingList);
   }
 
   // The open was abandoned: the captured page is no lower page of anything.

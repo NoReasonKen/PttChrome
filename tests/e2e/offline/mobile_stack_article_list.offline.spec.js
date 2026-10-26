@@ -5,18 +5,15 @@ const { test, expect } = require('@playwright/test');
 const { waitRectStable } = require('../helpers/layout');
 const { beginArticleTouch } = require('../helpers/article_gestures');
 const { touchDrag } = require('../helpers/real_input');
-const { MAIN, bootArticleList, sampleFrames, framesBringingBackArticle } = require('../helpers/stack_routes');
+const { MAIN, ARTICLE_CARD, bootArticleListAtCard, sampleFrames, framesBringingBackArticle } = require('../helpers/stack_routes');
 
 const LAYER = '[data-stack-layer]';
 const UNDERLAY = '[data-article-exit-underlay]';
-const CARD = `${MAIN} .listCard[data-list-author="kylin936"] .listCardBody`;
 const BACK_DELAY_MS = 700;
 
 async function enterArticleFromList(page) {
-  await bootArticleList(page);
-  await page.locator(CARD).first().scrollIntoViewIfNeeded();
-  await waitRectStable(page, CARD);
-  await page.locator(CARD).first().tap();
+  await bootArticleListAtCard(page);
+  await page.locator(ARTICLE_CARD).first().tap();
   await expect(page.locator(MAIN)).toHaveClass(/articleHorizontalGestures/);
   await waitRectStable(page, MAIN);
 }

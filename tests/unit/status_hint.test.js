@@ -105,6 +105,16 @@ describe("TermView.setListLoading（讀取中）", () => {
     setLoading.call(v, false);
     expect(el.style.display).toBe("none");
   });
+  test("每個擁有者各自放手：還有人持有就繼續顯示", () => {
+    const v = fakeView(true);
+    setLoading.call(v, true);
+    setLoading.call(v, true, "stackEntry");
+    const el = document.querySelector(".ListLoadingHint");
+    setLoading.call(v, false);
+    expect(el.style.display).toBe("block");
+    setLoading.call(v, false, "stackEntry");
+    expect(el.style.display).toBe("none");
+  });
 });
 
 describe("被迫切原生／失敗的出口送錯誤級", () => {

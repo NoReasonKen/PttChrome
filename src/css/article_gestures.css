@@ -54,7 +54,7 @@
   background: rgb(255 255 255 / 12%);
 }
 
-.articleExitUnderlay {
+.stackUnderlay {
   position: fixed;
   inset: 0 0 auto;
   z-index: 1;
@@ -68,7 +68,7 @@
   overflow: hidden;
 }
 
-.articleExitListTitle {
+.stackUnderlayTitle {
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -79,12 +79,12 @@
   font: 600 17px/22px system-ui, sans-serif;
 }
 
-.articleExitMoving {
+.stackMoving {
   will-change: translate;
   background-color: #141418;
 }
 
 /* A page being opened shows only the loading state until PTT answers (#36). */
 .stackEntryLoading > * {
-  visibility: hidden !important;
+  visibility: hidden;
 }

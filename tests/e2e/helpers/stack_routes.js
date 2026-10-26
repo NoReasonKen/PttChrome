@@ -1,6 +1,6 @@
 // Shared steps for replaying the stacked-page routes (scn-stack-*.json).
 const { expect } = require('@playwright/test');
-const { installPaintedFrameProbe } = require('./layout');
+const { installPaintedFrameProbe, waitRectStable } = require('./layout');
 const ptt = require('./ptt');
 const { bootOffline, bootScenario, loadCassette, replayListCassette } = require('./replay');
 
@@ -95,6 +95,27 @@ async function bootBoardList(page) {
   await boardListEngaged(page);
 }
 
+// The list card of an article in cchat-list-nav.json.
+const ARTICLE_CARD = `${MAIN} .listCard[data-list-author="kylin936"] .listCardBody`;
+
+// The article list, with ARTICLE_CARD scrolled into view and at rest.
+async function bootArticleListAtCard(page) {
+  await bootArticleList(page);
+  await page.locator(ARTICLE_CARD).first().scrollIntoViewIfNeeded();
+  await waitRectStable(page, ARTICLE_CARD);
+}
+
+// Every reply from PTT from now on arrives `delay` ms late.
+const delayReplies = (page, delay) => page.evaluate((delay) => {
+  const send = window.__stubWSSent;
+  window.__stubWSSent = data => setTimeout(() => send(data), delay);
+}, delay);
+
+// PTT never answers from now on.
+const dropReplies = page => page.evaluate(() => {
+  window.__stubWSSent = () => {};
+});
+
 // Hold PTT's reply to the next leave (←) until the returned `release()`.
 async function holdBackReply(page) {
   await page.evaluate(() => {
@@ -135,6 +156,6 @@ const framesBringingBackArticle = frames =>
   frames.filter((f, i) => f.underlay ? i > 0 && f.left < frames[i - 1].left - 1 : !f.listShown);
 
 module.exports = {
-  MAIN, homeBoard, boardList, bootArticleList, listActive, dashboardVisible, bootDashboard, boardOpened, boardListEngaged, bootBoardList,
+  MAIN, ARTICLE_CARD, homeBoard, boardList, bootArticleList, bootArticleListAtCard, delayReplies, dropReplies, listActive, dashboardVisible, bootDashboard, boardOpened, boardListEngaged, bootBoardList,
   fedBefore, openNextArticle, holdBackReply, heldBack, sampleFrames, framesBringingBackArticle
 };

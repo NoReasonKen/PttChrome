@@ -2,17 +2,16 @@ import { readEffectivePrefs } from './pref_storage';
 import { mobileToolbarContext } from './mobile_toolbar';
 import { i18n } from './i18n';
 import { serializedOpHint } from './serialized_op_gate';
-import { ArticleHorizontalGesture, ARTICLE_GESTURE_SLOP, ARTICLE_SETTLE_MS } from './article_horizontal_gesture';
+import { ArticleHorizontalGesture, ARTICLE_GESTURE_SLOP } from './article_horizontal_gesture';
 import { NavigationStack } from './navigation_stack';
-import { HANDOFF_TIMEOUT_MS } from './page_stack';
+import { StackEntry } from './stack_entry';
+import { createUnderlay, holdSurfaces, releaseSurfaces, paintSurfaces, slideDuration } from './stack_motion';
 import { OWNER_ARTICLE_LIST } from './list_render_owner';
 import { recordFor } from './reading_record';
 import { articleIdentity } from './article_shortcut_search';
 import '../css/article_gestures.css';
 
 const MODAL_SOURCE = 'articleShortcutDrawer';
-// The loading state's owner while a page slides in.
-const ENTRY_LOADING = 'stackEntry';
 const ACTIONS = [
   { key: 'thread', label: 'articleShortcutSearch_thread' },
   { key: '[', label: 'mobileToolbar_threadPrev' },
@@ -39,7 +38,6 @@ function diagTarget(target) {
   return el.tagName.toLowerCase();
 }
 
-const settleDuration = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ARTICLE_SETTLE_MS;
 
 // Own the contact outside the portal so mounting/focus changes cannot lose it.
 // Article exit and search shortcuts extend this owner rather than add listeners.
@@ -165,7 +163,7 @@ export class ArticleGestures {
     if (event.pointerType !== 'touch') return;
     // A revealed list owns its input until the real list takes over, and a page
     // sliding in is not there until PTT has answered.
-    this._landEntry();
+    this.entry?.land();
     if (this.stack.handingOff || this.entry) return;
     if (this.track) {
       this._cancel();
@@ -284,14 +282,22 @@ export class ArticleGestures {
 
   bindListLayer() {
     this.stack.enterArticle();
-    this._entryAnswered();
+    this.entry?.answered();
   }
 
   dropPendingLayer() {
-    const entry = this.entry;
-    if (!entry || entry.answered || entry.failed) return this.stack.dropPending();
-    entry.dropped = this.stack.takePending();
-    this._entryFailed();
+    if (this.entry?.loading) this.entry.failed(this.stack.takePending());
+    else this.stack.dropPending();
+  }
+
+  // Opening an entry from the shown page slides the new page in over it (#36).
+  _beginEntry() {
+    this.entry?.end();
+    const from = this.stack.pending;
+    if (!from?.layer || this.exitUnderlay || this.stack.handingOff) return;
+    this.entry = new StackEntry(this.core, from, entry => {
+      if (this.entry === entry) this.entry = null;
+    });
   }
 
   // A leave is on its way to PTT: other input waits for the swap.
@@ -302,107 +308,10 @@ export class ArticleGestures {
   // A session presented a real page: an article list, a board list or the
   // home dashboard.
   pagePresented(kind) {
+    // The page an open came from, presented again: nothing was entered.
+    if (this.entry?.loading && kind === this.entry.from) this.dropPendingLayer();
     this.stack.pagePresented(kind);
-    this._entryAnswered();
-  }
-
-  // Opening an entry slides the new page in over the page it is opened from
-  // (#36): the real screen comes in from the right over that page's live layer
-  // and shows only the loading state until PTT answers.
-  _beginEntry() {
-    this._finishEntry();
-    const from = this.stack.pending;
-    if (!from?.layer || this.exitUnderlay || this.stack.handingOff) return;
-    const entry = this.entry = { layer: from.layer, answered: false, failed: false, arrived: false, timer: null };
-    entry.underlay = this._underlay(from.layer, from.title);
-    entry.underlay.setAttribute('data-stack-entry-underlay', '');
-    entry.surfaces = this._holdSurfaces();
-    for (const { node } of entry.surfaces) node.classList.add('stackEntryLoading');
-    this.core.view.setListLoading?.(true, ENTRY_LOADING);
-    this._paintSurfaces(entry.surfaces, window.innerWidth);
-    // Commit the start position, so the slide starts from it.
-    entry.surfaces[0].node.getBoundingClientRect();
-    this._slideEntry(0);
-    // An article, a screen to pass (a board's entry notice) or the editor is
-    // PTT's answer, by whatever route it came; otherwise the answer is the
-    // page a session presents. Prompts on the way are not.
-    entry.settled = () => {
-      if ([3, 5, 6].includes(this.core.buf.pageState)) this._entryAnswered();
-    };
-    this.core.buf.addEventListener('screenSettled', entry.settled);
-    // An open that never reports an outcome still shows what PTT shows.
-    entry.bound = setTimeout(() => this._entryAnswered(), HANDOFF_TIMEOUT_MS);
-  }
-
-  _slideEntry(distance) {
-    const entry = this.entry;
-    clearTimeout(entry.timer);
-    const duration = settleDuration();
-    for (const { node } of entry.surfaces) node.style.transition = `translate ${duration}ms ease-out`;
-    this._paintSurfaces(entry.surfaces, distance);
-    entry.timer = setTimeout(() => {
-      entry.arrived = true;
-      if (entry.answered) this._finishEntry();
-      else if (entry.failed) this._finishEntryOut(distance);
-    }, duration);
-  }
-
-  // The page that slid out puts the real screen back in place: its frame
-  // fully off screen is painted first.
-  _finishEntryOut(distance) {
-    const entry = this.entry;
-    const node = entry.surfaces[0].node;
-    entry.frame = requestAnimationFrame(() => {
-      if (parseFloat(getComputedStyle(node).translate) < distance - 1) return this._finishEntryOut(distance);
-      entry.frame = requestAnimationFrame(() => this._finishEntry());
-    });
-  }
-
-  // PTT answered the open: the new page shows it as it slides on.
-  _entryAnswered() {
-    const entry = this.entry;
-    if (!entry || entry.answered || entry.failed) return;
-    entry.answered = true;
-    this._showEntered(entry);
-    if (entry.arrived) this._finishEntry();
-  }
-
-  // Input for a page PTT has answered ends its slide in place.
-  _landEntry() {
-    if (this.entry?.answered) this._finishEntry();
-  }
-
-  _showEntered(entry) {
-    for (const { node } of entry.surfaces) node.classList.remove('stackEntryLoading');
-    this.core.view.setListLoading?.(false, ENTRY_LOADING);
-  }
-
-  // The open failed: the new page slides back out over the page it came from,
-  // which the session's notice is about.
-  _entryFailed() {
-    const entry = this.entry;
-    if (!entry || entry.answered || entry.failed) return;
-    entry.failed = true;
-    entry.arrived = false;
-    this.core.view.setListLoading?.(false, ENTRY_LOADING);
-    this._slideEntry(window.innerWidth);
-  }
-
-  _finishEntry() {
-    const entry = this.entry;
-    if (!entry) return;
-    this.entry = null;
-    clearTimeout(entry.timer);
-    clearTimeout(entry.bound);
-    cancelAnimationFrame(entry.frame);
-    this.core.buf.removeEventListener('screenSettled', entry.settled);
-    this._showEntered(entry);
-    this._releaseSurfaces(entry.surfaces);
-    entry.underlay.remove();
-    // The page opened from stays as the lower page, hidden, unless the open
-    // was abandoned.
-    entry.layer.hide();
-    entry.dropped?.destroy();
+    this.entry?.answered();
   }
 
   // Back from an article or an article list (←, system Back, the toolbar)
@@ -410,7 +319,7 @@ export class ArticleGestures {
   // when it took the key.
   handleBack(event) {
     if (event.key !== 'ArrowLeft' || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return false;
-    this._landEntry();
+    this.entry?.land();
     if (this.sendingBack || this.stack.handingOff || this.entry || this.track || this.exitUnderlay || this.root) return false;
     const core = this.core;
     if (this._otherModalOpen()) return false;
@@ -425,63 +334,15 @@ export class ArticleGestures {
   _ensureExit() {
     if (this.exitUnderlay) return;
     const layer = this.stack.revealable();
-    this.exitUnderlay = this._underlay(layer, this.stack.title);
+    this.exitUnderlay = createUnderlay(this.core, layer, this.stack.title);
     this.exitUnderlay.setAttribute('data-article-exit-underlay', '');
     this.exitUnderlay.dataset.preview = layer ? 'layer' : 'fallback';
-    this.exitSurfaces = this._holdSurfaces();
+    this.exitSurfaces = holdSurfaces(this.core);
     this.core.setModalOpen(MODAL_SOURCE, true);
   }
 
-  // What shows under the real screen while it slides: the lower page's live
-  // layer under that page's title, or the dark fallback without one. The title
-  // bar slides with the real screen.
-  _underlay(layer, title) {
-    const underlay = document.createElement('div');
-    underlay.className = 'articleExitUnderlay';
-    underlay.setAttribute('aria-hidden', 'true');
-    underlay.inert = true;
-    if (layer) {
-      const bar = document.getElementById('mobileAppBar');
-      const heading = document.createElement('div');
-      heading.className = 'articleExitListTitle';
-      heading.textContent = title;
-      heading.style.height = (bar?.getBoundingClientRect().height || 0) + 'px';
-      underlay.appendChild(heading);
-      layer.show(false);
-    }
-    const toolbar = document.getElementById('mobileToolbar');
-    underlay.style.height = (toolbar?.getBoundingClientRect().top ?? window.innerHeight) + 'px';
-    this.core.view.mainDisplay.parentNode.appendChild(underlay);
-    return underlay;
-  }
-
-  // The real screen and its title bar, raised over the underlay to slide.
-  _holdSurfaces() {
-    const surfaces = [this.core.view.mainDisplay, document.getElementById('mobileAppBar')].filter(Boolean).map(node => ({
-      node, translate: node.style.translate, transition: node.style.transition, zIndex: node.style.zIndex
-    }));
-    for (const { node } of surfaces) {
-      node.classList.add('articleExitMoving');
-      node.style.zIndex = '152';
-    }
-    return surfaces;
-  }
-
-  _releaseSurfaces(surfaces) {
-    for (const surface of surfaces) {
-      surface.node.style.translate = surface.translate;
-      surface.node.style.transition = surface.transition;
-      surface.node.style.zIndex = surface.zIndex;
-      surface.node.classList.remove('articleExitMoving');
-    }
-  }
-
-  _paintSurfaces(surfaces, distance) {
-    for (const { node } of surfaces) node.style.translate = `${distance}px 0`;
-  }
-
   _paintExit(distance) {
-    this._paintSurfaces(this.exitSurfaces || [], distance);
+    paintSurfaces(this.exitSurfaces || [], distance);
   }
 
   _settleExit(commit) {
@@ -489,7 +350,7 @@ export class ArticleGestures {
     this._stopMotion();
     this.settling = true;
     const identity = this.identity;
-    const duration = settleDuration();
+    const duration = slideDuration();
     for (const { node } of this.exitSurfaces) node.style.transition = `translate ${duration}ms ease-out`;
     this._paintExit(commit ? window.innerWidth : 0);
     this.timer = setTimeout(() => {
@@ -551,7 +412,7 @@ export class ArticleGestures {
     if (!this.exitUnderlay) return;
     this._stopMotion();
     if (!this.stack.handingOff) this.stack.revealable()?.hide();
-    this._releaseSurfaces(this.exitSurfaces);
+    releaseSurfaces(this.exitSurfaces);
     this.exitUnderlay.remove();
     this.exitUnderlay = this.exitSurfaces = null;
     this.settling = false;
@@ -654,7 +515,7 @@ export class ArticleGestures {
     // Keep opening buttons as touch targets; their click handlers remain gated
     // until settling finishes or a fresh contact completes it early.
     this.panel.inert = !opened;
-    const duration = settleDuration();
+    const duration = slideDuration();
     this.panel.style.transition = `transform ${duration}ms ease-out`;
     this._paint(opened ? window.innerWidth * DRAWER_WIDTH : 0);
     this.timer = setTimeout(() => this._finishDrawerSettle(opened), duration);
@@ -723,14 +584,15 @@ export class ArticleGestures {
 
   disconnected() {
     this.close(true);
-    this._entryAnswered();
+    // The page underneath goes with the connection.
+    this.entry?.end();
     this.stack.disconnected();
   }
 
   destroy() {
     this._setNativeTouchMove(false);
     this.close(true);
-    this._finishEntry();
+    this.entry?.end();
     this.stack.clear();
     this.listeners.forEach(remove => remove());
     this.core.buf.removeEventListener('viewUpdate', this._refresh);

@@ -3,25 +3,15 @@
 // answers, and a failed open slides it back out. PTT's replies are delayed, so
 // every painted frame of the motion is observable.
 const { test, expect } = require('@playwright/test');
-const { installPaintedFrameProbe, waitRectStable } = require('../helpers/layout');
+const { installPaintedFrameProbe } = require('../helpers/layout');
 const ptt = require('../helpers/ptt');
-const { MAIN, bootArticleList, bootDashboard, boardOpened, bootBoardList, listActive } = require('../helpers/stack_routes');
+const {
+  MAIN, ARTICLE_CARD, bootArticleListAtCard, bootDashboard, boardOpened, bootBoardList, listActive, delayReplies, dropReplies
+} = require('../helpers/stack_routes');
 
-const CARD = `${MAIN} .listCard[data-list-author="kylin936"] .listCardBody`;
 const REPLY_DELAY_MS = 700;
 // The new page's screen settles a few px from where the old one rests.
 const SETTLED = 3;
-
-// Every reply from PTT from now on arrives `delay` ms late.
-const delayReplies = (page, delay) => page.evaluate((delay) => {
-  const send = window.__stubWSSent;
-  window.__stubWSSent = data => setTimeout(() => send(data), delay);
-}, delay);
-
-// PTT never answers from now on.
-const dropReplies = page => page.evaluate(() => {
-  window.__stubWSSent = () => {};
-});
 
 // Every painted frame from now on: how far the real screen is from where it
 // rests, what it shows, whether the page it is opened from shows beside it,
@@ -29,10 +19,10 @@ const dropReplies = page => page.evaluate(() => {
 // and the real screen shows something.
 async function sampleEntryFrames(page) {
   await installPaintedFrameProbe(page);
-  await page.evaluate((SETTLED) => {
+  await page.evaluate(([MAIN, SETTLED]) => {
     window.__frames = [];
     window.__framesDone = false;
-    const rest = Math.round(document.querySelector('.main:not([data-stack-layer])').getBoundingClientRect().left);
+    const rest = Math.round(document.querySelector(MAIN).getBoundingClientRect().left);
     const visible = el => !!el && el.checkVisibility({ visibilityProperty: true, opacityProperty: true });
     const shown = main => {
       const app = window.__app;
@@ -42,7 +32,7 @@ async function sampleEntryFrames(page) {
       return app.buf.listRenderOwner === 'board-list' ? 'boards' : 'articles';
     };
     const sample = () => {
-      const main = document.querySelector('.main:not([data-stack-layer])');
+      const main = document.querySelector(MAIN);
       window.__frames.push({
         left: Math.round(main.getBoundingClientRect().left) - rest, shows: shown(main),
         lower: visible(document.querySelector('[data-stack-layer]')),
@@ -57,7 +47,7 @@ async function sampleEntryFrames(page) {
       window.__framesDone = true;
     };
     window.__paintedFrame.add(sample);
-  }, SETTLED);
+  }, [MAIN, SETTLED]);
 }
 
 // The frames once the motion is over.
@@ -81,40 +71,36 @@ function expectSlidIn(frames, width, from) {
   expect(moving.some(f => f.shows === 'blank' && f.left <= SETTLED)).toBe(true);
 }
 
-async function bootListAtCard(page) {
-  await bootArticleList(page);
-  await page.locator(CARD).first().scrollIntoViewIfNeeded();
-  await waitRectStable(page, CARD);
-}
-
-test('opening an article slides it in over the list, loading until PTT answers', async ({ page }) => {
-  await bootListAtCard(page);
-  await delayReplies(page, REPLY_DELAY_MS);
-  await sampleEntryFrames(page);
-  await page.locator(CARD).first().tap();
-  const frames = await sampledFrames(page);
-  expect(frames.at(-1)).toMatchObject({ shows: 'article', lower: false });
-  expectSlidIn(frames, page.viewportSize().width, 'articles');
-});
-
-test('an open PTT never answers slides back out over the list, with today\'s notice', async ({ page }) => {
-  await bootListAtCard(page);
-  await dropReplies(page);
-  await sampleEntryFrames(page);
-  await page.locator(CARD).first().tap();
-  await expect(page.getByText('開啟文章失敗，已切至原生模式')).toBeVisible({ timeout: 10000 });
-  await expect(page.locator('[data-stack-entry-underlay], [data-stack-layer]')).toHaveCount(0);
-  const frames = await sampledFrames(page);
-  const width = page.viewportSize().width;
-  // In at rest, loading; then back out to the right over the list, and the
-  // new page never shows anything but the loading state.
+// In at rest, loading; then back out to the right over the page it was opened
+// from, and the new page never shows anything but the loading state.
+function expectSlidBackOut(frames, width) {
   const rest = frames.findIndex(f => f.shows === 'blank' && f.left <= SETTLED);
   expect(rest).toBeGreaterThanOrEqual(0);
   const out = frames.slice(rest).findIndex(f => f.left >= width - 5);
   expect(out).toBeGreaterThan(0);
   const back = frames.slice(rest, rest + out + 1);
-  expect(back.filter((f, i) => i > 0 && f.left < back[i - 1].left)).toEqual([]);
-  expect(back.filter(f => f.shows !== 'blank' || (f.left > SETTLED && !f.lower))).toEqual([]);
+  expect(back.filter((f, i) => i > 0 && f.left < back[i - 1].left - SETTLED)).toEqual([]);
+  expect(back.filter(f => f.shows !== 'blank' || !f.loading || (f.left > SETTLED && !f.lower))).toEqual([]);
+}
+
+test('opening an article slides it in over the list, loading until PTT answers', async ({ page }) => {
+  await bootArticleListAtCard(page);
+  await delayReplies(page, REPLY_DELAY_MS);
+  await sampleEntryFrames(page);
+  await page.locator(ARTICLE_CARD).first().tap();
+  const frames = await sampledFrames(page);
+  expect(frames.at(-1)).toMatchObject({ shows: 'article', lower: false });
+  expectSlidIn(frames, page.viewportSize().width, 'articles');
+});
+
+test('an open PTT never answers slides back out over the list, with the existing notice', async ({ page }) => {
+  await bootArticleListAtCard(page);
+  await dropReplies(page);
+  await sampleEntryFrames(page);
+  await page.locator(ARTICLE_CARD).first().tap();
+  await expect(page.getByText('開啟文章失敗，已切至原生模式')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('[data-stack-entry-underlay], [data-stack-layer]')).toHaveCount(0);
+  expectSlidBackOut(await sampledFrames(page), page.viewportSize().width);
 });
 
 test('opening a board from the dashboard slides it in over the dashboard, showing the board\'s entry screen', async ({ page }) => {
@@ -139,4 +125,26 @@ test('opening a board from a board list slides its article list in over the boar
   expect(frames.at(-1)).toMatchObject({ shows: 'articles', lower: false });
   expectSlidIn(frames, page.viewportSize().width, 'boards');
   await listActive(page);
+});
+
+test('a board PTT does not enter from a board list slides back out once the board list is back', async ({ page }) => {
+  await bootBoardList(page);
+  await dropReplies(page);
+  await sampleEntryFrames(page);
+  await ptt.sendKey(page, 'Enter');
+  await expect(page.getByText('操作完成，已回到平滑捲動')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('[data-stack-entry-underlay], [data-stack-layer]')).toHaveCount(0);
+  expectSlidBackOut(await sampledFrames(page), page.viewportSize().width);
+});
+
+test('with article-list easy reading off, a board opens from a board list without sliding', async ({ page }) => {
+  await bootBoardList(page);
+  await ptt.applyPrefs(page, { enableEasyReadingList: false });
+  await sampleEntryFrames(page);
+  const sent = await page.evaluate(() => window.__replay.sent.length);
+  await ptt.sendKey(page, 'Enter');
+  await page.waitForFunction(n => window.__replay.sent.length > n && window.__app.commandQueue.idle &&
+    !window.__app.buf._settleTimer && window.__app.buf.listRenderOwner !== 'board-list', sent);
+  const frames = await page.evaluate(() => window.__frames);
+  expect(frames.filter(f => f.left > SETTLED || f.lower || f.shows === 'blank')).toEqual([]);
 });

@@ -4,6 +4,7 @@ const { nextFrames } = require('../helpers/real_input');
 const { bootGestureArticle, beginArticleTouch, gestureSent } = require('../helpers/article_gestures');
 const ptt = require('../helpers/ptt');
 const { bootOffline, loadCassette, replayListCassette } = require('../helpers/replay');
+const { MAIN } = require('../helpers/stack_routes');
 
 test('right dragging retracts title and content together above a dark fallback while the toolbar stays fixed', async ({ page }, testInfo) => {
   await bootGestureArticle(page);
@@ -98,7 +99,9 @@ async function enterArticleFromList(page, beforeOpen = async () => {}) {
   await waitRectStable(page, '.listCard[data-list-author="kylin936"] .listCardBody');
   await beforeOpen();
   await page.locator('.listCard[data-list-author="kylin936"] .listCardBody').first().tap();
-  await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
+  // The list's live layer shows beside the article while it slides in.
+  await expect(page.locator(MAIN)).toHaveClass(/articleHorizontalGestures/);
+  await waitRectStable(page, MAIN);
 }
 
 async function visibleTextMetrics(page, selector) {
@@ -162,7 +165,7 @@ test('entering from a real list keeps that list as an inert layer while dragging
   // Until the release commits, the revealed list takes no input.
   await expect(page.locator('[data-stack-layer]')).toHaveAttribute('inert', '');
   await expect(page.locator('[data-stack-layer]')).toBeVisible();
-  await expect(underlay.locator('.articleExitListTitle')).toHaveText('C_Chat');
+  await expect(underlay.locator('.stackUnderlayTitle')).toHaveText('C_Chat');
   await page.screenshot({ path: testInfo.outputPath('article-exit-matching-list.png') });
   await contact.release();
   await expect(underlay).toHaveCount(0, { timeout: 10000 });
@@ -189,7 +192,7 @@ test('browser bar height changes keep the matching list layer, while a width cha
     await nextFrames(page, 4);
     const contact = await dragToPreview();
     await expect(underlay).toHaveAttribute('data-preview', 'layer');
-    await expect(underlay.locator('.articleExitListTitle')).toHaveText('C_Chat');
+    await expect(underlay.locator('.stackUnderlayTitle')).toHaveText('C_Chat');
     if (change < 0) await page.screenshot({ path: testInfo.outputPath('article-exit-preview-after-resize.png') });
     await contact.release({ cancel: true });
     await expect(underlay).toHaveCount(0);
