@@ -74,6 +74,11 @@ async function reloadAndLogin(page, session = {}) {
 // page left behind, which the back guard does not own; use the keyboard Back.
 const keyboardBack = page => ptt.sendKey(page, 'ArrowLeft');
 
+// Native search results show before the list returns to easy reading. Until
+// then the reading record holds the list as it was when the native screen
+// started, so a reload in between restores the newest results instead.
+const easyReadingList = page => expect.poll(() => page.evaluate(() => window.__app.listSession.state)).toBe('active');
+
 test('ordinary article recovery without searches restores a known article and reading position', async ({ page }) => {
   await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true });
   // Set up a verified article identity through the actual navigation owner;
@@ -140,11 +145,15 @@ for (const kind of ['author', 'thread']) {
     const position = await readToMiddle(page);
     await tapShortcut(page, kind);
     await waitList(page, { has: ['Alpha topic'], lacks: ['Delta topic'] });
+    await easyReadingList(page);
 
     await reloadAndLogin(page);
     await waitList(page, { has: ['Alpha topic'], lacks: ['Delta topic'] });
     if (kind === 'author') await page.screenshot({ path: test.info().outputPath('restored-author-results.png') });
-    await expect.poll(() => bodyText(page)).toContain(RESTORED);
+    // The list returning to easy reading keeps explaining the recovery rather
+    // than replacing it with its generic notice.
+    await easyReadingList(page);
+    await expect(page.locator('.ListHint')).toContainText(RESTORED);
     await keyboardBack(page);
     await waitArticle(page, 'Alpha');
     await expect.poll(() => topLine(page)).toBe(position);
