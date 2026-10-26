@@ -12,13 +12,15 @@ import { createPageStack, pushPage, popPage, revealTarget, handoffStep } from '.
 import { StackListLayer, cardIdentity, findCard } from './stack_list_layer';
 import { EMPTY_TOOLBAR_CONTEXT } from './mobile_toolbar';
 import { searchGateFacts } from './article_search';
+import { LIST_TITLE_COL_START } from './comment_parse';
+import { i18n } from './i18n';
 import { isSearchResultsFrame } from './search_results_screen';
 import { readSearchResultsContext } from './search_results_context';
 
 // Input on a usable layer stays on the layer; nothing reaches the terminal.
 const LOCAL_INPUT = ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'click', 'contextmenu', 'dblclick'];
 
-function articleIdentity(core) {
+function openArticleKey(core) {
   const key = core.easyReading?._articleKey;
   const board = core.view._articleBoard;
   return key && board ? board + '\n' + key : null;
@@ -57,7 +59,7 @@ export class ArticleStack {
   enterArticle() {
     const pending = this.pending;
     this.pending = null;
-    const identity = articleIdentity(this.core);
+    const identity = openArticleKey(this.core);
     const board = this.core.view._articleBoard;
     if (!pending || !identity || !sameBoard(pending.board, board)) {
       pending?.layer.hide();
@@ -78,7 +80,7 @@ export class ArticleStack {
   // belongs to what is on screen.
   update() {
     if (this.handoff || !this.layer) return;
-    if (!this.core.conn?.isConnected || articleIdentity(this.core) !== this.identity) this._discard();
+    if (!this.core.conn?.isConnected || openArticleKey(this.core) !== this.identity) this._discard();
   }
 
   clear() {
@@ -106,7 +108,7 @@ export class ArticleStack {
   // actions; they return once the real list is usable.
   toolbarContext() {
     if (!this.handoff) return null;
-    return { ...EMPTY_TOOLBAR_CONTEXT, appBar: this.handoff.appBar || EMPTY_TOOLBAR_CONTEXT.appBar };
+    return { ...EMPTY_TOOLBAR_CONTEXT, appBar: this.handoff.appBar || EMPTY_TOOLBAR_CONTEXT.appBar, locked: true };
   }
 
   get handingOff() {
@@ -121,7 +123,7 @@ export class ArticleStack {
     const layer = this.revealable();
     const h = this.handoff = {
       layer, board: this.stack.pages[this.stack.pages.length - 1]?.board || core.view._articleBoard,
-      identity: articleIdentity(core), appBar: layer ? this.appBar : null,
+      identity: openArticleKey(core), appBar: layer ? this.appBar : null,
       sentAt: performance.now(), presentedAt: null, touches: 0, lastScrollAt: -Infinity,
       timer: null, listeners: [], finish, hint
     };
@@ -185,7 +187,7 @@ export class ArticleStack {
     const core = this.core;
     if (!h || h.presentedAt != null) return;
     const pageState = core.buf.pageState;
-    if (pageState === 3 && articleIdentity(core) === h.identity) return;
+    if (pageState === 3 && openArticleKey(core) === h.identity) return;
     if (pageState === 2 && readEffectivePrefs().enableEasyReadingList) return;
     this._end('unexpected');
   }
@@ -228,15 +230,12 @@ export class ArticleStack {
   // number may have moved), through the list's own verified open path.
   _openTapped(id) {
     const core = this.core;
-    const card = findCard(core.view.mainDisplay, id);
-    const body = card?.querySelector('.listCardBody');
-    if (!body) {
-      core.view.flashListHint?.('這篇文章已經不在列表中', 4000);
+    const row = findCard(core.view.mainDisplay, id)?.querySelector('.listCardBody')?.closest('[data-row]')?.dataset.row;
+    if (row == null) {
+      core.view.flashListHint?.(i18n('articleStack_tappedGone'), 4000);
       return;
     }
-    body.scrollIntoView({ block: 'nearest' });
-    const r = body.getBoundingClientRect();
-    const at = { bubbles: true, cancelable: true, button: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
-    for (const type of ['mousedown', 'mouseup', 'click']) body.dispatchEvent(new MouseEvent(type, at));
+    core.noteUserAction?.();
+    core.listSession.onMouseClick(Number(row), LIST_TITLE_COL_START);
   }
 }

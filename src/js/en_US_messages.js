@@ -1418,6 +1418,8 @@ export const en_US = {
   "tooltip_articleHorizontalGestures": {
     "message": "In mobile article easy reading, swipe left to reveal article shortcuts. Normal vertical scrolling, taps and long presses remain available."
   },
+  "articleStack_tappedGone": { "message": "That article is no longer in the list" },
+  "articleStack_handoffTimeout": { "message": "Returning to the list timed out; staying on the current PTT screen" },
   "articleShortcutDrawer_title": {
     "message": "Article shortcuts"
   },

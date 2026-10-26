@@ -21,7 +21,7 @@ test('an article reached another way starts a new base and reveals nothing', () 
   expect(popPage(stack).revealed).toBeNull();
 });
 
-test('only the page the current one was opened for is revealed', () => {
+test('only the page the current one was opened from is revealed', () => {
   let stack = pushPage(createPageStack(), list('C_Chat'));
   stack = pushPage(stack, article('Gossiping'), { fromBelow: true });
   expect(revealTarget(stack)).toBeNull();

@@ -40,7 +40,7 @@ import { MOBILE_KEYPAD_PUSH_KEY } from './mobile_layout';
 export const EMPTY_TOOLBAR_CONTEXT = Object.freeze({
   push: false, reply: false, mail: false, share: false, threadNav: false, post: false,
   unreadJump: false, markAllRead: false, help: false, contentTools: false, refresh: false, end: false,
-  search: [], appBar: EMPTY_APP_BAR
+  search: [], appBar: EMPTY_APP_BAR, locked: false
 });
 
 // 送鍵表：key 是 term_view.sendKeyAsUser 的 keyName（單字元或 KeyMap 裡的具名鍵），

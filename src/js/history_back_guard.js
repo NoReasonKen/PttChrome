@@ -246,6 +246,13 @@ export function installHistoryBackGuard(app, win, opts) {
     }
     // Closing an overlay takes priority over the optional terminal-back mapping.
     if (!gateOn()) return false;
+    // A Back while the revealed list waits for PTT: that Back is already on its
+    // way, so this one is absorbed rather than counted toward leaving the site
+    // (queueing it to unwind further is #34).
+    if (app.articleGestures && app.articleGestures.holdsInput && app.articleGestures.holdsInput()) {
+      lastBlockedAt = 0;
+      return true;
+    }
     const sent =!!(app.sendNavKeyAsUser && app.sendNavKeyAsUser('ArrowLeft'));
     logBack(sent);
     if (sent) {

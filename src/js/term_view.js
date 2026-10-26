@@ -1449,6 +1449,13 @@ TermView.prototype = {
       this.flashListHint(busyHint);
       return;
     }
+    // Leaving an article for its revealed list (#28, #30): only that leave may
+    // reach PTT until the real list takes over. Toolbar keys come through here
+    // too, past the modal gate that holds the hardware keyboard.
+    if (this.bbscore.articleGestures?.holdsInput()) {
+      e.preventDefault();
+      return;
+    }
     // 手機黏滯 Ctrl：下一個按鍵改送組合鍵（用一次就解除）。重新走 sendKeyAsUser ⇒
     // 整條分派（好讀／列表好讀／原生）照組合鍵的語意處理。
     if (this.bbscore.mobileCtrlArmed && !e.ctrlKey && !e.altKey && !e.metaKey &&

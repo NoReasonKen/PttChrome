@@ -103,8 +103,6 @@ async function swipeOutWithSlowBack(page, delay) {
   return waitRectStable(page, LAYER);
 }
 
-test.beforeEach(({ page }) => page.on('console', m => { if (m.text().includes('STACKDBG')) console.log(m.text()); }));
-
 test('the revealed list scrolls at once, and the real list takes over at the same entry and offset', async ({ page }) => {
   const box = await swipeOutWithSlowBack(page, 1500);
   const before = await topEntry(page, LAYER);

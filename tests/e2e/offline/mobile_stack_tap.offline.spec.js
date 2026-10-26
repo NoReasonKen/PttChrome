@@ -38,9 +38,9 @@ async function openRecordedArticle(page) {
   return card;
 }
 
-// Leave by swipe with PTT's list reply held back until `release()`.
-async function leaveWithHeldReply(page) {
-  await page.evaluate(() => {
+// Hold PTT's reply to the leave until the returned `release()`.
+function holdBackReply(page) {
+  return page.evaluate(() => {
     const send = window.__stubWSSent;
     window.__heldBack = null;
     window.__stubWSSent = (data) => {
@@ -48,11 +48,18 @@ async function leaveWithHeldReply(page) {
       window.__heldBack = () => send(data);
     };
   });
+}
+
+const heldBack = page => expect.poll(() => page.evaluate(() => !!window.__heldBack)).toBe(true);
+
+// Leave by swipe with PTT's list reply held back until `release()`.
+async function leaveWithHeldReply(page) {
+  await holdBackReply(page);
   const main = await waitRectStable(page, MAIN);
   const contact = await beginArticleTouch(page, { x: 20, y: main.top + 100 });
   await contact.move({ x: page.viewportSize().width - 20, y: main.top + 100 });
   await contact.release();
-  await expect.poll(() => page.evaluate(() => !!window.__heldBack)).toBe(true);
+  await heldBack(page);
   // The release's own click stays suppressed briefly; a reader taps later.
   await page.waitForTimeout(450); // sleep-ok: past the release's click suppression
   return () => page.evaluate(() => window.__heldBack());
@@ -115,16 +122,50 @@ test('a tapped article missing from the refreshed list gives a notice, keeps the
 
 test('keys and toolbar actions other than Back are blocked until the swap', async ({ page }) => {
   await openRecordedArticle(page);
-  const reply = await leaveWithHeldReply(page);
+  // Leave by ← on the keypad, which stays open over the revealed list.
+  await page.locator('#mobileToolbar [data-key="__keys"]').tap();
+  await holdBackReply(page);
+  await page.locator('.mobileKeypadKey[data-key="ArrowLeft"]').tap();
+  await heldBack(page);
+  await expect(page.locator(LAYER)).toBeVisible();
+  const reply = () => page.evaluate(() => window.__heldBack());
   const sentBefore = await page.evaluate(() => window.__replay.sent.length);
   await page.keyboard.press('End');
   await page.keyboard.press('j');
-  await page.locator('#mobileToolbar [data-key="__end"]').click({ force: true });
+  for (const key of ['ArrowUp', 'PageDown', 'Enter'])
+    await page.locator(`.mobileKeypadKey[data-key="${key}"]`).tap();
   expect(await page.evaluate(n => window.__replay.sent.slice(n), sentBefore)).toEqual([]);
+  for (const key of ['__end', '__keys', '__more'])
+    await expect(page.locator(`#mobileToolbar [data-key="${key}"]`)).toBeDisabled();
   await reply();
   await expect(page.locator(UNDERLAY)).toHaveCount(0, { timeout: 10000 });
   await listActive(page);
   expect(await page.evaluate(() => window.__app.buf.pageState)).toBe(2);
+  await expect(page.locator('#mobileToolbar [data-key="__more"]')).toBeEnabled();
+});
+
+test('system Back during the handoff neither leaves the site nor reaches PTT', async ({ page }) => {
+  await openRecordedArticle(page);
+  // Survives only while the page stays this document, on this site.
+  await page.evaluate(() => {
+    window.__sameDocument = true;
+    window.__hints = [];
+    const flash = window.__app.view.flashListHint.bind(window.__app.view);
+    window.__app.view.flashListHint = (text, ...rest) => { window.__hints.push(text); return flash(text, ...rest); };
+  });
+  const reply = await leaveWithHeldReply(page);
+  const sentBefore = await page.evaluate(() => window.__replay.sent.length);
+  for (let i = 0; i < 2; ++i) {
+    await page.goBack();
+    expect(await page.evaluate(() => window.__sameDocument)).toBe(true);
+  }
+  expect(await page.evaluate(n => window.__replay.sent.slice(n), sentBefore)).toEqual([]);
+  // A Back that counted toward leaving the site would have said so.
+  expect(await page.evaluate(() => window.__hints)).toEqual([]);
+  await reply();
+  await expect(page.locator(UNDERLAY)).toHaveCount(0, { timeout: 10000 });
+  await listActive(page);
+  expect(await page.evaluate(() => window.__sameDocument)).toBe(true);
 });
 
 test('the release that ends the swipe over an article opens nothing', async ({ page }) => {

@@ -212,6 +212,11 @@ export class ArticleGestures {
     this.stack.clear();
   }
 
+  // A leave is on its way to PTT: other input waits for the swap.
+  holdsInput() {
+    return this.stack.handingOff && !this.sendingBack;
+  }
+
   // The list session presented a real article list.
   listPresented() {
     this.stack.listPresented();
@@ -307,7 +312,7 @@ export class ArticleGestures {
       },
       finish: () => this._removeExit(),
       cancel: () => this._settleExit(false),
-      hint: () => core.view.flashListHint?.('返回列表逾時，已停在 PTT 目前的畫面', 4000)
+      hint: () => core.view.flashListHint?.(i18n('articleStack_handoffTimeout'), 4000)
     });
   }
 
