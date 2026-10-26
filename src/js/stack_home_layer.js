@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { HomeDashboard as HomeDashboardView } from '../components/HomeDashboard/index.jsx';
 import { applyHomeAnchor, homeAnchorOf } from './home_dashboard';
+import { i18n } from './i18n';
 
 const BOARD_ENTRY = '[data-home-board], [data-home-recent]';
 
@@ -90,9 +91,13 @@ export class StackHomeLayer {
     return applyHomeAnchor(core.homeDashboard.rootElement(), record);
   }
 
-  // A refused open gives the dashboard's own notice.
+  // The board must still be on the real dashboard. A refused open gives the
+  // dashboard's own notice, or says why when it refuses silently.
   openTapped(core, id) {
-    core.homeDashboard.openBoard(id.board);
+    const home = core.homeDashboard;
+    const shown = [...(home.rootElement()?.querySelectorAll(BOARD_ENTRY) || [])].some(entry => boardOf(entry) === id.board);
+    if (!shown) return core.view.flashListHint?.(i18n('stack_boardGone'), 4000);
+    if (!home.openBoard(id.board) && home.state.fetching) core.view.flashListHint?.(i18n('home_updating'), 4000);
   }
 
   destroy() {

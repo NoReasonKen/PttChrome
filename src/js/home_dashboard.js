@@ -593,12 +593,12 @@ HomeDashboard.prototype = {
     core.articleGestures?.captureHomeLayer(name);
     const sent = submitSearch(core, 'board', name, {
       onFail: () => {
-        core.articleGestures?.clearListLayer();
+        core.articleGestures?.dropPendingLayer();
         this._hint('開不了看板 ' + name + '（已停在原生畫面）', 0, HINT_ERROR);
       }
     });
     if (!sent) {
-      core.articleGestures?.clearListLayer();
+      core.articleGestures?.dropPendingLayer();
       this._hint(serializedOpHint(core) || '指令處理中，請稍候再試');
     }
     return sent;

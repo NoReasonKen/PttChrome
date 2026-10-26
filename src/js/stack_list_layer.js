@@ -95,6 +95,10 @@ export class StackListLayer {
     this.el.setAttribute('aria-hidden', 'true');
   }
 
+  destroy() {
+    this.hide();
+  }
+
   // Put the real list at this layer's reading position: the same entry at
   // the same offset from the top of the view.
   alignReal(core) {
@@ -120,7 +124,7 @@ export class StackListLayer {
   openTapped(core, id) {
     const row = findCard(core.view.mainDisplay, id)?.querySelector('.listCardBody')?.closest('[data-row]')?.dataset.row;
     if (row == null) {
-      core.view.flashListHint?.(i18n('articleStack_tappedGone'), 4000);
+      core.view.flashListHint?.(i18n(this.kind === 'board' ? 'stack_boardGone' : 'stack_articleGone'), 4000);
       return;
     }
     core.noteUserAction?.();

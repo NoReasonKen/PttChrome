@@ -4,7 +4,7 @@
 const { test, expect } = require('@playwright/test');
 const { touchDrag, nextFrames } = require('../helpers/real_input');
 const { beginArticleTouch } = require('../helpers/article_gestures');
-const { waitScrollStable } = require('../helpers/layout');
+const { waitScrollStable, installPaintedFrameProbe } = require('../helpers/layout');
 const ptt = require('../helpers/ptt');
 const { loadCassette, bootScenario, waitFed } = require('../helpers/replay');
 
@@ -39,8 +39,8 @@ async function holdBackReply(page) {
   return () => page.evaluate(() => window.__heldBack());
 }
 
-// Open C_Chat by tapping its favorite card, as the recording did.
-async function enterBoardFromDashboard(page) {
+// The recorded dashboard, shown with FAVORITES.
+async function bootDashboard(page) {
   await bootScenario(page, ptt, homeBoard);
   await page.evaluate((boards) => {
     const home = window.__app.homeDashboard;
@@ -50,19 +50,35 @@ async function enterBoardFromDashboard(page) {
   await ptt.applyPrefs(page, homeBoard.meta.prefs);
   await page.evaluate(() => window.__app.onData('\x1b[H'));
   await dashboardVisible(page);
-  await page.locator('#homeDashboard [data-home-board="C_Chat"]').tap();
+}
+
+// The board search the dashboard (or the search key) sent reached C_Chat.
+async function boardOpened(page) {
   await page.waitForFunction(() => window.__app.buf.isPassScreenNow() || window.__app.buf.pageState === 2);
   if (await page.evaluate(() => window.__app.buf.isPassScreenNow())) await ptt.sendKey(page, 'Space');
   await listActive(page);
 }
 
-test('Back from a board entered from the dashboard reveals the dashboard at once, and it holds its position after the swap', async ({ page }) => {
+// Open C_Chat by tapping its favorite card, as the recording did.
+async function enterBoardFromDashboard(page) {
+  await bootDashboard(page);
+  await page.locator('#homeDashboard [data-home-board="C_Chat"]').tap();
+  await boardOpened(page);
+}
+
+// Leave the dashboard-entered board with PTT's reply held back.
+async function revealDashboard(page, leave = () => ptt.sendKey(page, 'ArrowLeft')) {
   await enterBoardFromDashboard(page);
   const release = await holdBackReply(page);
-  await ptt.sendKey(page, 'ArrowLeft');
+  await leave();
   await expect.poll(() => page.evaluate(() => !!window.__heldBack)).toBe(true);
+  await expect(page.locator(HOME_LAYER)).toBeVisible();
+  return release;
+}
+
+test('Back from a board entered from the dashboard reveals the dashboard at once, and it holds its position after the swap', async ({ page }) => {
+  const release = await revealDashboard(page);
   const layer = page.locator(HOME_LAYER);
-  await expect(layer).toBeVisible();
   await expect(layer.locator('[data-home-board="C_Chat"]')).toBeVisible();
   // The revealed dashboard scrolls while PTT has not answered.
   const box = await layer.boundingBox();
@@ -105,7 +121,8 @@ const topBoard = (page, root) => page.locator(root).evaluate(el => {
   return { board: card.dataset.listBoard, offset: card.getBoundingClientRect().top - top };
 });
 
-test('Back from a board entered from a board list reveals that board list at once, at the same entry after the swap', async ({ page }) => {
+// Leave the board-list-entered board with PTT's reply held back.
+async function revealBoardList(page) {
   await bootScenario(page, ptt, boardList);
   await ptt.applyPrefs(page, { enableEasyReadingList: true, enableBoardListSmoothScroll: true });
   await boardListEngaged(page);
@@ -114,8 +131,13 @@ test('Back from a board entered from a board list reveals that board list at onc
   const release = await holdBackReply(page);
   await ptt.sendKey(page, 'ArrowLeft');
   await expect.poll(() => page.evaluate(() => !!window.__heldBack)).toBe(true);
+  await expect(page.locator(BOARD_LAYER)).toBeVisible();
+  return release;
+}
+
+test('Back from a board entered from a board list reveals that board list at once, at the same entry after the swap', async ({ page }) => {
+  const release = await revealBoardList(page);
   const layer = page.locator(BOARD_LAYER);
-  await expect(layer).toBeVisible();
   const before = await topBoard(page, BOARD_LAYER);
   const box = await layer.boundingBox();
   const x = box.x + box.width / 2;
@@ -135,33 +157,13 @@ test('Back from a board entered from a board list reveals that board list at onc
 const sentSince = (page, n) => page.evaluate(n => window.__replay.sent.slice(n), n);
 const sentCount = page => page.evaluate(() => window.__replay.sent.length);
 
-// Leave the dashboard-entered board with PTT's reply held back.
-async function revealDashboard(page) {
-  await enterBoardFromDashboard(page);
-  const release = await holdBackReply(page);
-  await ptt.sendKey(page, 'ArrowLeft');
-  await expect.poll(() => page.evaluate(() => !!window.__heldBack)).toBe(true);
-  await expect(page.locator(HOME_LAYER)).toBeVisible();
-  return release;
-}
-
 test('a board reached by search reveals no lower page', async ({ page }) => {
-  await bootScenario(page, ptt, homeBoard);
-  await page.evaluate((boards) => {
-    const home = window.__app.homeDashboard;
-    home._state.fetchedAt = Date.now();
-    home._set({ boards });
-  }, FAVORITES);
-  await ptt.applyPrefs(page, homeBoard.meta.prefs);
-  await page.evaluate(() => window.__app.onData('\x1b[H'));
-  await dashboardVisible(page);
+  await bootDashboard(page);
   await page.locator('[data-key="__search"]').tap();
   const input = page.locator('input[name="searchKeyword"]');
   await input.fill('C_Chat');
   await input.press('Enter');
-  await page.waitForFunction(() => window.__app.buf.isPassScreenNow() || window.__app.buf.pageState === 2);
-  if (await page.evaluate(() => window.__app.buf.isPassScreenNow())) await ptt.sendKey(page, 'Space');
-  await listActive(page);
+  await boardOpened(page);
   await page.evaluate(() => {
     window.__revealed = false;
     new MutationObserver(() => {
@@ -185,34 +187,67 @@ test('a board tapped on the revealed dashboard opens after the swap', async ({ p
   await expect.poll(async () => (await sentSince(page, before)).join('')).toContain('s');
 });
 
+// Tap Fav2 on the revealed dashboard; once the real one is shown (a finger
+// holds the swap), change it with `alter`, then swap.
+async function tapRevealedThen(page, alter) {
+  const release = await revealDashboard(page);
+  const fav = page.locator(`${HOME_LAYER} [data-home-board="Fav2"]`);
+  await fav.tap();
+  const box = await fav.boundingBox();
+  const contact = await beginArticleTouch(page, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
+  await release();
+  await page.waitForFunction(() => window.__app.homeDashboard.state.visible === true);
+  await page.evaluate(alter);
+  const before = await sentCount(page);
+  await contact.release({ cancel: true });
+  await expect(page.locator(HOME_LAYER)).toHaveCount(0, { timeout: 10000 });
+  return before;
+}
+
+test('a board tapped on the revealed dashboard but gone from the real one gives a notice and opens nothing', async ({ page }) => {
+  const before = await tapRevealedThen(page, () => {
+    const home = window.__app.homeDashboard;
+    home._set({ boards: home.state.boards.filter(b => b.name !== 'Fav2') });
+  });
+  await expect(page.locator('.ListHint')).toHaveText('That board is no longer in the list');
+  await page.waitForTimeout(1000); // sleep-ok: proves no board search is sent afterwards
+  expect((await sentSince(page, before)).join('')).not.toContain('s');
+});
+
+test('a board tapped on the revealed dashboard while the real one is updating says so and opens nothing', async ({ page }) => {
+  const before = await tapRevealedThen(page, () => window.__app.homeDashboard._set({ fetching: true }));
+  await expect(page.locator('.ListHint')).toHaveText('Updating…');
+  await page.waitForTimeout(1000); // sleep-ok: proves no board search is sent afterwards
+  expect((await sentSince(page, before)).join('')).not.toContain('s');
+});
+
 test('the real dashboard never covers the revealed one before the swap', async ({ page }) => {
   const release = await revealDashboard(page);
   const box = await page.locator(HOME_LAYER).boundingBox();
   const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   // A finger down defers the swap after the real dashboard is shown.
   const contact = await beginArticleTouch(page, center);
+  // Every painted frame until the copy is gone shows the copy on top.
+  await installPaintedFrameProbe(page);
+  await page.evaluate(({ x, y }) => {
+    window.__covered = 0;
+    window.__realFrames = 0;
+    const sample = () => {
+      if (!document.querySelector('[data-stack-layer="home"]')) return window.__paintedFrame.remove(sample);
+      if (!window.__app.homeDashboard.state.visible) return;
+      window.__realFrames += 1;
+      if (!document.elementFromPoint(x, y)?.closest('[data-stack-layer="home"]')) window.__covered += 1;
+    };
+    window.__paintedFrame.add(sample);
+  }, center);
   await release();
   await page.waitForFunction(() => window.__app.homeDashboard.state.visible === true);
   await nextFrames(page, 3);
-  const top = await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('[data-stack-layer="home"]'), center);
-  expect(top).toBe(true);
   await contact.release({ cancel: true });
   await expect(page.locator(HOME_LAYER)).toHaveCount(0, { timeout: 10000 });
+  expect(await page.evaluate(() => window.__realFrames)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.__covered)).toBe(0);
 });
-
-// Leave the board-list-entered board with PTT's reply held back.
-async function revealBoardList(page) {
-  await bootScenario(page, ptt, boardList);
-  await ptt.applyPrefs(page, { enableEasyReadingList: true, enableBoardListSmoothScroll: true });
-  await boardListEngaged(page);
-  await ptt.sendKey(page, 'Enter');
-  await listActive(page);
-  const release = await holdBackReply(page);
-  await ptt.sendKey(page, 'ArrowLeft');
-  await expect.poll(() => page.evaluate(() => !!window.__heldBack)).toBe(true);
-  await expect(page.locator(BOARD_LAYER)).toBeVisible();
-  return release;
-}
 
 test('a board tapped on the revealed board list opens after the swap', async ({ page }) => {
   const release = await revealBoardList(page);
@@ -235,18 +270,14 @@ test('a board tapped on the revealed board list but gone from the real one gives
   await (await card.$('.listCardBody')).tap();
   await release();
   await expect(page.locator(BOARD_LAYER)).toHaveCount(0, { timeout: 10000 });
-  await expect(page.locator('.ListHint')).toBeVisible();
+  await expect(page.locator('.ListHint')).toHaveText('That board is no longer in the list');
   const before = await sentCount(page);
   await page.waitForTimeout(1000); // sleep-ok: proves no open is sent afterwards
   expect(await sentSince(page, before)).toEqual([]);
 });
 
 test('system Back reveals the dashboard the same way as ←', async ({ page }) => {
-  await enterBoardFromDashboard(page);
-  const release = await holdBackReply(page);
-  await page.goBack();
-  await expect.poll(() => page.evaluate(() => !!window.__heldBack)).toBe(true);
-  await expect(page.locator(HOME_LAYER)).toBeVisible();
+  const release = await revealDashboard(page, () => page.goBack());
   await release();
   await dashboardVisible(page);
   await expect(page.locator(HOME_LAYER)).toHaveCount(0, { timeout: 10000 });

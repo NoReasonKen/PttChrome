@@ -3412,7 +3412,7 @@ ListSession.prototype = {
   // Nothing is opened: stay on the list, merge PTT's current page into the
   // buffer at the reader's position, and say why.
   _openMismatched: function(landed) {
-    this._core.articleGestures?.clearListLayer();
+    this._core.articleGestures?.dropPendingLayer();
     this.state = 'active';
     this._resumeInPlace(landed);
     if (this._view.flashListHint)
@@ -3420,7 +3420,7 @@ ListSession.prototype = {
   },
 
   _openFailed: function() {
-    this._core.articleGestures?.clearListLayer();
+    this._core.articleGestures?.dropPendingLayer();
     // v5 contract #5: failures are visible — banner, then the reducer routes
     // opening → functionMode (native mirror).
     if (this._view.flashListHint)

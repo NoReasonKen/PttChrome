@@ -218,7 +218,7 @@ export class ArticleGestures {
     this.stack.enterArticle();
   }
 
-  clearListLayer() {
+  dropPendingLayer() {
     this.stack.dropPending();
   }
 
@@ -325,7 +325,7 @@ export class ArticleGestures {
       },
       finish: () => this._removeExit(),
       cancel: () => this._settleExit(false),
-      hint: () => core.view.flashListHint?.(i18n('articleStack_handoffTimeout'), 4000)
+      hint: () => core.view.flashListHint?.(i18n('stack_handoffTimeout'), 4000)
     });
   }
 

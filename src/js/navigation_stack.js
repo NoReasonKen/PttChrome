@@ -27,11 +27,6 @@ function openArticleKey(core) {
   return key && board ? board + '\n' + key : null;
 }
 
-function destroyLayer(layer) {
-  if (layer?.destroy) layer.destroy();
-  else layer?.hide();
-}
-
 export class NavigationStack {
   constructor(core) {
     this.core = core;
@@ -57,16 +52,21 @@ export class NavigationStack {
     this.pending = { kind, board, layer, appBar: this.core._screenContext?.appBar, title };
   }
 
+  // Search results stack with their own return route later (#33). The legacy
+  // caption is also an ordinary list's; it means results only after a verified
+  // search on this board.
+  _showsSearchResults() {
+    const core = this.core;
+    const board = core.listSession?._boardName;
+    const facts = searchGateFacts(core);
+    return !!board && !!facts && isSearchResultsFrame(facts, board, !!readSearchResultsContext(core, board));
+  }
+
   // An article is about to be opened from the shown article list.
   captureList() {
     const core = this.core;
     const board = core.listSession?._boardName;
-    if (!core.mobile || !board) return this.dropPending();
-    // Search results stack with their own return route later (#33). The legacy
-    // caption is also an ordinary list's; it means results only after a
-    // verified search on this board.
-    const facts = searchGateFacts(core);
-    if (facts && isSearchResultsFrame(facts, board, !!readSearchResultsContext(core, board))) return this.dropPending();
+    if (!core.mobile || !board || this._showsSearchResults()) return this.dropPending();
     this._capture('articleList', board, StackListLayer.capture(core.view, 'article'));
   }
 
@@ -84,7 +84,7 @@ export class NavigationStack {
 
   // The open was abandoned: the captured page is no lower page of anything.
   dropPending() {
-    destroyLayer(this.pending?.layer);
+    this.pending?.layer?.destroy();
     this.pending = null;
   }
 
@@ -94,7 +94,7 @@ export class NavigationStack {
     const pending = this.pending;
     this.pending = null;
     if (!pending || !opensFrom(pending)) {
-      destroyLayer(pending?.layer);
+      pending?.layer?.destroy();
       this._discard();
       this.stack = pushPage(createPageStack(), page);
       return;
@@ -106,7 +106,7 @@ export class NavigationStack {
     }
     const depth = this.stack.pages.length - 1;
     this.stack = withLayer(this.stack);
-    destroyLayer(this.lower[depth]?.layer);
+    this.lower[depth]?.layer?.destroy();
     this.lower[depth] = pending;
     this.stack = pushPage(this.stack, page, { fromBelow: true });
   }
@@ -143,7 +143,14 @@ export class NavigationStack {
   update() {
     if (this.handoff || !this.lower.some(Boolean)) return;
     if (!this.core.conn?.isConnected) return this._discard();
-    if (this._top()?.kind === 'article' && openArticleKey(this.core) !== this.identity) this._discard();
+    const top = this._top();
+    if (top?.kind !== 'article' || openArticleKey(this.core) === this.identity) return;
+    // Another article (the next one, a thread hop): the list's layer showed
+    // where the first one was opened, but the pages below the list still hold.
+    if (this.stack.pages.length < 2) return this._discard();
+    this._spend(this.stack.pages.length - 2);
+    this.stack = pushPage(popPage(this.stack).stack, top, { fromBelow: true });
+    this.identity = null;
   }
 
   clear() {
@@ -154,7 +161,7 @@ export class NavigationStack {
 
   // Drop the layers from `depth` up.
   _spend(depth) {
-    for (const lower of this.lower.slice(depth)) destroyLayer(lower?.layer);
+    for (const lower of this.lower.slice(depth)) lower?.layer?.destroy();
     this.lower.length = Math.min(this.lower.length, depth);
   }
 
@@ -166,6 +173,9 @@ export class NavigationStack {
 
   _revealed() {
     this.update();
+    // An article list showing search results is not the list the board was
+    // opened with (#33 stacks results on their own).
+    if (this._top()?.kind === 'articleList' && this._showsSearchResults()) return null;
     const target = revealTarget(this.stack);
     const lower = target && this.lower[this.stack.pages.length - 2];
     return lower?.layer.matchesViewport() ? { page: target, ...lower } : null;
@@ -224,7 +234,13 @@ export class NavigationStack {
         h.touches = event.touches.length;
         this._step();
       };
-      listen(layer.el, 'touchstart', touches, true);
+      // A finger's later events go to its first target, which a re-render may
+      // have removed from the layer by then.
+      listen(layer.el, 'touchstart', event => {
+        touches(event);
+        listen(event.target, 'touchend', touches);
+        listen(event.target, 'touchcancel', touches);
+      }, true);
       listen(layer.el, 'touchend', touches, true);
       listen(layer.el, 'touchcancel', touches, true);
       listen(layer.el, 'scroll', () => {
@@ -256,6 +272,9 @@ export class NavigationStack {
     const core = this.core;
     if (!h) {
       if (kind === 'articleList' && core.listSession?._boardName) this._enterList(core.listSession._boardName);
+      // Back on the dashboard or a board list some other way: what was stacked
+      // above it, or captured on the way to a board, no longer holds.
+      else if (kind !== 'articleList') this.clear();
       return;
     }
     if (h.presentedAt != null || kind !== h.target) return;
@@ -317,6 +336,6 @@ export class NavigationStack {
     core._refreshScreenContext?.();
     if (how === 'timeout' && h.hint) h.hint();
     if (how === 'presented' && h.tap) h.layer.openTapped(core, h.tap);
-    destroyLayer(h.layer);
+    h.layer?.destroy();
   }
 }
