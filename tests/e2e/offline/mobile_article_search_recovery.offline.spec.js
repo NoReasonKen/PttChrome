@@ -124,6 +124,26 @@ test('ordinary article recovery on reopening shows the countdown and restores th
   await expect.poll(() => topLine(page)).toBe(position);
 });
 
+test('a page torn down without lifecycle events reopens at the position scrolled to', async ({ page }) => {
+  // Android can discard the WebView without pagehide, visibilitychange or
+  // beforeunload; the app's own listeners for them never run.
+  await page.addInitScript(() => {
+    for (const type of ['pagehide', 'visibilitychange', 'beforeunload'])
+      window.addEventListener(type, event => event.stopImmediatePropagation(), true);
+  });
+  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
+  await page.evaluate(() => window.__app.aidNavigation.startResume({
+    kind: 'article', board: 'Test', aid: '1gIeu-3A'
+  }));
+  await waitArticle(page, 'Alpha');
+  const position = await readToMiddle(page);
+  // Past the scroll checkpoint's bounded delay.
+  await page.clock.runFor(1000);
+  await reloadAndLogin(page);
+  await waitArticle(page, 'Alpha');
+  await expect.poll(() => topLine(page)).toBe(position);
+});
+
 test('ordinary list recovery on reopening shows the countdown and restores the board', async ({ page }) => {
   await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
   await keyboardBack(page);
