@@ -586,6 +586,11 @@ export class ArticleGestures {
     }
   }
 
+  disconnected() {
+    this.close(true);
+    this.stack.disconnected();
+  }
+
   destroy() {
     this._setNativeTouchMove(false);
     this.close(true);

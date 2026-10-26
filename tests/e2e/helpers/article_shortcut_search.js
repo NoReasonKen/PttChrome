@@ -3,6 +3,7 @@ const ptt = require('./ptt');
 const { waitScreenSettled, waitConnected } = require('./replay');
 const { bootGestureArticle, revealArticleDrawer, beginArticleTouch } = require('./article_gestures');
 const { nextFrames } = require('./real_input');
+const { MAIN } = require('./stack_routes');
 
 // Controlled PTT boundary, derived from upstream read.c select_read,
 // read_cmd_quit, read_loader and bbs.c view_postinfo. The actual application,
@@ -119,7 +120,7 @@ async function searchAuthor(page) {
 }
 
 // The real screen; a revealed stacked page is a second copy with the same ids.
-const SCREEN = '.main:not([data-stack-layer]) #mainContainer';
+const SCREEN = `${MAIN} #mainContainer`;
 const visibleText = page => page.locator(SCREEN).innerText();
 
 async function waitSearchResults(page) {

@@ -2,13 +2,13 @@
 // the list stays alive underneath, is usable at once, and PTT's real list takes
 // over at the same reading position once it is presented and the reader is idle.
 const { test, expect } = require('@playwright/test');
-const { installPaintedFrameProbe, waitRectStable } = require('../helpers/layout');
+const { waitRectStable } = require('../helpers/layout');
 const { beginArticleTouch } = require('../helpers/article_gestures');
 const { touchDrag } = require('../helpers/real_input');
 const ptt = require('../helpers/ptt');
 const { bootOffline, loadCassette, replayListCassette } = require('../helpers/replay');
+const { MAIN, sampleFrames, framesBringingBackArticle } = require('../helpers/stack_routes');
 
-const MAIN = '.main:not([data-stack-layer])';
 const LAYER = '[data-stack-layer]';
 const UNDERLAY = '[data-article-exit-underlay]';
 const CARD = `${MAIN} .listCard[data-list-author="kylin936"] .listCardBody`;
@@ -42,24 +42,6 @@ async function delayBackReply(page, delay) {
   }, delay);
 }
 
-// Every painted frame from now on: is the old article on screen? Sampled just
-// before paint (helpers/layout.js#installPaintedFrameProbe).
-async function sampleFrames(page) {
-  await installPaintedFrameProbe(page);
-  await page.evaluate(() => {
-    window.__frames = [];
-    const sample = () => {
-      const main = document.querySelector('.main:not([data-stack-layer])');
-      const underlay = document.querySelector('[data-article-exit-underlay]');
-      const listShown = window.__app.buf.pageState === 2 && !!main.querySelector('.listBodyView');
-      window.__frames.push({ left: Math.round(main.getBoundingClientRect().left), underlay: !!underlay, listShown });
-      const done = window.__frames.length >= 600 || (!underlay && listShown && window.__frames.length >= 5);
-      if (done) window.__paintedFrame.remove(sample);
-    };
-    window.__paintedFrame.add(sample);
-  });
-}
-
 async function swipeOut(page) {
   const main = await waitRectStable(page, MAIN);
   const y = main.top + 100;
@@ -81,7 +63,7 @@ test('with a delayed list reply, no frame between release and the swap shows the
   const width = page.viewportSize().width;
   // Each frame shows the article sliding away over the revealed layer, or the
   // presented real list; the article never comes back.
-  const bad = frames.filter((f, i) => f.underlay ? i > 0 && f.left < frames[i - 1].left - 1 : !f.listShown);
+  const bad = framesBringingBackArticle(frames);
   expect(frames.length).toBeGreaterThan(10);
   expect(bad).toEqual([]);
   expect(frames.some(f => f.underlay && f.left >= width - 5)).toBe(true);
@@ -154,7 +136,7 @@ test('without a matching lower page the article stays off screen over the dark f
   await expect(page.locator(UNDERLAY)).toHaveCount(0, { timeout: 10000 });
   await expect(page.locator(`${MAIN} .listBodyView`)).toBeVisible();
   const frames = await page.evaluate(() => window.__frames);
-  const bad = frames.filter((f, i) => f.underlay ? i > 0 && f.left < frames[i - 1].left - 1 : !f.listShown);
+  const bad = framesBringingBackArticle(frames);
   expect(frames.some(f => f.underlay && f.left >= width - 52 - 5)).toBe(true);
   expect(bad).toEqual([]);
 });
@@ -239,7 +221,7 @@ for (const [name, back] of Object.entries(BACKS)) {
     const start = frames.findIndex(f => f.underlay);
     expect(start).toBeGreaterThanOrEqual(0);
     const moving = frames.slice(start);
-    const bad = moving.filter((f, i) => f.underlay ? i > 0 && f.left < moving[i - 1].left - 1 : !f.listShown);
+    const bad = framesBringingBackArticle(moving);
     expect(bad).toEqual([]);
     expect(moving.some(f => f.underlay && f.left >= width - 5)).toBe(true);
     const sent = await page.evaluate(n => window.__replay.sent.slice(n).join(''), sentBefore);

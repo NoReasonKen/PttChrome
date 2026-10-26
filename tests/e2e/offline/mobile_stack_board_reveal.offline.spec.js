@@ -7,7 +7,7 @@ const { beginArticleTouch } = require('../helpers/article_gestures');
 const { waitScrollStable, installPaintedFrameProbe } = require('../helpers/layout');
 const ptt = require('../helpers/ptt');
 const { loadCassette, bootScenario, waitFed } = require('../helpers/replay');
-const { fedBefore, openNextArticle } = require('../helpers/stack_routes');
+const { fedBefore, openNextArticle, holdBackReply, heldBack } = require('../helpers/stack_routes');
 
 const homeBoard = loadCassette('scn-stack-home-board');
 const HOME_LAYER = '[data-stack-layer="home"]';
@@ -26,19 +26,6 @@ const dashboardVisible = page => page.waitForFunction(() => {
 // Enough favorites for the dashboard to scroll; C_Chat is the recorded board.
 const FAVORITES = [{ name: 'C_Chat', desc: 'recorded' }].concat(
   Array.from({ length: 40 }, (_, i) => ({ name: 'Fav' + i, desc: 'favorite ' + i })));
-
-// Hold PTT's reply to the leave until the returned `release()`.
-async function holdBackReply(page) {
-  await page.evaluate(() => {
-    const send = window.__stubWSSent;
-    window.__heldBack = null;
-    window.__stubWSSent = (data) => {
-      if (data.indexOf('\x1b[D') < 0 || window.__heldBack) return send(data);
-      window.__heldBack = () => send(data);
-    };
-  });
-  return () => page.evaluate(() => window.__heldBack());
-}
 
 // The recorded dashboard, shown with FAVORITES.
 async function bootDashboard(page, cassette = homeBoard) {
@@ -72,7 +59,7 @@ async function revealDashboard(page, leave = () => ptt.sendKey(page, 'ArrowLeft'
   await enterBoardFromDashboard(page);
   const release = await holdBackReply(page);
   await leave();
-  await expect.poll(() => page.evaluate(() => !!window.__heldBack)).toBe(true);
+  await heldBack(page);
   await expect(page.locator(HOME_LAYER)).toBeVisible();
   return release;
 }
@@ -131,7 +118,7 @@ async function revealBoardList(page) {
   await listActive(page);
   const release = await holdBackReply(page);
   await ptt.sendKey(page, 'ArrowLeft');
-  await expect.poll(() => page.evaluate(() => !!window.__heldBack)).toBe(true);
+  await heldBack(page);
   await expect(page.locator(BOARD_LAYER)).toBeVisible();
   return release;
 }
@@ -295,7 +282,7 @@ const articleRead = page => page.waitForFunction(() => {
 async function backRevealsDashboard(page, cassette) {
   const release = await holdBackReply(page);
   await ptt.sendKey(page, 'ArrowLeft');
-  await expect.poll(() => page.evaluate(() => !!window.__heldBack)).toBe(true);
+  await heldBack(page);
   await expect(page.locator(HOME_LAYER)).toBeVisible();
   await release();
   await dashboardVisible(page);

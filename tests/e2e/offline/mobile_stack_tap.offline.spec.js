@@ -5,9 +5,9 @@ const { waitRectStable } = require('../helpers/layout');
 const { beginArticleTouch } = require('../helpers/article_gestures');
 const ptt = require('../helpers/ptt');
 const { loadCassette, bootScenario, waitFed } = require('../helpers/replay');
+const { MAIN, holdBackReply, heldBack } = require('../helpers/stack_routes');
 
 const reopen = loadCassette('scn-stack-article-reopen');
-const MAIN = '.main:not([data-stack-layer])';
 const LAYER = '[data-stack-layer]';
 const UNDERLAY = '[data-article-exit-underlay]';
 
@@ -38,23 +38,9 @@ async function openRecordedArticle(page) {
   return card;
 }
 
-// Hold PTT's reply to the leave until the returned `release()`.
-function holdBackReply(page) {
-  return page.evaluate(() => {
-    const send = window.__stubWSSent;
-    window.__heldBack = null;
-    window.__stubWSSent = (data) => {
-      if (data.indexOf('\x1b[D') < 0 || window.__heldBack) return send(data);
-      window.__heldBack = () => send(data);
-    };
-  });
-}
-
-const heldBack = page => expect.poll(() => page.evaluate(() => !!window.__heldBack)).toBe(true);
-
 // Leave by swipe with PTT's list reply held back until `release()`.
 async function leaveWithHeldReply(page) {
-  await holdBackReply(page);
+  const release = await holdBackReply(page);
   const main = await waitRectStable(page, MAIN);
   const contact = await beginArticleTouch(page, { x: 20, y: main.top + 100 });
   await contact.move({ x: page.viewportSize().width - 20, y: main.top + 100 });
@@ -62,7 +48,7 @@ async function leaveWithHeldReply(page) {
   await heldBack(page);
   // The release's own click stays suppressed briefly; a reader taps later.
   await page.waitForTimeout(450); // sleep-ok: past the release's click suppression
-  return () => page.evaluate(() => window.__heldBack());
+  return release;
 }
 
 const layerCard = (page, { author, title }) =>
@@ -124,11 +110,10 @@ test('keys and toolbar actions other than Back are blocked until the swap', asyn
   await openRecordedArticle(page);
   // Leave by ← on the keypad, which stays open over the revealed list.
   await page.locator('#mobileToolbar [data-key="__keys"]').tap();
-  await holdBackReply(page);
+  const reply = await holdBackReply(page);
   await page.locator('.mobileKeypadKey[data-key="ArrowLeft"]').tap();
   await heldBack(page);
   await expect(page.locator(LAYER)).toBeVisible();
-  const reply = () => page.evaluate(() => window.__heldBack());
   const sentBefore = await page.evaluate(() => window.__replay.sent.length);
   await page.keyboard.press('End');
   await page.keyboard.press('j');

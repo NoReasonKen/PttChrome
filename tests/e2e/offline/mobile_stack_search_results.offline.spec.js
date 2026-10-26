@@ -8,22 +8,13 @@ const {
   bootNestedShortcutSearch, nativeBack, waitArticle, waitList, readToMiddle, topLine, tapShortcut, tapCard,
   disconnectAndReconnect
 } = require('../helpers/article_shortcut_search');
+const { beginArticleTouch } = require('../helpers/article_gestures');
+const { waitRectStable } = require('../helpers/layout');
+const { MAIN, holdBackReply, heldBack, sampleFrames, framesBringingBackArticle } = require('../helpers/stack_routes');
 
 const LAYER = '[data-stack-layer="articleList"]';
+const UNDERLAY = '[data-article-exit-underlay]';
 const RESULTS = { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] };
-
-// Hold the board's reply to the next leave until the returned `release()`.
-async function holdBackReply(page) {
-  await page.evaluate(() => {
-    const send = window.__stubWSSent;
-    window.__heldBack = null;
-    window.__stubWSSent = (data) => {
-      if (data.indexOf('\x1b[D') < 0 || window.__heldBack) return send(data);
-      window.__heldBack = () => send(data);
-    };
-  });
-  return () => page.evaluate(() => window.__heldBack());
-}
 
 // Note whether any page is revealed from now on.
 const watchReveals = page => page.evaluate(() => {
@@ -48,22 +39,42 @@ test('Back from an article opened from search results reveals the results at onc
   await openFromAuthorResults(page);
   const release = await holdBackReply(page);
   await nativeBack(page);
-  await expect.poll(() => page.evaluate(() => !!window.__heldBack)).toBe(true);
+  await heldBack(page);
   const layer = page.locator(LAYER);
   await expect(layer).toBeVisible();
   await expect(layer).toContainText('Alpha topic');
   await expect(layer).toContainText('Beta topic');
   await expect(layer).not.toContainText('Delta topic');
-  const card = title => page.evaluate(([root, title]) => {
+  const cardOffset = (root, title) => page.evaluate(([root, title]) => {
     const view = document.querySelector(root);
-    const el = [...view.querySelectorAll('.listCard')].find(c => c.textContent.includes(title));
-    return el.getBoundingClientRect().top - view.getBoundingClientRect().top;
-  }, title);
-  const before = await card([LAYER, 'Beta topic']);
+    const card = [...view.querySelectorAll('.listCard')].find(c => c.textContent.includes(title));
+    return card.getBoundingClientRect().top - view.getBoundingClientRect().top;
+  }, [root, title]);
+  const before = await cardOffset(LAYER, 'Beta topic');
   await release();
   await expect(layer).toHaveCount(0, { timeout: 10000 });
   await waitList(page, RESULTS);
-  expect(Math.abs(await card(['.main:not([data-stack-layer]) .listBodyView', 'Beta topic']) - before)).toBeLessThanOrEqual(1);
+  expect(Math.abs(await cardOffset(`${MAIN} .listBodyView`, 'Beta topic') - before)).toBeLessThanOrEqual(1);
+});
+
+test('swiping out of an article opened from search results never shows the article again before the results take over', async ({ page }) => {
+  await openFromAuthorResults(page);
+  const release = await holdBackReply(page);
+  const main = await waitRectStable(page, MAIN);
+  const y = main.top + 100;
+  const contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: page.viewportSize().width - 20, y });
+  await expect(page.locator(UNDERLAY)).toHaveAttribute('data-preview', 'layer');
+  await sampleFrames(page);
+  await contact.release();
+  await heldBack(page);
+  await release();
+  await expect(page.locator(UNDERLAY)).toHaveCount(0, { timeout: 10000 });
+  await waitList(page, RESULTS);
+  const frames = await page.evaluate(() => window.__frames);
+  expect(frames.length).toBeGreaterThan(10);
+  expect(framesBringingBackArticle(frames)).toEqual([]);
+  expect(frames.some(f => f.underlay && f.left >= page.viewportSize().width - 5)).toBe(true);
 });
 
 test('Back from the revealed results still returns to the article the search started from', async ({ page }) => {
@@ -88,11 +99,16 @@ test('results reconstructed after a reconnect stack the articles opened from the
   // The reconstructed results are a new base for what is opened from them.
   const release = await holdBackReply(page);
   await nativeBack(page);
-  await expect.poll(() => page.evaluate(() => !!window.__heldBack)).toBe(true);
+  await heldBack(page);
   await expect(page.locator(LAYER)).toHaveCount(1);
   await release();
   await expect(page.locator(LAYER)).toHaveCount(0, { timeout: 10000 });
   await waitList(page, RESULTS);
+  // Back from the rebuilt results follows search return history alone.
+  await watchReveals(page);
+  await nativeBack(page);
+  await waitArticle(page, 'Alpha');
+  expect(await page.evaluate(() => window.__revealed)).toBe(false);
 });
 
 test('results reconstructed by search return after a reconnect reveal nothing from before it', async ({ page }) => {

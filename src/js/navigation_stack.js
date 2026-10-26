@@ -153,6 +153,13 @@ export class NavigationStack {
     this.identity = null;
   }
 
+  // The connection closed: PTT's route behind every stacked page is gone, and
+  // so is what was captured on the way to a page.
+  disconnected() {
+    this._end('disconnected');
+    this.clear();
+  }
+
   clear() {
     if (this.handoff) return;
     this.dropPending();
