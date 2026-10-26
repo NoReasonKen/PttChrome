@@ -2194,7 +2194,13 @@ TermView.prototype = {
   // serialized transaction freezes the render and while a demand prefetch is
   // filling past a window edge (list_session._setLoading). Small fixed pill in
   // the bottom-right corner — the frozen 24-row screen itself stays untouched.
-  setListLoading: function(on) {
+  // Each owner holds it on until it lets go: 'list' (the list sessions), or a
+  // page sliding in while it is opened (#36).
+  setListLoading: function(on, owner) {
+    var owners = this._listLoadingOwners || (this._listLoadingOwners = new Set());
+    if (on) owners.add(owner || 'list');
+    else owners.delete(owner || 'list');
+    on = owners.size > 0;
     // 「讀取中…」屬一般提示：關掉 showStatusHints 就不出現（關閉仍要照常隱藏）。
     if (on && !shouldShowHint(null, this.showStatusHints)) on = false;
     var el = this._listLoadingEl;

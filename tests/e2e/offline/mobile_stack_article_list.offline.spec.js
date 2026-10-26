@@ -5,9 +5,7 @@ const { test, expect } = require('@playwright/test');
 const { waitRectStable } = require('../helpers/layout');
 const { beginArticleTouch } = require('../helpers/article_gestures');
 const { touchDrag } = require('../helpers/real_input');
-const ptt = require('../helpers/ptt');
-const { bootOffline, loadCassette, replayListCassette } = require('../helpers/replay');
-const { MAIN, sampleFrames, framesBringingBackArticle } = require('../helpers/stack_routes');
+const { MAIN, bootArticleList, sampleFrames, framesBringingBackArticle } = require('../helpers/stack_routes');
 
 const LAYER = '[data-stack-layer]';
 const UNDERLAY = '[data-article-exit-underlay]';
@@ -15,14 +13,7 @@ const CARD = `${MAIN} .listCard[data-list-author="kylin936"] .listCardBody`;
 const BACK_DELAY_MS = 700;
 
 async function enterArticleFromList(page) {
-  const nav = loadCassette('cchat-list-nav');
-  await bootOffline(page, ptt, { articleGestures: true });
-  await ptt.applyPrefs(page, { enableEasyReading: true, enableEasyReadingList: false, useMouseBrowsing: true, mouseLeftClick: true });
-  await replayListCassette(page, nav);
-  await page.waitForFunction(() => window.__app.buf.pageState === 2);
-  await ptt.applyPrefs(page, { enableEasyReadingList: true, easyReadingListPrefetchCount: 200 });
-  await page.waitForFunction(() => window.__app.listSession.state === 'active' &&
-    window.__app.commandQueue.idle && window.__app.buf.listLines.length > 50);
+  await bootArticleList(page);
   await page.locator(CARD).first().scrollIntoViewIfNeeded();
   await waitRectStable(page, CARD);
   await page.locator(CARD).first().tap();

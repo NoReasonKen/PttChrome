@@ -1,6 +1,8 @@
 // Shared steps for replaying the stacked-page routes (scn-stack-*.json).
 const { expect } = require('@playwright/test');
 const { installPaintedFrameProbe } = require('./layout');
+const ptt = require('./ptt');
+const { bootOffline, bootScenario, loadCassette, replayListCassette } = require('./replay');
 
 // Steps fed once the route has settled before the `n`th `on` step: the jump
 // right before that step syncs PTT's cursor to the selection, and the app sends
@@ -28,6 +30,70 @@ const atobText = b64 => Buffer.from(b64, 'base64').toString('latin1');
 
 // The real screen; a revealed stacked page is a second copy beside it.
 const MAIN = '.main:not([data-stack-layer])';
+
+// An easy-reading article list of C_Chat, idle, with a card per article
+// (cchat-list-nav.json).
+async function bootArticleList(page) {
+  const nav = loadCassette('cchat-list-nav');
+  await bootOffline(page, ptt, { articleGestures: true });
+  await ptt.applyPrefs(page, { enableEasyReading: true, enableEasyReadingList: false, useMouseBrowsing: true, mouseLeftClick: true });
+  await replayListCassette(page, nav);
+  await page.waitForFunction(() => window.__app.buf.pageState === 2);
+  await ptt.applyPrefs(page, { enableEasyReadingList: true, easyReadingListPrefetchCount: 200 });
+  await page.waitForFunction(() => window.__app.listSession.state === 'active' &&
+    window.__app.commandQueue.idle && window.__app.buf.listLines.length > 50);
+}
+
+const homeBoard = loadCassette('scn-stack-home-board');
+const boardList = loadCassette('scn-stack-boardlist-board');
+
+const listActive = page => page.waitForFunction(() => {
+  const app = window.__app;
+  return app.buf.pageState === 2 && app.listSession.state === 'active' && app.commandQueue.idle && !app.buf._settleTimer;
+});
+
+const dashboardVisible = page => page.waitForFunction(() => {
+  const app = window.__app;
+  return app.homeDashboard.state.visible === true && app.commandQueue.idle && !app.buf._settleTimer;
+});
+
+// Enough favorites for the dashboard to scroll; C_Chat is the recorded board.
+const FAVORITES = [{ name: 'C_Chat', desc: 'recorded' }].concat(
+  Array.from({ length: 40 }, (_, i) => ({ name: 'Fav' + i, desc: 'favorite ' + i })));
+
+// The recorded dashboard, shown with FAVORITES.
+async function bootDashboard(page, cassette = homeBoard) {
+  await bootScenario(page, ptt, cassette);
+  await page.evaluate((boards) => {
+    const home = window.__app.homeDashboard;
+    home._state.fetchedAt = Date.now();
+    home._set({ boards });
+  }, FAVORITES);
+  await ptt.applyPrefs(page, cassette.meta.prefs);
+  await page.evaluate(() => window.__app.onData('\x1b[H'));
+  await dashboardVisible(page);
+}
+
+// The board search the dashboard (or the search key) sent reached C_Chat.
+async function boardOpened(page) {
+  await page.waitForFunction(() => window.__app.buf.isPassScreenNow() || window.__app.buf.pageState === 2);
+  if (await page.evaluate(() => window.__app.buf.isPassScreenNow())) await ptt.sendKey(page, 'Space');
+  await listActive(page);
+}
+
+const boardListEngaged = page => page.waitForFunction(() => {
+  const app = window.__app;
+  return app.buf.listRenderOwner === 'board-list' && app.boardListSession.state === 'active' &&
+    app.commandQueue.idle && !app.buf._settleTimer;
+});
+
+// A board list engaged in smooth scrolling, the recorded board selected
+// (scn-stack-boardlist-board.json).
+async function bootBoardList(page) {
+  await bootScenario(page, ptt, boardList);
+  await ptt.applyPrefs(page, { enableEasyReadingList: true, enableBoardListSmoothScroll: true });
+  await boardListEngaged(page);
+}
 
 // Hold PTT's reply to the next leave (←) until the returned `release()`.
 async function holdBackReply(page) {
@@ -68,4 +134,7 @@ async function sampleFrames(page) {
 const framesBringingBackArticle = frames =>
   frames.filter((f, i) => f.underlay ? i > 0 && f.left < frames[i - 1].left - 1 : !f.listShown);
 
-module.exports = { MAIN, fedBefore, openNextArticle, holdBackReply, heldBack, sampleFrames, framesBringingBackArticle };
+module.exports = {
+  MAIN, homeBoard, boardList, bootArticleList, listActive, dashboardVisible, bootDashboard, boardOpened, boardListEngaged, bootBoardList,
+  fedBefore, openNextArticle, holdBackReply, heldBack, sampleFrames, framesBringingBackArticle
+};

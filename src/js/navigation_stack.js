@@ -84,8 +84,14 @@ export class NavigationStack {
 
   // The open was abandoned: the captured page is no lower page of anything.
   dropPending() {
-    this.pending?.layer?.destroy();
+    this.takePending()?.destroy();
+  }
+
+  // The same, but the caller takes over the captured page's layer.
+  takePending() {
+    const layer = this.pending?.layer || null;
     this.pending = null;
+    return layer;
   }
 
   // Stack the captured page under the page just entered when it is where that

@@ -83,3 +83,8 @@
   will-change: translate;
   background-color: #141418;
 }
+
+/* A page being opened shows only the loading state until PTT answers (#36). */
+.stackEntryLoading > * {
+  visibility: hidden !important;
+}

@@ -1581,6 +1581,7 @@ BoardListSession.prototype = {
         else self._reset();
       },
       onFail: function() {
+        if (opts && opts.enteringBoard) self._core.articleGestures?.dropPendingLayer();
         self._degradeToNative(failMsg);
       }
     });

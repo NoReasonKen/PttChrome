@@ -6,46 +6,14 @@ const { touchDrag, nextFrames } = require('../helpers/real_input');
 const { beginArticleTouch } = require('../helpers/article_gestures');
 const { waitScrollStable, installPaintedFrameProbe } = require('../helpers/layout');
 const ptt = require('../helpers/ptt');
-const { loadCassette, bootScenario, waitFed } = require('../helpers/replay');
-const { fedBefore, openNextArticle, holdBackReply, heldBack } = require('../helpers/stack_routes');
+const { loadCassette, waitFed } = require('../helpers/replay');
+const {
+  fedBefore, openNextArticle, holdBackReply, heldBack, homeBoard, boardList, listActive, dashboardVisible, bootDashboard, boardOpened,
+  boardListEngaged, bootBoardList
+} = require('../helpers/stack_routes');
 
-const homeBoard = loadCassette('scn-stack-home-board');
 const HOME_LAYER = '[data-stack-layer="home"]';
 const UNDERLAY = '[data-article-exit-underlay]';
-
-const listActive = page => page.waitForFunction(() => {
-  const app = window.__app;
-  return app.buf.pageState === 2 && app.listSession.state === 'active' && app.commandQueue.idle && !app.buf._settleTimer;
-});
-
-const dashboardVisible = page => page.waitForFunction(() => {
-  const app = window.__app;
-  return app.homeDashboard.state.visible === true && app.commandQueue.idle && !app.buf._settleTimer;
-});
-
-// Enough favorites for the dashboard to scroll; C_Chat is the recorded board.
-const FAVORITES = [{ name: 'C_Chat', desc: 'recorded' }].concat(
-  Array.from({ length: 40 }, (_, i) => ({ name: 'Fav' + i, desc: 'favorite ' + i })));
-
-// The recorded dashboard, shown with FAVORITES.
-async function bootDashboard(page, cassette = homeBoard) {
-  await bootScenario(page, ptt, cassette);
-  await page.evaluate((boards) => {
-    const home = window.__app.homeDashboard;
-    home._state.fetchedAt = Date.now();
-    home._set({ boards });
-  }, FAVORITES);
-  await ptt.applyPrefs(page, cassette.meta.prefs);
-  await page.evaluate(() => window.__app.onData('\x1b[H'));
-  await dashboardVisible(page);
-}
-
-// The board search the dashboard (or the search key) sent reached C_Chat.
-async function boardOpened(page) {
-  await page.waitForFunction(() => window.__app.buf.isPassScreenNow() || window.__app.buf.pageState === 2);
-  if (await page.evaluate(() => window.__app.buf.isPassScreenNow())) await ptt.sendKey(page, 'Space');
-  await listActive(page);
-}
 
 // Open C_Chat by tapping its favorite card, as the recording did.
 async function enterBoardFromDashboard(page, cassette = homeBoard) {
@@ -93,14 +61,7 @@ test('Back from a board entered from the dashboard reveals the dashboard at once
   await waitFed(page, homeBoard.steps.length);
 });
 
-const boardList = loadCassette('scn-stack-boardlist-board');
 const BOARD_LAYER = '[data-stack-layer="boardList"]';
-
-const boardListEngaged = page => page.waitForFunction(() => {
-  const app = window.__app;
-  return app.buf.listRenderOwner === 'board-list' && app.boardListSession.state === 'active' &&
-    app.commandQueue.idle && !app.buf._settleTimer;
-});
 
 // The first card at the top of `root`'s view: its board and offset.
 const topBoard = (page, root) => page.locator(root).evaluate(el => {
@@ -111,9 +72,7 @@ const topBoard = (page, root) => page.locator(root).evaluate(el => {
 
 // Leave the board-list-entered board with PTT's reply held back.
 async function revealBoardList(page) {
-  await bootScenario(page, ptt, boardList);
-  await ptt.applyPrefs(page, { enableEasyReadingList: true, enableBoardListSmoothScroll: true });
-  await boardListEngaged(page);
+  await bootBoardList(page);
   await ptt.sendKey(page, 'Enter');
   await listActive(page);
   const release = await holdBackReply(page);
