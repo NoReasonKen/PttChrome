@@ -1432,6 +1432,7 @@
   "articleShortcutSearch_recovered": { "message": "已恢復搜尋返回路線，返回會沿著搜尋路線回去。" },
   "articleShortcutSearch_recoveryInactive": { "message": "無法確認文章或搜尋，未恢復搜尋返回路線；返回維持一般行為。" },
   "searchResults_resumeFailed": { "message": "無法恢復先前的搜尋結果，已安全停止導覽；請重新搜尋。" },
+  "searchResults_positionMissing": { "message": "已恢復搜尋結果，但無法確認原閱讀位置，目前顯示最新結果。" },
   "tooltip_mobileAppBarScrollTop": {
     "message": "手機版面點最上面的標題，文章、列表或首頁就捲回最上面。只捲畫面，不會送任何按鍵。"
   },

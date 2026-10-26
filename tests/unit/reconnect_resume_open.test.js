@@ -12,6 +12,7 @@ import {
 } from "../../src/js/reconnect_resume";
 import { ReadingRecord } from "../../src/js/reading_record";
 import { DEFAULT_PREFS, NATIVE_SAFE_MODE_KEYS, writeValues } from "../../src/js/pref_storage";
+import { recordSearchResults } from "../../src/js/search_results_context";
 
 const LIST = {
   kind: "list",
@@ -196,6 +197,82 @@ describe("開站接回", () => {
 });
 
 describe("Foreground recovery checkpoints", () => {
+  test("keeps the last visible location when shutdown changes mobile geometry", () => {
+    const h = harness();
+    h.termBuf.pageState = 2;
+    h.core.mobile = true;
+    h.view.chh = 18;
+    let position = { ...LIST, topNum: 16 };
+    h.core.listSession.readingPosition = () => position;
+    h.settle(MAIN_MENU);
+    h.rr.saveSnapshot();
+    position = { ...position, topNum: 25 };
+    h.core.mobile = false;
+    h.view.chh = 10;
+    window.dispatchEvent(new Event("pagehide"));
+    const saved = JSON.parse(window.localStorage.getItem(SNAPSHOT_KEY));
+    expect(saved.plan.bookmark.list.topNum).toBe(16);
+  });
+
+  test("also protects card-mode changes that keep the same mobile flag and font height", () => {
+    const h = harness();
+    h.termBuf.pageState = 2;
+    h.core.mobile = true;
+    h.view.chh = 18;
+    h.view.listCards = true;
+    let position = { ...LIST, topNum: 16 };
+    h.core.listSession.readingPosition = () => position;
+    h.settle(MAIN_MENU);
+    h.rr.saveSnapshot();
+    h.view.listCards = false;
+    position = { ...position, topNum: 25 };
+    window.dispatchEvent(new Event("pagehide"));
+    expect(JSON.parse(window.localStorage.getItem(SNAPSHOT_KEY)).plan.bookmark.list.topNum).toBe(16);
+  });
+
+  test("layout protection does not reuse a checkpoint after the reader changes boards", () => {
+    const h = harness();
+    h.termBuf.pageState = 2;
+    h.core.mobile = true;
+    h.view.chh = 18;
+    h.settle(MAIN_MENU);
+    h.rr.saveSnapshot();
+    h.core.listSession.readingPosition = () => ({ ...LIST, board: "Test", topNum: 25 });
+    h.core.mobile = false;
+    h.view.chh = 10;
+    window.dispatchEvent(new Event("pagehide"));
+    expect(JSON.parse(window.localStorage.getItem(SNAPSHOT_KEY)).plan.board).toBe("Test");
+  });
+
+  test("waits for a stable geometry window before replacing a foreground checkpoint", () => {
+    const h = harness();
+    h.view.chh = 18;
+    h.settle(MAIN_MENU);
+    h.settle("article content");
+    vi.advanceTimersByTime(250);
+    h.view.chh = 10;
+    vi.advanceTimersByTime(250);
+    expect(window.localStorage.getItem(SNAPSHOT_KEY)).toBeNull();
+    vi.advanceTimersByTime(500);
+    expect(JSON.parse(window.localStorage.getItem(SNAPSHOT_KEY)).plan.kind).toBe("article");
+  });
+
+  test("persists the visible search anchor and passes it through reopening", () => {
+    const h = harness();
+    h.termBuf.pageState = 2;
+    h.termBuf.listLineNums = [LIST.topNum];
+    h.termBuf.listLines = [`${String(LIST.topNum).padStart(7)}     9/01 alice        □ topic`];
+    recordSearchResults(h.core, { board: "C_Chat", filters: [{ kind: "title", value: "topic" }] });
+    h.settle(MAIN_MENU);
+    h.rr.saveSnapshot();
+    const snap = JSON.parse(window.localStorage.getItem(SNAPSHOT_KEY));
+    expect(snap.plan.searchPosition).toMatchObject({ num: LIST.topNum, author: "alice", title: "□ topic" });
+    const next = harness();
+    next.settle(MAIN_MENU);
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
+    expect(next.core.aidNavigation.startResume.mock.calls[0][0].searchPosition).toEqual(snap.plan.searchPosition);
+  });
+
   test("reopens the article even when no background or shutdown event arrives", () => {
     const old = harness();
     old.settle(MAIN_MENU);

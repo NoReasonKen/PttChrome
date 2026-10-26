@@ -38,6 +38,7 @@ import { isAndroidApp, androidRestored, STOP_EVENT } from './android_bridge';
 import { readSearchResultsContext, validateSearchResultsContext } from './search_results_context';
 import { resumeSearchResults } from './resume_search_results';
 import { serializedOpHint } from './serialized_op_gate';
+import { captureSearchResultAnchor, validateSearchResultAnchor } from './search_result_anchor';
 
 // 開站接回時，登入回到主功能表後先倒數這麼久（提示上有「取消」）才出發。
 export const OPEN_RESUME_DELAY_MS = 2500;
@@ -94,7 +95,9 @@ export function planFromSnapshot(snap, now) {
   if (plan.kind !== 'article' && plan.kind !== 'list') return null;
   if (plan.kind === 'article' && !plan.aid) return null;
   if (plan.search && (plan.kind !== 'list' || !validateSearchResultsContext(plan.search, plan.board))) return null;
-  return plan;
+  return plan.searchPosition
+    ? { ...plan, searchPosition: plan.search ? validateSearchResultAnchor(plan.searchPosition) : null }
+    : plan;
 }
 
 function enabled() {
@@ -128,7 +131,7 @@ export function isResumeToastTarget(el) {
 // post：{ board, aid } | null（aid_navigation.currentPostAid）。
 // 文章沒有 AID 時退回那篇所在的列表，但只在列表的板就是文章的板時（身後的列表
 // 可能是跳文之前的另一個板）。
-export function resumePlanFrom(bm, post, searchContext) {
+export function resumePlanFrom(bm, post, searchContext, searchPosition) {
   if (!bm) return null;
   const art = bm.article;
   if (art && post && post.aid && post.board)
@@ -149,9 +152,29 @@ export function resumePlanFrom(bm, post, searchContext) {
     bookmark: plain ? bm : Object.assign({}, bm, { list: null })
   };
   // A known query can be reconstructed; its old result numbers cannot.
-  if (search) plan.search = search;
+  if (search) {
+    plan.search = search;
+    const position = validateSearchResultAnchor(searchPosition);
+    if (searchPosition !== undefined) plan.searchPosition = position;
+  }
   return plan;
 }
+
+function readingPlan(core, buf, bookmark) {
+  const nav = core.aidNavigation;
+  const post = bookmark.article && nav?.currentPostAid ? nav.currentPostAid() : null;
+  const search = readSearchResultsContext(core);
+  const position = search && !bookmark.article ? captureSearchResultAnchor(buf, bookmark.list) : null;
+  return resumePlanFrom(bookmark, post, search, position);
+}
+
+function sameReadingPlace(a, b) {
+  return !!(a && b && a.kind === b.kind && a.board.toLowerCase() === b.board.toLowerCase() &&
+    a.aid === b.aid && JSON.stringify(a.search || null) === JSON.stringify(b.search || null));
+}
+
+const readingGeometry = (core, view) => ({ mobile: !!core.mobile, chh: view?.chh, cards: !!view?.listCards });
+const sameGeometry = (a, b) => a.mobile === b.mobile && a.chh === b.chh && a.cards === b.cards;
 
 export function ReconnectResume(core, view, termBuf) {
   this._core = core;
@@ -167,6 +190,7 @@ export function ReconnectResume(core, view, termBuf) {
   // 這條連線看過主功能表了嗎（＝登入完成）。capture() 時清掉。
   this._loggedIn = false;
   this._checkpointTimer = null;
+  this._lastVisibleSnapshot = null;
   if (termBuf && termBuf.addEventListener)
     termBuf.addEventListener('screenSettled', this._onSettled.bind(this));
   // 倒數中的出發（開站接回）：{ timer, plan } | null。
@@ -190,11 +214,14 @@ export function ReconnectResume(core, view, termBuf) {
     }
     // Search return history stored beside the snapshot follows only this plan.
     this._core?.articleShortcutSearch?.restoreForRecovery(this._pending);
-    const save = this.saveSnapshot.bind(this);
+    const save = () => this.saveSnapshot({ lifecycle: true });
     if (typeof window.addEventListener === 'function') {
       if (isAndroidApp()) window.addEventListener(STOP_EVENT, save);
       // 分頁切到背景／關掉：手機瀏覽器回收分頁之前一定先經過 hidden。
       window.addEventListener('pagehide', save);
+      // Capture before the browser can replace mobile geometry during unload.
+      // Canceling its confirmation leaves normal foreground checkpoints active.
+      window.addEventListener('beforeunload', () => this.saveSnapshot({ lifecycle: !!document.hidden }));
     }
     if (typeof document !== 'undefined' && typeof document.addEventListener === 'function')
     {
@@ -253,16 +280,23 @@ ReconnectResume.prototype = {
 
   _scheduleCheckpoint: function() {
     if (this._checkpointTimer !== null || !this._loggedIn || this._core.connectState !== 1 ||
+        (typeof document !== 'undefined' && document.hidden) ||
         !(openEnabled() || (isAndroidApp() && enabled()))) return;
     // A trailing throttle has a bounded delay even during continuous scrolling.
     // Re-read the location when it fires; never persist an event-time bookmark.
+    const geometry = readingGeometry(this._core, this._view);
     this._checkpointTimer = setTimeout(() => {
       this._checkpointTimer = null;
       const core = this._core;
       if (!this._loggedIn || core.connectState !== 1 || this.hasPending() ||
+          (typeof document !== 'undefined' && document.hidden) ||
           serializedOpHint(core) || core.commandQueue?.idle === false ||
           core.easyReading?._functionMode || core.listSession?.state === 'opening' ||
           core.listSession?._holdReason === 'external') return;
+      if (!sameGeometry(geometry, readingGeometry(core, this._view))) {
+        this._scheduleCheckpoint();
+        return;
+      }
       const buf = this._termBuf;
       const list = core.listSession;
       // pageState 3 is the terminal's recognized article-status frame. Native
@@ -304,9 +338,7 @@ ReconnectResume.prototype = {
     }
     const core = this._core;
     const bm = recordFor(core).begin('reconnect-resume', { view: this._view, buf: this._termBuf });
-    const nav = core.aidNavigation;
-    const post = bm.article && nav && nav.currentPostAid ? nav.currentPostAid() : null;
-    this._pending = resumePlanFrom(bm, post, readSearchResultsContext(core));
+    this._pending = readingPlan(core, this._termBuf, bm);
     this._core?.articleShortcutSearch?.suspendForRecovery(this._pending);
     this._diag('capture', this._pending
       ? { kind: this._pending.kind, board: this._pending.board, aid: this._pending.aid || null, num: this._pending.num || null }
@@ -315,16 +347,20 @@ ReconnectResume.prototype = {
 
   // APK 切到背景：把「現在斷線的話要回哪」存起來（不動 _pending、不算斷線）。
   // 沒登入、關掉了、沒有可回的地方 ⇒ 清掉存檔。
-  saveSnapshot: function() {
+  saveSnapshot: function(options = {}) {
     let plan = null;
     const want = openEnabled() || (isAndroidApp() && enabled());
     if (this._loggedIn && want && this._core && this._core.connectState === 1) {
       const core = this._core;
       const bm = recordFor(core).begin('reconnect-resume', { view: this._view, buf: this._termBuf });
-      const nav = core.aidNavigation;
-      const post = bm.article && nav && nav.currentPostAid ? nav.currentPostAid() : null;
-      plan = resumePlanFrom(bm, post, readSearchResultsContext(core));
+      plan = readingPlan(core, this._termBuf, bm);
     }
+    const geometry = readingGeometry(this._core, this._view);
+    const previous = this._lastVisibleSnapshot;
+    if (options.lifecycle && previous && sameReadingPlace(plan, previous.plan) &&
+        !sameGeometry(geometry, previous.geometry))
+      plan = previous.plan;
+    if (!options.lifecycle) this._lastVisibleSnapshot = { plan, geometry };
     this._core?.articleShortcutSearch?.persistForRecovery(plan);
     let storage = plan ? 'written' : 'removed';
     try {
@@ -447,7 +483,7 @@ ReconnectResume.prototype = {
     const self = this;
     const started = nav.startResume(plan, function(result) {
       const ended = outcome => self._core?.articleShortcutSearch?.recoveryEnded(plan, outcome);
-      if (result?.ok && plan.search) resumeSearchResults(core, plan.search, ended);
+      if (result?.ok && plan.search) resumeSearchResults(core, plan.search, ended, plan.searchPosition);
       else ended(result);
     });
     if (!started) this._core?.articleShortcutSearch?.abandonRecovery('superseded');

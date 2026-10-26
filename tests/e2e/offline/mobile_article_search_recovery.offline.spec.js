@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const fs = require('node:fs/promises');
 const { gestureSent } = require('../helpers/article_gestures');
 const {
   bootNestedShortcutSearch, nestedSessionAfterLogin, nativeBack, visibleText, waitArticle, waitList, readToMiddle, topLine, tapShortcut
@@ -15,6 +16,25 @@ const RESTORED = 'Search return history restored';
 const INACTIVE = 'Search return history was not restored';
 const RESUME_FAILED = 'The previous search results could not be restored';
 const bodyText = page => page.locator('body').innerText();
+
+// Use one advancing clock across documents: expiry and idle budgets both depend
+// on Date.now(), so freezing Date while timers run would invalidate the fixture.
+test.beforeEach(async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-01-01T00:00:00Z') });
+});
+
+test.afterEach(async ({ page }, info) => {
+  if (info.status === info.expectedStatus || page.isClosed()) return;
+  const state = await page.evaluate(() => ({
+    recovery: window.__app?.reconnectResume.diagnostics(),
+    position: window.__app?.listSession.readingPosition(),
+    sent: window.__gestureSent?.slice(-20)
+  })).catch(() => null);
+  if (!state) return;
+  const path = info.outputPath('recovery-state.json');
+  await fs.writeFile(path, JSON.stringify(state, null, 2));
+  await info.attach('recovery-state', { path, contentType: 'application/json' });
+});
 
 async function tapCard(page, title) {
   await expect(page.locator('#mainContainer .listBodyView')).toBeVisible();
@@ -36,9 +56,17 @@ async function disconnectAndReconnect(page, session = {}) {
   }), { timeout: 15000 }).toBe(true);
 }
 
-async function reloadAndLogin(page, session = {}) {
+async function reloadForRecovery(page) {
+  // Keep the save/read boundary at one clock time. Renderer-local advancing
+  // clocks can otherwise replay a newly saved timestamp slightly in the future.
+  await pauseClockNow(page);
   await page.reload();
+  await page.clock.resume();
   await waitConnected(page);
+}
+
+async function reloadAndLogin(page, session = {}) {
+  await reloadForRecovery(page);
   await nestedSessionAfterLogin(page, session);
 }
 
@@ -142,6 +170,58 @@ for (const legacyCaptions of [false, true]) {
     // Ordinary results have no source article to restore.
     await keyboardBack(page);
     await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
+  });
+}
+
+// Inspect the rendered card relative to the real scrolling viewport as well as
+// the owner's logical position; a restored cursor alone is not viewport proof.
+const resultViewport = (page, title) => page.locator('#mainContainer .listBodyView').evaluate((viewport, title) => {
+  const card = [...viewport.querySelectorAll('.listCard')].find(node => node.textContent.includes(title));
+  return {
+    position: window.__app.listSession.readingPosition(),
+    offset: card ? card.getBoundingClientRect().top - viewport.getBoundingClientRect().top : null
+  };
+}, title);
+
+for (const removedBeforeAnchor of [false, true]) {
+  test(`reopening long search results restores the visible card and within-row offset (earlier deletion: ${removedBeforeAnchor})`, async ({ page }) => {
+    const extraArticles = 40;
+    const title = '[Talk] Extra topic 12';
+    await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true, extraArticles });
+    await keyboardBack(page);
+    await waitList(page, { has: ['Alpha topic'] });
+    // This initial list starts at its oldest entry; background fill only goes
+    // toward older rows. The search below starts at the newest matching entry.
+    await ptt.sendKey(page, '/');
+    const input = page.locator('input[name="searchKeyword"]');
+    await input.fill('topic');
+    await input.press('Enter');
+    await waitList(page, { has: [title] });
+    await expect.poll(() => page.evaluate(() => window.__app.buf.listLineNums.length)).toBe(44);
+    const viewport = page.locator('#mainContainer .listBodyView');
+    await viewport.evaluate((element, title) => {
+      const card = [...element.querySelectorAll('.listCard')].find(node => node.textContent.includes(title));
+      const bounds = card.getBoundingClientRect();
+      element.scrollTop += bounds.top - element.getBoundingClientRect().top + bounds.height / 4;
+    }, title);
+    await expect.poll(async () => (await resultViewport(page, title)).position.topNum).toBe(16);
+    const before = await resultViewport(page, title);
+    expect(before.position.scrollFrac).toBeGreaterThan(1);
+    expect(before.offset).toBeLessThan(-1);
+    await expect.poll(() => page.evaluate(() => {
+      const saved = JSON.parse(localStorage.getItem('pttchrome.rendererResume.v1'));
+      return saved?.plan.searchPosition?.num;
+    })).toBe(16);
+
+    await reloadAndLogin(page, {
+      extraArticles,
+      deleted: removedBeforeAnchor ? ['1gIeu-3B'] : []
+    });
+    await waitList(page, { has: [title] });
+    const restoredNum = removedBeforeAnchor ? 15 : 16;
+    await expect.poll(async () => (await resultViewport(page, title)).position.topNum, { timeout: 15000 }).toBe(restoredNum);
+    await expect.poll(async () => Math.abs((await resultViewport(page, title)).position.scrollFrac - before.position.scrollFrac)).toBeLessThan(1);
+    await expect.poll(async () => Math.abs((await resultViewport(page, title)).offset - before.offset)).toBeLessThan(2);
   });
 }
 
@@ -279,9 +359,7 @@ test('canceling the resume after a reload explains that the route stays inactive
 
   // Hold the clock while the open-resume countdown is showing, so a loaded
   // machine cannot let it expire before the reader's tap.
-  await page.clock.install();
-  await page.reload();
-  await waitConnected(page);
+  await reloadForRecovery(page);
   await pauseClockNow(page);
   await nestedSessionAfterLogin(page);
   await page.clock.runFor(1000);

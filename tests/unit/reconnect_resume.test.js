@@ -75,6 +75,20 @@ describe("resumePlanFrom（斷線那一刻要回哪）", () => {
       { ...search, board: "Other" }).search).toBeUndefined();
   });
 
+  test("keeps a validated search viewport anchor separate from full-board numbers", () => {
+    const search = { board: "C_Chat", filters: [{ kind: "title", value: "topic" }] };
+    const position = { num: 7, author: "reader", date: "9/01", title: "□ topic", scrollFrac: 0.2 };
+    const bm = { article: null, list: { ...LIST, mode: "select" } };
+    const plan = resumePlanFrom(bm, null, search, position);
+    expect(plan.searchPosition).toEqual(position);
+    expect(plan.num).toBeNull();
+    expect(plan.bookmark.list).toBeNull();
+    position.num = 99;
+    expect(plan.searchPosition.num).toBe(7);
+    expect(resumePlanFrom(bm, null, search, { ...position, num: -1 }).searchPosition).toBeNull();
+    expect(resumePlanFrom(bm, null, null, position).searchPosition).toBeUndefined();
+  });
+
   test("游標在置底文（沒有編號）⇒ 進板就停", () => {
     const plan = resumePlanFrom({ article: null, list: { ...LIST, cursorNum: null } }, null);
     expect(plan.num).toBeNull();

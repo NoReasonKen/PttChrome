@@ -11,6 +11,30 @@ const search = filters => ({ board: 'Test', filters });
 const title = { kind: 'title', value: 'topic' };
 const thread = { kind: 'thread', aid: '1gIeu-3B', title: 'Re: topic' };
 
+test('search recovery verifies and restores the saved viewport before releasing its owner', () => {
+  const a = app();
+  const anchor = { num: 7, author: 'alice', date: '9/01', title: '□ topic', scrollFrac: 0.4 };
+  a.core.listSession.requestViewportRestore = vi.fn();
+  resumeSearchResults(a.core, search([title]), a.done, anchor);
+  a.accept(a.next(), '系列文章', '搜尋標題: ');
+  a.accept(a.next(), '系列文章');
+  expect(a.done).not.toHaveBeenCalled();
+  expect(a.core.listSession.endExternalNavigation).not.toHaveBeenCalled();
+  const probe = a.next();
+  expect(probe.keys).toBe('7\r\f');
+  const originalRead = a.core.buf.getRowText;
+  a.core.buf.getRowText = row => row === 3
+    ? '      7     9/01 alice        □ topic' : originalRead(row);
+  a.core.buf.cur_y = 3;
+  const facts = probe.expect(null, searchGateFacts(a.core));
+  expect(facts).toBeTruthy();
+  probe.onDone(facts);
+  expect(a.done).toHaveBeenCalledExactlyOnceWith({ ok: true });
+  const restore = a.core.listSession.requestViewportRestore;
+  expect(restore).toHaveBeenCalledWith(expect.objectContaining({ topNum: 7, cursorNum: 7, scrollFrac: 0.4, mode: 'select' }));
+  expect(restore.mock.invocationCallOrder[0]).toBeLessThan(a.core.listSession.endExternalNavigation.mock.invocationCallOrder[0]);
+});
+
 beforeAll(() => loadBig5Tables());
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());

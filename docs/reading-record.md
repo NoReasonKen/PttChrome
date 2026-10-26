@@ -143,7 +143,13 @@ Search results with tracked query metadata are reconstructed after the shared
 board-resume transaction; see [search-result recovery](article-search.md#recovering-search-results).
 The full-list fallback described above still applies when the accepted query
 is unknown, and to unidentified result articles. Search result numbers are
-never reused across reconnection.
+not treated as stable identities across reconnection.
+
+Search-result viewport anchors travel separately from full-board list numbers.
+The query restorer verifies the saved row's content in the rebuilt results,
+then requests the new result number and saved row pixel offset through
+`ReadingRecord.restoreList()` before releasing external navigation. See the
+search-result recovery document above for bounds and ambiguity handling.
 
 同一支 `reconnect_resume.js`、同一個 `startResume` 與 `'reconnect-resume'` 決策表列，只是書籤存在本機、下次開站才用。手機瀏覽器回收分頁、APK 被系統關掉、使用者自己關掉再開，原生 App 會回到上次的畫面，這裡也一樣。
 
@@ -155,6 +161,11 @@ never reused across reconnection.
   screens, and clear the saved location on explicit logout. Existing lifecycle
   callbacks still save immediately when delivered. A page killed before its
   first checkpoint can still have no saved location.
+- Unload captures the still-visible location before the browser may change
+  mobile layout geometry. If later lifecycle events see different geometry in
+  the same reading place, they retain that visible snapshot instead of
+  recomputing its viewport using changed row heights. Foreground checkpoints
+  wait for stable geometry and do not run while the document is hidden.
 - 接：開機讀一次就刪（`readSnapshot`）。`bootResumeMode`：APK 回收重建且 `reconnectResume` 開 ⇒ 照舊直接出發；其餘 `resumeLastPlace` 開 ⇒ 計畫帶 `fromOpen`。超過 `SNAPSHOT_MAX_AGE_MS`（12 小時）不接。
 - 出發前倒數：登入回主功能表後先顯示底部提示「即將回到上次的地方：<板>…」＋「取消」（`#resumeLastPlace`，`OPEN_RESUME_DELAY_MS`），倒數完再確認一次（連線中、還在主功能表、AID 跳文沒在跑、deep link 沒在等）才 `startResume`。使用者按取消、自己走開（離開主功能表）、倒數中斷線、deep link 登記 ⇒ 一個鍵都不送。提示的滑鼠事件不外傳（`App._onUploadLayer` 認 `isResumeToastTarget`）。
 - deep link 進來時以 deep link 為準：同斷線重連的 superseded。

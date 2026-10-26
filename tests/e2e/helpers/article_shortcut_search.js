@@ -152,12 +152,12 @@ const NESTED_ARTICLES = [
 // options.loggedIn: this connection first passes the main menu, as a real
 //   login does, so reconnect/open resume may capture and store a plan.
 // options.resumeLastPlace: reloads resume the last place (the product default).
-async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false, legacyCaptions = false } = {}) {
+async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false, legacyCaptions = false, extraArticles = 0 } = {}) {
   await bootGestureArticle(page, { resumeLastPlace });
   // The image-article boot disables the easy-reading list; the reader's
   // default enables it before any list from this server is seen.
   if (easyList) await ptt.applyPrefs(page, { enableEasyReadingList: true });
-  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article', legacyCaptions });
+  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article', legacyCaptions, extraArticles });
   if (loggedIn) {
     await waitScreenSettled(page, { 0: '主功能表' });
     await page.evaluate(() => {
@@ -172,11 +172,17 @@ async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = fal
 
 // A new PTT session on the same board data: it starts at the main menu after
 // login with a fresh cursor and no search. `deleted` carries over.
-async function nestedSessionAfterLogin(page, { deleted = [], legacyCaptions = false } = {}) {
-  await installNestedServer(page, { surface: 'main', deleted, legacyCaptions });
+async function nestedSessionAfterLogin(page, { deleted = [], legacyCaptions = false, extraArticles = 0 } = {}) {
+  await installNestedServer(page, { surface: 'main', deleted, legacyCaptions, extraArticles });
 }
 
 async function installNestedServer(page, session) {
+  const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_';
+  const extras = Array.from({ length: Math.min(60, Math.max(0, session.extraArticles || 0)) }, (_, index) => ({
+    aid: '1gIeu-4' + alphabet[index], author: 'alice',
+    title: '[Talk] Extra topic ' + String(index + 1).padStart(2, '0'),
+    body: 'Extra ' + String(index + 1).padStart(2, '0'), push: 5
+  }));
   await page.evaluate(({ articles, session }) => {
     const app = window.__app;
     const encode = text => [...text].map(ch => {
@@ -223,13 +229,17 @@ async function installNestedServer(page, session) {
             : state.filter ? ' 系列文章  [←]離開 [→]閱讀' : ' 文章列表  [←]離開 [→]閱讀'
         };
         inverse = [0, 2];
-        entries.forEach((article, index) => {
+        // Keep native pages at twenty body rows even when the controlled board
+        // is large enough to exercise the real scrolling/restore pipeline.
+        const start = Math.max(0, Math.min(state.cursor - 10, entries.length - 20));
+        entries.slice(start, start + 20).forEach((article, offset) => {
+          const index = start + offset;
           const num = String(state.filter ? index + 1 : 101 + index).padStart(7);
           // The current-generation cursor marker replaces the first column.
           const mark = index === state.cursor ? '>' : ' ';
-          rows[3 + index] = `${mark}${num.slice(1)}     9/01 ${article.author.padEnd(12)} □ ${article.title}`;
+          rows[3 + offset] = `${mark}${num.slice(1)}     9/01 ${article.author.padEnd(12)} □ ${article.title}`;
         });
-        cursor = [4 + state.cursor, 1];
+        cursor = [4 + state.cursor - start, 1];
         if (state.surface === 'info') {
           rows[18] = `│ 文章代碼(AID): #${state.open.aid} (Test) [ptt.cc] ${state.open.title}`;
           rows[23] = '請按任意鍵繼續';
@@ -290,7 +300,7 @@ async function installNestedServer(page, session) {
         return rest.slice(3);
       }
       // List navigation used by the easy-reading list: number jumps, Home,
-      // End, paging and single-row moves (four articles fit on one page).
+      // End, paging and single-row moves. The default four articles still fit.
       const jump = /^(\d+)\r/.exec(rest);
       if (jump && state.surface === 'list') {
         const num = Number(jump[1]);
@@ -301,8 +311,10 @@ async function installNestedServer(page, session) {
       const nav = ['\x1b[1~', '\x1b[4~', '\x1b[5~', '\x1b[6~', '\x1b[A', '\x1b[B'].find(key => rest.startsWith(key));
       if (nav && state.surface === 'list') {
         const last = listed().length - 1;
-        if (nav === '\x1b[1~' || nav === '\x1b[5~') state.cursor = 0;
-        else if (nav === '\x1b[4~' || nav === '\x1b[6~') state.cursor = last;
+        if (nav === '\x1b[1~') state.cursor = 0;
+        else if (nav === '\x1b[4~') state.cursor = last;
+        else if (nav === '\x1b[5~') state.cursor = Math.max(0, state.cursor - 20);
+        else if (nav === '\x1b[6~') state.cursor = Math.min(last, state.cursor + 20);
         else state.cursor = Math.min(Math.max(0, state.cursor + (nav === '\x1b[A' ? -1 : 1)), last);
         return rest.slice(nav.length);
       }
@@ -351,7 +363,7 @@ async function installNestedServer(page, session) {
     };
     window.__shortcutServer = { state, frame };
     app.onData(frame());
-  }, { articles: NESTED_ARTICLES, session });
+  }, { articles: [...NESTED_ARTICLES, ...extras], session });
 }
 
 // Input is deliberately swallowed while a serialized navigation owns the
