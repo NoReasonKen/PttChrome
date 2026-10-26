@@ -9,7 +9,7 @@
 import { readEffectivePrefs } from './pref_storage';
 import { sameBoard } from './screen_titles';
 import { createPageStack, pushPage, popPage, revealTarget, handoffStep } from './page_stack';
-import { StackListLayer } from './stack_list_layer';
+import { StackListLayer, cardIdentity, findCard } from './stack_list_layer';
 import { EMPTY_TOOLBAR_CONTEXT } from './mobile_toolbar';
 import { searchGateFacts } from './article_search';
 import { isSearchResultsFrame } from './search_results_screen';
@@ -134,6 +134,9 @@ export class ArticleStack {
       const local = event => {
         event.stopPropagation();
         if (event.type === 'click' || event.type === 'contextmenu') event.preventDefault();
+        // A tap on an article is remembered by identity; the last tap wins.
+        const card = event.type === 'click' && event.target.closest?.('.listCardBody') && event.target.closest('.listCard');
+        if (card) h.tap = cardIdentity(card);
       };
       for (const type of LOCAL_INPUT) listen(layer.el, type, local);
       const touches = event => {
@@ -218,5 +221,22 @@ export class ArticleStack {
     h.finish();
     core._refreshScreenContext?.();
     if (how === 'timeout' && h.hint) h.hint();
+    if (how === 'presented' && h.tap) this._openTapped(h.tap);
+  }
+
+  // Open the remembered article on the refreshed list, found by identity (its
+  // number may have moved), through the list's own verified open path.
+  _openTapped(id) {
+    const core = this.core;
+    const card = findCard(core.view.mainDisplay, id);
+    const body = card?.querySelector('.listCardBody');
+    if (!body) {
+      core.view.flashListHint?.('這篇文章已經不在列表中', 4000);
+      return;
+    }
+    body.scrollIntoView({ block: 'nearest' });
+    const r = body.getBoundingClientRect();
+    const at = { bubbles: true, cancelable: true, button: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+    for (const type of ['mousedown', 'mouseup', 'click']) body.dispatchEvent(new MouseEvent(type, at));
   }
 }

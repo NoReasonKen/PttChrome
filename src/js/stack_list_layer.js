@@ -6,11 +6,11 @@ import { renderScreen } from './term_ui';
 
 // Article identity of a list card: author and title. The number can move when
 // earlier articles are deleted.
-function cardIdentity(card) {
+export function cardIdentity(card) {
   return { author: card.dataset.listAuthor || '', title: card.dataset.listTitle || '' };
 }
 
-function findCard(root, id) {
+export function findCard(root, id) {
   for (const card of root.querySelectorAll('.listCard')) {
     const own = cardIdentity(card);
     if (own.author === id.author && own.title === id.title) return card;
