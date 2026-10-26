@@ -59,7 +59,7 @@ function harness() {
     termBuf.row0 = row0;
     for (const fn of listeners) fn();
   };
-  return { rr, core, settle };
+  return { rr, core, settle, termBuf, view };
 }
 
 // 上一次開站：登入後在文章裡，分頁被關掉（pagehide）。
@@ -192,6 +192,80 @@ describe("開站接回", () => {
     h.settle(MAIN_MENU);
     expect(isResumeToastTarget(toast().querySelector("button"))).toBe(true);
     expect(isResumeToastTarget(document.body)).toBe(false);
+  });
+});
+
+describe("Foreground recovery checkpoints", () => {
+  test("reopens the article even when no background or shutdown event arrives", () => {
+    const old = harness();
+    old.settle(MAIN_MENU);
+    old.settle("article content");
+    vi.advanceTimersByTime(500);
+    const snap = JSON.parse(window.localStorage.getItem(SNAPSHOT_KEY));
+    expect(snap?.plan).toMatchObject({ kind: "article", board: POST.board, aid: POST.aid });
+    const next = harness();
+    expect(next.rr.diagnostics().boot).toMatchObject({ validPlan: true, kind: "article" });
+    expect(next.rr.hasPending()).toBe(true);
+  });
+
+  test("records the latest scroll position with at most one write per checkpoint window", () => {
+    const h = harness();
+    h.view.mainDisplay = document.createElement("div");
+    document.body.append(h.view.mainDisplay);
+    h.settle(MAIN_MENU);
+    h.settle("article content");
+    vi.advanceTimersByTime(500);
+    h.view.currentLineIndex = () => 81;
+    for (let i = 0; i < 30; i++) h.view.mainDisplay.dispatchEvent(new Event("scroll"));
+    const write = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      vi.advanceTimersByTime(500);
+      expect(JSON.parse(window.localStorage.getItem(SNAPSHOT_KEY)).plan.bookmark.article.lineIndex).toBe(81);
+      expect(write.mock.calls.filter(([key]) => key === SNAPSHOT_KEY)).toHaveLength(1);
+    } finally {
+      write.mockRestore();
+      h.view.mainDisplay.remove();
+    }
+  });
+
+  test("does not overwrite the saved place during a navigation transaction", () => {
+    const h = harness();
+    h.settle(MAIN_MENU);
+    h.settle("article content");
+    vi.advanceTimersByTime(500);
+    const saved = window.localStorage.getItem(SNAPSHOT_KEY);
+    expect(saved).not.toBeNull();
+    h.core.aidNavigation.active = true;
+    h.view.currentLineIndex = () => 99;
+    h.settle("intermediate navigation screen");
+    vi.advanceTimersByTime(500);
+    expect(window.localStorage.getItem(SNAPSHOT_KEY)).toBe(saved);
+  });
+
+  test("does not save before login or when recovery is disabled", () => {
+    const h = harness();
+    h.settle(LOGIN);
+    vi.advanceTimersByTime(500);
+    expect(window.localStorage.getItem(SNAPSHOT_KEY)).toBeNull();
+    writeValues({ ...DEFAULT_PREFS, resumeLastPlace: false, reconnectResume: false });
+    h.settle(MAIN_MENU);
+    h.settle("article content");
+    vi.advanceTimersByTime(500);
+    expect(window.localStorage.getItem(SNAPSHOT_KEY)).toBeNull();
+  });
+
+  test("checkpoints list reading and never resurrects a place after explicit logout", () => {
+    const h = harness();
+    h.termBuf.pageState = 2;
+    h.core.listSession.state = "active";
+    h.settle(MAIN_MENU);
+    h.settle("article list");
+    vi.advanceTimersByTime(500);
+    expect(JSON.parse(window.localStorage.getItem(SNAPSHOT_KEY)).plan.kind).toBe("list");
+    h.settle("article list");
+    h.rr.capture(true);
+    vi.advanceTimersByTime(500);
+    expect(window.localStorage.getItem(SNAPSHOT_KEY)).toBeNull();
   });
 });
 

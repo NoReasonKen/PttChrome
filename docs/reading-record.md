@@ -148,6 +148,13 @@ never reused across reconnection.
 同一支 `reconnect_resume.js`、同一個 `startResume` 與 `'reconnect-resume'` 決策表列，只是書籤存在本機、下次開站才用。手機瀏覽器回收分頁、APK 被系統關掉、使用者自己關掉再開，原生 App 會回到上次的畫面，這裡也一樣。
 
 - 存：`visibilitychange`→hidden 與 `pagehide`（APK 另有 `pttandroid:stop`）呼叫 `saveSnapshot`。只在「已登入、連線中」時存「現在斷線的話要回哪」（`resumePlanFrom`），否則清掉存檔 ⇒ 登出後關掉、還在登入畫面關掉，下次都不會跳走。不上雲。
+- Foreground checkpoints also save settled article/list locations and viewport
+  scroll changes with a 500 ms trailing throttle. This covers page destruction
+  without a background or shutdown callback. Checkpoints re-read the current
+  location, skip recovery and navigation transactions and temporary input
+  screens, and clear the saved location on explicit logout. Existing lifecycle
+  callbacks still save immediately when delivered. A page killed before its
+  first checkpoint can still have no saved location.
 - 接：開機讀一次就刪（`readSnapshot`）。`bootResumeMode`：APK 回收重建且 `reconnectResume` 開 ⇒ 照舊直接出發；其餘 `resumeLastPlace` 開 ⇒ 計畫帶 `fromOpen`。超過 `SNAPSHOT_MAX_AGE_MS`（12 小時）不接。
 - 出發前倒數：登入回主功能表後先顯示底部提示「即將回到上次的地方：<板>…」＋「取消」（`#resumeLastPlace`，`OPEN_RESUME_DELAY_MS`），倒數完再確認一次（連線中、還在主功能表、AID 跳文沒在跑、deep link 沒在等）才 `startResume`。使用者按取消、自己走開（離開主功能表）、倒數中斷線、deep link 登記 ⇒ 一個鍵都不送。提示的滑鼠事件不外傳（`App._onUploadLayer` 認 `isResumeToastTarget`）。
 - deep link 進來時以 deep link 為準：同斷線重連的 superseded。

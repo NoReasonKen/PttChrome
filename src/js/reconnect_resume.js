@@ -37,12 +37,14 @@ import { readEffectivePrefs } from './pref_storage';
 import { isAndroidApp, androidRestored, STOP_EVENT } from './android_bridge';
 import { readSearchResultsContext, validateSearchResultsContext } from './search_results_context';
 import { resumeSearchResults } from './resume_search_results';
+import { serializedOpHint } from './serialized_op_gate';
 
 // 開站接回時，登入回到主功能表後先倒數這麼久（提示上有「取消」）才出發。
 export const OPEN_RESUME_DELAY_MS = 2500;
 export const RESUME_TOAST_ID = 'resumeLastPlace';
 
 export const SNAPSHOT_KEY = 'pttchrome.rendererResume.v1';
+export const CHECKPOINT_DELAY_MS = 500;
 const DEBUG_TRACE_KEY = 'pttchrome.recoveryDebug.v1';
 // 回收後多久內回來還接得回去。再久的位置使用者多半不記得了，跳過去反而突兀。
 export const SNAPSHOT_MAX_AGE_MS = 12 * 60 * 60 * 1000;
@@ -164,6 +166,7 @@ export function ReconnectResume(core, view, termBuf) {
   this._previousRecording = typeof window !== 'undefined' ? takeDebugTrace() : null;
   // 這條連線看過主功能表了嗎（＝登入完成）。capture() 時清掉。
   this._loggedIn = false;
+  this._checkpointTimer = null;
   if (termBuf && termBuf.addEventListener)
     termBuf.addEventListener('screenSettled', this._onSettled.bind(this));
   // 倒數中的出發（開站接回）：{ timer, plan } | null。
@@ -194,9 +197,16 @@ export function ReconnectResume(core, view, termBuf) {
       window.addEventListener('pagehide', save);
     }
     if (typeof document !== 'undefined' && typeof document.addEventListener === 'function')
+    {
       document.addEventListener('visibilitychange', function() {
         if (document.visibilityState === 'hidden') save();
       });
+      document.addEventListener('scroll', event => {
+        const target = event.target;
+        if (target === view.mainDisplay || target?.classList?.contains('listBodyView'))
+          this._scheduleCheckpoint();
+      }, { capture: true, passive: true });
+    }
   }
 }
 
@@ -236,15 +246,49 @@ ReconnectResume.prototype = {
     };
   },
 
+  _cancelCheckpoint: function() {
+    if (this._checkpointTimer !== null) clearTimeout(this._checkpointTimer);
+    this._checkpointTimer = null;
+  },
+
+  _scheduleCheckpoint: function() {
+    if (this._checkpointTimer !== null || !this._loggedIn || this._core.connectState !== 1 ||
+        !(openEnabled() || (isAndroidApp() && enabled()))) return;
+    // A trailing throttle has a bounded delay even during continuous scrolling.
+    // Re-read the location when it fires; never persist an event-time bookmark.
+    this._checkpointTimer = setTimeout(() => {
+      this._checkpointTimer = null;
+      const core = this._core;
+      if (!this._loggedIn || core.connectState !== 1 || this.hasPending() ||
+          serializedOpHint(core) || core.commandQueue?.idle === false ||
+          core.easyReading?._functionMode || core.listSession?.state === 'opening' ||
+          core.listSession?._holdReason === 'external') return;
+      const buf = this._termBuf;
+      const list = core.listSession;
+      // pageState 3 is the terminal's recognized article-status frame. Native
+      // list records already require a clean-list fingerprint from their owner.
+      const reading = buf.pageState === 3 || list?.state === 'active' ||
+        (list?.state === 'idle' && list.readingPosition?.()?.native);
+      if (reading || this._atMainMenu() || core.boardListSession?.state === 'active')
+        this.saveSnapshot();
+    }, CHECKPOINT_DELAY_MS);
+  },
+
   // App.onClose：**要在任何畫面擁有者被 disable／reset 之前**呼叫（列表 session 的
   // disable 會丟掉看板身分，aidNavigation.reset 會清掉跳文落地的那篇）。
   // loggedOut：這次斷線是使用者自己登出。
   capture: function(loggedOut) {
+    this._cancelCheckpoint();
     // 倒數中斷線：那份計畫作廢（重連後照斷線這一刻的位置重新算）。
     this._cancelCountdown();
     const wasLoggedIn = this._loggedIn;
     this._loggedIn = false;
     if (loggedOut) {
+      try {
+        window.localStorage.removeItem(SNAPSHOT_KEY);
+      } catch (e) {
+        // A blocked storage backend must not interfere with logout.
+      }
       this.discard('logout');
       return;
     }
@@ -416,6 +460,7 @@ ReconnectResume.prototype = {
   },
 
   _onSettled: function() {
+    this._scheduleCheckpoint();
     if (!this._atMainMenu()) {
       // 登入後不在主功能表 ＝使用者自己走開了（我們只在主功能表出發）。
       if (this._loggedIn) this.discard('moved');
