@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const fs = require('node:fs/promises');
 const { gestureSent } = require('../helpers/article_gestures');
 const {
   bootNestedShortcutSearch, nestedSessionAfterLogin, nativeBack, visibleText, waitArticle, waitList, readToMiddle, topLine, tapShortcut,
@@ -17,15 +18,47 @@ const INACTIVE = 'Search return history was not restored';
 const RESUME_FAILED = 'The previous search results could not be restored';
 const bodyText = page => page.locator('body').innerText();
 
-async function reloadAndLogin(page, session = {}) {
+// Use one advancing clock across documents: expiry and idle budgets both depend
+// on Date.now(), so freezing Date while timers run would invalidate the fixture.
+test.beforeEach(async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-01-01T00:00:00Z') });
+});
+
+test.afterEach(async ({ page }, info) => {
+  if (info.status === info.expectedStatus || page.isClosed()) return;
+  const state = await page.evaluate(() => ({
+    recovery: window.__app?.reconnectResume.diagnostics(),
+    position: window.__app?.listSession.readingPosition(),
+    sent: window.__gestureSent?.slice(-20)
+  })).catch(() => null);
+  if (!state) return;
+  const path = info.outputPath('recovery-state.json');
+  await fs.writeFile(path, JSON.stringify(state, null, 2));
+  await info.attach('recovery-state', { path, contentType: 'application/json' });
+});
+
+async function reloadForRecovery(page) {
+  // Keep the save/read boundary at one clock time. Renderer-local advancing
+  // clocks can otherwise replay a newly saved timestamp slightly in the future.
+  await pauseClockNow(page);
   await page.reload();
+  await page.clock.resume();
   await waitConnected(page);
+}
+
+async function reloadAndLogin(page, session = {}) {
+  await reloadForRecovery(page);
   await nestedSessionAfterLogin(page, session);
 }
 
 // After a reload the browser's Back traverses history entries the previous
 // page left behind, which the back guard does not own; use the keyboard Back.
 const keyboardBack = page => ptt.sendKey(page, 'ArrowLeft');
+
+// Native search results show before the list returns to easy reading. Until
+// then the reading record holds the list as it was when the native screen
+// started, so a reload in between restores the newest results instead.
+const easyReadingList = page => expect.poll(() => page.evaluate(() => window.__app.listSession.state)).toBe('active');
 
 test('ordinary article recovery without searches restores a known article and reading position', async ({ page }) => {
   await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true });
@@ -77,6 +110,26 @@ test('ordinary article recovery on reopening shows the countdown and restores th
   await expect.poll(() => topLine(page)).toBe(position);
 });
 
+test('a page torn down without lifecycle events reopens at the position scrolled to', async ({ page }) => {
+  // Android can discard the WebView without pagehide, visibilitychange or
+  // beforeunload; the app's own listeners for them never run.
+  await page.addInitScript(() => {
+    for (const type of ['pagehide', 'visibilitychange', 'beforeunload'])
+      window.addEventListener(type, event => event.stopImmediatePropagation(), true);
+  });
+  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
+  await page.evaluate(() => window.__app.aidNavigation.startResume({
+    kind: 'article', board: 'Test', aid: '1gIeu-3A'
+  }));
+  await waitArticle(page, 'Alpha');
+  const position = await readToMiddle(page);
+  // Past the scroll checkpoint's bounded delay.
+  await page.clock.runFor(1000);
+  await reloadAndLogin(page);
+  await waitArticle(page, 'Alpha');
+  await expect.poll(() => topLine(page)).toBe(position);
+});
+
 test('ordinary list recovery on reopening shows the countdown and restores the board', async ({ page }) => {
   await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
   await keyboardBack(page);
@@ -93,11 +146,15 @@ for (const kind of ['author', 'thread']) {
     const position = await readToMiddle(page);
     await tapShortcut(page, kind);
     await waitList(page, { has: ['Alpha topic'], lacks: ['Delta topic'] });
+    await easyReadingList(page);
 
     await reloadAndLogin(page);
     await waitList(page, { has: ['Alpha topic'], lacks: ['Delta topic'] });
     if (kind === 'author') await page.screenshot({ path: test.info().outputPath('restored-author-results.png') });
-    await expect.poll(() => bodyText(page)).toContain(RESTORED);
+    // The list returning to easy reading keeps explaining the recovery rather
+    // than replacing it with its generic notice.
+    await easyReadingList(page);
+    await expect(page.locator('.ListHint')).toContainText(RESTORED);
     await keyboardBack(page);
     await waitArticle(page, 'Alpha');
     await expect.poll(() => topLine(page)).toBe(position);
@@ -123,6 +180,58 @@ for (const legacyCaptions of [false, true]) {
     // Ordinary results have no source article to restore.
     await keyboardBack(page);
     await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
+  });
+}
+
+// Inspect the rendered card relative to the real scrolling viewport as well as
+// the owner's logical position; a restored cursor alone is not viewport proof.
+const resultViewport = (page, title) => page.locator('#mainContainer .listBodyView').evaluate((viewport, title) => {
+  const card = [...viewport.querySelectorAll('.listCard')].find(node => node.textContent.includes(title));
+  return {
+    position: window.__app.listSession.readingPosition(),
+    offset: card ? card.getBoundingClientRect().top - viewport.getBoundingClientRect().top : null
+  };
+}, title);
+
+for (const removedBeforeAnchor of [false, true]) {
+  test(`reopening long search results restores the visible card and within-row offset (earlier deletion: ${removedBeforeAnchor})`, async ({ page }) => {
+    const extraArticles = 40;
+    const title = '[Talk] Extra topic 12';
+    await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true, extraArticles });
+    await keyboardBack(page);
+    await waitList(page, { has: ['Alpha topic'] });
+    // This initial list starts at its oldest entry; background fill only goes
+    // toward older rows. The search below starts at the newest matching entry.
+    await ptt.sendKey(page, '/');
+    const input = page.locator('input[name="searchKeyword"]');
+    await input.fill('topic');
+    await input.press('Enter');
+    await waitList(page, { has: [title] });
+    await expect.poll(() => page.evaluate(() => window.__app.buf.listLineNums.length)).toBe(44);
+    const viewport = page.locator('#mainContainer .listBodyView');
+    await viewport.evaluate((element, title) => {
+      const card = [...element.querySelectorAll('.listCard')].find(node => node.textContent.includes(title));
+      const bounds = card.getBoundingClientRect();
+      element.scrollTop += bounds.top - element.getBoundingClientRect().top + bounds.height / 4;
+    }, title);
+    await expect.poll(async () => (await resultViewport(page, title)).position.topNum).toBe(16);
+    const before = await resultViewport(page, title);
+    expect(before.position.scrollFrac).toBeGreaterThan(1);
+    expect(before.offset).toBeLessThan(-1);
+    await expect.poll(() => page.evaluate(() => {
+      const saved = JSON.parse(localStorage.getItem('pttchrome.rendererResume.v1'));
+      return saved?.plan.searchPosition?.num;
+    })).toBe(16);
+
+    await reloadAndLogin(page, {
+      extraArticles,
+      deleted: removedBeforeAnchor ? ['1gIeu-3B'] : []
+    });
+    await waitList(page, { has: [title] });
+    const restoredNum = removedBeforeAnchor ? 15 : 16;
+    await expect.poll(async () => (await resultViewport(page, title)).position.topNum, { timeout: 15000 }).toBe(restoredNum);
+    await expect.poll(async () => Math.abs((await resultViewport(page, title)).position.scrollFrac - before.position.scrollFrac)).toBeLessThan(1);
+    await expect.poll(async () => Math.abs((await resultViewport(page, title)).offset - before.offset)).toBeLessThan(2);
   });
 }
 
@@ -260,9 +369,7 @@ test('canceling the resume after a reload explains that the route stays inactive
 
   // Hold the clock while the open-resume countdown is showing, so a loaded
   // machine cannot let it expire before the reader's tap.
-  await page.clock.install();
-  await page.reload();
-  await waitConnected(page);
+  await reloadForRecovery(page);
   await pauseClockNow(page);
   await nestedSessionAfterLogin(page);
   await page.clock.runFor(1000);

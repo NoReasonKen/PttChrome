@@ -5,11 +5,12 @@ import { validateSearchResultsContext, recordSearchResults, clearSearchResultsCo
 import { recordFor } from './reading_record';
 import { i18n } from './i18n';
 import { HINT_ERROR } from './status_hint';
+import { restoreSearchResultPosition } from './search_result_position';
 
 // Continue the existing resume transaction after it reaches the verified full
 // board list. All filters use the same queue and prompt proof as normal search;
 // this never submits through the UI or adds a shortcut return-history origin.
-export function resumeSearchResults(core, context, done) {
+export function resumeSearchResults(core, context, done, position) {
   const search = validateSearchResultsContext(context);
   if (!search || !isBoardArticleList(searchGateFacts(core), search.board)) {
     done({ ok: false });
@@ -17,18 +18,23 @@ export function resumeSearchResults(core, context, done) {
   }
   const bookmark = recordFor(core).begin('article-search');
   let finished = false;
-  const finish = ok => {
+  const finish = (ok, restored = {}) => {
     if (finished) return;
     finished = true;
     endInFlight(core);
     recordFor(core).end(bookmark, ok ? 'done' : 'fail');
+    if (ok && restored.record) recordFor(core).restoreList(restored.record);
     if (ok) recordSearchResults(core, search);
     else clearSearchResultsContext(core);
-    const notice = !ok ? { message: i18n('searchResults_resumeFailed'), duration: 6000, level: HINT_ERROR } : null;
-    recordFor(core).releaseExternal({ listNotice: notice });
+    const message = !ok ? 'searchResults_resumeFailed' : restored.missing ? 'searchResults_positionMissing' : null;
+    const notice = message ? { message: i18n(message), duration: 6000, level: HINT_ERROR } : null;
+    // `done` may explain the outcome itself; a failure stays explained over it.
+    // Either is the list's notice when it returns to easy reading, so its
+    // generic notice does not replace them.
+    const explained = done({ ok });
+    recordFor(core).releaseExternal({ listNotice: notice || explained });
     if (notice && core.conn?.isConnected)
       core.view.flashListHint(notice.message, notice.duration, notice.level);
-    done({ ok });
   };
   const hold = () => {
     beginInFlight(core);
@@ -68,7 +74,7 @@ export function resumeSearchResults(core, context, done) {
       onDone: result => {
         if (result.notice) return dismissFailure();
         if (index + 1 < search.filters.length) run(index + 1);
-        else finish(true);
+        else restoreSearchResultPosition(core, search, position, restored => finish(!restored.interrupted, restored));
       }
     });
     if (steps) enqueue({ ...steps[0], kind: 'search-resume-open', onDone: submit });

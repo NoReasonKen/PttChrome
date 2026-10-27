@@ -48,8 +48,11 @@ export class ArticleShortcutSearch {
     core.buf.addEventListener('screenSettled', this._settled);
   }
 
+  // Returns the notice shown, for an owner that shows it again later.
   _hint(key) {
-    this.core.view.flashListHint(i18n(key), 5000);
+    const notice = { message: i18n(key), duration: 5000 };
+    this.core.view.flashListHint(notice.message, notice.duration);
+    return notice;
   }
 
   _resultsHint(kind) {
@@ -381,7 +384,8 @@ export class ArticleShortcutSearch {
     else this._explain();
   }
 
-  // The resume transaction for `plan` ended with `result`.
+  // The resume transaction for `plan` ended with `result`. Returns the notice
+  // explaining the outcome, if any.
   recoveryEnded(plan, result) {
     const suspended = this.suspended;
     this.suspended = null;
@@ -389,7 +393,7 @@ export class ArticleShortcutSearch {
     const route = result?.ok ? recovered(suspended.route, suspended.target, plan, this._landed(suspended.target.board)) : null;
     if (!route) return this._explain();
     this.route = route;
-    this._hint('articleShortcutSearch_recovered');
+    return this._hint('articleShortcutSearch_recovered');
   }
 
   // Recovery will not run (logout, canceled, superseded, user moved first).
@@ -407,7 +411,7 @@ export class ArticleShortcutSearch {
   }
 
   _explain() {
-    if (this.core.conn?.isConnected) this._hint('articleShortcutSearch_recoveryInactive');
-    else this._explainLater = true;
+    if (this.core.conn?.isConnected) return this._hint('articleShortcutSearch_recoveryInactive');
+    this._explainLater = true;
   }
 }

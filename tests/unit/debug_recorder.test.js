@@ -139,6 +139,17 @@ describe("cursorGeomSample", () => {
 });
 
 describe("DebugRecorder", () => {
+  it("includes recovery decisions made before recording began", () => {
+    const { app } = makeApp();
+    const info = { boot: { storage: "missing", validPlan: false }, recent: [] };
+    app.reconnectResume = { diagnostics: () => info, recordingStarted: vi.fn() };
+    const rec = new DebugRecorder(app);
+    rec.start();
+    expect(app.reconnectResume.recordingStarted).toHaveBeenCalledOnce();
+    const out = JSON.parse(rec.stop());
+    expect(out.events.find((event) => event.tag === "reconnectResume.diagnostics").info).toEqual(info);
+  });
+
   it("start 後 send/recv 被記錄且原行為保留；stop 還原原函式", () => {
     const { app, calls } = makeApp();
     const origOnData = app.onData;

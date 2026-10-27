@@ -38,10 +38,23 @@ No source-return history entry is added by reconstruction. Successful shortcut
 results reactivate the existing return route only after both the saved query
 and its actual destination are verified.
 
-Result numbers can change when articles are added or deleted. Recovery starts
-at the server's newest matching result; it does not reuse an old result number
-or claim to restore an unverified article position. Empty results and protocol
-failures stop with an explanation and leave the shortcut return path inactive.
+Result numbers can change when articles are added or deleted. The local resume
+plan can also save the visible top row's author, displayed title, date, result
+number, and within-row scroll offset in CSS pixels. After rebuilding the query,
+recovery uses that number only as a hint and requires a positive content match. It
+checks at most the hinted page and its two neighbors, selects the verified new
+number, and hands the viewport request to the existing list owner before
+releasing navigation. The PTT selection may move to that top row; viewport
+position and selection remain separate concepts.
+
+If the position is absent or ambiguous within that bounded search, the results
+remain usable at their newest entry with an explanatory notice. Old snapshots
+without a content anchor retain the newest-result fallback. Displayed titles
+can be truncated, so author/title/date is a visible-content fingerprint, not a
+globally unique AID; duplicate identities in available rows prevent capture or
+restoration. Capturing a position never issues network queries or opens an
+article. Empty results and interrupted protocol transactions stop recovery
+with an explanation and leave the shortcut return path inactive.
 An external recovery failure supplies its notice through reading-record's
 `releaseExternal({ listNotice })` to `ListSession.endExternalNavigation(notice)`.
 The list owner repeats that error notice when its automatic switch back to easy

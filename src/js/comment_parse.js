@@ -750,6 +750,15 @@ export function isListShapedRow(text) {
 // 只用在 isListShapedRow；黑名單作者比對仍只認 userid。
 const LIST_DATE_COL_START = 11;
 const LIST_DATE_RE = /^[ \d]\d\/\d\d$/;
+
+// Keep list-date parsing aligned with the author/title parsers under both
+// cursor generations. Dates in article titles are not part of this field.
+export function parseListDate(text) {
+  if (typeof text !== 'string' || text.length < LIST_AUTHOR_COL_START) return null;
+  const date = realignListColumns(text).substring(LIST_DATE_COL_START, LIST_DATE_COL_START + 5);
+  return LIST_DATE_RE.test(date) ? date.trim() : null;
+}
+
 function hasNonUseridOwner(text) {
   if (text.length < LIST_AUTHOR_COL_START) return false;
   const row = realignListColumns(text);

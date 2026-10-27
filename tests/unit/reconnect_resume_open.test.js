@@ -2,6 +2,7 @@
 // 開站回到上次的地方（pref resumeLastPlace，src/js/reconnect_resume.js；docs/reading-record.md
 // 「開站回到上次的地方」）：分頁切到背景／關掉時存書籤，下一次開站登入回主功能表後先倒數
 // （提示上有「取消」），倒數完還在主功能表才出發；deep link、使用者自己走開、取消都不送鍵。
+// real-input: tests/e2e/offline/mobile_article_search_recovery.offline.spec.js
 import {
   ReconnectResume,
   SNAPSHOT_KEY,
@@ -12,6 +13,7 @@ import {
 } from "../../src/js/reconnect_resume";
 import { ReadingRecord } from "../../src/js/reading_record";
 import { DEFAULT_PREFS, NATIVE_SAFE_MODE_KEYS, writeValues } from "../../src/js/pref_storage";
+import { recordSearchResults } from "../../src/js/search_results_context";
 
 const LIST = {
   kind: "list",
@@ -59,7 +61,7 @@ function harness() {
     termBuf.row0 = row0;
     for (const fn of listeners) fn();
   };
-  return { rr, core, settle };
+  return { rr, core, settle, termBuf, view };
 }
 
 // 上一次開站：登入後在文章裡，分頁被關掉（pagehide）。
@@ -76,6 +78,7 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
   vi.useRealTimers();
   window.localStorage.removeItem(SNAPSHOT_KEY);
+  window.localStorage.removeItem("pttchrome.recoveryDebug.v1");
   window.localStorage.removeItem("pttchrome.pref.v1");
   if (toast()) toast().remove();
 });
@@ -191,6 +194,246 @@ describe("開站接回", () => {
     h.settle(MAIN_MENU);
     expect(isResumeToastTarget(toast().querySelector("button"))).toBe(true);
     expect(isResumeToastTarget(document.body)).toBe(false);
+  });
+});
+
+describe("Foreground recovery checkpoints", () => {
+  test("keeps the last visible location when shutdown changes mobile geometry", () => {
+    const h = harness();
+    h.termBuf.pageState = 2;
+    h.core.mobile = true;
+    h.view.chh = 18;
+    let position = { ...LIST, topNum: 16 };
+    h.core.listSession.readingPosition = () => position;
+    h.settle(MAIN_MENU);
+    h.rr.saveSnapshot();
+    position = { ...position, topNum: 25 };
+    h.core.mobile = false;
+    h.view.chh = 10;
+    window.dispatchEvent(new Event("pagehide"));
+    const saved = JSON.parse(window.localStorage.getItem(SNAPSHOT_KEY));
+    expect(saved.plan.bookmark.list.topNum).toBe(16);
+  });
+
+  test("also protects card-mode changes that keep the same mobile flag and font height", () => {
+    const h = harness();
+    h.termBuf.pageState = 2;
+    h.core.mobile = true;
+    h.view.chh = 18;
+    h.view.listCards = true;
+    let position = { ...LIST, topNum: 16 };
+    h.core.listSession.readingPosition = () => position;
+    h.settle(MAIN_MENU);
+    h.rr.saveSnapshot();
+    h.view.listCards = false;
+    position = { ...position, topNum: 25 };
+    window.dispatchEvent(new Event("pagehide"));
+    expect(JSON.parse(window.localStorage.getItem(SNAPSHOT_KEY)).plan.bookmark.list.topNum).toBe(16);
+  });
+
+  test("layout protection does not reuse a checkpoint after the reader changes boards", () => {
+    const h = harness();
+    h.termBuf.pageState = 2;
+    h.core.mobile = true;
+    h.view.chh = 18;
+    h.settle(MAIN_MENU);
+    h.rr.saveSnapshot();
+    h.core.listSession.readingPosition = () => ({ ...LIST, board: "Test", topNum: 25 });
+    h.core.mobile = false;
+    h.view.chh = 10;
+    window.dispatchEvent(new Event("pagehide"));
+    expect(JSON.parse(window.localStorage.getItem(SNAPSHOT_KEY)).plan.board).toBe("Test");
+  });
+
+  test("waits for a stable geometry window before replacing a foreground checkpoint", () => {
+    const h = harness();
+    h.view.chh = 18;
+    h.settle(MAIN_MENU);
+    h.settle("article content");
+    vi.advanceTimersByTime(250);
+    h.view.chh = 10;
+    vi.advanceTimersByTime(250);
+    expect(window.localStorage.getItem(SNAPSHOT_KEY)).toBeNull();
+    vi.advanceTimersByTime(500);
+    expect(JSON.parse(window.localStorage.getItem(SNAPSHOT_KEY)).plan.kind).toBe("article");
+  });
+
+  test("persists the visible search anchor and passes it through reopening", () => {
+    const h = harness();
+    h.termBuf.pageState = 2;
+    h.termBuf.listLineNums = [LIST.topNum];
+    h.termBuf.listLines = [`${String(LIST.topNum).padStart(7)}     9/01 alice        □ topic`];
+    recordSearchResults(h.core, { board: "C_Chat", filters: [{ kind: "title", value: "topic" }] });
+    h.settle(MAIN_MENU);
+    h.rr.saveSnapshot();
+    const snap = JSON.parse(window.localStorage.getItem(SNAPSHOT_KEY));
+    expect(snap.plan.searchPosition).toMatchObject({ num: LIST.topNum, author: "alice", title: "□ topic" });
+    const next = harness();
+    next.settle(MAIN_MENU);
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
+    expect(next.core.aidNavigation.startResume.mock.calls[0][0].searchPosition).toEqual(snap.plan.searchPosition);
+  });
+
+  test("reopens the article even when no background or shutdown event arrives", () => {
+    const old = harness();
+    old.settle(MAIN_MENU);
+    old.settle("article content");
+    vi.advanceTimersByTime(500);
+    const snap = JSON.parse(window.localStorage.getItem(SNAPSHOT_KEY));
+    expect(snap?.plan).toMatchObject({ kind: "article", board: POST.board, aid: POST.aid });
+    const next = harness();
+    expect(next.rr.diagnostics().boot).toMatchObject({ validPlan: true, kind: "article" });
+    expect(next.rr.hasPending()).toBe(true);
+  });
+
+  test("records the latest scroll position with at most one write per checkpoint window", () => {
+    const h = harness();
+    h.view.mainDisplay = document.createElement("div");
+    document.body.append(h.view.mainDisplay);
+    h.settle(MAIN_MENU);
+    h.settle("article content");
+    vi.advanceTimersByTime(500);
+    h.view.currentLineIndex = () => 81;
+    for (let i = 0; i < 30; i++) h.view.mainDisplay.dispatchEvent(new Event("scroll"));
+    const write = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      vi.advanceTimersByTime(500);
+      expect(JSON.parse(window.localStorage.getItem(SNAPSHOT_KEY)).plan.bookmark.article.lineIndex).toBe(81);
+      expect(write.mock.calls.filter(([key]) => key === SNAPSHOT_KEY)).toHaveLength(1);
+    } finally {
+      write.mockRestore();
+      h.view.mainDisplay.remove();
+    }
+  });
+
+  test("does not overwrite the saved place during a navigation transaction", () => {
+    const h = harness();
+    h.settle(MAIN_MENU);
+    h.settle("article content");
+    vi.advanceTimersByTime(500);
+    const saved = window.localStorage.getItem(SNAPSHOT_KEY);
+    expect(saved).not.toBeNull();
+    h.core.aidNavigation.active = true;
+    h.view.currentLineIndex = () => 99;
+    h.settle("intermediate navigation screen");
+    vi.advanceTimersByTime(500);
+    expect(window.localStorage.getItem(SNAPSHOT_KEY)).toBe(saved);
+  });
+
+  test("does not save before login or when recovery is disabled", () => {
+    const h = harness();
+    h.settle(LOGIN);
+    vi.advanceTimersByTime(500);
+    expect(window.localStorage.getItem(SNAPSHOT_KEY)).toBeNull();
+    writeValues({ ...DEFAULT_PREFS, resumeLastPlace: false, reconnectResume: false });
+    h.settle(MAIN_MENU);
+    h.settle("article content");
+    vi.advanceTimersByTime(500);
+    expect(window.localStorage.getItem(SNAPSHOT_KEY)).toBeNull();
+  });
+
+  test("checkpoints list reading and never resurrects a place after explicit logout", () => {
+    const h = harness();
+    h.termBuf.pageState = 2;
+    h.core.listSession.state = "active";
+    h.settle(MAIN_MENU);
+    h.settle("article list");
+    vi.advanceTimersByTime(500);
+    expect(JSON.parse(window.localStorage.getItem(SNAPSHOT_KEY)).plan.kind).toBe("list");
+    h.settle("article list");
+    h.rr.capture(true);
+    vi.advanceTimersByTime(500);
+    expect(window.localStorage.getItem(SNAPSHOT_KEY)).toBeNull();
+  });
+});
+
+describe("Recovery diagnostics available after startup", () => {
+  test("retains recorded teardown decisions across reopening when the resume snapshot is missing", () => {
+    const old = harness();
+    old.core.debugRecorder = { isRecording: true, log: vi.fn() };
+    old.rr.recordingStarted();
+    old.settle(MAIN_MENU);
+    old.rr.saveSnapshot();
+    old.rr.capture(false);
+    old.core.connectState = 2;
+    old.rr.saveSnapshot();
+    const next = harness();
+    const info = next.rr.diagnostics();
+    expect(info.boot.storage).toBe("missing");
+    expect(info.previousRecording).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event: "saveSnapshot", kind: "article", storage: "written" }),
+      expect.objectContaining({ event: "capture", kind: "article" }),
+      expect.objectContaining({ event: "saveSnapshot", kind: null, storage: "removed" })
+    ]));
+    expect(JSON.stringify(info.previousRecording)).not.toContain(POST.aid);
+    expect(JSON.stringify(info.previousRecording)).not.toContain(POST.board);
+    expect(window.localStorage.getItem("pttchrome.recoveryDebug.v1")).toBeNull();
+  });
+
+  test("does not persist teardown diagnostics without an active recording", () => {
+    const h = harness();
+    h.settle(MAIN_MENU);
+    h.rr.saveSnapshot();
+    expect(window.localStorage.getItem("pttchrome.recoveryDebug.v1")).toBeNull();
+    h.core.debugRecorder = { isRecording: false, log: vi.fn() };
+    h.rr.saveSnapshot();
+    expect(window.localStorage.getItem("pttchrome.recoveryDebug.v1")).toBeNull();
+  });
+
+  test("ignores malformed and expired diagnostic traces", () => {
+    window.localStorage.setItem("pttchrome.recoveryDebug.v1", "{");
+    expect(harness().rr.diagnostics().previousRecording).toBeNull();
+    window.localStorage.setItem("pttchrome.recoveryDebug.v1", JSON.stringify({
+      at: Date.now() - 13 * 60 * 60 * 1000, events: []
+    }));
+    expect(harness().rr.diagnostics().previousRecording).toBeNull();
+  });
+
+  test("retains boot and discard decisions without navigation targets", () => {
+    leaveFromOldPage();
+    const h = harness();
+    h.settle(MAIN_MENU);
+    h.settle("【看板列表】");
+    const info = h.rr.diagnostics();
+    expect(info.boot).toMatchObject({ storage: "read", validPlan: true, kind: "article", mode: "open" });
+    expect(info.recent).toContainEqual(expect.objectContaining({ event: "discard", reason: "moved" }));
+    expect(info.pendingKind).toBeNull();
+    expect(JSON.stringify(info)).not.toContain(POST.aid);
+    expect(JSON.stringify(info)).not.toContain(POST.board);
+    info.recent[0].event = "modified";
+    expect(h.rr.diagnostics().recent[0].event).not.toBe("modified");
+  });
+
+  test("distinguishes missing, malformed, and expired snapshots", () => {
+    window.localStorage.removeItem(SNAPSHOT_KEY);
+    expect(harness().rr.diagnostics().boot.storage).toBe("missing");
+    window.localStorage.setItem(SNAPSHOT_KEY, "{");
+    expect(harness().rr.diagnostics().boot).toMatchObject({ storage: "invalid-json", validPlan: false });
+    window.localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({
+      at: Date.now() - 13 * 60 * 60 * 1000,
+      plan: { kind: "article", board: POST.board, aid: POST.aid }
+    }));
+    expect(harness().rr.diagnostics().boot).toMatchObject({ storage: "read", validPlan: false });
+  });
+
+  test("reports failed storage writes and bounds recent decisions", () => {
+    const h = harness();
+    h.settle(MAIN_MENU);
+    const write = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Storage unavailable", "QuotaExceededError");
+    });
+    try {
+      h.rr.saveSnapshot();
+      expect(h.rr.diagnostics().recent.at(-1)).toMatchObject({
+        event: "saveSnapshot", kind: "article", storage: "storage-error"
+      });
+    } finally {
+      write.mockRestore();
+    }
+    for (let i = 0; i < 30; i++) h.rr.saveSnapshot();
+    expect(h.rr.diagnostics().recent).toHaveLength(24);
+    expect(h.rr.diagnostics().boot).not.toBeNull();
+    expect(h.rr.diagnostics().recent.at(-1).storage).toBe("written");
   });
 });
 
