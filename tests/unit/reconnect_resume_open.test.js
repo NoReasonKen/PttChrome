@@ -2,6 +2,7 @@
 // 開站回到上次的地方（pref resumeLastPlace，src/js/reconnect_resume.js；docs/reading-record.md
 // 「開站回到上次的地方」）：分頁切到背景／關掉時存書籤，下一次開站登入回主功能表後先倒數
 // （提示上有「取消」），倒數完還在主功能表才出發；deep link、使用者自己走開、取消都不送鍵。
+// real-input: tests/e2e/offline/mobile_article_search_recovery.offline.spec.js
 import {
   ReconnectResume,
   SNAPSHOT_KEY,
