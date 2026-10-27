@@ -34,12 +34,13 @@ import { mobileCtrlKey, mobileMenuLayout, listViewportGeometry, listFillRows } f
 
 // 單獨按下修飾鍵本身（實體鍵盤按 Shift 準備打大寫）不算「下一個按鍵」，黏滯 Ctrl 不解除。
 var MODIFIER_KEY_NAMES = ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'AltGraph'];
-// A plain ← is a Back, from the keyboard, the toolbar or system Back.
-const isPlainBack = e => e.key === 'ArrowLeft' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey;
 import { keyEventPredatesModalClose } from './modal_key_gate';
 import icon128 from '../icon/icon_128.png';
 import { MOUSE_CURSOR_URLS } from './mouse_cursors';
 import { isAndroidApp, androidNotify } from './android_bridge';
+
+// A plain ← is a Back, from the keyboard, the toolbar or system Back.
+const isPlainBack = e => e.key === 'ArrowLeft' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey;
 
 const DEFINE_INPUT_BUFFER_SIZE = 12;
 

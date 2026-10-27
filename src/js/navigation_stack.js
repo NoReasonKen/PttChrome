@@ -233,8 +233,9 @@ export class NavigationStack {
   queueBack() {
     const h = this.handoff;
     if (!h) return false;
+    const before = this.stack;
     this.stack = queueBack(this.stack);
-    h.tap = null;
+    if (this.stack !== before) h.tap = null;
     return true;
   }
 
@@ -383,6 +384,11 @@ export class NavigationStack {
     // Through the usual path: it reveals the next lower page, or waits for PTT.
     // Sent from its own task, since the swap can run inside the owning
     // session's presentation.
-    if (queued.back) setTimeout(() => core.sendNavKeyAsUser('ArrowLeft'));
+    if (queued.back) setTimeout(() => {
+      core.sendNavKeyAsUser('ArrowLeft');
+      // Without a live layer below, that Back waits for PTT outside any
+      // handoff: the Backs still queued have no swap to run after.
+      if (!this.handoff) this.stack = dropQueuedBacks(this.stack);
+    });
   }
 }

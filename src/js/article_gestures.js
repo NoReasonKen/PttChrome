@@ -53,6 +53,9 @@ export class ArticleGestures {
     this.suppressClickUntil = 0;
     this.tap = null;
     this.entry = null;
+    // Backs made during a committed exit slide, before its handoff starts;
+    // null while no exit is committing.
+    this.earlyBacks = null;
     this.listeners = [];
     this.stack = new NavigationStack(core);
     this._listen(window, 'pointerdown', event => this._start(event), true);
@@ -303,12 +306,12 @@ export class ArticleGestures {
   // A leave is on its way to PTT, from the committed slide on: other input
   // waits for the swap.
   holdsInput() {
-    return (this.stack.handingOff || this.exitCommitting) && !this.sendingBack;
+    return (this.stack.handingOff || this.earlyBacks != null) && !this.sendingBack;
   }
 
   // A Back made meanwhile unwinds further after the swap (#34).
   queueBack() {
-    if (!this.stack.queueBack() && this.exitCommitting) this.earlyBacks++;
+    if (!this.stack.queueBack() && this.earlyBacks != null) this.earlyBacks++;
   }
 
   // A session presented a real page: an article list, a board list or the
@@ -357,25 +360,23 @@ export class ArticleGestures {
     this.settling = true;
     const identity = this.identity;
     const duration = slideDuration();
-    this.exitCommitting = commit;
-    this.earlyBacks = 0;
+    this.earlyBacks = commit ? 0 : null;
     for (const { node } of this.exitSurfaces) node.style.transition = `translate ${duration}ms ease-out`;
     this._paintExit(commit ? window.innerWidth : 0);
     this.timer = setTimeout(() => {
       this.timer = null;
-      const early = this.earlyBacks;
-      this.exitCommitting = false;
-      this.earlyBacks = 0;
+      const earlyBacks = this.earlyBacks || 0;
+      this.earlyBacks = null;
       const valid = commit && this._leaveable() && identity === this.identity;
-      if (valid) this._handoff(early);
+      if (valid) this._handoff(earlyBacks);
       else this._removeExit();
     }, duration);
   }
 
   // The article stays off screen over the revealed list, or the dark fallback,
-  // until the real list is presented (#20, #28). `early`: Backs made during the
-  // slide, queued once the handoff is under way.
-  _handoff(early) {
+  // until the real list is presented (#20, #28). `earlyBacks` made during the
+  // slide are queued once the handoff is under way.
+  _handoff(earlyBacks) {
     const core = this.core;
     const sent = this.stack.begin({
       send: () => {
@@ -399,7 +400,7 @@ export class ArticleGestures {
       cancel: () => this._settleExit(false),
       hint: () => core.view.flashListHint?.(i18n('stack_handoffTimeout'), 4000)
     });
-    for (let i = 0; sent && i < early; i++) this.stack.queueBack();
+    for (let i = 0; sent && i < earlyBacks; i++) this.stack.queueBack();
   }
 
   // The current page can be left now, by any Back.
@@ -424,8 +425,7 @@ export class ArticleGestures {
   _removeExit() {
     if (!this.exitUnderlay) return;
     this._stopMotion();
-    this.exitCommitting = false;
-    this.earlyBacks = 0;
+    this.earlyBacks = null;
     if (!this.stack.handingOff) this.stack.revealable()?.hide();
     releaseSurfaces(this.exitSurfaces);
     this.exitUnderlay.remove();

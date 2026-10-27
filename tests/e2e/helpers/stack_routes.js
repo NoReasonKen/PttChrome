@@ -132,6 +132,28 @@ async function holdBackReply(page) {
 // The leave was sent and its reply is being held.
 const heldBack = page => expect.poll(() => page.evaluate(() => !!window.__heldBack)).toBe(true);
 
+// Hold PTT's reply to every leave (←) until released, oldest first. Each held
+// leave records which stack layers were on screen when it was sent.
+const holdLeaves = page => page.evaluate(() => {
+  const send = window.__stubWSSent;
+  window.__heldLeaves = [];
+  window.__leaves = [];
+  window.__stubWSSent = data => {
+    if (data.indexOf('\x1b[D') < 0) return send(data);
+    window.__leaves.push([...document.querySelectorAll('[data-stack-layer]')].map(el => el.dataset.stackLayer));
+    window.__heldLeaves.push(() => send(data));
+  };
+});
+const heldLeaves = page => page.evaluate(() => window.__heldLeaves.length);
+const releaseLeave = page => page.evaluate(() => window.__heldLeaves.shift()());
+// The stack layers on screen as each leave was sent.
+const sentLeaves = page => page.evaluate(() => window.__leaves);
+
+const articleRead = page => page.waitForFunction(() => {
+  const app = window.__app;
+  return app.buf.pageState === 3 && app.easyReading.easyReadingReachedPageEnd && app.commandQueue.idle && !app.buf._settleTimer;
+});
+
 // Every painted frame from now on: is the old article on screen? Sampled just
 // before paint (helpers/layout.js#installPaintedFrameProbe).
 async function sampleFrames(page) {
@@ -157,5 +179,6 @@ const framesBringingBackArticle = frames =>
 
 module.exports = {
   MAIN, ARTICLE_CARD, homeBoard, boardList, bootArticleList, bootArticleListAtCard, delayReplies, dropReplies, listActive, dashboardVisible, bootDashboard, boardOpened, boardListEngaged, bootBoardList,
-  fedBefore, openNextArticle, holdBackReply, heldBack, sampleFrames, framesBringingBackArticle
+  fedBefore, openNextArticle, holdBackReply, heldBack, holdLeaves, heldLeaves, releaseLeave, sentLeaves, articleRead,
+  sampleFrames, framesBringingBackArticle
 };

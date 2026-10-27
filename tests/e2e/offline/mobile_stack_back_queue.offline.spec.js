@@ -4,31 +4,22 @@
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { loadCassette, waitFed } = require('../helpers/replay');
-const { dashboardVisible, bootDashboard, boardOpened } = require('../helpers/stack_routes');
+const {
+  dashboardVisible, bootDashboard, boardOpened, holdLeaves, heldLeaves, releaseLeave, sentLeaves, articleRead
+} = require('../helpers/stack_routes');
 
 const homeArticle = loadCassette('scn-stack-home-article-back');
 const LIST_LAYER = '[data-stack-layer="articleList"]';
 const HOME_LAYER = '[data-stack-layer="home"]';
 
-const articleRead = page => page.waitForFunction(() => {
-  const app = window.__app;
-  return app.buf.pageState === 3 && app.easyReading.easyReadingReachedPageEnd && app.commandQueue.idle && !app.buf._settleTimer;
-});
+const pressBack = page => ptt.sendKey(page, 'ArrowLeft');
 
-// Hold PTT's reply to every leave (←) until released, oldest first.
-const holdLeaves = page => page.evaluate(() => {
-  const send = window.__stubWSSent;
-  window.__heldLeaves = [];
-  window.__stubWSSent = data => (data.indexOf('\x1b[D') < 0 ? send(data) : window.__heldLeaves.push(() => send(data)));
-});
-const heldLeaves = page => page.evaluate(() => window.__heldLeaves.length);
-const releaseLeave = page => page.evaluate(() => window.__heldLeaves.shift()());
-
-for (const [name, back] of [
-  ['←', page => ptt.sendKey(page, 'ArrowLeft')],
-  ['system Back', page => page.goBack()]
+for (const [name, secondBack, afterLeave] of [
+  ['← while the list is revealed', pressBack, true],
+  ['system Back while the list is revealed', page => page.goBack(), true],
+  ['← during the slide, before the leave is sent', pressBack, false]
 ]) {
-  test(`a second Back by ${name} while the list is revealed runs after the swap and reveals the dashboard`, async ({ page }) => {
+  test(`a second Back by ${name} runs after the swap and reveals the dashboard`, async ({ page }) => {
     await bootDashboard(page, homeArticle);
     await page.locator('#homeDashboard [data-home-board="C_Chat"]').tap();
     await boardOpened(page);
@@ -37,13 +28,13 @@ for (const [name, back] of [
     await articleRead(page);
 
     await holdLeaves(page);
-    await ptt.sendKey(page, 'ArrowLeft');
+    await pressBack(page);
+    if (afterLeave) {
+      await expect.poll(() => heldLeaves(page)).toBe(1);
+      await expect(page.locator(LIST_LAYER)).toBeVisible();
+    }
+    await secondBack(page);
     await expect.poll(() => heldLeaves(page)).toBe(1);
-    await expect(page.locator(LIST_LAYER)).toBeVisible();
-    await back(page);
-    // Queued, not sent: only the first leave is on its way.
-    await page.waitForTimeout(300);
-    expect(await heldLeaves(page)).toBe(1);
 
     await releaseLeave(page);
     // The list takes over, then the queued Back leaves it over the dashboard.
@@ -56,6 +47,8 @@ for (const [name, back] of [
     await dashboardVisible(page);
     await expect(page.locator(HOME_LAYER)).toHaveCount(0, { timeout: 10000 });
     await waitFed(page, homeArticle.steps.length);
-    expect(await heldLeaves(page)).toBe(0);
+    // One leave per level: the article's over the list, then the list's over
+    // the dashboard, sent only after the list took over.
+    expect(await sentLeaves(page)).toEqual([['articleList'], ['home']]);
   });
 }
