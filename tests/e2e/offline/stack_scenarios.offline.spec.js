@@ -12,6 +12,7 @@ const boardList = loadCassette('scn-stack-boardlist-board');
 const homeBoard = loadCassette('scn-stack-home-board');
 const homeSearch = loadCassette('scn-stack-home-search');
 const homeNext = loadCassette('scn-stack-home-next');
+const homeArticle = loadCassette('scn-stack-home-article-back');
 
 // Each action waits for the product state the recorder waited for, and for the
 // wire to be quiet, as the recording discipline requires.
@@ -113,4 +114,17 @@ test('home dashboard → board → article → next article → back → back re
   await ptt.sendKey(page, 'ArrowLeft');
   await dashboardVisible(page);
   await waitFed(page, homeNext.steps.length);
+});
+
+test('home dashboard → board → article → back → back replays end to end', async ({ page }) => {
+  await openBoardFromDashboard(page, homeArticle);
+  for (let i = 0; i < 2; i++) await ptt.sendKey(page, 'ArrowUp');
+  await ptt.sendKey(page, 'Enter');
+  await articleRead(page);
+  await ptt.sendKey(page, 'ArrowLeft');
+  await waitFed(page, fedBefore(homeArticle, 'back', 2));
+  await listActive(page);
+  await ptt.sendKey(page, 'ArrowLeft');
+  await dashboardVisible(page);
+  await waitFed(page, homeArticle.steps.length);
 });
