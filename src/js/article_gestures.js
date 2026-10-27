@@ -142,11 +142,23 @@ export class ArticleGestures {
       !core.buf.easyReadingFunctionMode && mobileToolbarContext(core).threadNav);
   }
 
+  // An easy-reading article list swipes right to go back (#32), under the
+  // same preference; it has no drawer.
+  listSwipeAvailable() {
+    return !!(readEffectivePrefs().articleHorizontalGestures && this.core.buf.pageState === 2 && this._listLeaveable());
+  }
+
+  // The page a contact starting now would swipe: 'article', 'list' or null.
+  _swipeLevel() {
+    return this.available() ? 'article' : this.listSwipeAvailable() ? 'list' : null;
+  }
+
   update() {
     this.stack.update();
     const available = this.available();
-    this.core.view.mainDisplay.classList.toggle('articleHorizontalGestures', available);
-    this._setNativeTouchMove(available);
+    const swipeable = available || this.listSwipeAvailable();
+    this.core.view.mainDisplay.classList.toggle('articleHorizontalGestures', swipeable);
+    this._setNativeTouchMove(swipeable);
     const { board, author, title } = articleIdentity(this.core);
     const identity = [board, author, title, this.core.easyReading?._articleKey].join('\n');
     if (!available || (this.identity && identity !== this.identity)) this.close(true);
@@ -172,7 +184,8 @@ export class ArticleGestures {
       this._cancel();
       return;
     }
-    if (!event.isPrimary || !this.available() || this._otherModalOpen()) return;
+    const level = this._swipeLevel();
+    if (!event.isPrimary || !level || this._otherModalOpen()) return;
     if (this.settling) {
       if (!this.opened || !this.root) return;
       // A fresh contact is intentional input, unlike the opening drag's release.
@@ -184,20 +197,23 @@ export class ArticleGestures {
     const width = window.innerWidth;
     this.track = {
       id: event.pointerId,
-      gesture: new ArticleHorizontalGesture({ width, opened: this.opened, allowExit: true, x: event.clientX, y: event.clientY, t: event.timeStamp })
+      level,
+      gesture: new ArticleHorizontalGesture({
+        width, opened: this.opened, allowExit: true, allowOpen: level === 'article', x: event.clientX, y: event.clientY, t: event.timeStamp
+      })
     };
   }
 
   _move(event) {
     const track = this.track;
     if (!track || event.pointerId !== track.id) return;
-    if (!this.available() || this._otherModalOpen()) return this._cancel();
+    if (this._swipeLevel() !== track.level || this._otherModalOpen()) return this._cancel();
     const snapshot = track.gesture.move(event.clientX, event.clientY, event.timeStamp);
     if (this.opened || snapshot.operation) {
       this._consume(event);
       if (snapshot.operation) {
         if (snapshot.operation === 'exit') {
-          this.exitLevel = 'article';
+          this.exitLevel = track.level;
           this._ensureExit();
           this.exitDistance = snapshot.distance;
           if (!this.frame) this.frame = requestAnimationFrame(() => {
@@ -379,6 +395,7 @@ export class ArticleGestures {
   _handoff(earlyBacks) {
     const core = this.core;
     const sent = this.stack.begin({
+      level: this.exitLevel,
       send: () => {
         const record = recordFor(core);
         const bookmark = record.begin(this.exitLevel === 'list' ? 'list-back-reveal' : 'article-swipe-exit');

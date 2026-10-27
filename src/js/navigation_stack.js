@@ -9,6 +9,7 @@
 // ArticleGestures owns the surfaces that slide away; this module owns the
 // stack, the layers and the handoff.
 import { readEffectivePrefs } from './pref_storage';
+import { OWNER_ARTICLE_LIST } from './list_render_owner';
 import { sameBoard } from './screen_titles';
 import {
   createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, queueBack, takeQueuedBack, dropQueuedBacks, boundLayers,
@@ -291,12 +292,14 @@ export class NavigationStack {
   // The current page has slid away. `send` sends PTT's Back and returns
   // whether it was sent; `finish` restores the surfaces once the real page
   // takes over; `cancel` brings the current page back when Back was not sent.
-  begin({ send, finish, cancel, hint }) {
+  // `level` is the page left: 'article' or 'list'. A list with nothing
+  // revealed below waits for whatever page PTT shows next (#32).
+  begin({ level = 'article', send, finish, cancel, hint }) {
     const core = this.core;
     const revealed = this._revealed();
     const layer = revealed?.layer || null;
     const h = this.handoff = {
-      layer, target: revealed?.page.kind || 'articleList',
+      layer, target: revealed?.page.kind || (level === 'list' ? null : 'articleList'),
       board: this._top()?.board || core.view._articleBoard,
       identity: openArticleKey(core), appBar: revealed?.appBar || null,
       sentAt: performance.now(), presentedAt: null, touches: 0, lastScrollAt: -Infinity,
@@ -366,8 +369,8 @@ export class NavigationStack {
       else if (kind !== 'articleList') this.clear();
       return;
     }
-    if (h.presentedAt != null || kind !== h.target) return;
-    if (kind === 'articleList') {
+    if (h.presentedAt != null || (h.target && kind !== h.target)) return;
+    if (kind === 'articleList' && h.target) {
       if (core.buf.pageState !== 2 || core.listSession?.state !== 'active') return;
       if (!sameBoard(core.listSession._boardName, h.board)) return this._end('unexpected');
     }
@@ -381,6 +384,12 @@ export class NavigationStack {
     const core = this.core;
     if (!h || h.presentedAt != null) return;
     const pageState = core.buf.pageState;
+    if (!h.target) {
+      // An article list until a session presents its page; any other screen
+      // is PTT's answer.
+      if (pageState === 2 && core.buf.listRenderOwner === OWNER_ARTICLE_LIST) return;
+      return this._end('presented');
+    }
     if (h.target === 'articleList') {
       if (pageState === 3 && openArticleKey(core) === h.identity) return;
       if (pageState === 2 && readEffectivePrefs().enableEasyReadingList) return;
