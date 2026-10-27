@@ -11,7 +11,8 @@
 import { readEffectivePrefs } from './pref_storage';
 import { sameBoard } from './screen_titles';
 import {
-  createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, queueBack, takeQueuedBack, dropQueuedBacks, boundLayers
+  createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, queueBack, takeQueuedBack, dropQueuedBacks, boundLayers,
+  pageShown
 } from './page_stack';
 import { StackListLayer } from './stack_list_layer';
 import { StackHomeLayer } from './stack_home_layer';
@@ -45,7 +46,6 @@ export class NavigationStack {
     // it (title, App Bar), by depth in the stack.
     this.lower = [];
     this.pending = null;
-    this.identity = null;
     this.handoff = null;
   }
 
@@ -178,43 +178,43 @@ export class NavigationStack {
   // The article opened from the article list was entered. Only the matching
   // article keeps the list as its lower page.
   enterArticle() {
-    const identity = openArticleKey(this.core);
+    const id = openArticleKey(this.core);
     const board = this.core.view._articleBoard;
-    this._enter({ kind: 'article', board },
-      pending => pending.kind === 'articleList' && !!identity && sameBoard(pending.board, board));
-    this.identity = identity;
+    this._enter({ kind: 'article', board, id },
+      pending => pending.kind === 'articleList' && !!id && sameBoard(pending.board, board));
   }
 
   // An article list is presented outside a handoff. A board opened from the
   // dashboard or a board list keeps that page as its lower page.
   _enterList(board) {
-    const top = this._top();
-    if (top?.kind === 'articleList' && sameBoard(top.board, board)) return;
-    // Back to the list without a handoff: the article's page is gone.
-    if (top?.kind === 'article' && sameBoard(top.board, board) && this.stack.pages.length > 1) {
-      this._spend(this.stack.pages.length - 2);
-      this.stack = popPage(this.stack).stack;
-      return;
-    }
     // An article being opened from this list stays captured.
     if (this.pending?.kind === 'articleList') return;
-    this._enter({ kind: 'articleList', board },
-      pending => (pending.kind === 'home' || pending.kind === 'boardList') && sameBoard(pending.board, board));
+    const shown = { kind: 'articleList', board, results: this._showsSearchResults() };
+    if (this.pending) {
+      return this._enter(shown,
+        pending => (pending.kind === 'home' || pending.kind === 'boardList') && sameBoard(pending.board, board));
+    }
+    this._shown(shown);
   }
 
-  // The current article or the connection changed: the lower pages no longer
-  // belong to what is on screen.
+  // A page reached some other way than from the current page: the stack keeps
+  // only what is still the way back from it (#35).
+  _shown(page) {
+    const { stack, kept } = pageShown(this.stack, page);
+    if (stack === this.stack) return;
+    this._spend(kept);
+    this.stack = stack;
+  }
+
+  // The screen changed: an article reached without being opened from the
+  // current page, or a closed connection, leaves the stack.
   update() {
-    if (this.handoff || !this.lower.some(Boolean)) return;
+    // An article being opened is entered once its open is bound.
+    if (this.handoff || this.pending) return;
     if (!this.core.conn?.isConnected) return this._discard();
-    const top = this._top();
-    if (top?.kind !== 'article' || openArticleKey(this.core) === this.identity) return;
-    // Another article (the next one, a thread hop): the list's layer showed
-    // where the first one was opened, but the pages below the list still hold.
-    if (this.stack.pages.length < 2) return this._discard();
-    this._spend(this.stack.pages.length - 2);
-    this.stack = pushPage(popPage(this.stack).stack, top, { fromBelow: true });
-    this.identity = null;
+    const id = openArticleKey(this.core);
+    if (this.core.buf.pageState !== 3 || !id) return;
+    this._shown({ kind: 'article', board: this.core.view._articleBoard, id });
   }
 
   // The connection closed: PTT's route behind every stacked page is gone, and
@@ -238,7 +238,6 @@ export class NavigationStack {
 
   _discard() {
     this._spend(0);
-    this.identity = null;
     this.stack = createPageStack();
   }
 
@@ -415,8 +414,9 @@ export class NavigationStack {
     // The revealed page is now PTT's real page; its layer is spent.
     h.layer?.hide();
     this.lower.length = Math.max(0, this.stack.pages.length - 2);
-    this.identity = null;
     this.stack = popPage(this.stack).stack;
+    // PTT left the route the stack describes: nothing below is the way back.
+    if (how === 'unexpected') this._discard();
     // Backs queued for a page PTT did not show have nothing left to unwind.
     if (how !== 'presented') this.stack = dropQueuedBacks(this.stack);
     const queued = takeQueuedBack(this.stack);

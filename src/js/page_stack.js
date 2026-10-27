@@ -3,7 +3,8 @@
 // and PTT stays the authority for what is really on screen.
 //
 // A page is { kind, board, layer }: the kind of page, the board it shows, and
-// whether a live layer of it exists underneath. `queued` counts the Backs made
+// whether a live layer of it exists underneath. An article list that shows
+// search results has `results`; an article has its `id` when known. `queued` counts the Backs made
 // while a handoff was under way, still to run.
 import { sameBoard } from './screen_titles';
 
@@ -15,6 +16,37 @@ export function createPageStack() {
 // (search, article code, link, resume, board jump) starts a new base.
 export function pushPage(stack, page, { fromBelow = false } = {}) {
   return { pages: fromBelow ? [...stack.pages, page] : [page] };
+}
+
+const samePage = (a, b) => a.kind === b.kind && sameBoard(a.board, b.board) &&
+  !!a.results === !!b.results && (a.kind !== 'article' || a.id === b.id);
+
+// A page shown outside a handoff and not opened from the current page (#35).
+// The stack keeps only what is still the way back from it; anything else
+// starts a new base. Returns the stack and how many lower pages keep their
+// live layers (`kept`).
+export function pageShown(stack, shown) {
+  const n = stack.pages.length;
+  const top = stack.pages[n - 1];
+  if (top && samePage(top, shown)) return { stack, kept: n };
+  const below = stack.pages[n - 2];
+  const fromList = top?.kind === 'article' && below?.kind === 'articleList' &&
+    sameBoard(top.board, shown.board) && sameBoard(below.board, shown.board);
+  // The article's list, reached without a handoff: the list is the real page
+  // again. An article shortcut search lands on its results the same way until
+  // the stack keeps the source article (#49).
+  if (fromList && shown.kind === 'articleList') {
+    const pages = [...stack.pages.slice(0, n - 2), { ...below, layer: false, results: !!shown.results }];
+    return { stack: { ...stack, pages }, kept: n - 2 };
+  }
+  // Another article in place of the current one (the next one, a thread
+  // move): the list's layer showed where the first one was opened, but the
+  // pages below the list still hold.
+  if (fromList && shown.kind === 'article') {
+    const pages = [...stack.pages.slice(0, n - 2), { ...below, layer: false }, shown];
+    return { stack: { ...stack, pages }, kept: n - 2 };
+  }
+  return { stack: pushPage(createPageStack(), shown), kept: 0 };
 }
 
 // The current page is about to open something: a live layer of it is kept.

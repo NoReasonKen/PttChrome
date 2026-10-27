@@ -1,6 +1,6 @@
 import {
   createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, HANDOFF_IDLE_MS, HANDOFF_TIMEOUT_MS,
-  queueBack, takeQueuedBack, dropQueuedBacks, boundLayers, LIVE_LAYER_BOUND
+  queueBack, takeQueuedBack, dropQueuedBacks, boundLayers, LIVE_LAYER_BOUND, pageShown
 } from '../../src/js/page_stack';
 
 const list = (board, extra) => ({ kind: 'articleList', board, layer: true, ...extra });
@@ -95,6 +95,61 @@ describe('live layer bound', () => {
     const { stack, released } = boundLayers(homeListArticle(), LIVE_LAYER_BOUND);
     expect(released).toEqual([]);
     expect(revealTarget(popPage(stack).stack)).toMatchObject({ kind: 'home' });
+  });
+});
+
+// A page shown outside a handoff that was not opened from the current page
+// (#35): the stack keeps only what is still the way back.
+describe('a page shown without an open', () => {
+  const opened = (board, id) => ({ kind: 'article', board, id });
+  const results = board => ({ kind: 'articleList', board, results: true });
+  // Dashboard → board → article A, each page kept alive under the next.
+  const route = () => {
+    let stack = withLayer(pushPage(createPageStack(), { kind: 'home', board: 'C_Chat' }));
+    stack = withLayer(pushPage(stack, { kind: 'articleList', board: 'C_Chat' }, { fromBelow: true }));
+    return pushPage(stack, opened('C_Chat', 'A'), { fromBelow: true });
+  };
+
+  test('the page the stack is already on changes nothing', () => {
+    const stack = route();
+    expect(pageShown(stack, opened('C_Chat', 'A'))).toEqual({ stack, kept: 3 });
+  });
+
+  test('the list of the current article, reached without a handoff, keeps the pages below it', () => {
+    const { stack, kept } = pageShown(route(), { kind: 'articleList', board: 'C_Chat' });
+    expect(kept).toBe(1);
+    expect(stack.pages.map(page => page.kind)).toEqual(['home', 'articleList']);
+    expect(revealTarget(stack)).toMatchObject({ kind: 'home' });
+  });
+
+  test('an article reopened over a list it was not opened from starts a new base', () => {
+    // Search return history reopens the source article by its code while the
+    // stack is on the search results.
+    const onResults = pageShown(route(), results('C_Chat')).stack;
+    const { stack, kept } = pageShown(onResults, opened('C_Chat', 'A'));
+    expect(kept).toBe(0);
+    expect(stack.pages).toEqual([opened('C_Chat', 'A')]);
+    expect(revealTarget(stack)).toBeNull();
+  });
+
+  test('another article in place of the current one keeps the pages below its list', () => {
+    const { stack, kept } = pageShown(route(), opened('C_Chat', 'B'));
+    expect(kept).toBe(1);
+    expect(stack.pages.map(page => page.kind)).toEqual(['home', 'articleList', 'article']);
+    expect(revealTarget(stack)).toBeNull();
+    expect(revealTarget(popPage(stack).stack)).toMatchObject({ kind: 'home' });
+  });
+
+  test('a list search, or leaving its results for the list, starts a new base', () => {
+    const onList = popPage(route()).stack;
+    const searched = pageShown(onList, results('C_Chat'));
+    expect(searched).toMatchObject({ kept: 0, stack: { pages: [results('C_Chat')] } });
+    expect(pageShown(searched.stack, { kind: 'articleList', board: 'C_Chat' }).kept).toBe(0);
+  });
+
+  test('a page of another board starts a new base', () => {
+    expect(pageShown(route(), { kind: 'articleList', board: 'Gossiping' }).kept).toBe(0);
+    expect(pageShown(route(), opened('Gossiping', 'A')).kept).toBe(0);
   });
 });
 

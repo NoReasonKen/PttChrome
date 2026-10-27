@@ -155,12 +155,13 @@ const NESTED_ARTICLES = [
 // options.loggedIn: this connection first passes the main menu, as a real
 //   login does, so reconnect/open resume may capture and store a plan.
 // options.resumeLastPlace: reloads resume the last place (the product default).
-async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false, legacyCaptions = false, extraArticles = 0 } = {}) {
+// `homeMenu`: the main menu has My Favorites, so the home dashboard shows on it.
+async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false, legacyCaptions = false, extraArticles = 0, homeMenu = false } = {}) {
   await bootGestureArticle(page, { resumeLastPlace });
   // The image-article boot disables the easy-reading list; the reader's
   // default enables it before any list from this server is seen.
   if (easyList) await ptt.applyPrefs(page, { enableEasyReadingList: true });
-  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article', legacyCaptions, extraArticles });
+  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article', legacyCaptions, extraArticles, homeMenu });
   if (loggedIn) {
     await waitScreenSettled(page, { 0: '主功能表' });
     await page.evaluate(() => {
@@ -219,8 +220,13 @@ async function installNestedServer(page, session) {
     const frame = () => {
       let rows, cursor = [24, 80], inverse = [];
       if (state.surface === 'article') rows = articleRows(state.open);
-      else if (state.surface === 'main') {
+      else if (state.surface === 'boardPrompt') {
+        // The board jump asks for the name on the second row (board.c).
+        rows = { 0: '【主功能表】', 1: '請輸入看板名稱(按空白鍵自動搜尋)：' };
+        cursor = [2, 35];
+      } else if (state.surface === 'main') {
         rows = { 0: '【主功能表】', 3: '  (B)oard 看板列表', 23: '我是測試主選單' };
+        if (session.homeMenu) rows[4] = '  (F)avorite 我 的 最愛';
         cursor = [4, 1];
       } else {
         const entries = listed();
@@ -284,6 +290,14 @@ async function installNestedServer(page, session) {
       state.cursor = Math.max(0, listed().indexOf(current));
     };
     const step = rest => {
+      if (state.surface === 'boardPrompt') {
+        const end = rest.indexOf('\r');
+        if (end < 0) return '';
+        state.board = rest.slice(0, end);
+        state.filter = null;
+        state.surface = 'list';
+        return rest.slice(end + 1);
+      }
       if (state.surface === 'prompt') {
         const end = rest.indexOf('\r');
         const text = rest.slice(0, end);
@@ -339,6 +353,9 @@ async function installNestedServer(page, session) {
       } else if (head === 'S' && state.surface === 'list') {
         const wanted = subject(selected().title);
         search(article => subject(article.title) === wanted);
+      } else if (head === 's' && !rest.includes('\r')) {
+        // The name comes once the prompt is shown (the dashboard, the search sheet).
+        state.surface = 'boardPrompt';
       } else if (head === 's' || head === '#') {
         const end = rest.indexOf('\r');
         const value = rest.slice(1, end);
