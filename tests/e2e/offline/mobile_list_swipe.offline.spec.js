@@ -142,31 +142,22 @@ const visibleCardY = page => page.evaluate(main => {
   return card.top + card.height / 2;
 }, MAIN);
 
-test('vertical scrolling, long presses and taps keep working; a tap ending a horizontal drag opens nothing', async ({ page }) => {
+test('vertical scrolling and taps keep working; a held contact and a tap ending a horizontal drag swipe and open nothing', async ({ page }) => {
   const { main } = await listOverDashboard(page);
   const x = main.left + main.width / 2;
   await touchDrag(page, { x, y: main.top + main.height - 40 }, { x, y: main.top + 60 }, 10);
   expect(await waitScrollStable(page, `${MAIN} .listBodyView`)).toBeGreaterThan(0);
   await expect(page.locator(UNDERLAY)).toHaveCount(0);
 
-  // A held contact is a long press: its menu opens, and moving on swipes nothing.
+  // A held contact is a long press (its menu: mobile_list_cards): moving on
+  // swipes nothing.
   const y = await visibleCardY(page);
   let before = await sentCount(page);
   let contact = await beginArticleTouch(page, { x: 30, y });
   await page.waitForTimeout(500); // sleep-ok: holds the contact past the long-press time
-  // Desktop Chromium's touch emulation sends no contextmenu: dispatched as Android does.
-  const prevented = await page.evaluate(y => {
-    const target = document.elementFromPoint(30, y);
-    const event = new PointerEvent('contextmenu', { bubbles: true, cancelable: true, pointerType: 'touch', clientX: 30, clientY: y });
-    target.dispatchEvent(event);
-    return event.defaultPrevented;
-  }, y);
-  expect(prevented).toBe(true);
-  await expect(page.locator('[data-cmenu]').filter({ hasText: /^Blacklist author/ })).toBeVisible();
   await contact.move({ x: 250, y });
   await expect(page.locator(UNDERLAY)).toHaveCount(0);
   await contact.release({ cancel: true });
-  await page.keyboard.press('Escape');
 
   // A drag that ends on a card opens nothing.
   contact = await beginArticleTouch(page, { x: 30, y });
