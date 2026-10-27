@@ -3,27 +3,19 @@
 // input and Back are real.
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
-const { waitScreenSettled } = require('../helpers/replay');
 const {
   bootNestedShortcutSearch, waitArticle, waitList, tapShortcut, tapCard
 } = require('../helpers/article_shortcut_search');
-const { loadCassette } = require('../helpers/replay');
+const { loadCassette, waitScreenSettled } = require('../helpers/replay');
 const {
-  MAIN, dashboardVisible, bootDashboard, boardOpened, holdLeaves, heldLeaves, releaseLeave, articleRead
+  MAIN, dashboardVisible, bootDashboard, boardOpened, holdLeaves, heldLeaves, releaseLeave, articleRead,
+  watchReveals, revealedSinceWatch
 } = require('../helpers/stack_routes');
 
 const RESULTS = { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] };
 const BOARD = { has: ['Alpha topic', 'Delta topic'] };
 
 const pressBack = page => ptt.sendKey(page, 'ArrowLeft');
-
-// Note whether any page is revealed from now on.
-const watchReveals = page => page.evaluate(() => {
-  window.__revealed = false;
-  new MutationObserver(() => {
-    if (document.querySelector('[data-stack-layer], [data-article-exit-underlay]')) window.__revealed = true;
-  }).observe(document.body, { childList: true, subtree: true });
-});
 
 // Dashboard → board → Alpha, each page alive under the next.
 async function openAlphaFromDashboard(page) {
@@ -65,7 +57,7 @@ test('Back from an article reopened by search return reveals nothing from before
   await watchReveals(page);
   await pressBack(page);
   await waitList(page, BOARD);
-  expect(await page.evaluate(() => window.__revealed)).toBe(false);
+  expect(await revealedSinceWatch(page)).toBe(false);
   expect(await page.evaluate(() => window.__app.homeDashboard.state.visible)).toBe(false);
 });
 
@@ -90,7 +82,7 @@ test('after a Back that lands somewhere unexpected, the next Back reveals nothin
   await watchReveals(page);
   await pressBack(page);
   await waitScreenSettled(page, { 0: '主功能表' });
-  expect(await page.evaluate(() => window.__revealed)).toBe(false);
+  expect(await revealedSinceWatch(page)).toBe(false);
 });
 
 // The first card at the top of an article list's viewport.
@@ -132,4 +124,3 @@ test('after a width change, the revealed list fits the new width at the same ent
   await expect(home).toBeVisible();
   expect((await home.boundingBox()).width).toBeCloseTo(width - 60, 0);
 });
-

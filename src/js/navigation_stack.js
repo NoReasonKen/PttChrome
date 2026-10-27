@@ -178,10 +178,13 @@ export class NavigationStack {
   // The article opened from the article list was entered. Only the matching
   // article keeps the list as its lower page.
   enterArticle() {
-    const id = openArticleKey(this.core);
-    const board = this.core.view._articleBoard;
-    this._enter({ kind: 'article', board, id },
-      pending => pending.kind === 'articleList' && !!id && sameBoard(pending.board, board));
+    const page = this._articlePage();
+    this._enter(page,
+      pending => pending.kind === 'articleList' && !!page.id && sameBoard(pending.board, page.board));
+  }
+
+  _articlePage() {
+    return { kind: 'article', board: this.core.view._articleBoard, id: openArticleKey(this.core) };
   }
 
   // An article list is presented outside a handoff. A board opened from the
@@ -209,12 +212,13 @@ export class NavigationStack {
   // The screen changed: an article reached without being opened from the
   // current page, or a closed connection, leaves the stack.
   update() {
-    // An article being opened is entered once its open is bound.
-    if (this.handoff || this.pending) return;
+    if (this.handoff) return;
     if (!this.core.conn?.isConnected) return this._discard();
-    const id = openArticleKey(this.core);
-    if (this.core.buf.pageState !== 3 || !id) return;
-    this._shown({ kind: 'article', board: this.core.view._articleBoard, id });
+    // An article being opened is entered once its open is bound.
+    if (this.pending?.kind === 'articleList') return;
+    const page = this._articlePage();
+    if (this.core.buf.pageState !== 3 || !page.id) return;
+    this._shown(page);
   }
 
   // The connection closed: PTT's route behind every stacked page is gone, and
@@ -248,7 +252,8 @@ export class NavigationStack {
     if (this._top()?.kind === 'articleList' && this._showsSearchResults()) return null;
     const target = revealTarget(this.stack);
     const lower = target && this.lower[this.stack.pages.length - 2];
-    return lower?.layer.fit() ? { page: target, ...lower } : null;
+    // Fitting a list layer to a changed width renders it again.
+    return lower?.layer.fitViewport() ? { page: target, ...lower } : null;
   }
 
   // The live page that Back from the current page may reveal, or null.

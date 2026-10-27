@@ -53,7 +53,7 @@ export class StackHomeLayer {
 
   // The dashboard is a live view laid out by CSS: it follows a width change by
   // itself, and its position is restored by entry when shown.
-  fit() {
+  fitViewport() {
     return true;
   }
 

@@ -10,19 +10,13 @@ const {
 } = require('../helpers/article_shortcut_search');
 const { beginArticleTouch } = require('../helpers/article_gestures');
 const { waitRectStable } = require('../helpers/layout');
-const { MAIN, holdBackReply, heldBack, sampleFrames, framesBringingBackArticle } = require('../helpers/stack_routes');
+const {
+  MAIN, holdBackReply, heldBack, sampleFrames, framesBringingBackArticle, watchReveals, revealedSinceWatch
+} = require('../helpers/stack_routes');
 
 const LAYER = '[data-stack-layer="articleList"]';
 const UNDERLAY = '[data-article-exit-underlay]';
 const RESULTS = { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] };
-
-// Note whether any page is revealed from now on.
-const watchReveals = page => page.evaluate(() => {
-  window.__revealed = false;
-  new MutationObserver(() => {
-    if (document.querySelector('[data-stack-layer], [data-article-exit-underlay]')) window.__revealed = true;
-  }).observe(document.body, { childList: true, subtree: true });
-});
 
 // The author results of Alpha, then Beta opened from them.
 async function openFromAuthorResults(page, options) {
@@ -85,7 +79,7 @@ test('Back from the revealed results still returns to the article the search sta
   await nativeBack(page);
   await waitArticle(page, 'Alpha');
   await expect.poll(() => topLine(page)).toBe(position);
-  expect(await page.evaluate(() => window.__revealed)).toBe(false);
+  expect(await revealedSinceWatch(page)).toBe(false);
 });
 
 test('results reconstructed after a reconnect stack the articles opened from them', async ({ page }) => {
@@ -108,7 +102,7 @@ test('results reconstructed after a reconnect stack the articles opened from the
   await watchReveals(page);
   await nativeBack(page);
   await waitArticle(page, 'Alpha');
-  expect(await page.evaluate(() => window.__revealed)).toBe(false);
+  expect(await revealedSinceWatch(page)).toBe(false);
 });
 
 test('results reconstructed by search return after a reconnect reveal nothing from before it', async ({ page }) => {
@@ -123,5 +117,5 @@ test('results reconstructed by search return after a reconnect reveal nothing fr
   await nativeBack(page);
   await waitArticle(page, 'Alpha');
   await expect.poll(() => topLine(page)).toBe(position);
-  expect(await page.evaluate(() => window.__revealed)).toBe(false);
+  expect(await revealedSinceWatch(page)).toBe(false);
 });

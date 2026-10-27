@@ -177,8 +177,17 @@ async function sampleFrames(page) {
 const framesBringingBackArticle = frames =>
   frames.filter((f, i) => f.underlay ? i > 0 && f.left < frames[i - 1].left - 1 : !f.listShown);
 
+// Note whether any page is revealed from now on.
+const watchReveals = page => page.evaluate(() => {
+  window.__revealed = false;
+  new MutationObserver(() => {
+    if (document.querySelector('[data-stack-layer], [data-article-exit-underlay]')) window.__revealed = true;
+  }).observe(document.body, { childList: true, subtree: true });
+});
+const revealedSinceWatch = page => page.evaluate(() => window.__revealed);
+
 module.exports = {
   MAIN, ARTICLE_CARD, homeBoard, boardList, bootArticleList, bootArticleListAtCard, delayReplies, dropReplies, listActive, dashboardVisible, bootDashboard, boardOpened, boardListEngaged, bootBoardList,
   fedBefore, openNextArticle, holdBackReply, heldBack, holdLeaves, heldLeaves, releaseLeave, sentLeaves, articleRead,
-  sampleFrames, framesBringingBackArticle
+  sampleFrames, framesBringingBackArticle, watchReveals, revealedSinceWatch
 };

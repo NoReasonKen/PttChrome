@@ -9,7 +9,7 @@ const ptt = require('../helpers/ptt');
 const { loadCassette, waitFed } = require('../helpers/replay');
 const {
   fedBefore, openNextArticle, holdBackReply, heldBack, homeBoard, boardList, listActive, dashboardVisible, bootDashboard, boardOpened,
-  boardListEngaged, bootBoardList
+  boardListEngaged, bootBoardList, watchReveals, revealedSinceWatch
 } = require('../helpers/stack_routes');
 
 const HOME_LAYER = '[data-stack-layer="home"]';
@@ -111,15 +111,10 @@ test('a board reached by search reveals no lower page', async ({ page }) => {
   await input.fill('C_Chat');
   await input.press('Enter');
   await boardOpened(page);
-  await page.evaluate(() => {
-    window.__revealed = false;
-    new MutationObserver(() => {
-      if (document.querySelector('[data-stack-layer], [data-article-exit-underlay]')) window.__revealed = true;
-    }).observe(document.body, { childList: true, subtree: true });
-  });
+  await watchReveals(page);
   await ptt.sendKey(page, 'ArrowLeft');
   await dashboardVisible(page);
-  expect(await page.evaluate(() => window.__revealed)).toBe(false);
+  expect(await revealedSinceWatch(page)).toBe(false);
 });
 
 test('a board tapped on the revealed dashboard opens after the swap', async ({ page }) => {

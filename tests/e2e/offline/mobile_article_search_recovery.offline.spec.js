@@ -7,6 +7,7 @@ const {
 } = require('../helpers/article_shortcut_search');
 const { waitConnected } = require('../helpers/replay');
 const { pauseClockNow } = require('../helpers/clock');
+const { watchReveals, revealedSinceWatch } = require('../helpers/stack_routes');
 const ptt = require('../helpers/ptt');
 
 // Search return history through interruption (docs/article-swipe-drawer-spec.md): the
@@ -341,18 +342,13 @@ test('a reload in a reopened nested source restores it by AID and keeps unwindin
 
   // The page stack is not saved: no page from before the reload is revealed,
   // and each Back waits for PTT as without a stack (#35).
-  await page.evaluate(() => {
-    window.__revealed = false;
-    new MutationObserver(() => {
-      if (document.querySelector('[data-stack-layer], [data-article-exit-underlay]')) window.__revealed = true;
-    }).observe(document.body, { childList: true, subtree: true });
-  });
+  await watchReveals(page);
   await keyboardBack(page);
   await waitList(page, { has: ['Alpha topic', '□ [Talk] Beta topic'], lacks: ['Re: [Talk] Beta topic', 'Delta topic'] });
   await keyboardBack(page);
   await waitArticle(page, 'Alpha');
   await expect.poll(() => topLine(page)).toBe(position);
-  expect(await page.evaluate(() => window.__revealed)).toBe(false);
+  expect(await revealedSinceWatch(page)).toBe(false);
 });
 
 test('a source deleted while disconnected stops on its board list and leaves the route inactive', async ({ page }) => {

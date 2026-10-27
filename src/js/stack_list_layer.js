@@ -84,7 +84,7 @@ export class StackListLayer {
   // Ready to be revealed at the current width. A width change, such as a
   // rotation, re-lays out the list, so the stored frame is rendered again over
   // the list's box and the reading position is kept by entry (#35).
-  fit() {
+  fitViewport() {
     if (this.width === window.innerWidth) return true;
     const rect = this.view.mainDisplay.getBoundingClientRect();
     if (!rect.width || !rect.height) return false;

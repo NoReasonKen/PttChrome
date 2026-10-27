@@ -4,8 +4,8 @@
 //
 // A page is { kind, board, layer }: the kind of page, the board it shows, and
 // whether a live layer of it exists underneath. An article list that shows
-// search results has `results`; an article has its `id` when known. `queued` counts the Backs made
-// while a handoff was under way, still to run.
+// search results has `results`; an article has its `id` when known. `queued`
+// counts the Backs made while a handoff was under way, still to run.
 import { sameBoard } from './screen_titles';
 
 export function createPageStack() {
@@ -33,10 +33,10 @@ export function pageShown(stack, shown) {
   const fromList = top?.kind === 'article' && below?.kind === 'articleList' &&
     sameBoard(top.board, shown.board) && sameBoard(below.board, shown.board);
   // The article's list, reached without a handoff: the list is the real page
-  // again. An article shortcut search lands on its results the same way until
-  // the stack keeps the source article (#49).
-  if (fromList && shown.kind === 'articleList') {
-    const pages = [...stack.pages.slice(0, n - 2), { ...below, layer: false, results: !!shown.results }];
+  // again. Results of an article shortcut search start a new base until the
+  // stack keeps the source article (#49).
+  if (fromList && shown.kind === 'articleList' && !shown.results) {
+    const pages = [...stack.pages.slice(0, n - 2), { ...below, layer: false }];
     return { stack: { ...stack, pages }, kept: n - 2 };
   }
   // Another article in place of the current one (the next one, a thread

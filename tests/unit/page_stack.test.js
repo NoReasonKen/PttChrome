@@ -122,6 +122,12 @@ describe('a page shown without an open', () => {
     expect(revealTarget(stack)).toMatchObject({ kind: 'home' });
   });
 
+  test('the results of a search started from the article start a new base', () => {
+    const { stack, kept } = pageShown(route(), results('C_Chat'));
+    expect(kept).toBe(0);
+    expect(stack.pages).toEqual([results('C_Chat')]);
+  });
+
   test('an article reopened over a list it was not opened from starts a new base', () => {
     // Search return history reopens the source article by its code while the
     // stack is on the search results.
