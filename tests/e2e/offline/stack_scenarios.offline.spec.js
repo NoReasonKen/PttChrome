@@ -68,8 +68,9 @@ test('home dashboard → board → back replays end to end', async ({ page }) =>
   await page.evaluate(() => window.__app.onData('\x1b[H'));
   await dashboardVisible(page);
   await page.evaluate(() => window.__app.homeDashboard.openBoard('C_Chat'));
-  await page.waitForFunction(() => window.__app.buf.isPassScreenNow() || window.__app.buf.pageState === 2);
-  if (await page.evaluate(() => window.__app.buf.isPassScreenNow())) await ptt.sendKey(page, 'Space');
+  // The board's entry screen is skipped by the app (skipBoardEntryScreen), as
+  // in the recording. A Space of our own could land on the list once it shows
+  // and move the selection off the recorded row.
   await listActive(page);
   await ptt.sendKey(page, 'ArrowLeft');
   await dashboardVisible(page);
