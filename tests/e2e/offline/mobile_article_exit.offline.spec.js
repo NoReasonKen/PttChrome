@@ -174,7 +174,7 @@ test('entering from a real list keeps that list as an inert layer while dragging
   expect(outgoing.match(/\x1b\[D/g) || []).toHaveLength(1);
 });
 
-test('browser bar height changes keep the matching list layer, while a width change discards it', async ({ page }, testInfo) => {
+test('browser bar height changes and a width change both keep the list layer', async ({ page }, testInfo) => {
   await enterArticleFromList(page);
   const { width, height } = page.viewportSize();
   const underlay = page.locator('[data-article-exit-underlay]');
@@ -198,11 +198,13 @@ test('browser bar height changes keep the matching list layer, while a width cha
     await expect(underlay).toHaveCount(0);
   }
 
-  // Rotation re-lays out the list, so the kept layer no longer matches it.
+  // Rotation re-lays out the list: the layer is rendered again at the new
+  // width (#35).
   await page.setViewportSize({ width: width - 52, height });
-  await nextFrames(page, 4);
+  await expect.poll(async () => (await waitRectStable(page, '.main')).width).toBeCloseTo(width - 52, 0);
   const contact = await dragToPreview();
-  await expect(underlay).toHaveAttribute('data-preview', 'fallback');
+  await expect(underlay).toHaveAttribute('data-preview', 'layer');
+  expect((await page.locator('[data-stack-layer="articleList"]').boundingBox()).width).toBeCloseTo(width - 52, 0);
   await contact.release({ cancel: true });
   await expect(underlay).toHaveCount(0);
 });
