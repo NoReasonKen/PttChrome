@@ -285,3 +285,46 @@ test('a debug recording logs each layer cost', async ({ page }) => {
     throw new Error('missing layer costs: ' + JSON.stringify(kinds));
   }
 });
+
+// Memory per node, from samples large enough to rise above the renderer's
+// noise: many detached copies of one layer, as kept layers are held between
+// reveals (out of the document, so no style or layout).
+async function keepCopies(page, cdp, label, kind, frame, copies) {
+  const before = await snapshot(cdp);
+  const renderMs = [];
+  let nodes = 0;
+  for (let i = 0; i < copies; i++) {
+    const info = await page.evaluate(([k, f]) => window.__keepFrameLayer(k, f), [kind, frame]);
+    await page.evaluate(() => { const l = window.__kept[window.__kept.length - 1]; l.hide(); });
+    renderMs.push(info.renderMs);
+    nodes += info.subtreeNodes;
+  }
+  const after = await snapshot(cdp);
+  const pssKB = after.pssKB - before.pssKB;
+  const heapKB = Math.round((after.heap - before.heap) / 1024);
+  results.push({
+    label, kind: 'copies', copies, nodes, cdpNodes: after.nodes - before.nodes, heapKB, pssKB,
+    bytesPerNode: Math.round(((pssKB + Math.max(heapKB, 0)) * 1024) / nodes), renderMs
+  });
+}
+
+test('memory per node: copies of a long article and of a list', async ({ page }) => {
+  test.setTimeout(300000);
+  await bootArticle(page, 'ezsoft-longpost');
+  const cdp = await openCdp(page);
+  await installLayerKit(page);
+  await page.evaluate(() => window.__saveFrame('long'));
+  await keepCopies(page, cdp, 'per node: 6 long article layers', 'article', 'long', 6);
+});
+
+test('memory per node: copies of a list', async ({ page }) => {
+  test.setTimeout(180000);
+  const cassette = loadCassette('scn-stack-home-article-back');
+  await bootDashboard(page, cassette);
+  await page.locator('#homeDashboard [data-home-board="C_Chat"]').tap();
+  await boardOpened(page);
+  const cdp = await openCdp(page);
+  await installLayerKit(page);
+  await page.evaluate(() => window.__saveFrame('list'));
+  await keepCopies(page, cdp, 'per node: 40 list layers', 'articleList', 'list', 40);
+});
