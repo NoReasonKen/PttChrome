@@ -5,12 +5,13 @@
 // shared screen renderer over the article's frame.
 //
 // Not part of any suite: `yarn measure:layers` (MEASURE_LAYERS=1). Results are
-// printed and merged into $MEASURE_OUT (default: layer-cost.json in the OS temp
-// directory; Playwright clears test-results on every run). Desktop Chromium with
+// printed and merged into $MEASURE_OUT (default: tests/e2e/__measurements__/
+// layer-cost.json, gitignored; Playwright clears test-results on every run, and
+// a fixed name in the shared temp directory could be planted by another user). Desktop Chromium with
 // the mobile project's emulation: node counts and heap match a phone closely,
 // times are only comparable with each other.
 const fs = require('fs');
-const os = require('os');
+const path = require('path');
 const { test } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { loadCassette, bootOffline, replayCassette } = require('../helpers/replay');
@@ -23,7 +24,8 @@ test.describe.configure({ mode: 'serial' });
 
 const results = [];
 test.afterAll(() => {
-  const file = process.env.MEASURE_OUT || `${os.tmpdir()}/layer-cost.json`;
+  const file = process.env.MEASURE_OUT || path.join(__dirname, '../__measurements__/layer-cost.json');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
   // Merged by label, so a run of a few cases (-g) updates only those.
   const previous = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : [];
   const labels = new Set(results.map(r => r.label));
