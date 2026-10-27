@@ -112,10 +112,10 @@ test('a finger still down when the list becomes ready defers the swap until the 
 
 test('without a matching lower page the article stays off screen over the dark fallback until the list is presented', async ({ page }) => {
   await enterArticleFromList(page);
-  // A width change re-lays out the list, so the kept copy no longer matches it.
-  const { width, height } = page.viewportSize();
-  await page.setViewportSize({ width: width - 52, height });
-  await waitRectStable(page, MAIN);
+  // Stand-in for any route that keeps no lower page, such as an article
+  // reopened by its code.
+  await page.evaluate(() => window.__app.articleGestures.stack.clear());
+  const { width } = page.viewportSize();
   await delayBackReply(page, BACK_DELAY_MS);
   const contact = await swipeOut(page);
   await expect(page.locator(UNDERLAY)).toHaveAttribute('data-preview', 'fallback');
@@ -125,7 +125,7 @@ test('without a matching lower page the article stays off screen over the dark f
   await expect(page.locator(`${MAIN} .listBodyView`)).toBeVisible();
   const frames = await page.evaluate(() => window.__frames);
   const bad = framesBringingBackArticle(frames);
-  expect(frames.some(f => f.underlay && f.left >= width - 52 - 5)).toBe(true);
+  expect(frames.some(f => f.underlay && f.left >= width - 5)).toBe(true);
   expect(bad).toEqual([]);
 });
 
