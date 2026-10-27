@@ -19,9 +19,17 @@ import { EMPTY_TOOLBAR_CONTEXT } from './mobile_toolbar';
 import { searchGateFacts } from './article_search';
 import { isSearchResultsFrame } from './search_results_screen';
 import { readSearchResultsContext } from './search_results_context';
+import { renderScreen } from './term_ui';
 
 // Input on a usable layer stays on the layer; nothing reaches the terminal.
 const LOCAL_INPUT = ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'click', 'contextmenu', 'dblclick'];
+
+function countNodes(root) {
+  let n = 0;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ALL);
+  while (walker.nextNode()) n++;
+  return n;
+}
 
 function openArticleKey(core) {
   const key = core.easyReading?._articleKey;
@@ -46,12 +54,46 @@ export class NavigationStack {
   }
 
   // An entry is about to be opened from the shown page of `kind`, the page
-  // that a Back from it may reveal.
-  _capture(kind, board, layer) {
+  // that a Back from it may reveal. `ms`: how long the layer took to render.
+  _capture(kind, board, layer, ms) {
     this.dropPending();
     if (!layer) return;
     const title = document.querySelector('#mobileAppBar .mobileAppBarTitle')?.textContent || board;
     this.pending = { kind, board, layer, appBar: this.core._screenContext?.appBar, title };
+    this._diagCost(kind, layer.el, ms, this.pending);
+  }
+
+  // A debug recording keeps what each live layer costs on the device (#48):
+  // its nodes and render time, the nodes of every live layer, the page's own
+  // nodes and the JS heap where the browser reports it. Nodes are counted in a
+  // later task, once the home dashboard's React render has run; `renderMs`
+  // is the synchronous part.
+  _diagCost(kind, el, ms, holder) {
+    const rec = this.core.debugRecorder;
+    if (!rec?.isRecording) return;
+    setTimeout(() => {
+      const nodes = countNodes(el);
+      if (holder) holder.nodes = nodes;
+      const memory = performance.memory;
+      rec.log('stack.layerCost', {
+        kind, nodes, renderMs: Math.round(ms * 10) / 10, depth: this.stack.pages.length,
+        liveLayers: this.lower.filter(Boolean).length,
+        liveLayerNodes: this.lower.reduce((n, lower) => n + (lower?.nodes || 0), 0),
+        pageNodes: countNodes(document.body), heapKB: memory ? Math.round(memory.usedJSHeapSize / 1024) : null
+      });
+    }, 100);
+  }
+
+  // What an article layer would cost where #49 captures one, when an article
+  // shortcut search starts: the shown article rendered once more, then dropped.
+  diagArticleLayerCost() {
+    if (!this.core.debugRecorder?.isRecording) return;
+    const frame = this.core.view.componentScreen?.props;
+    if (!frame?.lines) return;
+    const el = document.createElement('div');
+    const t = performance.now();
+    renderScreen(frame.lines, frame.forceWidth, false, false, el, frame.enhance);
+    this._diagCost('article (simulated)', el, performance.now() - t, null);
   }
 
   // The legacy caption is also an ordinary list's; it means results only after
@@ -69,20 +111,23 @@ export class NavigationStack {
     const core = this.core;
     const board = core.listSession?._boardName;
     if (!core.mobile || !board) return this.dropPending();
-    this._capture('articleList', board, StackListLayer.capture(core.view, 'article'));
+    const t = performance.now();
+    this._capture('articleList', board, StackListLayer.capture(core.view, 'article'), performance.now() - t);
   }
 
   // `board` is about to be opened from the shown home dashboard. Its article
   // list stacks only under article-list easy reading.
   captureHome(board) {
     if (!this._stacksBoard(board)) return this.dropPending();
-    this._capture('home', board, StackHomeLayer.capture(this.core));
+    const t = performance.now();
+    this._capture('home', board, StackHomeLayer.capture(this.core), performance.now() - t);
   }
 
   // `board` is about to be opened from the shown board list.
   captureBoardList(board) {
     if (!this._stacksBoard(board)) return this.dropPending();
-    this._capture('boardList', board, StackListLayer.capture(this.core.view, 'board'));
+    const t = performance.now();
+    this._capture('boardList', board, StackListLayer.capture(this.core.view, 'board'), performance.now() - t);
   }
 
   _stacksBoard(board) {

@@ -82,6 +82,7 @@ export class ArticleShortcutSearch {
       position: recordFor(core).begin('article-shortcut-search')
     };
     this.pending = origin;
+    core.articleGestures?.stack.diagArticleLayerCost();
     // A failed forward search adds no origin; its source stays where it was.
     this._begin({ missing: stoppedAtBoardList, emptied: route => reopenedAfterEmptySearch(route, origin) });
     const fail = () => this._fail();

@@ -63,6 +63,7 @@
     "test:e2e:headed": "yarn kill:dev && playwright test --project=live --headed",
     "test:e2e:ui": "yarn kill:dev && playwright test --ui",
     "record:cassette": "yarn kill:dev && RECORD_CASSETTE=1 playwright test --project=record tools/record-cassette",
+    "measure:layers": "yarn kill:dev && MEASURE_LAYERS=1 playwright test --project=offline-measure",
     "record:scenarios": "yarn kill:dev && RECORD_SCENARIOS=1 playwright test --project=record tools/record-scenarios",
     "triage:recordings": "yarn kill:dev && playwright test --project=offline-triage"
   }
