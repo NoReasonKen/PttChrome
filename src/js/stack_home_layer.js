@@ -25,7 +25,6 @@ export class StackHomeLayer {
   }
 
   constructor(core, home, real) {
-    this.width = window.innerWidth;
     this.parent = core.view.mainDisplay.parentNode;
     // Beside the terminal's surfaces, under the page that slides away from it.
     // The real dashboard sits above the terminal, so it is held hidden while
@@ -52,8 +51,10 @@ export class StackHomeLayer {
     this.anchor = homeAnchorOf(real);
   }
 
-  matchesViewport() {
-    return this.width === window.innerWidth;
+  // The dashboard is a live view laid out by CSS: it follows a width change by
+  // itself, and its position is restored by entry when shown.
+  fit() {
+    return true;
   }
 
   // Visible, and usable when `usable`: it scrolls, and its input stays local.

@@ -7,7 +7,10 @@ const { waitScreenSettled } = require('../helpers/replay');
 const {
   bootNestedShortcutSearch, waitArticle, waitList, tapShortcut, tapCard
 } = require('../helpers/article_shortcut_search');
-const { dashboardVisible } = require('../helpers/stack_routes');
+const { loadCassette } = require('../helpers/replay');
+const {
+  MAIN, dashboardVisible, bootDashboard, boardOpened, holdLeaves, heldLeaves, releaseLeave, articleRead
+} = require('../helpers/stack_routes');
 
 const RESULTS = { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] };
 const BOARD = { has: ['Alpha topic', 'Delta topic'] };
@@ -89,3 +92,44 @@ test('after a Back that lands somewhere unexpected, the next Back reveals nothin
   await waitScreenSettled(page, { 0: '主功能表' });
   expect(await page.evaluate(() => window.__revealed)).toBe(false);
 });
+
+// The first card at the top of an article list's viewport.
+const topCardTitle = (page, root) => page.locator(root).evaluate(el => {
+  const top = el.getBoundingClientRect().top;
+  const card = [...el.querySelectorAll('.listCard')].find(c => c.getBoundingClientRect().bottom > top + 1);
+  return card?.dataset.listTitle || null;
+});
+
+test('after a width change, the revealed list fits the new width at the same entry', async ({ page }) => {
+  await bootDashboard(page, loadCassette('scn-stack-home-article-back'));
+  await page.locator('#homeDashboard [data-home-board="C_Chat"]').tap();
+  await boardOpened(page);
+  const entry = await topCardTitle(page, MAIN);
+  for (let i = 0; i < 2; i++) await ptt.sendKey(page, 'ArrowUp');
+  await ptt.sendKey(page, 'Enter');
+  await articleRead(page);
+  const { width, height } = page.viewportSize();
+  await page.setViewportSize({ width: width - 60, height });
+  // The app lays the screen out again once the resize settles.
+  await expect.poll(async () => (await page.locator(MAIN).boundingBox()).width).toBeCloseTo(width - 60, 0);
+
+  await holdLeaves(page);
+  await pressBack(page);
+  await expect.poll(() => heldLeaves(page)).toBe(1);
+  const layer = page.locator('[data-stack-layer="articleList"]');
+  await expect(layer).toBeVisible();
+  const fit = await layer.evaluate(el => ({ width: el.getBoundingClientRect().width, overflow: el.scrollWidth - el.clientWidth }));
+  expect(fit.width).toBeCloseTo(width - 60, 0);
+  expect(fit.overflow).toBeLessThanOrEqual(0);
+  expect(await topCardTitle(page, '[data-stack-layer="articleList"]')).toBe(entry);
+
+  // The dashboard below follows the new width too.
+  await releaseLeave(page);
+  await expect(layer).toHaveCount(0, { timeout: 10000 });
+  await pressBack(page);
+  await expect.poll(() => heldLeaves(page)).toBe(1);
+  const home = page.locator('[data-stack-layer="home"]');
+  await expect(home).toBeVisible();
+  expect((await home.boundingBox()).width).toBeCloseTo(width - 60, 0);
+});
+

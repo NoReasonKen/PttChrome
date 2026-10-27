@@ -248,7 +248,7 @@ export class NavigationStack {
     if (this._top()?.kind === 'articleList' && this._showsSearchResults()) return null;
     const target = revealTarget(this.stack);
     const lower = target && this.lower[this.stack.pages.length - 2];
-    return lower?.layer.matchesViewport() ? { page: target, ...lower } : null;
+    return lower?.layer.fit() ? { page: target, ...lower } : null;
   }
 
   // The live page that Back from the current page may reveal, or null.

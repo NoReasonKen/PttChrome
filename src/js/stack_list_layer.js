@@ -45,48 +45,73 @@ export class StackListLayer {
     const main = view.mainDisplay;
     const rect = main.getBoundingClientRect();
     if (!rect.width || !rect.height) return null;
-    return new StackListLayer(main, rect, screen, frame);
+    return new StackListLayer(view, rect, screen, frame);
   }
 
-  constructor(main, rect, screen, frame) {
-    this.width = window.innerWidth;
+  constructor(view, rect, screen, frame) {
+    const main = view.mainDisplay;
+    this.view = view;
+    this.frame = frame;
     this.el = document.createElement('div');
     // Same classes and inline geometry as the list surface, so list CSS applies.
     this.el.className = main.className;
     this.el.style.cssText = main.style.cssText;
-    Object.assign(this.el.style, {
-      position: 'absolute', left: rect.left + 'px', top: rect.top + 'px',
-      width: rect.width + 'px', height: rect.height + 'px', margin: '0', translate: 'none'
-    });
     this.kind = frame.enhance.listScroll.kind;
     this.el.setAttribute('data-stack-layer', this.kind === 'board' ? 'boardList' : 'articleList');
     this.el.setAttribute('aria-hidden', 'true');
     this.el.inert = true;
-    this.el.style.zIndex = '2';
-    const enhance = Object.assign({}, frame.enhance, {
-      listScroll: Object.assign({}, frame.enhance.listScroll, { scrollable: true })
-    });
     // Rendered now, so the reveal only attaches it. It stays out of the document
     // until then: while the article is read there is one screen surface.
     this.parent = main.parentNode;
-    this.screen = renderScreen(frame.lines, frame.forceWidth, false, false, this.el, enhance);
+    this._render(rect, frame.forceWidth);
     this.scrollTop = screen.getListScrollTop();
+    // The reading position by entry, for a render at another width.
+    this.anchor = topCard(main, rect.top);
   }
 
-  // Width changes re-lay out the list, so the copy no longer matches.
-  matchesViewport() {
-    return this.width === window.innerWidth;
+  _render(rect, forceWidth) {
+    this.width = window.innerWidth;
+    Object.assign(this.el.style, {
+      position: 'absolute', left: rect.left + 'px', top: rect.top + 'px',
+      width: rect.width + 'px', height: rect.height + 'px', margin: '0', translate: 'none', zIndex: '2'
+    });
+    const enhance = Object.assign({}, this.frame.enhance, {
+      listScroll: Object.assign({}, this.frame.enhance.listScroll, { scrollable: true })
+    });
+    this.screen = renderScreen(this.frame.lines, forceWidth, false, false, this.el, enhance);
+  }
+
+  // Ready to be revealed at the current width. A width change, such as a
+  // rotation, re-lays out the list, so the stored frame is rendered again over
+  // the list's box and the reading position is kept by entry (#35).
+  fit() {
+    if (this.width === window.innerWidth) return true;
+    const rect = this.view.mainDisplay.getBoundingClientRect();
+    if (!rect.width || !rect.height) return false;
+    this._render(rect, this.view.chh);
+    this.scrollTop = null;
+    return true;
   }
 
   // Visible, and usable when `usable`: it scrolls, and its input stays local.
   show(usable) {
     if (!this.el.isConnected) {
       this.parent.appendChild(this.el);
-      this.screen.setListScrollTop(this.scrollTop);
+      if (this.scrollTop != null) this.screen.setListScrollTop(this.scrollTop);
+      else this._restoreAnchor();
     }
     this.el.inert = !usable;
     this.el.removeAttribute('aria-hidden');
     if (!usable) this.el.setAttribute('aria-hidden', 'true');
+  }
+
+  // Put the entry that was at the top back at its offset.
+  _restoreAnchor() {
+    const card = this.anchor && findCard(this.el, this.anchor.id);
+    if (!card) return;
+    const shift = card.getBoundingClientRect().top - this.el.getBoundingClientRect().top - this.anchor.offset;
+    this.screen.setListScrollTop(this.screen.getListScrollTop() + shift);
+    this.scrollTop = this.screen.getListScrollTop();
   }
 
   hide() {
