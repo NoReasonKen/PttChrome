@@ -1,5 +1,6 @@
 import {
-  createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, HANDOFF_IDLE_MS, HANDOFF_TIMEOUT_MS
+  createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, HANDOFF_IDLE_MS, HANDOFF_TIMEOUT_MS,
+  queueBack, takeQueuedBack, dropQueuedBacks, boundLayers, LIVE_LAYER_BOUND
 } from '../../src/js/page_stack';
 
 const list = (board, extra) => ({ kind: 'articleList', board, layer: true, ...extra });
@@ -48,6 +49,53 @@ test('each Back reveals the next lower page, and a revealed page\'s layer is spe
   expect(revealTarget(reopened)).toBeNull();
   expect(revealTarget(pushPage(withLayer(fromArticle.stack), article('C_Chat'), { fromBelow: true })))
     .toMatchObject({ kind: 'articleList' });
+});
+
+// The dashboard → board → article route, each page kept alive under the next.
+const homeListArticle = () => {
+  let stack = withLayer(pushPage(createPageStack(), { kind: 'home', board: 'C_Chat' }));
+  stack = withLayer(pushPage(stack, { kind: 'articleList', board: 'C_Chat' }, { fromBelow: true }));
+  return pushPage(stack, article('C_Chat'), { fromBelow: true });
+};
+
+describe('Back during a handoff', () => {
+  test('is queued once for each page below the revealed one, and runs once after the swap', () => {
+    let stack = homeListArticle();
+    // Leaving the article reveals the list; only the dashboard is below it.
+    stack = queueBack(queueBack(queueBack(stack)));
+    const swapped = popPage(stack).stack;
+    const next = takeQueuedBack(swapped);
+    expect(next.back).toBe(true);
+    expect(takeQueuedBack(next.stack).back).toBe(false);
+  });
+
+  test('is not queued when nothing is below the revealed page', () => {
+    let stack = withLayer(pushPage(createPageStack(), list('C_Chat')));
+    stack = pushPage(stack, article('C_Chat'), { fromBelow: true });
+    const swapped = popPage(queueBack(stack)).stack;
+    expect(takeQueuedBack(swapped).back).toBe(false);
+  });
+
+  test('is dropped when the handoff breaks or another page is entered', () => {
+    const queued = queueBack(homeListArticle());
+    expect(takeQueuedBack(popPage(dropQueuedBacks(queued)).stack).back).toBe(false);
+    expect(takeQueuedBack(pushPage(queued, list('Gossiping'))).back).toBe(false);
+  });
+});
+
+describe('live layer bound', () => {
+  test('beyond the bound the oldest live layer is released, and Back to its page reveals nothing', () => {
+    const { stack, released } = boundLayers(homeListArticle(), 1);
+    expect(released).toEqual([0]);
+    expect(revealTarget(stack)).toMatchObject({ kind: 'articleList' });
+    expect(revealTarget(popPage(stack).stack)).toBeNull();
+  });
+
+  test('within the bound every layer stays', () => {
+    const { stack, released } = boundLayers(homeListArticle(), LIVE_LAYER_BOUND);
+    expect(released).toEqual([]);
+    expect(revealTarget(popPage(stack).stack)).toMatchObject({ kind: 'home' });
+  });
 });
 
 describe('handoff readiness', () => {

@@ -34,6 +34,8 @@ import { mobileCtrlKey, mobileMenuLayout, listViewportGeometry, listFillRows } f
 
 // 單獨按下修飾鍵本身（實體鍵盤按 Shift 準備打大寫）不算「下一個按鍵」，黏滯 Ctrl 不解除。
 var MODIFIER_KEY_NAMES = ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'AltGraph'];
+// A plain ← is a Back, from the keyboard, the toolbar or system Back.
+const isPlainBack = e => e.key === 'ArrowLeft' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey;
 import { keyEventPredatesModalClose } from './modal_key_gate';
 import icon128 from '../icon/icon_128.png';
 import { MOUSE_CURSOR_URLS } from './mouse_cursors';
@@ -625,6 +627,13 @@ export function TermView() {
   });
 
   addEventListener('keydown', (e) => {
+    // A Back while a leave is on its way to PTT is queued (#34); the leave's
+    // own modal gate holds every other key.
+    if (this.bbscore.articleGestures?.holdsInput() && isPlainBack(e)) {
+      e.preventDefault();
+      this.bbscore.articleGestures.queueBack();
+      return;
+    }
     if (!shouldAcceptInput() || belongsToClosedModal(e) || !keyEventFilter(e))
       return;
 
@@ -1453,6 +1462,7 @@ TermView.prototype = {
     // reach PTT until the real list takes over. Toolbar keys come through here
     // too, past the modal gate that holds the hardware keyboard.
     if (this.bbscore.articleGestures?.holdsInput()) {
+      if (isPlainBack(e)) this.bbscore.articleGestures.queueBack();
       e.preventDefault();
       return;
     }

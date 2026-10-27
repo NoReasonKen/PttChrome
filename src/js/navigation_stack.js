@@ -10,7 +10,9 @@
 // stack, the layers and the handoff.
 import { readEffectivePrefs } from './pref_storage';
 import { sameBoard } from './screen_titles';
-import { createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep } from './page_stack';
+import {
+  createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, queueBack, takeQueuedBack, dropQueuedBacks, boundLayers
+} from './page_stack';
 import { StackListLayer } from './stack_list_layer';
 import { StackHomeLayer } from './stack_home_layer';
 import { EMPTY_TOOLBAR_CONTEXT } from './mobile_toolbar';
@@ -120,6 +122,12 @@ export class NavigationStack {
     this.lower[depth]?.layer?.destroy();
     this.lower[depth] = pending;
     this.stack = pushPage(this.stack, page, { fromBelow: true });
+    const bounded = boundLayers(this.stack);
+    for (const released of bounded.released) {
+      this.lower[released]?.layer?.destroy();
+      this.lower[released] = undefined;
+    }
+    this.stack = bounded.stack;
   }
 
   // The article opened from the article list was entered. Only the matching
@@ -220,6 +228,16 @@ export class NavigationStack {
     return !!this.handoff;
   }
 
+  // A Back made during the handoff runs after the swap (#34). It replaces a
+  // remembered tap: the reader's last choice wins.
+  queueBack() {
+    const h = this.handoff;
+    if (!h) return false;
+    this.stack = queueBack(this.stack);
+    h.tap = null;
+    return true;
+  }
+
   // The current page has slid away. `send` sends PTT's Back and returns
   // whether it was sent; `finish` restores the surfaces once the real page
   // takes over; `cancel` brings the current page back when Back was not sent.
@@ -245,7 +263,10 @@ export class NavigationStack {
         if (event.type === 'click' || event.type === 'contextmenu') event.preventDefault();
         // A tap on an entry is remembered by identity; the last tap wins.
         const id = layer.tapOf(event);
-        if (id) h.tap = id;
+        if (id) {
+          h.tap = id;
+          this.stack = dropQueuedBacks(this.stack);
+        }
       };
       for (const type of LOCAL_INPUT) listen(layer.el, type, local);
       const touches = event => {
@@ -350,10 +371,18 @@ export class NavigationStack {
     this.lower.length = Math.max(0, this.stack.pages.length - 2);
     this.identity = null;
     this.stack = popPage(this.stack).stack;
+    // Backs queued for a page PTT did not show have nothing left to unwind.
+    if (how !== 'presented') this.stack = dropQueuedBacks(this.stack);
+    const queued = takeQueuedBack(this.stack);
+    this.stack = queued.stack;
     h.finish();
     core._refreshScreenContext?.();
     if (how === 'timeout' && h.hint) h.hint();
     if (how === 'presented' && h.tap) h.layer.openTapped(core, h.tap);
     h.layer?.destroy();
+    // Through the usual path: it reveals the next lower page, or waits for PTT.
+    // Sent from its own task, since the swap can run inside the owning
+    // session's presentation.
+    if (queued.back) setTimeout(() => core.sendNavKeyAsUser('ArrowLeft'));
   }
 }

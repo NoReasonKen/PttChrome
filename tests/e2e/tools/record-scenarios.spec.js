@@ -623,6 +623,29 @@ const SCENARIOS = {
     });
   },
 
+  // Back twice from an article (#34): dashboard → C_Chat → an article, ← back to the
+  // list, ← back to the dashboard. The offline test sends the second ← before the
+  // first is answered; the wire is the same, since a queued Back runs after the swap.
+  'stack-home-article-back': async (page) => {
+    const prefs = {
+      enableHomeDashboard: true, enableEasyReading: true, enableEasyReadingList: true,
+      mergeSameAuthorComments: false,
+    };
+    await prepFreshDashboard(page, prefs);
+    await record(page, 'stack-home-article-back', { board: 'C_Chat', prefs }, async () => {
+      await openBoardFromDashboard(page, 'C_Chat');
+      for (let i = 0; i < 2; i++) {
+        await sendKey(page, 'ArrowUp');
+        await waitWireQuiet(page);
+      }
+      await inArticleEasyReading(page);
+      await sendKey(page, 'ArrowLeft');
+      await listActive(page);
+      await sendKey(page, 'ArrowLeft');
+      await dashboardShown(page);
+    });
+  },
+
   // Board-list smooth scrolling (a class sublist, available to guests too) → Enter an
   // ordinary board → list easy reading → ← back to the board list, where smooth
   // scrolling engages again. Prep finds the board and parks the native cursor on it
