@@ -775,7 +775,7 @@ EasyReading.prototype._resetPagingState = function() {
   // 「按了 End、黏在文末」也是這一篇的。
   if (this._bottomStick) this._bottomStick.release();
   this._scrollRestoreFollow?.release();
-  this._core.articleResize?.cancel();
+  this._core?.articleResize?.cancel();
 };
 
 // Arm the recovery timer for the outstanding request. _watchdogSig is the identity
@@ -1568,7 +1568,7 @@ EasyReading.prototype._enterFunctionMode = function() {
   this.sendCommandAfterUpdate = '';
   this._savedScrollTop = this._view.mainDisplay.scrollTop;
   this._functionMode = true;
-  this._core.articleResize?.cancel();
+  this._core?.articleResize?.cancel();
   this._termBuf.lineChangeds.fill(true);
   this._termBuf.changed = true;
   this._termBuf.notify();
