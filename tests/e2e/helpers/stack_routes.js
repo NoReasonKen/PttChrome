@@ -105,11 +105,34 @@ async function bootArticleListAtCard(page) {
   await waitRectStable(page, ARTICLE_CARD);
 }
 
-// Every reply from PTT from now on arrives `delay` ms late.
-const delayReplies = (page, delay) => page.evaluate((delay) => {
+// PTT's replies from now on wait until a page opened meanwhile has painted at
+// rest, then arrive with a network's latency. A long fixed delay instead races
+// the open's own step timeout on a slow runner (#50).
+const holdRepliesUntilEntryRests = page => page.evaluate(() => {
   const send = window.__stubWSSent;
-  window.__stubWSSent = data => setTimeout(() => send(data), delay);
-}, delay);
+  const reply = data => setTimeout(() => send(data), 100);
+  const held = [];
+  let rested = false;
+  window.__stubWSSent = data => rested ? reply(data) : held.push(data);
+  const release = () => {
+    rested = true;
+    held.splice(0).forEach(reply);
+  };
+  const wait = () => {
+    if (!window.__app.articleGestures.entry?.arrived) return requestAnimationFrame(wait);
+    // One more frame, so the frame at rest is painted first.
+    requestAnimationFrame(release);
+  };
+  requestAnimationFrame(wait);
+});
+
+// Every notice the app flashes from now on, in order.
+const recordHints = page => page.evaluate(() => {
+  window.__hints = [];
+  const flash = window.__app.view.flashListHint.bind(window.__app.view);
+  window.__app.view.flashListHint = (text, ...rest) => { window.__hints.push(text); return flash(text, ...rest); };
+});
+const recordedHints = page => page.evaluate(() => window.__hints);
 
 // PTT never answers from now on.
 const dropReplies = page => page.evaluate(() => {
@@ -187,7 +210,7 @@ const watchReveals = page => page.evaluate(() => {
 const revealedSinceWatch = page => page.evaluate(() => window.__revealed);
 
 module.exports = {
-  MAIN, ARTICLE_CARD, homeBoard, boardList, bootArticleList, bootArticleListAtCard, delayReplies, dropReplies, listActive, dashboardVisible, bootDashboard, boardOpened, boardListEngaged, bootBoardList,
+  MAIN, ARTICLE_CARD, homeBoard, boardList, bootArticleList, bootArticleListAtCard, holdRepliesUntilEntryRests, dropReplies, recordHints, recordedHints, listActive, dashboardVisible, bootDashboard, boardOpened, boardListEngaged, bootBoardList,
   fedBefore, openNextArticle, holdBackReply, heldBack, holdLeaves, heldLeaves, releaseLeave, sentLeaves, articleRead,
   sampleFrames, framesBringingBackArticle, watchReveals, revealedSinceWatch
 };

@@ -1,15 +1,15 @@
 // Opening an article or a board slides the new page in over the page it is
 // opened from (#36). The new page shows the existing loading state until PTT
-// answers, and a failed open slides it back out. PTT's replies are delayed, so
-// every painted frame of the motion is observable.
+// answers, and a failed open slides it back out. PTT's replies wait until the
+// new page rests in place, so every painted frame of the motion is observable.
 const { test, expect } = require('@playwright/test');
 const { installPaintedFrameProbe } = require('../helpers/layout');
 const ptt = require('../helpers/ptt');
 const {
-  MAIN, ARTICLE_CARD, bootArticleListAtCard, bootDashboard, boardOpened, bootBoardList, listActive, delayReplies, dropReplies
+  MAIN, ARTICLE_CARD, bootArticleListAtCard, bootDashboard, boardOpened, bootBoardList, listActive, holdRepliesUntilEntryRests,
+  dropReplies, recordHints, recordedHints
 } = require('../helpers/stack_routes');
 
-const REPLY_DELAY_MS = 700;
 // The new page's screen settles a few px from where the old one rests.
 const SETTLED = 3;
 
@@ -28,6 +28,7 @@ async function sampleEntryFrames(page) {
       const app = window.__app;
       if (![...main.children].some(visible)) return 'blank';
       if (app.buf.pageState === 3) return 'article';
+      if (app.buf.isPassScreenNow()) return 'entryScreen';
       if (!visible(main.querySelector('.listBodyView'))) return 'other';
       return app.buf.listRenderOwner === 'board-list' ? 'boards' : 'articles';
     };
@@ -85,7 +86,7 @@ function expectSlidBackOut(frames, width) {
 
 test('opening an article slides it in over the list, loading until PTT answers', async ({ page }) => {
   await bootArticleListAtCard(page);
-  await delayReplies(page, REPLY_DELAY_MS);
+  await holdRepliesUntilEntryRests(page);
   await sampleEntryFrames(page);
   await page.locator(ARTICLE_CARD).first().tap();
   const frames = await sampledFrames(page);
@@ -96,29 +97,30 @@ test('opening an article slides it in over the list, loading until PTT answers',
 test('an open PTT never answers slides back out over the list, with the existing notice', async ({ page }) => {
   await bootArticleListAtCard(page);
   await dropReplies(page);
+  await recordHints(page);
   await sampleEntryFrames(page);
   await page.locator(ARTICLE_CARD).first().tap();
-  await expect(page.getByText('開啟文章失敗，已切至原生模式')).toBeVisible({ timeout: 10000 });
+  // The list's return from native mode soon replaces the notice.
+  await expect.poll(() => recordedHints(page), { timeout: 10000 }).toContain('開啟文章失敗，已切至原生模式');
   await expect(page.locator('[data-stack-entry-underlay], [data-stack-layer]')).toHaveCount(0);
   expectSlidBackOut(await sampledFrames(page), page.viewportSize().width);
 });
 
 test('opening a board from the dashboard slides it in over the dashboard, showing the board\'s entry screen', async ({ page }) => {
   await bootDashboard(page);
-  await delayReplies(page, REPLY_DELAY_MS);
+  await holdRepliesUntilEntryRests(page);
   await sampleEntryFrames(page);
   await page.locator('#homeDashboard [data-home-board="C_Chat"]').tap();
   const frames = await sampledFrames(page);
   // The recorded board shows its entry screen first.
-  expect(frames.at(-1)).toMatchObject({ shows: 'other', lower: false });
-  expect(await page.evaluate(() => window.__app.buf.isPassScreenNow())).toBe(true);
+  expect(frames.at(-1)).toMatchObject({ shows: 'entryScreen', lower: false });
   expectSlidIn(frames, page.viewportSize().width, 'boards');
   await boardOpened(page);
 });
 
 test('opening a board from a board list slides its article list in over the board list', async ({ page }) => {
   await bootBoardList(page);
-  await delayReplies(page, REPLY_DELAY_MS);
+  await holdRepliesUntilEntryRests(page);
   await sampleEntryFrames(page);
   await ptt.sendKey(page, 'Enter');
   const frames = await sampledFrames(page);
@@ -130,9 +132,10 @@ test('opening a board from a board list slides its article list in over the boar
 test('a board PTT does not enter from a board list slides back out once the board list is back', async ({ page }) => {
   await bootBoardList(page);
   await dropReplies(page);
+  await recordHints(page);
   await sampleEntryFrames(page);
   await ptt.sendKey(page, 'Enter');
-  await expect(page.getByText('操作完成，已回到平滑捲動')).toBeVisible({ timeout: 10000 });
+  await expect.poll(() => recordedHints(page), { timeout: 10000 }).toContain('操作完成，已回到平滑捲動');
   await expect(page.locator('[data-stack-entry-underlay], [data-stack-layer]')).toHaveCount(0);
   expectSlidBackOut(await sampledFrames(page), page.viewportSize().width);
 });
