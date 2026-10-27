@@ -78,7 +78,7 @@ test('an external recovery failure survives the automatic switch back to list ea
   const session = {
     state: 'functionMode', _holdReason: 'external',
     _diag() {}, _scheduleResumeProbe() {},
-    _autoResumeEnabled: () => true, _lastServerActivityAt: 0, _lastUserByteAt: 0,
+    _autoResumeEnabled: () => true, _lastServerActivityAt: -Infinity, _lastUserByteAt: -Infinity,
     _queue: { inFlightKind: null }, _collectFacts: () => ({ kind: 'clean-list' }),
     _settleEvent: () => ({}), _dispatch() { this.state = 'active'; },
     _view: { flashListHint: vi.fn() }

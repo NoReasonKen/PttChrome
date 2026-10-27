@@ -299,10 +299,12 @@ export function BoardListSession(core, view, termBuf, queue) {
   // { topNum, scrollFrac, variant, cursorNum, at, adopted, fills } / null。
   this._pendingViewport = null;
   // 靜置探針的 timer 與它的兩個時鐘來源（見 RESUME_QUIET_MS）。
+  // 這幾個時刻（含 _resumedAt）都用 performance.now()：牆鐘會被校時往回跳（實測
+  // 7 秒），Date.now() 算出負的靜置時間，探針就多等好幾秒才回好讀。
   this._resumeProbe = null;
-  this._lastServerActivityAt = 0;
-  this._lastUserByteAt = 0;
-  this._resumedAt = 0;
+  this._lastServerActivityAt = -Infinity;
+  this._lastUserByteAt = -Infinity;
+  this._resumedAt = -Infinity;
   // pruneListToSegment 的樞紐覆寫（undefined ＝用選取）。遠跳期間換成落點所在的
   // 那一段，否則新頁與舊緩衝之間的「洞」會讓連續段守門把**剛抓到的落點**丟掉。
   this._prunePivotOverride = undefined;
@@ -332,7 +334,7 @@ BoardListSession.prototype = {
     if (snap && snap.changedRows && snap.changedRows.size === 0 && !snap.cursorMoved)
       return;
     // server 活動後的靜止點 ⇒ 自動回復的時鐘從這裡起算（上面已排除純本地重繪）。
-    this._lastServerActivityAt = Date.now();
+    this._lastServerActivityAt = performance.now();
     // 還沒接管、pref 又關著 ⇒ 這一幀不可能有我們的事。提早退出省掉 24 次
     // getRowText —— 這個功能預設是關的，而 settle 在每篇文章的每次翻頁都會來。
     if (this.state === 'idle' && !this._engageEligible()) return;
@@ -378,7 +380,7 @@ BoardListSession.prototype = {
       sameVariant: !!(facts.brd && facts.brd.variant === this._variant),
       landedSameList: this._landedSameList(facts),
       holdReason: this._holdReason,
-      withinResumeGrace: Date.now() - this._resumedAt < RESUME_GRACE_MS,
+      withinResumeGrace: performance.now() - this._resumedAt < RESUME_GRACE_MS,
       engageEligible: this._engageEligible()
     };
   },
@@ -447,7 +449,7 @@ BoardListSession.prototype = {
 
   // 使用者往 PTT 送了 byte。**只記時間戳，不得有任何其他副作用**（不變量 N2）。
   noteNativeInput: function() {
-    this._lastUserByteAt = Date.now();
+    this._lastUserByteAt = performance.now();
     this._scheduleResumeProbe();
   },
 
@@ -475,7 +477,7 @@ BoardListSession.prototype = {
   _tryResumeProbe: function() {
     if (this._holdReason !== 'passthrough' || !this._autoResumeEnabled()) return;
     const quietSince = Math.max(this._lastServerActivityAt, this._lastUserByteAt);
-    const waited = Date.now() - quietSince;
+    const waited = performance.now() - quietSince;
     if (waited < RESUME_QUIET_MS) return this._scheduleResumeProbe(RESUME_QUIET_MS - waited);
     // 「PTT 完全忽略這個鍵」是零 byte 零 settle ⇒ 命令只能等 timeout，這裡補排一次。
     if (this._queue.inFlightKind) return this._scheduleResumeProbe();
@@ -1104,7 +1106,7 @@ BoardListSession.prototype = {
   _resumeInPlace: function(facts) {
     this._holdReason = null;
     this._cancelResumeProbe();
-    this._resumedAt = Date.now();
+    this._resumedAt = performance.now();
     this._renderMode = 'buffer';
     this._setLoading(false);
     this._view.hideCursor();
@@ -1269,7 +1271,7 @@ BoardListSession.prototype = {
   _seed: function(facts) {
     this._holdReason = null;
     this._cancelResumeProbe();
-    this._resumedAt = Date.now(); // 不變量 N4：殘餘幀不得打到 active 的 catch-all
+    this._resumedAt = performance.now(); // 不變量 N4：殘餘幀不得打到 active 的 catch-all
     this._resetBuffer();
     this._variant = facts.brd.variant;
     this._renderMode = 'buffer';

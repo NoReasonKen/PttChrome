@@ -900,6 +900,17 @@ describe("靜置探針（看板列表 session）", () => {
     expect(h.s.state).toBe("active");
   });
 
+  test("牆鐘往回跳（NTP 校時）不得拉長靜置等待：照單調時鐘滿 250ms 就回", () => {
+    const h = parked();
+    h.termBuf._rowTexts = brdScreenRows();
+    h.termBuf.cur_x = 0;
+    h.termBuf.cur_y = 3;
+    h.s.noteNativeInput();
+    vi.setSystemTime(Date.now() - 7000); // Date 倒退，performance.now() 照走
+    vi.advanceTimersByTime(400);
+    expect(h.s.state).toBe("active");
+  });
+
   test("external hold（beginExternalNavigation）→ 永不自動解除（不變量 N1）", () => {
     const h = makeSession();
     h.termBuf.feed(brdScreenRows());
