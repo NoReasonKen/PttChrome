@@ -1012,6 +1012,12 @@ ListSession.prototype = {
     // 那道守門已經把純本地重繪擋掉了，所以不會誤把自己的重繪當成 server 活動。
     this._lastServerActivityAt = Date.now();
     const facts = this._collectFacts(snap);
+    // The resize owner briefly visits the same board to rebuild pmore's page
+    // boundary. Drive its queue without adopting those hidden list screens.
+    if (this._core.articleResize?.active) {
+      this._queue.onSettle(snap, facts);
+      return;
+    }
     // Pure notification (touches nothing here): landing on a list or a menu
     // means the user left the article by themselves, so aid_navigation's back
     // anchors no longer describe where they are. Deliberately BEFORE

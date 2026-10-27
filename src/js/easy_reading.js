@@ -556,6 +556,7 @@ EasyReading.prototype._isJumpParkedListNow = function() {
 // Fired once per term_buf settle edge. Auto-enable easy reading when we have just
 // settled from a board list (2) into an article (3) with the pref on.
 EasyReading.prototype._onPageStateSettled = function() {
+  if (this._termBuf.easyReadingResizeInFlight) return;
   // ARTICLE BOUNDARY — the only structural place the per-article paging transaction is
   // guaranteed to be reset. Do NOT rely on the key handlers for this: ← leaves an
   // article through stopEasyReading() (never leaveCurrentPost), and while easy reading
@@ -618,6 +619,8 @@ EasyReading.prototype._onChanged = function(e) {
 
   if (!this._enabled)
     return;
+
+  if (this._termBuf.easyReadingResizeInFlight) return;
 
   // functionMode mirrors the native screen LIVE (term_view.redraw handles rendering);
   // the auto-paging row-state machine must NOT run here (no page-downs while a prompt
@@ -772,6 +775,7 @@ EasyReading.prototype._resetPagingState = function() {
   // 「按了 End、黏在文末」也是這一篇的。
   if (this._bottomStick) this._bottomStick.release();
   this._scrollRestoreFollow?.release();
+  this._core.articleResize?.cancel();
 };
 
 // Arm the recovery timer for the outstanding request. _watchdogSig is the identity
@@ -802,6 +806,14 @@ EasyReading.prototype._clearWatchdog = function() {
 // runs the pure nextPageDownDecision, writes the resulting transaction state back and
 // sends at most one key. See nextPageDownDecision for the pmore invariants behind it.
 EasyReading.prototype._maybeSendPageDown = function(keys, recovery) {
+  if (this._core.articleResize?.pump()) return 'blocked';
+  if (this._core.articleResize?.pending && !this._reverse &&
+      (!recovery || this._inFlightSig == null || this._currentPageSignature() !== this._inFlightSig)) {
+    // Keep only recovery of an already-sent command alive while a resize
+    // waits. Its response must be accumulated before another key is sent.
+    this._deferredPageDownKeys = keys || this._inFlightKeys || '\x1b[6~';
+    return 'blocked';
+  }
   // 線路上有別人的交易：這一次請求**延後**，不是丟棄。決策連跑都不跑，所以
   // _inFlightSig／_inFlightSentAt／_pageDownRetries 全部原封不動，也不上膛 watchdog
   // ——留下一筆「送出去了」的假紀錄正是 620ms 死時間與 giveup 的來源（見 onWireIdle）。
@@ -904,6 +916,13 @@ EasyReading.prototype._maybeSendPageDown = function(keys, recovery) {
     // Bounded escape for a seek PTT never answered: without this the heal gate would
     // stay up forever and the settle teardown could never run again.
     this._termBuf.easyReadingHealInFlight = false;
+  }
+  if (d.action === 'giveup' && this._core.articleResize?.pending) {
+    // The unanswered request is now retired. Let the bounded reopen own the
+    // next key rather than leaving a resize waiting for an abandoned signature.
+    this._inFlightSig = null;
+    this._inFlightKeys = null;
+    this._core.articleResize.pump();
   }
   return d.action;
 };
@@ -1360,6 +1379,7 @@ EasyReading.prototype._healFromTop = function() {
 // against the fast path so a slow PTT response cannot trigger a double page-down (which
 // would skip a page). See docs/easy-reading.md.
 EasyReading.prototype._onScreenSettled = function() {
+  if (this._core.articleResize?.pump()) return;
   this._lastSettleParkedList = this._isJumpParkedListNow();
   // pmore 設定頁的偵測要在**停在設定頁的那一幀**做：離開之後那一幀，設定頁的字
   // 已經被文章蓋掉了。好讀關著時也照掃 —— rawmode 是 per-connection 的全域狀態，
@@ -1548,6 +1568,7 @@ EasyReading.prototype._enterFunctionMode = function() {
   this.sendCommandAfterUpdate = '';
   this._savedScrollTop = this._view.mainDisplay.scrollTop;
   this._functionMode = true;
+  this._core.articleResize?.cancel();
   this._termBuf.lineChangeds.fill(true);
   this._termBuf.changed = true;
   this._termBuf.notify();
@@ -1663,6 +1684,7 @@ EasyReading.prototype._evalFunctionModeExit = function() {
 };
 
 EasyReading.prototype._onViewUpdated = function(e) {
+  if (this._core.articleResize?.pump()) return;
   if (TRACE) console.log('view update');
   // accumulatePageLines (which just ran inside view.update()) may have found a lost
   // page — handle that before anything else, it invalidates the whole transaction.
@@ -1856,6 +1878,7 @@ EasyReading.prototype._wireBusy = function() {
 // 多評估一次是安全的：真正要不要送鍵由 nextPageDownDecision 決定（functionMode／
 // 非完整幀／已 100%／同一頁簽章未過 grace 全都不送），不可能違反 P4。
 EasyReading.prototype.onWireIdle = function(opts) {
+  if (this._core.articleResize?.pump()) return;
   const keys =
     this._deferredPageDownKeys || (opts && opts.force ? '\x1b[6~' : null);
   if (!keys) return;

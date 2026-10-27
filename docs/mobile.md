@@ -2,6 +2,10 @@
 
 ## Article horizontal gestures
 
+Mobile board articles retain their rendered easy-reading content while dynamic
+terminal resizing reopens and verifies the same article. Position, ownership and
+rotation coverage are described in [article rotation](article-rotation.md).
+
 The enabled-by-default `articleHorizontalGestures` preference applies only to mobile article easy reading. A leftward drag reveals a right drawer with five actions (same-thread search, previous, first and next same-thread article, same-author search); a rightward drag retracts the article above a static preview of the list it came from, or a dark fallback. Taps, long presses, vertical scrolling, selection, video controls, editing, other modals and an open image viewer keep their ownership. `article_gestures.js` owns each contact; core rendering remains the sole writer of the article DOM. Rules, geometry, thresholds and coverage are in [the article shortcut specification](article-swipe-drawer-spec.md).
 
 目標裝置：Android Chrome 現代版（iOS Safari `unknown`，未驗）；Android APK 殼（背景不斷線）見 `docs/android-app.md`，其鍵盤高度由原生回報（`keyboardInset` 的 `hostInset`）。動 `mobile_layout.js`、

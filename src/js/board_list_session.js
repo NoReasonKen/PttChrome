@@ -326,6 +326,7 @@ BoardListSession.prototype = {
   // ---- settle pipeline ------------------------------------------------------
 
   _onScreenSettled: function() {
+    if (this._core.articleResize?.active) return;
     const snap = this._termBuf.settleSnapshot;
     // 純本地重繪（server 這個視窗一列都沒寫、游標也沒動）不得驅動狀態轉移，
     // 也不得餵給 queue 的 expect —— 同 list_session 的第一道守門。

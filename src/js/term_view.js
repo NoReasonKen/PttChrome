@@ -780,7 +780,7 @@ TermView.prototype = {
     // Track the 原PO id for same-author comment highlighting. The "作者" header
     // only appears on the first page of an article, so keep the last parsed value
     // across page-downs; a new article's first page overwrites it.
-    if (this.buf.pageState === 3) {
+    if (this.buf.pageState === 3 && !this.buf.easyReadingResizeInFlight) {
       // Author AND board come from the SAME header line ("作者 x (y) 看板 Z"), so
       // they are adopted as one event: a 站內信 header has no 看板 field and must
       // therefore CLEAR the board, not inherit the previous post's (a boardless
@@ -793,7 +793,7 @@ TermView.prototype = {
         lines[1] ? rowToText(lines[1]) : '',
         parseStatusRow(rowToText(lines[rows - 1])));
       if (ctx) this._setArticleContext(ctx);
-    } else {
+    } else if (!this.buf.easyReadingResizeInFlight) {
       // Leaving the article clears any pusher highlight selection. 只設欄位就好：
       // 這裡跑在 _renderScreenLines **之前**，下面那次 render 會把新值同步進
       // ScreenController（update ⇒ _selectedPusher ⇒ 收尾 _appliedPusher 對帳）。
@@ -813,7 +813,13 @@ TermView.prototype = {
       // growing accumulated article page (easy reading, pageState 3). The two
       // easy-reading overlay rows (footer / reply preview) are separate divs and
       // are still drawn imperatively below.
-      if (this.useEasyReadingMode && this.buf.easyReadingFunctionMode) {
+      if (this.useEasyReadingMode && this.buf.easyReadingResizeInFlight) {
+        // Keep the article through NAWS's stale screen and the goto prompt.
+        // Only the resize owner may accept the new terminal-sized response.
+        this._gridRender = false;
+        this._renderScreenLines(this.buf.pageLines, true, true, false,
+          Object.assign({}, this._pageRenderOverrides(), { pageState: 3 }));
+      } else if (this.useEasyReadingMode && this.buf.easyReadingFunctionMode) {
         // functionMode: mirror the native 24-row screen LIVE so any PTT prompt / menu /
         // editor triggered from inside the article (回應至選單、推文、收暫存檔、編輯器…)
         // shows EXACTLY as native — no hardcoded overlay, no per-prompt parsing. Hide
@@ -1669,6 +1675,12 @@ TermView.prototype = {
     this.mainDisplay.style.textAlign = 'left';
     this.mainDisplay.style.width = mainWidth;
     this.mainDisplay.style.height = (this.chh * this.buf.rows + 10) + 'px';
+    if (this.reflow) {
+      // Terminal rows can stay unchanged until an outstanding PageDown settles.
+      // The local reading viewport must still fit the newly available area.
+      const available = Math.max(0, innerBounds.height - this.topInset - this.keyboardInset);
+      this.mainDisplay.style.height = Math.min(this.chh * this.buf.rows + 10, available) + 'px';
+    }
 
     this.lastRowDiv.style.fontSize = fontSize;
     this.lastRowDiv.style.width = mainWidth;

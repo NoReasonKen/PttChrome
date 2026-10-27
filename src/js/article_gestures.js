@@ -79,6 +79,9 @@ export class ArticleGestures {
 
   update() {
     this.exitPreview.update();
+    // Resize events already adapt an open panel or cancel its active drag.
+    // A temporary PTT footer mismatch must not dismiss that open panel.
+    if (this.core.buf.easyReadingResizeInFlight && this.root && !this.track) return;
     const available = this.available();
     this.core.view.mainDisplay.classList.toggle('articleHorizontalGestures', available);
     this._setNativeTouchMove(available);

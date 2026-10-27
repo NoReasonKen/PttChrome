@@ -50,3 +50,15 @@ test("desktop preview measurements do not depend on viewport height", () => {
   view.setTermFontSize(8, 16);
   expect(view.componentScreen.notifyLayoutChanged).not.toHaveBeenCalled();
 });
+
+test("the mobile reading viewport fits landscape while terminal resizing waits for a response", () => {
+  const view = makeView();
+  view.buf.rows = 50;
+  view.innerBounds = { width: 896, height: 412 };
+  view.reflowWidth = 896;
+  view.topInset = 48;
+  view.keyboardInset = 48;
+  view.setTermFontSize(8, 16);
+  expect(parseFloat(view.mainDisplay.style.height)).toBe(316);
+  expect(view.buf.rows).toBe(50);
+});

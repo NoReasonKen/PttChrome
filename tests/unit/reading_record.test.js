@@ -92,6 +92,9 @@ describe("決策表", () => {
     ["next-article", "cancel", "none", "none", "none"],
     ["next-article", "fail", "none", "none", "none"],
     // 斷線重連：落在文章 'auto'、落在列表回原處；找不到原文停在列表也回原處。
+    ["article-resize", "done", "origin", "none", "none"],
+    ["article-resize", "cancel", "none", "none", "none"],
+    ["article-resize", "fail", "none", "none", "none"],
     ["reconnect-resume", "done", "auto", "origin", "none"],
     ["reconnect-resume", "fail", "none", "origin", "none"],
     ["reconnect-resume", "cancel", "none", "none", "none"],
