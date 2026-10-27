@@ -53,9 +53,11 @@ export function dropQueuedBacks(stack) {
 }
 
 // Live layers kept at once. Pages deeper than this keep only their identity,
-// and Back to them waits for PTT as without a stack. The value is set from the
-// measured cost of each layer kind (#48) and calibrated on the device.
-export const LIVE_LAYER_BOUND = 2;
+// and Back to them waits for PTT as without a stack. Measured on a phone (#48):
+// eight layers of full search results and very long articles hold about 261k
+// nodes, about 65MB, and each costs at most about 150ms once, when its page is
+// left.
+export const LIVE_LAYER_BOUND = 8;
 
 // Release the oldest live layers beyond `bound`. Returns the depths released.
 export function boundLayers(stack, bound = LIVE_LAYER_BOUND) {
