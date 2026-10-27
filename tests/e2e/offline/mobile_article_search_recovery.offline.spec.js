@@ -339,11 +339,20 @@ test('a reload in a reopened nested source restores it by AID and keeps unwindin
   await waitArticle(page, 'Beta');
   await expect.poll(() => bodyText(page)).toContain(RESTORED);
 
+  // The page stack is not saved: no page from before the reload is revealed,
+  // and each Back waits for PTT as without a stack (#35).
+  await page.evaluate(() => {
+    window.__revealed = false;
+    new MutationObserver(() => {
+      if (document.querySelector('[data-stack-layer], [data-article-exit-underlay]')) window.__revealed = true;
+    }).observe(document.body, { childList: true, subtree: true });
+  });
   await keyboardBack(page);
   await waitList(page, { has: ['Alpha topic', '□ [Talk] Beta topic'], lacks: ['Re: [Talk] Beta topic', 'Delta topic'] });
   await keyboardBack(page);
   await waitArticle(page, 'Alpha');
   await expect.poll(() => topLine(page)).toBe(position);
+  expect(await page.evaluate(() => window.__revealed)).toBe(false);
 });
 
 test('a source deleted while disconnected stops on its board list and leaves the route inactive', async ({ page }) => {
