@@ -188,8 +188,10 @@ test('a preview tap still opens the viewer while a horizontal preview drag opens
   const image = await waitRectStable(page, PREVIEW);
   const from = { x: Math.min(image.left + image.width - 4, page.viewportSize().width - 24), y: image.top + image.height / 2 };
   const contact = await beginArticleTouch(page, from);
-  await contact.move({ x: Math.max(8, from.x - 120), y: from.y });
-  await contact.release({ pause: false });
+  // Past half the width and held still: the drag opens the drawer by distance,
+  // whatever the machine's speed. A fling depends on how fast the events land.
+  await contact.move({ x: Math.max(8, from.x - page.viewportSize().width * 0.6), y: from.y });
+  await contact.release();
   await expect(page.locator(DRAWER)).toHaveAttribute('data-state', 'open');
   await expect(page.locator(VIEWER)).toHaveCount(0);
 });
