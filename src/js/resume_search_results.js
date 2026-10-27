@@ -28,10 +28,13 @@ export function resumeSearchResults(core, context, done, position) {
     else clearSearchResultsContext(core);
     const message = !ok ? 'searchResults_resumeFailed' : restored.missing ? 'searchResults_positionMissing' : null;
     const notice = message ? { message: i18n(message), duration: 6000, level: HINT_ERROR } : null;
-    recordFor(core).releaseExternal({ listNotice: notice });
+    // `done` may explain the outcome itself; a failure stays explained over it.
+    // Either is the list's notice when it returns to easy reading, so its
+    // generic notice does not replace them.
+    const explained = done({ ok });
+    recordFor(core).releaseExternal({ listNotice: notice || explained });
     if (notice && core.conn?.isConnected)
       core.view.flashListHint(notice.message, notice.duration, notice.level);
-    done({ ok });
   };
   const hold = () => {
     beginInFlight(core);
