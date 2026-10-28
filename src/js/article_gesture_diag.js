@@ -58,7 +58,7 @@ export class DrawerDiagnostics {
     const ls = core.listSession;
     return {
       pref: !!readEffectivePrefs().articleHorizontalGestures, pageState: core.buf.pageState,
-      article: g.available(), list: g._listLeaveable(), listCards: !!core.view.listCards,
+      article: g.available(), list: g._listLeaveable(), boardList: g._boardListLeaveable(), listCards: !!core.view.listCards,
       owner: core.buf.listRenderOwner || null, listState: ls?.state || null, renderMode: ls?._renderMode || null,
       busy: !!serializedOpHint(core), modal: g._otherModalOpen(), entry: g.entry?.state || null,
       handingOff: !!g.stack.handingOff, surfaceClass: core.view.mainDisplay.classList.contains('articleHorizontalGestures')
