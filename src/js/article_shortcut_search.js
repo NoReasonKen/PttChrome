@@ -82,7 +82,7 @@ export class ArticleShortcutSearch {
       position: recordFor(core).begin('article-shortcut-search')
     };
     this.pending = origin;
-    core.articleGestures?.stack.diagArticleLayerCost();
+    core.articleGestures?.stack.captureArticle();
     // A failed forward search adds no origin; its source stays where it was.
     this._begin({ missing: stoppedAtBoardList, emptied: route => reopenedAfterEmptySearch(route, origin) });
     const fail = () => this._fail();
@@ -188,6 +188,7 @@ export class ArticleShortcutSearch {
     const board = this.route.board;
     if (step.kind === 'restore') {
       if (!LIST_BACK_KEYS.includes(event.key) || this._listShown(board) !== 'results') return false;
+      if (this._revealBelow(event)) return true;
       clearSearchResultsContext(core);
       this.pending = null;
       this._begin({ missing: returnMissing });
@@ -201,12 +202,19 @@ export class ArticleShortcutSearch {
         !!at && article.author === at.author && article.title === at.title
       : this._listShown(board) === 'full' && LIST_BACK_KEYS.includes(event.key);
     if (!here) return false;
+    if (this._revealBelow(event)) return true;
     // Rebuilding results selects the newest entry; never reopen an article
     // inside them. The following Back restores their source by AID instead.
     this.pending = null;
     this._begin({ missing: returnMissing, emptied: returned });
     this._selectThenQuery(step.origin, false, 'rebuild');
     return true;
+  }
+
+  // The page kept below slides into view first (#49); its Back comes back
+  // here once the stack sends it.
+  _revealBelow(event) {
+    return !!this.core.articleGestures?.handleBack(event);
   }
 
   // Which list of `board` the reader sees: 'results', 'full' or null. While
@@ -236,6 +244,7 @@ export class ArticleShortcutSearch {
       this.route = transition(this.route);
       this.pending = null;
       this._finish();
+      this.core.articleGestures?.pagePresented('article');
       this._hint(notice);
     })) this._fail();
   }
@@ -279,6 +288,8 @@ export class ArticleShortcutSearch {
   // that never left, or the full board list standing in for a route article.
   _fail(notice = 'articleShortcutSearch_failed', transition = stoppedAtBoardList) {
     if (!this.active) return;
+    // A search that found nothing keeps no layer of its source.
+    this.core.articleGestures?.stack.dropPending();
     if (this.pending?.position) recordFor(this.core).end(this.pending.position, 'fail');
     if (this.route && transition !== keep) {
       this.route = fullBoardList(searchGateFacts(this.core), this.route.board) ? transition(this.route) : null;

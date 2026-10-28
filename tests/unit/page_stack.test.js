@@ -83,6 +83,25 @@ describe('Back during a handoff', () => {
   });
 });
 
+describe('search results', () => {
+  const opened = (board, id) => ({ kind: 'article', board, id });
+  const results = { kind: 'articleList', board: 'C_Chat', results: true };
+
+  test('reveal the article an article shortcut search started from', () => {
+    const source = withLayer(pushPage(withLayer(pushPage(createPageStack(), list('C_Chat'))), opened('C_Chat', 'A'), { fromBelow: true }));
+    const stack = pushPage(source, results, { fromBelow: true });
+    expect(revealTarget(stack)).toMatchObject({ kind: 'article', id: 'A' });
+    expect(revealTarget(popPage(stack).stack)).toMatchObject({ kind: 'articleList' });
+  });
+
+  test('reveal nothing over the page a list search was opened from', () => {
+    // Back from results returns to the board's full list, not to the page
+    // the board was opened from.
+    const home = withLayer(pushPage(createPageStack(), { kind: 'home', board: 'C_Chat' }));
+    expect(revealTarget(pushPage(home, results, { fromBelow: true }))).toBeNull();
+  });
+});
+
 describe('live layer bound', () => {
   test('beyond the bound the oldest live layer is released, and Back to its page reveals nothing', () => {
     const { stack, released } = boundLayers(homeListArticle(), 1);
@@ -136,6 +155,21 @@ describe('a page shown without an open', () => {
     expect(kept).toBe(0);
     expect(stack.pages).toEqual([opened('C_Chat', 'A')]);
     expect(revealTarget(stack)).toBeNull();
+  });
+
+  test('a lower page without a live layer, reached without a handoff, is where Back went', () => {
+    // Search return history reopened the source article by its code, or
+    // rebuilt the results under an article, after their layers were released.
+    const source = pushPage(withLayer(route()), results('C_Chat'), { fromBelow: true });
+    const reopened = pageShown(boundLayers(source, 1).stack, opened('C_Chat', 'A'));
+    expect(reopened.kept).toBe(2);
+    expect(reopened.stack.pages.map(page => page.kind)).toEqual(['home', 'articleList', 'article']);
+    expect(revealTarget(reopened.stack)).toBeNull();
+    const nested = pushPage(withLayer(source), opened('C_Chat', 'B'), { fromBelow: true });
+    const rebuilt = pageShown(boundLayers(nested, 1).stack, results('C_Chat'));
+    expect(rebuilt.kept).toBe(3);
+    expect(rebuilt.stack.pages.map(page => page.kind)).toEqual(['home', 'articleList', 'article', 'articleList']);
+    expect(revealTarget(rebuilt.stack)).toBeNull();
   });
 
   test('another article in place of the current one keeps the pages below its list', () => {

@@ -1,8 +1,8 @@
 // What live layers cost (#48): DOM nodes, JS heap and render time of each
 // layer kind, and of a deep stack with every layer alive. Layers are built
 // with today's mechanism (a full re-render of the page's last frame). Article
-// layers do not exist yet (#49); they are simulated the same way, with the
-// shared screen renderer over the article's frame.
+// layers (#49) are rendered the same way over saved article frames, as
+// StackArticleLayer renders the shown one.
 //
 // Not part of any suite: `yarn measure:layers` (MEASURE_LAYERS=1). Results are
 // printed and merged into $MEASURE_OUT (default: tests/e2e/__measurements__/
@@ -113,8 +113,8 @@ async function installLayerKit(page) {
       window.__kept.push(layer);
       return describe('home', layer.el, ms);
     };
-    // A simulated article layer: the same renderer over a saved or current
-    // article frame, into its own box, as StackListLayer does for lists.
+    // An article layer: the same renderer over a saved or current article
+    // frame, into its own box, as StackArticleLayer does.
     window.__keepFrameLayer = (kind, name) => {
       const view = window.__app.view;
       const saved = name ? window.__frames[name] : null;
@@ -263,8 +263,8 @@ test('deep stack: dashboard, board, three articles, two search results', async (
 });
 
 // The same costs reach a debug recording, which is how they are measured on
-// the device: each captured layer, and the simulated article layer when an
-// article shortcut search starts.
+// the device: each captured layer, the article layer included, which an
+// article shortcut search captures as it starts.
 test('a debug recording logs each layer cost', async ({ page }) => {
   const cassette = loadCassette('scn-stack-home-article-back');
   await bootDashboard(page, cassette);
@@ -277,13 +277,17 @@ test('a debug recording logs each layer cost', async ({ page }) => {
   for (let i = 0; i < 2; i++) await ptt.sendKey(page, 'ArrowUp');
   await ptt.sendKey(page, 'Enter');
   await articleRead(page);
-  await page.evaluate(() => window.__app.articleGestures.stack.diagArticleLayerCost());
+  await page.evaluate(() => {
+    const stack = window.__app.articleGestures.stack;
+    stack.captureArticle();
+    stack.dropPending();
+  });
   await page.waitForTimeout(300);
   const logged = await page.evaluate(() =>
     window.__app.debugRecorder.events.filter(e => e.tag === 'stack.layerCost').map(e => e.info));
   for (const info of logged) results.push({ label: `recording: ${info.kind}`, ...info, kind: 'recording', layerKind: info.kind });
   const kinds = logged.map(info => info.kind);
-  if (!kinds.includes('home') || !kinds.includes('articleList') || !kinds.includes('article (simulated)')) {
+  if (!kinds.includes('home') || !kinds.includes('articleList') || !kinds.includes('article')) {
     throw new Error('missing layer costs: ' + JSON.stringify(kinds));
   }
 });

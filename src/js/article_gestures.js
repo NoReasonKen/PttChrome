@@ -161,7 +161,11 @@ export class ArticleGestures {
     this._setNativeTouchMove(swipeable);
     const { board, author, title } = articleIdentity(this.core);
     const identity = [board, author, title, this.core.easyReading?._articleKey].join('\n');
-    if (!available || (this.identity && identity !== this.identity)) this.close(true);
+    // A list being swiped or left stays while it can be left: its own paging
+    // redraws the screen meanwhile.
+    const leavingList = (this.track?.level || (this.exitUnderlay && this.exitLevel)) === 'list';
+    const lost = leavingList ? !this._listLeaveable() : !available || (this.identity && identity !== this.identity);
+    if (lost) this.close(true);
     this.identity = identity;
   }
 

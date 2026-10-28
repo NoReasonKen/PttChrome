@@ -1,10 +1,11 @@
-// The page stack of mobile easy reading (#25, #28, #31). A page opened from
-// the shown page is stacked on it, and that page stays alive underneath as a
-// live layer: an article list under its article, the home dashboard or a board
-// list under the board's article list. Back reveals the layer, PTT's real Back
-// is sent through the usual path, and once the owning session has presented the
-// real page and the reader is idle, the real page takes over at the layer's
-// reading position.
+// The page stack of mobile easy reading (#25, #28, #31, #49). A page opened
+// from the shown page is stacked on it, and that page stays alive underneath as
+// a live layer: an article list under its article, the home dashboard or a
+// board list under the board's article list, an article under the results of
+// an article shortcut search started from it. Back reveals the layer, PTT's
+// real Back is sent through the usual path, and once the owning session has
+// presented the real page and the reader is idle, the real page takes over at
+// the layer's reading position.
 //
 // ArticleGestures owns the surfaces that slide away; this module owns the
 // stack, the layers and the handoff.
@@ -17,11 +18,11 @@ import {
 } from './page_stack';
 import { StackListLayer } from './stack_list_layer';
 import { StackHomeLayer } from './stack_home_layer';
+import { StackArticleLayer } from './stack_article_layer';
 import { EMPTY_TOOLBAR_CONTEXT } from './mobile_toolbar';
 import { searchGateFacts } from './article_search';
 import { isSearchResultsFrame } from './search_results_screen';
 import { readSearchResultsContext } from './search_results_context';
-import { renderScreen } from './term_ui';
 
 // Input on a usable layer stays on the layer; nothing reaches the terminal.
 const LOCAL_INPUT = ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'click', 'contextmenu', 'dblclick'];
@@ -56,11 +57,12 @@ export class NavigationStack {
 
   // An entry is about to be opened from the shown page of `kind`, the page
   // that a Back from it may reveal. `ms`: how long the layer took to render.
-  _capture(kind, board, layer, ms) {
+  // `id`: an article's identity.
+  _capture(kind, board, layer, ms, id) {
     this.dropPending();
     if (!layer) return;
     const title = document.querySelector('#mobileAppBar .mobileAppBarTitle')?.textContent || board;
-    this.pending = { kind, board, layer, appBar: this.core._screenContext?.appBar, title };
+    this.pending = { kind, board, id, layer, appBar: this.core._screenContext?.appBar, title };
     this._diagCost(kind, layer.el, ms, this.pending);
   }
 
@@ -85,18 +87,6 @@ export class NavigationStack {
     }, 100);
   }
 
-  // What an article layer would cost where #49 captures one, when an article
-  // shortcut search starts: the shown article rendered once more, then dropped.
-  diagArticleLayerCost() {
-    if (!this.core.debugRecorder?.isRecording) return;
-    const frame = this.core.view.componentScreen?.props;
-    if (!frame?.lines) return;
-    const el = document.createElement('div');
-    const t = performance.now();
-    renderScreen(frame.lines, frame.forceWidth, false, false, el, frame.enhance);
-    this._diagCost('article (simulated)', el, performance.now() - t, null);
-  }
-
   // The legacy caption is also an ordinary list's; it means results only after
   // a verified search on this board.
   _showsSearchResults() {
@@ -114,6 +104,15 @@ export class NavigationStack {
     if (!core.mobile || !board) return this.dropPending();
     const t = performance.now();
     this._capture('articleList', board, StackListLayer.capture(core.view, 'article'), performance.now() - t);
+  }
+
+  // An article shortcut search is about to start from the shown article
+  // (#49): the article stays alive under its results.
+  captureArticle() {
+    const page = this._articlePage();
+    if (!this.core.mobile || !page.id) return this.dropPending();
+    const t = performance.now();
+    this._capture('article', page.board, StackArticleLayer.capture(this.core.view), performance.now() - t, page.id);
   }
 
   // `board` is about to be opened from the shown home dashboard. Its article
@@ -159,9 +158,9 @@ export class NavigationStack {
       return;
     }
     const top = this._top();
-    if (!top || top.kind !== pending.kind || !sameBoard(top.board, pending.board)) {
+    if (!top || top.kind !== pending.kind || !sameBoard(top.board, pending.board) || top.id !== pending.id) {
       this._discard();
-      this.stack = pushPage(createPageStack(), { kind: pending.kind, board: pending.board });
+      this.stack = pushPage(createPageStack(), { kind: pending.kind, board: pending.board, id: pending.id });
     }
     const depth = this.stack.pages.length - 1;
     this.stack = withLayer(this.stack);
@@ -189,11 +188,17 @@ export class NavigationStack {
   }
 
   // An article list is presented outside a handoff. A board opened from the
-  // dashboard or a board list keeps that page as its lower page.
+  // dashboard or a board list keeps that page as its lower page, and the
+  // results of an article shortcut search keep their source article.
   _enterList(board) {
     // An article being opened from this list stays captured.
     if (this.pending?.kind === 'articleList') return;
     const shown = { kind: 'articleList', board, results: this._showsSearchResults() };
+    // The search passes its board's list on the way to the results.
+    if (this.pending?.kind === 'article') {
+      if (shown.results) this._enter(shown, pending => sameBoard(pending.board, board));
+      return;
+    }
     if (this.pending) {
       return this._enter(shown,
         pending => (pending.kind === 'home' || pending.kind === 'boardList') && sameBoard(pending.board, board));
@@ -248,9 +253,10 @@ export class NavigationStack {
 
   _revealed() {
     this.update();
-    // Back from search results follows search return history, and they are not
-    // the list the board was opened with: they reveal nothing (#33).
-    if (this._top()?.kind === 'articleList' && this._showsSearchResults()) return null;
+    // Search results the stack was not told of: their Back follows search
+    // return history, not the page below (#33).
+    const top = this._top();
+    if (top?.kind === 'articleList' && !top.results && this._showsSearchResults()) return null;
     const target = revealTarget(this.stack);
     const lower = target && this.lower[this.stack.pages.length - 2];
     // Fitting a list layer to a changed width renders it again.
@@ -299,7 +305,7 @@ export class NavigationStack {
     const revealed = this._revealed();
     const layer = revealed?.layer || null;
     const h = this.handoff = {
-      layer, target: revealed?.page.kind || (level === 'list' ? null : 'articleList'),
+      layer, target: revealed?.page.kind || (level === 'list' ? null : 'articleList'), id: revealed?.page.id,
       board: this._top()?.board || core.view._articleBoard,
       identity: openArticleKey(core), appBar: revealed?.appBar || null,
       sentAt: performance.now(), presentedAt: null, touches: 0, lastScrollAt: -Infinity,
@@ -358,7 +364,8 @@ export class NavigationStack {
   }
 
   // The owning session presented a real page of `kind`: an article list
-  // (rebuilt, scrolled and positioned), a board list, or the home dashboard.
+  // (rebuilt, scrolled and positioned), a board list, the home dashboard, or an
+  // article reopened by search return history.
   pagePresented(kind) {
     const h = this.handoff;
     const core = this.core;
@@ -366,13 +373,23 @@ export class NavigationStack {
       if (kind === 'articleList' && core.listSession?._boardName) this._enterList(core.listSession._boardName);
       // Back on the dashboard or a board list some other way: what was stacked
       // above it, or captured on the way to a board, no longer holds.
-      else if (kind !== 'articleList') this.clear();
+      else if (kind === 'home' || kind === 'boardList') this.clear();
+      // The search returned to its source without results.
+      else if (kind === 'article') this.dropPending();
       return;
     }
-    if (h.presentedAt != null || (h.target && kind !== h.target)) return;
+    if (h.presentedAt != null) return;
+    // Search return history stopped on the board list instead of the article.
+    if (h.target === 'article' && kind === 'articleList') return this._end('unexpected');
+    if (h.target && kind !== h.target) return;
+    if (kind === 'article' && openArticleKey(core) !== h.id) return this._end('unexpected');
     if (kind === 'articleList' && h.target) {
       if (core.buf.pageState !== 2 || core.listSession?.state !== 'active') return;
-      if (!sameBoard(core.listSession._boardName, h.board)) return this._end('unexpected');
+      // A list that has not read its board yet, as after rebuilt search
+      // results, presents itself again once it has.
+      const board = core.listSession._boardName;
+      if (!board) return;
+      if (!sameBoard(board, h.board)) return this._end('unexpected');
     }
     h.presentedAt = performance.now();
     this._step();
@@ -390,7 +407,12 @@ export class NavigationStack {
       if (pageState === 2 && core.buf.listRenderOwner === OWNER_ARTICLE_LIST) return;
       return this._end('presented');
     }
-    if (h.target === 'articleList') {
+    if (h.target === 'article') {
+      // Search return history reopens the article by its code, through screens
+      // of its own, and presents it.
+      if (core.articleShortcutSearch?.active) return;
+      if (pageState === 3 && openArticleKey(core) === h.id) return;
+    } else if (h.target === 'articleList') {
       if (pageState === 3 && openArticleKey(core) === h.identity) return;
       if (pageState === 2 && readEffectivePrefs().enableEasyReadingList) return;
     } else if (pageState === 1 || pageState === 2) {

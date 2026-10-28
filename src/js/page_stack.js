@@ -30,15 +30,14 @@ export function pageShown(stack, shown) {
   const top = stack.pages[n - 1];
   if (top && samePage(top, shown)) return { stack, kept: n };
   const below = stack.pages[n - 2];
-  const fromList = top?.kind === 'article' && below?.kind === 'articleList' &&
-    sameBoard(top.board, shown.board) && sameBoard(below.board, shown.board);
-  // The article's list, reached without a handoff: the list is the real page
-  // again. Results of an article shortcut search start a new base until the
-  // stack keeps the source article (#49).
-  if (fromList && shown.kind === 'articleList' && !shown.results) {
+  // The lower page, reached without a handoff (its layer was released, or the
+  // reader went back some other way): it is the real page again.
+  if (below && samePage(below, shown)) {
     const pages = [...stack.pages.slice(0, n - 2), { ...below, layer: false }];
     return { stack: { ...stack, pages }, kept: n - 2 };
   }
+  const fromList = top?.kind === 'article' && below?.kind === 'articleList' &&
+    sameBoard(top.board, shown.board) && sameBoard(below.board, shown.board);
   // Another article in place of the current one (the next one, a thread
   // move): the list's layer showed where the first one was opened, but the
   // pages below the list still hold.
@@ -101,12 +100,15 @@ export function boundLayers(stack, bound = LIVE_LAYER_BOUND) {
 }
 
 // The lower page that Back may reveal: it has a live layer and is the page the
-// current one was opened from.
+// current one was opened from. Back from search results follows search return
+// history to the article the search started from (#49); results opened any
+// other way go back to the board's full list, so they reveal nothing.
 export function revealTarget(stack) {
   const n = stack.pages.length;
   if (n < 2) return null;
   const current = stack.pages[n - 1];
   const below = stack.pages[n - 2];
+  if (current.results && below.kind !== 'article') return null;
   return below.layer && sameBoard(below.board, current.board) ? below : null;
 }
 

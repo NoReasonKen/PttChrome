@@ -8,7 +8,7 @@ const {
 } = require('../helpers/article_shortcut_search');
 const { loadCassette, waitScreenSettled } = require('../helpers/replay');
 const {
-  MAIN, dashboardVisible, bootDashboard, boardOpened, holdLeaves, heldLeaves, releaseLeave, articleRead,
+  MAIN, dashboardVisible, bootDashboard, boardOpened, holdLeaves, heldLeaves, releaseLeave, sentLeaves, articleRead,
   watchReveals, revealedSinceWatch
 } = require('../helpers/stack_routes');
 
@@ -42,7 +42,7 @@ async function openAlphaFromDashboard(page) {
   await waitArticle(page, 'Alpha');
 }
 
-test('Back from an article reopened by search return reveals nothing from before the search', async ({ page }) => {
+test('Back from an article reopened by search return reveals its list, not the dashboard below it', async ({ page }) => {
   await openAlphaFromDashboard(page);
   await tapShortcut(page, 'author');
   await waitList(page, RESULTS);
@@ -52,12 +52,16 @@ test('Back from an article reopened by search return reveals nothing from before
   await waitList(page, RESULTS);
   await pressBack(page);
   await waitArticle(page, 'Alpha');
-  // Alpha was reopened by its code: the dashboard below the board's list is
-  // not where Back from it goes.
-  await watchReveals(page);
+  await expect(page.locator('[data-stack-layer]')).toHaveCount(0, { timeout: 10000 });
+  await articleRead(page);
+  // Alpha stayed alive under its results and was reopened by its code (#49):
+  // Back from it reveals the list it was opened from, and only that list.
+  await holdLeaves(page);
   await pressBack(page);
+  await expect.poll(() => heldLeaves(page)).toBe(1);
+  expect(await sentLeaves(page)).toEqual([['articleList']]);
+  await releaseLeave(page);
   await waitList(page, BOARD);
-  expect(await revealedSinceWatch(page)).toBe(false);
   expect(await page.evaluate(() => window.__app.homeDashboard.state.visible)).toBe(false);
 });
 

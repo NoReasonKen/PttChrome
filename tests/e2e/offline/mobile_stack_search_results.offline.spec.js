@@ -1,7 +1,8 @@
 // Search results stack like any article list (#33): leaving an article opened
 // from results reveals the results at once, with the same handoff. Back from
-// the results still follows search return history, and results reconstructed
-// after a reconnect start a new stack. The controlled PTT board is
+// the results follows search return history and reveals the source article
+// (#49, mobile_stack_search_source), and results reconstructed after a
+// reconnect start a new stack. The controlled PTT board is
 // helpers/article_shortcut_search.js; the app, touch input and Back are real.
 const { test, expect } = require('@playwright/test');
 const {
@@ -71,15 +72,17 @@ test('swiping out of an article opened from search results never shows the artic
   expect(frames.some(f => f.underlay && f.left >= page.viewportSize().width - 5)).toBe(true);
 });
 
-test('Back from the revealed results still returns to the article the search started from', async ({ page }) => {
+test('Back from the revealed results reveals the article the search started from, though nothing is below it', async ({ page }) => {
   const position = await openFromAuthorResults(page);
   await nativeBack(page);
   await waitList(page, RESULTS);
+  await expect(page.locator(LAYER)).toHaveCount(0, { timeout: 10000 });
   await watchReveals(page);
   await nativeBack(page);
   await waitArticle(page, 'Alpha');
   await expect.poll(() => topLine(page)).toBe(position);
-  expect(await revealedSinceWatch(page)).toBe(false);
+  expect(await revealedSinceWatch(page)).toBe(true);
+  await expect(page.locator('[data-stack-layer]')).toHaveCount(0, { timeout: 10000 });
 });
 
 test('results reconstructed after a reconnect stack the articles opened from them', async ({ page }) => {
