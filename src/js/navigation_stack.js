@@ -293,14 +293,14 @@ export class NavigationStack {
     return !!this.handoff;
   }
 
-  // A Back made during the handoff runs after the swap (#34). It replaces a
-  // remembered tap: the reader's last choice wins.
+  // A Back made during the handoff runs after the swap (#34), when a page is
+  // left to unwind. It replaces a remembered tap either way: the reader's last
+  // choice wins.
   queueBack() {
     const h = this.handoff;
     if (!h) return false;
-    const before = this.stack;
     this.stack = queueBack(this.stack);
-    if (this.stack !== before) h.tap = null;
+    h.tap = null;
     return true;
   }
 

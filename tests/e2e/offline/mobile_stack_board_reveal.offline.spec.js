@@ -129,6 +129,18 @@ test('a board tapped on the revealed dashboard opens after the swap', async ({ p
   await expect.poll(async () => (await sentSince(page, before)).join('')).toContain('s');
 });
 
+test('a Back after a tap on the revealed dashboard replaces the tap, though nothing is below it', async ({ page }) => {
+  const release = await revealDashboard(page);
+  const before = await sentCount(page);
+  await page.locator(`${HOME_LAYER} [data-home-board="Fav2"]`).tap();
+  await ptt.sendKey(page, 'ArrowLeft');
+  await release();
+  await dashboardVisible(page);
+  await expect(page.locator(HOME_LAYER)).toHaveCount(0, { timeout: 10000 });
+  await nextFrames(page, 10);
+  expect((await sentSince(page, before)).join('')).not.toContain('s');
+});
+
 // Tap Fav2 on the revealed dashboard; once the real one is shown (a finger
 // holds the swap), change it with `alter`, then swap.
 async function tapRevealedThen(page, alter) {
