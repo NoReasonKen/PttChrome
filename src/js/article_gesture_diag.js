@@ -1,6 +1,9 @@
 // What a debug recording keeps of the article drawer's input (#11): each
 // contact and click it met, so a tap that does nothing on a device can be
-// traced, with the drawer's state at the time.
+// traced, with the drawer's state at the time, and each contact that started
+// no swipe, with what decided it.
+import { readEffectivePrefs } from './pref_storage';
+import { serializedOpHint } from './serialized_op_gate';
 
 // What a debug recording names an event's target by.
 function diagTarget(target) {
@@ -30,6 +33,8 @@ export class DrawerDiagnostics {
       listen(window, type, event => {
         if (type === 'touchstart' && event.touches.length === 1) contact = { uncancelable: false, scrolled: false };
         if (drawerInput()) this.log(type, event);
+        else if (type === 'pointerdown' && event.pointerType === 'touch' && event.isPrimary && g.core.debugRecorder?.isRecording)
+          this.log('noSwipe', event, this._swipeGates());
       }, true);
     }
     // Native scrolling that took the contact over leaves later moves
@@ -44,6 +49,20 @@ export class DrawerDiagnostics {
       contact.scrolled = true;
       this.log('scroll', event);
     }, { capture: true, passive: true });
+  }
+
+  // What decides whether a contact starts a swipe, for one that did not.
+  _swipeGates() {
+    const g = this.gestures;
+    const core = g.core;
+    const ls = core.listSession;
+    return {
+      pref: !!readEffectivePrefs().articleHorizontalGestures, pageState: core.buf.pageState,
+      article: g.available(), list: g._listLeaveable(), listCards: !!core.view.listCards,
+      owner: core.buf.listRenderOwner || null, listState: ls?.state || null, renderMode: ls?._renderMode || null,
+      busy: !!serializedOpHint(core), modal: g._otherModalOpen(), entry: g.entry?.state || null,
+      handingOff: !!g.stack.handingOff, surfaceClass: core.view.mainDisplay.classList.contains('articleHorizontalGestures')
+    };
   }
 
   log(name, event, info) {
