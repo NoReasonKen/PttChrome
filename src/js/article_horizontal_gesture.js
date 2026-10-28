@@ -6,7 +6,9 @@ export const ARTICLE_LONG_PRESS_MS = 450;
 export const ARTICLE_SETTLE_MS = 180;
 
 export class ArticleHorizontalGesture {
-  constructor({ width, opened, x, y, t, allowExit = false }) {
+  // `allowOpen` is false where there is no drawer: a left swipe then owns the
+  // contact without an operation.
+  constructor({ width, opened, x, y, t, allowExit = false, allowOpen = true }) {
     this.width = width;
     this.opened = opened;
     this.start = { x, y, t };
@@ -15,6 +17,7 @@ export class ArticleHorizontalGesture {
     this.operation = null;
     this.distance = 0;
     this.allowExit = allowExit;
+    this.allowOpen = allowOpen;
   }
 
   move(x, y, t) {
@@ -25,7 +28,9 @@ export class ArticleHorizontalGesture {
       else if (Math.max(Math.abs(dx), Math.abs(dy)) >= ARTICLE_GESTURE_SLOP) {
         this.axis = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
         if (this.axis === 'horizontal') {
-          this.operation = this.opened ? 'close' : dx < 0 ? 'open' : this.allowExit ? 'exit' : null;
+          if (this.opened) this.operation = 'close';
+          else if (dx < 0) this.operation = this.allowOpen ? 'open' : null;
+          else this.operation = this.allowExit ? 'exit' : null;
         }
       }
     }

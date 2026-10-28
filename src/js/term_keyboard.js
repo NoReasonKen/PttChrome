@@ -149,6 +149,9 @@ export function altRemapCharCode(e) {
   return null;
 }
 
+// A plain ← is a Back, from the keyboard, the toolbar or system Back.
+export const isPlainBack = e => e.key === 'ArrowLeft' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey;
+
 // 「這個 keydown 是不是一次『Alt 當 Ctrl』的送鍵？」——**四個消費端唯一的判準**：
 //   1. TermKeyboard._onKeyDown 的 alt 分支（真正送 byte 的地方）
 //   2. list_session.onKeyDown / board_list_session.onKeyDown 的早期攔截

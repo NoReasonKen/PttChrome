@@ -85,4 +85,13 @@ describe('article horizontal gesture release', () => {
     expect(gesture.release(320).exit).toBe(false);
     expect(gesture.release(700, true)).toEqual({ opened: false, exit: false });
   });
+
+  it('owns a left swipe without a drawer, opening nothing, and still retracts on a right swipe', () => {
+    const left = new ArticleHorizontalGesture({ width: 400, opened: false, allowExit: true, allowOpen: false, x: 350, y: 200, t: 0 });
+    expect(left.move(100, 200, 50)).toMatchObject({ axis: 'horizontal', operation: null, reveal: 0 });
+    expect(left.release(50)).toEqual({ opened: false, exit: false });
+    const right = new ArticleHorizontalGesture({ width: 400, opened: false, allowExit: true, allowOpen: false, x: 20, y: 200, t: 0 });
+    expect(right.move(250, 200, 50).operation).toBe('exit');
+    expect(right.release(700)).toEqual({ opened: false, exit: true });
+  });
 });

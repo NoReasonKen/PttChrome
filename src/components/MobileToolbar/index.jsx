@@ -441,7 +441,11 @@ export const MobileToolbar = ({
           IconKeyboard,
           i18n("mobileToolbar_keys"),
           () => togglePanel("keys"),
-          { active: panel === "keys", expanded: panel === "keys" },
+          {
+            active: panel === "keys",
+            expanded: panel === "keys",
+            disabled: !!context.locked,
+          },
         );
       case "more":
         return navBtn(
@@ -449,7 +453,11 @@ export const MobileToolbar = ({
           IconDots,
           i18n("mobileToolbar_more"),
           () => togglePanel("more"),
-          { active: panel === "more", expanded: panel === "more" },
+          {
+            active: panel === "more",
+            expanded: panel === "more",
+            disabled: !!context.locked,
+          },
         );
       default:
         // 這個畫面沒有這一格的動作：佔位，寬度照算，旁邊的按鈕才不會挪位置。

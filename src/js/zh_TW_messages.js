@@ -1415,8 +1415,11 @@
     "message": "文章左右滑動手勢"
   },
   "tooltip_articleHorizontalGestures": {
-    "message": "手機文章好讀模式中，向左滑可拉出文章捷徑。保留一般上下捲動、點擊與長按操作。"
+    "message": "手機好讀模式中，在文章向左滑可拉出文章捷徑；在文章或文章列表向右滑可返回。保留一般上下捲動、點擊與長按操作。"
   },
+  "stack_articleGone": { "message": "這篇文章已經不在列表中" },
+  "stack_boardGone": { "message": "這個看板已經不在列表中" },
+  "stack_handoffTimeout": { "message": "返回列表逾時，已停在 PTT 目前的畫面" },
   "articleShortcutDrawer_title": {
     "message": "文章捷徑"
   },

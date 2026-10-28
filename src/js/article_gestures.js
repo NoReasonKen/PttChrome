@@ -2,9 +2,16 @@ import { readEffectivePrefs } from './pref_storage';
 import { mobileToolbarContext } from './mobile_toolbar';
 import { i18n } from './i18n';
 import { serializedOpHint } from './serialized_op_gate';
-import { ArticleHorizontalGesture, ARTICLE_SETTLE_MS } from './article_horizontal_gesture';
-import { ArticleExitPreview } from './article_exit_preview';
+import { ArticleHorizontalGesture, ARTICLE_GESTURE_SLOP } from './article_horizontal_gesture';
+import { NavigationStack } from './navigation_stack';
+import { PAGE } from './page_stack';
+import { StackEntry } from './stack_entry';
+import { createUnderlay, holdSurfaces, releaseSurfaces, paintSurfaces, slideDuration } from './stack_motion';
+import { STACK_NOTICE_MS } from './stack_layer';
+import { OWNER_ARTICLE_LIST, OWNER_BOARD_LIST } from './list_render_owner';
 import { recordFor } from './reading_record';
+import { isPlainBack } from './term_keyboard';
+import { DrawerDiagnostics } from './article_gesture_diag';
 import { articleIdentity } from './article_shortcut_search';
 import '../css/article_gestures.css';
 
@@ -23,8 +30,6 @@ const DRAWER_WIDTH = 0.75;
 const DRAWER_HEIGHT = 0.6;
 const DRAWER_TOP = (1 - DRAWER_HEIGHT) / 2;
 
-const settleDuration = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ARTICLE_SETTLE_MS;
-
 // Own the contact outside the portal so mounting/focus changes cannot lose it.
 // Article exit and search shortcuts extend this owner rather than add listeners.
 export class ArticleGestures {
@@ -37,8 +42,13 @@ export class ArticleGestures {
     this.frame = null;
     this.timer = null;
     this.suppressClickUntil = 0;
+    this.tap = null;
+    this.entry = null;
+    // Backs made during a committed exit slide, before its handoff starts;
+    // null while no exit is committing.
+    this.backsDuringSlide = null;
     this.listeners = [];
-    this.exitPreview = new ArticleExitPreview(core);
+    this.stack = new NavigationStack(core);
     this._listen(window, 'pointerdown', event => this._start(event), true);
     this._listen(window, 'pointermove', event => this._move(event), { capture: true, passive: false });
     this._nativeTouchMove = event => {
@@ -49,12 +59,16 @@ export class ArticleGestures {
     this._listen(window, 'pointerup', event => this._end(event), true);
     this._listen(window, 'pointercancel', event => this._end(event, true), true);
     this._listen(window, 'click', event => {
-      if (performance.now() < this.suppressClickUntil) this._consume(event);
+      if (performance.now() >= this.suppressClickUntil) return;
+      this._consume(event);
+      this.diag.log('clickSuppressed', event);
     }, true);
     this._listen(window, 'contextmenu', event => {
       if (this.track?.gesture.operation || this.opened) this._consume(event);
     }, true);
     this._listen(window, 'keydown', event => this._key(event), true);
+    this.diag = new DrawerDiagnostics(this);
+    this.diag.listen((target, type, listener, options) => this._listen(target, type, listener, options));
     this._listen(window, 'resize', () => this._resize());
     if (window.visualViewport) this._listen(window.visualViewport, 'resize', () => this._resize());
     this._refresh = () => this.update();
@@ -77,14 +91,31 @@ export class ArticleGestures {
       !core.buf.easyReadingFunctionMode && mobileToolbarContext(core).threadNav);
   }
 
+  // An easy-reading article list swipes right to go back (#32), under the
+  // same preference; it has no drawer.
+  listSwipeAvailable() {
+    return !!(readEffectivePrefs().articleHorizontalGestures && this.core.buf.pageState === 2 && this._listLeaveable());
+  }
+
+  // The kind of page a contact starting now would swipe, or null.
+  _swipeLevel() {
+    return this.available() ? PAGE.ARTICLE : this.listSwipeAvailable() ? PAGE.ARTICLE_LIST : null;
+  }
+
   update() {
-    this.exitPreview.update();
+    this.stack.update();
     const available = this.available();
-    this.core.view.mainDisplay.classList.toggle('articleHorizontalGestures', available);
-    this._setNativeTouchMove(available);
+    const swipeable = available || this.listSwipeAvailable();
+    this.core.view.mainDisplay.classList.toggle('articleHorizontalGestures', swipeable);
+    this._setNativeTouchMove(swipeable);
     const { board, author, title } = articleIdentity(this.core);
     const identity = [board, author, title, this.core.easyReading?._articleKey].join('\n');
-    if (!available || (this.identity && identity !== this.identity)) this.close(true);
+    // A list being swiped or left stays while it can be left: its own paging
+    // redraws the screen meanwhile.
+    const leaving = this.track?.level || (this.exitUnderlay && this.exitLevel);
+    const lost = leaving && leaving !== PAGE.ARTICLE ? !this._leaveable(leaving) :
+      !available || (this.identity && identity !== this.identity);
+    if (lost) this.close(true);
     this.identity = identity;
   }
 
@@ -99,11 +130,16 @@ export class ArticleGestures {
   _start(event) {
     if (event.isPrimary) this.suppressClickUntil = 0;
     if (event.pointerType !== 'touch') return;
+    // A revealed list owns its input until the real list takes over, and a page
+    // sliding in is not there until PTT has answered.
+    this.entry?.land();
+    if (this.stack.handingOff || this.entry) return;
     if (this.track) {
       this._cancel();
       return;
     }
-    if (!event.isPrimary || !this.available() || this._otherModalOpen()) return;
+    const level = this._swipeLevel();
+    if (!event.isPrimary || !level || this._otherModalOpen()) return;
     if (this.settling) {
       if (!this.opened || !this.root) return;
       // A fresh contact is intentional input, unlike the opening drag's release.
@@ -115,19 +151,23 @@ export class ArticleGestures {
     const width = window.innerWidth;
     this.track = {
       id: event.pointerId,
-      gesture: new ArticleHorizontalGesture({ width, opened: this.opened, allowExit: true, x: event.clientX, y: event.clientY, t: event.timeStamp })
+      level,
+      gesture: new ArticleHorizontalGesture({
+        width, opened: this.opened, allowExit: true, allowOpen: level === PAGE.ARTICLE, x: event.clientX, y: event.clientY, t: event.timeStamp
+      })
     };
   }
 
   _move(event) {
     const track = this.track;
     if (!track || event.pointerId !== track.id) return;
-    if (!this.available() || this._otherModalOpen()) return this._cancel();
+    if (this._swipeLevel() !== track.level || this._otherModalOpen()) return this._cancel();
     const snapshot = track.gesture.move(event.clientX, event.clientY, event.timeStamp);
     if (this.opened || snapshot.operation) {
       this._consume(event);
       if (snapshot.operation) {
         if (snapshot.operation === 'exit') {
+          this.exitLevel = track.level;
           this._ensureExit();
           this.exitDistance = snapshot.distance;
           if (!this.frame) this.frame = requestAnimationFrame(() => {
@@ -196,42 +236,111 @@ export class ArticleGestures {
     event.stopImmediatePropagation();
   }
 
-  captureListPreview() {
-    if (readEffectivePrefs().articleHorizontalGestures) this.exitPreview.capture();
-    else this.exitPreview.clear();
+  // A session opens an entry from the shown page, enters it, or abandons the
+  // open: the shown page is kept, bound or dropped as the lower page.
+  captureListLayer() {
+    this.stack.captureList();
+    this._beginEntry();
   }
 
-  bindListPreview() {
-    this.exitPreview.enterArticle();
+  captureHomeLayer(board) {
+    this.stack.captureHome(board);
+    this._beginEntry();
   }
 
-  clearListPreview() {
-    this.exitPreview.clear();
+  captureBoardListLayer(board) {
+    this.stack.captureBoardList(board);
+    this._beginEntry();
+  }
+
+  // An article shortcut search keeps its source article alive under the
+  // results (#49); it slides nothing in.
+  captureArticleLayer() {
+    this.stack.captureArticle();
+  }
+
+  // The toolbar of a page only revealed so far, or null.
+  toolbarContext() {
+    return this.stack.toolbarContext();
+  }
+
+  bindListLayer() {
+    this.stack.enterArticle();
+    this.entry?.answered();
+  }
+
+  dropPendingLayer() {
+    if (this.entry?.loading) this.entry.failed(this.stack.takePending());
+    else this.stack.dropPending();
+  }
+
+  // Opening an entry from the shown page slides the new page in over it (#36).
+  _beginEntry() {
+    this.entry?.end();
+    const from = this.stack.pending;
+    if (!from?.layer || this.exitUnderlay || this.stack.handingOff) return;
+    this.entry = new StackEntry(this.core, from, entry => {
+      if (this.entry === entry) this.entry = null;
+    });
+  }
+
+  // A leave is on its way to PTT, from the committed slide on: other input
+  // waits for the swap.
+  holdsInput() {
+    return (this.stack.handingOff || this.backsDuringSlide != null) && !this.sendingBack;
+  }
+
+  // A Back made meanwhile unwinds further after the swap (#34).
+  queueBack() {
+    if (!this.stack.queueBack() && this.backsDuringSlide != null) this.backsDuringSlide++;
+  }
+
+  // A session presented a real page: an article list, a board list or the
+  // home dashboard. `another`: a board list other than the one shown before.
+  pagePresented(kind, { another = false } = {}) {
+    if (this.entry?.loading && kind === this.entry.from) {
+      // A board list opened from a board list's row, such as a class group,
+      // stacks over it like a board.
+      if (kind === PAGE.BOARD_LIST && another) {
+        this.stack.enterBoardList();
+        return this.entry.answered();
+      }
+      // The page an open came from, presented again: nothing was entered.
+      this.dropPendingLayer();
+    }
+    this.stack.pagePresented(kind);
+    this.entry?.answered();
+  }
+
+  // Back from an article, an article list or a board list opened from a board
+  // list (←, system Back, the toolbar) reveals the lower page the same way the
+  // article swipe does. Returns true when it took the key.
+  handleBack(event) {
+    if (!isPlainBack(event)) return false;
+    this.entry?.land();
+    if (this.sendingBack || this.stack.handingOff || this.entry || this.track || this.exitUnderlay || this.root) return false;
+    const core = this.core;
+    if (this._otherModalOpen()) return false;
+    const level = [PAGE.ARTICLE, PAGE.ARTICLE_LIST, PAGE.BOARD_LIST].find(level => this._leaveable(level));
+    if (!level || core.buf.pageState !== (level === PAGE.ARTICLE ? 3 : 2) || !this.stack.revealable()) return false;
+    this.exitLevel = level;
+    this._ensureExit();
+    this._settleExit(true);
+    return true;
   }
 
   _ensureExit() {
     if (this.exitUnderlay) return;
-    this.exitUnderlay = document.createElement('div');
-    this.exitUnderlay.className = 'articleExitUnderlay';
+    const layer = this.stack.revealable();
+    this.exitUnderlay = createUnderlay(this.core, layer, this.stack.title);
     this.exitUnderlay.setAttribute('data-article-exit-underlay', '');
-    this.exitUnderlay.setAttribute('aria-hidden', 'true');
-    this.exitUnderlay.inert = true;
-    this.exitUnderlay.dataset.preview = this.exitPreview.appendTo(this.exitUnderlay) ? 'list' : 'fallback';
-    const toolbar = document.getElementById('mobileToolbar');
-    this.exitUnderlay.style.height = (toolbar?.getBoundingClientRect().top ?? window.innerHeight) + 'px';
-    this.core.view.mainDisplay.parentNode.appendChild(this.exitUnderlay);
-    this.exitSurfaces = [this.core.view.mainDisplay, document.getElementById('mobileAppBar')].filter(Boolean).map(node => ({
-      node, translate: node.style.translate, transition: node.style.transition, zIndex: node.style.zIndex
-    }));
-    for (const { node } of this.exitSurfaces) {
-      node.classList.add('articleExitMoving');
-      node.style.zIndex = '152';
-    }
+    this.exitUnderlay.dataset.preview = layer ? 'layer' : 'fallback';
+    this.exitSurfaces = holdSurfaces(this.core);
     this.core.setModalOpen(MODAL_SOURCE, true);
   }
 
   _paintExit(distance) {
-    for (const { node } of this.exitSurfaces || []) node.style.translate = `${distance}px 0`;
+    paintSurfaces(this.exitSurfaces || [], distance);
   }
 
   _settleExit(commit) {
@@ -239,35 +348,86 @@ export class ArticleGestures {
     this._stopMotion();
     this.settling = true;
     const identity = this.identity;
-    const duration = settleDuration();
+    const duration = slideDuration();
+    this.backsDuringSlide = commit ? 0 : null;
     for (const { node } of this.exitSurfaces) node.style.transition = `translate ${duration}ms ease-out`;
     this._paintExit(commit ? window.innerWidth : 0);
     this.timer = setTimeout(() => {
-      const valid = commit && this.available() && identity === this.identity;
-      this._removeExit();
-      if (valid) {
-        const record = recordFor(this.core);
-        const bookmark = record.begin('article-swipe-exit');
-        this.core.noteUserAction();
+      this.timer = null;
+      const backsDuringSlide = this.backsDuringSlide || 0;
+      this.backsDuringSlide = null;
+      const valid = commit && this._leaveable(this.exitLevel) && identity === this.identity;
+      if (valid) this._handoff(backsDuringSlide);
+      else this._removeExit();
+    }, duration);
+  }
+
+  // The article stays off screen over the revealed list, or the dark fallback,
+  // until the real list is presented (#20, #28). `backsDuringSlide` made during the
+  // slide are queued once the handoff is under way.
+  _handoff(backsDuringSlide) {
+    const core = this.core;
+    const sent = this.stack.begin({
+      level: this.exitLevel,
+      send: () => {
+        const record = recordFor(core);
+        const bookmark = record.begin(this.exitLevel === PAGE.ARTICLE ? 'article-swipe-exit' : 'list-back-reveal');
+        core.noteUserAction();
+        // The exit surfaces hold the modal gate; release it only for the send.
+        core.setModalOpen(MODAL_SOURCE, false);
+        this.sendingBack = true;
         let sent = false;
         try {
-          sent = this.core.sendNavKeyAsUser('ArrowLeft');
+          sent = core.sendNavKeyAsUser('ArrowLeft');
         } finally {
+          this.sendingBack = false;
           record.end(bookmark, sent ? 'done' : 'cancel');
+          if (sent) core.setModalOpen(MODAL_SOURCE, true);
         }
-      }
-    }, duration);
+        return sent;
+      },
+      finish: () => this._removeExit(),
+      cancel: () => this._settleExit(false),
+      hint: () => core.view.flashListHint?.(i18n('stack_handoffTimeout'), STACK_NOTICE_MS)
+    });
+    for (let i = 0; sent && i < backsDuringSlide; i++) this.stack.queueBack();
+  }
+
+  // The current page can be left now, by any Back.
+  // Whether a page of kind `level` is shown and can be left.
+  _leaveable(level) {
+    if (level === PAGE.ARTICLE) return this._articleLeaveable();
+    return level === PAGE.ARTICLE_LIST ? this._listLeaveable() : this._boardListLeaveable();
+  }
+
+  _articleLeaveable() {
+    const core = this.core;
+    return !!(core.mobile && core.conn?.isConnected && core.view.useEasyReadingMode && core.buf.startedEasyReading &&
+      !core.buf.easyReadingFunctionMode && !serializedOpHint(core));
+  }
+
+  // An easy-reading article list showing its cards, idle.
+  _listLeaveable() {
+    const core = this.core;
+    const ls = core.listSession;
+    return !!(core.mobile && core.conn?.isConnected && core.view.listCards && core.buf.listRenderOwner === OWNER_ARTICLE_LIST &&
+      ls?.state === 'active' && ls._renderMode === 'buffer' && !serializedOpHint(core));
+  }
+
+  // A smooth-scrolling board list showing its cards, idle.
+  _boardListLeaveable() {
+    const core = this.core;
+    const bs = core.boardListSession;
+    return !!(core.mobile && core.conn?.isConnected && core.buf.listRenderOwner === OWNER_BOARD_LIST &&
+      bs?.state === 'active' && bs._renderMode === 'buffer' && !serializedOpHint(core));
   }
 
   _removeExit() {
     if (!this.exitUnderlay) return;
     this._stopMotion();
-    for (const surface of this.exitSurfaces) {
-      surface.node.style.translate = surface.translate;
-      surface.node.style.transition = surface.transition;
-      surface.node.style.zIndex = surface.zIndex;
-      surface.node.classList.remove('articleExitMoving');
-    }
+    this.backsDuringSlide = null;
+    if (!this.stack.handingOff) this.stack.revealable()?.hide();
+    releaseSurfaces(this.exitSurfaces);
     this.exitUnderlay.remove();
     this.exitUnderlay = this.exitSurfaces = null;
     this.settling = false;
@@ -287,6 +447,25 @@ export class ArticleGestures {
         this.close();
       }
     });
+    // A tap acts when the finger lifts: on Android, a tap that stops native
+    // momentum left by the opening drag gets no click. A click that still
+    // follows is suppressed; keyboard activation keeps the click handlers.
+    this.root.addEventListener('pointerdown', event => {
+      this.tap = event.pointerType === 'mouse' ? null : { id: event.pointerId, x: event.clientX, y: event.clientY, target: event.target };
+    });
+    this.root.addEventListener('pointerup', event => {
+      const tap = this.tap;
+      this.tap = null;
+      if (!tap || tap.id !== event.pointerId) return;
+      if (Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > ARTICLE_GESTURE_SLOP) return;
+      const button = tap.target.closest?.('[data-article-shortcut]');
+      if (button ? !button.contains(event.target) : tap.target !== this.root || event.target !== this.root || this.settling) return;
+      this._consume(event);
+      this.suppressClickUntil = performance.now() + 400;
+      this.diag.log('tapUp', event, { action: button?.getAttribute('data-article-shortcut') || null });
+      if (button) this._runShortcut(ACTIONS.find(action => action.key === button.getAttribute('data-article-shortcut')));
+      else this.close();
+    });
     this.panel = document.createElement('div');
     this.panel.className = 'articleShortcutDrawer';
     this.panel.setAttribute('role', 'dialog');
@@ -301,12 +480,8 @@ export class ArticleGestures {
       button.textContent = i18n(action.label);
       button.addEventListener('click', event => {
         this._consume(event);
-        if (!this.opened || this.settling || !this.available()) return;
-        this.close(true);
-        if (!mobileToolbarContext(this.core).threadNav) return;
-        this.core.noteUserAction();
-        if (action.key === 'author' || action.key === 'thread') this.core.articleShortcutSearch.start(action.key);
-        else this.core.view.sendKeyAsUser(action.key);
+        this.diag.log('shortcutClick', event, { action: action.key });
+        this._runShortcut(action);
       });
       this.panel.appendChild(button);
     }
@@ -315,6 +490,16 @@ export class ArticleGestures {
     this._geometry();
     this._paint(0);
     this.unregisterDismiss = this.core.registerSheetDismiss(() => this.close());
+  }
+
+  _runShortcut(action) {
+    const gate = !this.opened ? 'closed' : this.settling ? 'settling' : !this.available() ? 'unavailable' : null;
+    if (gate) return this.diag.log('shortcutRefused', null, { action: action.key, gate });
+    this.close(true);
+    if (!mobileToolbarContext(this.core).threadNav) return;
+    this.core.noteUserAction();
+    if (action.key === 'author' || action.key === 'thread') this.core.articleShortcutSearch.start(action.key);
+    else this.core.view.sendKeyAsUser(action.key);
   }
 
   _geometry() {
@@ -341,10 +526,11 @@ export class ArticleGestures {
     this.opened = opened;
     this.settling = true;
     this.root.dataset.state = opened ? 'opening' : 'closing';
+    this.diag.log('settle', null, { to: this.root.dataset.state });
     // Keep opening buttons as touch targets; their click handlers remain gated
     // until settling finishes or a fresh contact completes it early.
     this.panel.inert = !opened;
-    const duration = settleDuration();
+    const duration = slideDuration();
     this.panel.style.transition = `transform ${duration}ms ease-out`;
     this._paint(opened ? window.innerWidth * DRAWER_WIDTH : 0);
     this.timer = setTimeout(() => this._finishDrawerSettle(opened), duration);
@@ -356,6 +542,7 @@ export class ArticleGestures {
     if (!opened) this._remove();
     else {
       this.root.dataset.state = 'open';
+      this.diag.log('settle', null, { to: 'open' });
       this.panel.style.transition = '';
       this.panel.inert = false;
       this.panel.querySelector('button').focus({ preventScroll: true });
@@ -379,13 +566,15 @@ export class ArticleGestures {
 
   close(immediate = false) {
     this.track = null;
+    // Leaving the article is what a handoff expects; it ends on its own.
+    if (this.stack.handingOff) return;
     if (this.exitUnderlay) return this._removeExit();
     if (immediate) this._remove();
     else this._settle(false);
   }
 
-  // A captured list preview survives resizing; it checks whether it still
-  // matches the viewport when an exit drag shows it.
+  // Kept layers survive resizing: a revealed layer re-renders at the new
+  // width when it is shown (fitViewport).
   _resize() {
     if (this.track || this.exitUnderlay) this.close(true);
     else if (this.root) {
@@ -408,10 +597,18 @@ export class ArticleGestures {
     }
   }
 
+  disconnected() {
+    this.close(true);
+    // The page underneath goes with the connection.
+    this.entry?.end();
+    this.stack.disconnected();
+  }
+
   destroy() {
     this._setNativeTouchMove(false);
     this.close(true);
-    this.exitPreview.clear();
+    this.entry?.end();
+    this.stack.clear();
     this.listeners.forEach(remove => remove());
     this.core.buf.removeEventListener('viewUpdate', this._refresh);
     this.core.buf.removeEventListener('screenSettled', this._refresh);

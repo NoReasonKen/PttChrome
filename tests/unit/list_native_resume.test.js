@@ -223,6 +223,14 @@ describe("靜置探針：什麼時候才准回好讀", () => {
     expect(h.s.state).toBe("active");
   });
 
+  test("牆鐘往回跳（NTP 校時）不得拉長靜置等待：照單調時鐘滿 250ms 就回", () => {
+    const h = parkedInNative(makeSession());
+    h.s.noteNativeInput();
+    vi.setSystemTime(Date.now() - 7000); // Date 倒退，performance.now() 照走
+    vi.advanceTimersByTime(300);
+    expect(h.s.state).toBe("active");
+  });
+
   test("畫面不是 clean-list（子畫面／編輯器）→ 不回復", () => {
     const h = parkedInNative(makeSession());
     h.screen.rows = new Array(24).fill("說明畫面"); // 不是列表

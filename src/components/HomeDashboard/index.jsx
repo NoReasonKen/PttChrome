@@ -47,7 +47,9 @@ function Button({ className, onClick, children, ...rest }) {
   );
 }
 
-export const HomeDashboard = ({ pttchrome }) => {
+// `layer`: a second render kept under an article list entered from it (#31).
+// It is not the dashboard the app talks to: no id, no root registration.
+export const HomeDashboard = ({ pttchrome, layer = false }) => {
   const home = pttchrome && pttchrome.homeDashboard;
   const [state, setState] = useState(() => (home ? home.state : null));
   const [mobile, setMobile] = useState(() => !!(pttchrome && pttchrome.mobile));
@@ -65,20 +67,21 @@ export const HomeDashboard = ({ pttchrome }) => {
 
   // The controller finds the dashboard through this registration, never by id.
   useLayoutEffect(() => {
-    if (!home || typeof home.attachRoot !== "function") return undefined;
+    if (layer || !home || typeof home.attachRoot !== "function") return undefined;
     const el = rootRef.current;
     home.attachRoot(el);
     return () => home.detachRoot(el);
-  }, [home, state && state.visible]);
+  }, [home, layer, state && state.visible]);
 
   useLayoutEffect(() => {
     if (
+      !layer &&
       rootRef.current &&
       home &&
       typeof home.applyPendingViewport === "function"
     )
       home.applyPendingViewport(rootRef.current);
-  }, [home, state]);
+  }, [home, layer, state]);
 
   if (!state || !state.visible) return null;
   const boards = state.boards;
@@ -124,7 +127,7 @@ export const HomeDashboard = ({ pttchrome }) => {
 
   return (
     <div
-      id={HOME_DASHBOARD_ID}
+      id={layer ? undefined : HOME_DASHBOARD_ID}
       ref={rootRef}
       className="homeDashboard"
       data-mobile={mobile ? "" : undefined}

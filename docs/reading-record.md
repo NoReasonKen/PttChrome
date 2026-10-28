@@ -67,7 +67,8 @@ do not count as reader input. See `src/js/scroll_restore_follow.js` and
 | `home-mail` 首頁開信箱 | 首頁：原處（從信箱回到首頁時） | 首頁：原處 |
 | `split-open` 雙欄閱讀點左欄換文 | 不還原（目的地就是結果） | 不還原：取消＝零送出；失敗停在 PTT 給的畫面（原文已離開） |
 | `next-article` 好讀文末點下一篇標題卡 | 不還原（目的地就是結果） | 不還原：同 `split-open` |
-| `article-swipe-exit` accepted article exit | No restoration; the existing user-navigation route owns the destination | No restoration; canceled drags never navigate |
+| `article-swipe-exit` accepted article exit (swipe, or ← and system Back over a revealed list) | No restoration; the existing user-navigation route owns the destination | No restoration; canceled drags and refused sends never navigate |
+| `list-back-reveal` Back from an article list over its revealed dashboard or board list | No restoration; the revealed page carries its own reading position | No restoration; refused sends never navigate |
 | `reconnect-resume` 斷線重連後回到原處 | 文章：`auto`；列表：原處 | 失敗（原文找不到）：列表原處；取消：不還原 |
 
 不在表上的功能或結果，一律不動：未知就停在 PTT 給的位置。

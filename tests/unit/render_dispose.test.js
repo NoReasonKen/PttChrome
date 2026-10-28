@@ -10,6 +10,12 @@
 import { ScreenController } from "../../src/render/screen";
 import { resetLazyObserversForTest } from "../../src/render/inline_preview_slot";
 import { row, seg, link } from "./helpers/screen_fixtures";
+import { destroyCaptionAi } from "../../src/js/caption_ai";
+import { destroyUrlAi } from "../../src/js/url_ai";
+
+// 全域 AI 標註器：release() 不能拆（主畫面還在用），destroy() 才拆。
+vi.mock("../../src/js/caption_ai", async (orig) => ({ ...(await orig()), destroyCaptionAi: vi.fn() }));
+vi.mock("../../src/js/url_ai", async (orig) => ({ ...(await orig()), destroyUrlAi: vi.fn() }));
 
 // 假 IntersectionObserver / ResizeObserver：只需要記住「現在還有誰被觀察著」。
 const observers = [];
@@ -279,5 +285,26 @@ describe("渲染鏈的佔位盒生命週期", () => {
 
     controller.destroy();
     root.remove();
+  });
+
+  test("頁面堆疊的活層 release() 收掉自己的 observer，主畫面的與全域 AI 標註器都留著", () => {
+    const main = mount();
+    main.controller.update(props(linkLines(2, "m")));
+    const layer = mount();
+    layer.controller.update(props(linkLines(4, "l")));
+    expect(observedCount()).toBe((2 + 4) * 3);
+    vi.mocked(destroyCaptionAi).mockClear();
+    vi.mocked(destroyUrlAi).mockClear();
+
+    layer.controller.release();
+    layer.root.remove();
+    expect(observedCount()).toBe(2 * 3);
+    expect(destroyCaptionAi).not.toHaveBeenCalled();
+    expect(destroyUrlAi).not.toHaveBeenCalled();
+
+    main.controller.destroy();
+    main.root.remove();
+    expect(observedCount()).toBe(0);
+    expect(destroyCaptionAi).toHaveBeenCalled();
   });
 });

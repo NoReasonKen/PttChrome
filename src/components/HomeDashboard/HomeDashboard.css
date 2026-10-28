@@ -17,6 +17,12 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* While a copy of the dashboard is revealed under a page sliding away (#31),
+   the real one waits hidden for the swap; it would cover the copy. */
+body.stackHoldHome #homeDashboard {
+  visibility: hidden;
+}
+
 .homeDashboard[data-mobile] {
   top: calc(48px + var(--safe-top, 0px));
   bottom: calc(48px + var(--safe-bottom, 0px));

@@ -37,6 +37,7 @@ import { isRefreshKeyEvent } from './screen_refresh';
 import { readEffectivePrefs } from './pref_storage';
 import { recordFor } from './reading_record';
 import { HINT_ERROR } from './status_hint';
+import { PAGE } from './page_stack';
 
 export const HOME_FAV_FETCH_FLAG = 'homeFavFetchInFlight';
 export const HOME_FAV_CACHE_KEY = 'pttchrome.homeFavorites.v1';
@@ -516,6 +517,8 @@ HomeDashboard.prototype = {
   // stacked-page layer, may carry the same id, so nothing looks it up by id.
   attachRoot: function(el) {
     this._root = el || null;
+    // The dashboard is visible again: a revealed copy may hand off to it (#31).
+    if (this._root) this._core.articleGestures?.pagePresented(PAGE.HOME);
   },
 
   // Only the copy that is registered may clear the registration, so another
@@ -587,10 +590,18 @@ HomeDashboard.prototype = {
   openBoard: function(name) {
     const core = this._core;
     if (!name || this._state.fetching) return false;
+    // The dashboard stays alive under the board's article list (#31).
+    core.articleGestures?.captureHomeLayer(name);
     const sent = submitSearch(core, 'board', name, {
-      onFail: () => this._hint('開不了看板 ' + name + '（已停在原生畫面）', 0, HINT_ERROR)
+      onFail: () => {
+        core.articleGestures?.dropPendingLayer();
+        this._hint('開不了看板 ' + name + '（已停在原生畫面）', 0, HINT_ERROR);
+      }
     });
-    if (!sent) this._hint(serializedOpHint(core) || '指令處理中，請稍候再試');
+    if (!sent) {
+      core.articleGestures?.dropPendingLayer();
+      this._hint(serializedOpHint(core) || '指令處理中，請稍候再試');
+    }
     return sent;
   },
 

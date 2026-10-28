@@ -228,10 +228,101 @@ const enteredBoardList = async (page) => {
   await listActive(page);
 };
 
+const dashboardShown = async (page) => {
+  await page.waitForFunction(() => window.__app.homeDashboard.state.visible === true, null, { timeout: 15000 });
+  await waitWireQuiet(page);
+};
+
+// Show the home dashboard without fetching favorites (personal data): mark it freshly
+// fetched. The dashboard decides to show itself on a screen settle; turning the pref
+// on changes nothing on screen, so redraw once to get that settle.
+async function prepFreshDashboard(page, prefs) {
+  await resetSession(page);
+  await applyPrefs(page, prefs);
+  await page.evaluate(() => {
+    window.__app.homeDashboard._state.fetchedAt = Date.now();
+  });
+  await page.evaluate(() => window.__app.conn.send('\x0c'));
+  await waitWireQuiet(page);
+  await dashboardShown(page);
+}
+
+// Open `board` the way a dashboard tap does (s<board>), into list easy reading.
+async function openBoardFromDashboard(page, board) {
+  await dashboardShown(page);
+  await page.evaluate((b) => window.__app.homeDashboard.openBoard(b), board);
+  await enteredBoardList(page);
+}
+
 const boardListEngaged = async (page) => {
   await page.waitForFunction(() => window.__app.buf.listRenderOwner === 'board-list', null, { timeout: 20000 });
   await waitWireQuiet(page);
 };
+
+// A row that opens another board list (a class group or a 目錄 folder) in a board list the
+// app engages (below the native class root), with the native cursor parked on it. Depth-first
+// from the class root, all native: each Enter is undone with ←. A class group's row carries
+// no 目錄 mark (2026-10 recording), so the search goes by where Enter lands.
+async function pickFolderRow(page) {
+  const screen = () =>
+    page.evaluate(() => {
+      const b = window.__app.buf;
+      const rows = [];
+      for (let r = 3; r < b.rows - 1; r++) rows.push(b.getRowText(r, 0, b.cols));
+      const nums = rows.map((t) => /^[>\s]*(\d+)/.exec(t)).filter(Boolean).map((m) => parseInt(m[1], 10));
+      return {
+        nums,
+        // Which list this is, without the cursor mark and live counts.
+        names: rows.join('|').replace(/[\d\s>]+/g, ''),
+        pause: b.pageState !== 3 && b.isPassScreenNow(),
+        // A board list's header has 編號 too; only an article list's names the title column.
+        articleList: b.getRowText(2, 0, b.cols).replace(/\s/g, '').indexOf('文章標題') >= 0,
+      };
+    });
+  const back = async () => {
+    for (let k = 0; k < 3; k++) {
+      const f = await screen();
+      if (!f.pause) break;
+      await sendKey(page, 'Space');
+      await waitWireQuiet(page);
+    }
+    await sendKey(page, 'ArrowLeft');
+    await waitWireQuiet(page);
+  };
+  const search = async (depth) => {
+    const here = await screen();
+    for (const num of here.nums) {
+      await jumpTo(page, num);
+      await sendKey(page, 'Enter');
+      await waitWireQuiet(page);
+      const f = await screen();
+      console.log(`[record] folder depth ${depth} #${num}: pause=${f.pause} articleList=${f.articleList} moved=${f.names !== here.names}`);
+      if (f.pause || f.articleList) {
+        await back();
+        continue;
+      }
+      if (f.names === here.names) continue; // 分隔線／無權限板：零回應
+      if (depth >= 2) {
+        await back();
+        return num;
+      }
+      if (depth < 3) {
+        const found = await search(depth + 1);
+        if (found != null) return found;
+      }
+      await back();
+    }
+    return null;
+  };
+  await sendKey(page, 'C');
+  await waitWireQuiet(page);
+  await sendKey(page, 'Enter');
+  await waitWireQuiet(page);
+  const num = await search(1);
+  if (num == null) throw new Error('分類看板裡找不到會開出另一份看板列表的列');
+  await jumpTo(page, num);
+  return num;
+}
 
 // The number of the first board in this (native) board list whose Enter lands on an article list. Each try returns to the list.
 async function pickPlainBoard(page) {
@@ -527,24 +618,96 @@ const SCENARIOS = {
   // opens the public board C_Chat; the cassette holds no favorites list.
   'stack-home-board': async (page) => {
     const prefs = { enableHomeDashboard: true, enableEasyReading: true, enableEasyReadingList: true };
-    await resetSession(page);
-    await applyPrefs(page, prefs);
-    await page.evaluate(() => {
-      window.__app.homeDashboard._state.fetchedAt = Date.now();
-    });
-    // The dashboard decides to show itself on a screen settle; turning the pref
-    // on changes nothing on screen, so redraw once to get that settle.
-    await page.evaluate(() => window.__app.conn.send('\x0c'));
-    await waitWireQuiet(page);
-    await page.waitForFunction(() => window.__app.homeDashboard.state.visible === true, null, { timeout: 15000 });
-    await waitWireQuiet(page);
+    await prepFreshDashboard(page, prefs);
     await record(page, 'stack-home-board', { board: 'C_Chat', prefs }, async () => {
-      await page.waitForFunction(() => window.__app.homeDashboard.state.visible === true, null, { timeout: 15000 });
-      await waitWireQuiet(page);
-      await page.evaluate(() => window.__app.homeDashboard.openBoard('C_Chat'));
-      await enteredBoardList(page);
+      await openBoardFromDashboard(page, 'C_Chat');
       await sendKey(page, 'ArrowLeft');
-      await page.waitForFunction(() => window.__app.homeDashboard.state.visible === true, null, { timeout: 15000 });
+      await dashboardShown(page);
+    });
+  },
+
+  // Stacked navigation (#31 review): on a board entered from the dashboard, a `/` title
+  // search, ← back to the full list, ← back to the dashboard. The search results must
+  // not reveal the dashboard. 閒聊 always has results on C_Chat.
+  'stack-home-search': async (page) => {
+    const prefs = {
+      enableHomeDashboard: true, enableEasyReading: true, enableEasyReadingList: true,
+      // The native `/` prompt, typed as is (the search modal has its own specs).
+      searchKeyOpensModal: false,
+    };
+    const keyword = '閒聊';
+    await prepFreshDashboard(page, prefs);
+    await record(page, 'stack-home-search', { board: 'C_Chat', keyword, prefs }, async () => {
+      await openBoardFromDashboard(page, 'C_Chat');
+      await sendKey(page, 'Slash');
+      await waitWireQuiet(page);
+      await typeLine(page, keyword);
+      await listActive(page);
+      await sendKey(page, 'ArrowLeft');
+      await listActive(page);
+      await sendKey(page, 'ArrowLeft');
+      await dashboardShown(page);
+    });
+  },
+
+  // Stacked navigation (#31 review): on a board entered from the dashboard, open an
+  // article two above the newest, switch to the next one with the next-article card,
+  // ← back to the list, ← back to the dashboard. The next article keeps the dashboard
+  // below its list.
+  'stack-home-next': async (page) => {
+    const prefs = {
+      enableHomeDashboard: true, enableEasyReading: true, enableEasyReadingList: true,
+      mergeSameAuthorComments: false, enableNextArticleCard: true,
+    };
+    await prepFreshDashboard(page, prefs);
+    await record(page, 'stack-home-next', { board: 'C_Chat', prefs }, async () => {
+      await openBoardFromDashboard(page, 'C_Chat');
+      for (let i = 0; i < 2; i++) {
+        await sendKey(page, 'ArrowUp');
+        await waitWireQuiet(page);
+      }
+      await inArticleEasyReading(page);
+      await page.waitForFunction(() => {
+        const st = window.__app.nextArticle._state;
+        return st.visible && !!st.entry;
+      }, null, { timeout: 15000 });
+      const first = await page.evaluate(() => window.__app.easyReading._articleKey);
+      expect(await page.evaluate(() => window.__app.nextArticle.open())).toBe(true);
+      await page.waitForFunction((key) => {
+        const app = window.__app;
+        return app.aidNavigation.active === false && app.buf.pageState === 3 &&
+          !!app.easyReading._articleKey && app.easyReading._articleKey !== key;
+      }, first, { timeout: 60000 });
+      const acc = await waitEasyReadingComplete(page, { timeout: 60000 });
+      expect(acc.reachedEnd).toBe(true);
+      await waitWireQuiet(page);
+      await sendKey(page, 'ArrowLeft');
+      await listActive(page);
+      await sendKey(page, 'ArrowLeft');
+      await dashboardShown(page);
+    });
+  },
+
+  // Back twice from an article (#34): dashboard → C_Chat → an article, ← back to the
+  // list, ← back to the dashboard. The offline test sends the second ← before the
+  // first is answered; the wire is the same, since a queued Back runs after the swap.
+  'stack-home-article-back': async (page) => {
+    const prefs = {
+      enableHomeDashboard: true, enableEasyReading: true, enableEasyReadingList: true,
+      mergeSameAuthorComments: false,
+    };
+    await prepFreshDashboard(page, prefs);
+    await record(page, 'stack-home-article-back', { board: 'C_Chat', prefs }, async () => {
+      await openBoardFromDashboard(page, 'C_Chat');
+      for (let i = 0; i < 2; i++) {
+        await sendKey(page, 'ArrowUp');
+        await waitWireQuiet(page);
+      }
+      await inArticleEasyReading(page);
+      await sendKey(page, 'ArrowLeft');
+      await listActive(page);
+      await sendKey(page, 'ArrowLeft');
+      await dashboardShown(page);
     });
   },
 
@@ -568,6 +731,68 @@ const SCENARIOS = {
       await enteredBoardList(page);
       await sendKey(page, 'ArrowLeft');
       await boardListEngaged(page);
+    });
+  },
+
+  // A folder row (a class group) opened from an engaged board list and left again (#25): the
+  // folder's board list replaces the parent, ← returns to the parent list at that row, and a
+  // second ← leaves the parent for its native class list. Prep parks the native cursor on
+  // the folder row (not recorded), so the engage adopts it as the selection.
+  'stack-boardlist-folder': async (page) => {
+    const prefs = { enableBoardListSmoothScroll: true, enableEasyReading: true, enableEasyReadingList: true };
+    await resetSession(page);
+    await applyPrefs(page, { enableBoardListSmoothScroll: false });
+    const num = await pickFolderRow(page);
+    await applyPrefs(page, { enableEasyReading: true, enableEasyReadingList: true });
+    await waitWireQuiet(page);
+    // Which list PTT shows: its board names, without live counts.
+    const names = () =>
+      page.evaluate(() => {
+        const b = window.__app.buf;
+        const out = [];
+        for (let r = 3; r < b.rows - 1; r++) out.push(b.getRowText(r, 0, b.cols).replace(/[\d\s>]+/g, ''));
+        return out.join('|');
+      });
+    const otherList = async (before) => {
+      await page.waitForFunction(
+        (before) => {
+          const app = window.__app;
+          const b = app.buf;
+          const out = [];
+          for (let r = 3; r < b.rows - 1; r++) out.push(b.getRowText(r, 0, b.cols).replace(/[\d\s>]+/g, ''));
+          return b.listRenderOwner === 'board-list' && app.boardListSession.state === 'active' && out.join('|') !== before;
+        },
+        before,
+        { timeout: 20000 }
+      );
+      await waitWireQuiet(page);
+    };
+    await record(page, 'stack-boardlist-folder', { boardNum: num, prefs }, async () => {
+      await applyPrefs(page, { enableBoardListSmoothScroll: true });
+      await boardListEngaged(page);
+      const parent = await names();
+      console.log('[record] folder: engaged, opening the row');
+      await sendKey(page, 'Enter');
+      await otherList(parent);
+      const folder = await names();
+      console.log('[record] folder: in the opened list, leaving it');
+      await sendKey(page, 'ArrowLeft');
+      await otherList(folder);
+      console.log('[record] folder: back on the parent list, leaving it');
+      // The class list above: native at the root, another engaged list deeper.
+      const back = await names();
+      await sendKey(page, 'ArrowLeft');
+      await page.waitForFunction(
+        (back) => {
+          const b = window.__app.buf;
+          const out = [];
+          for (let r = 3; r < b.rows - 1; r++) out.push(b.getRowText(r, 0, b.cols).replace(/[\d\s>]+/g, ''));
+          return b.listRenderOwner !== 'board-list' || out.join('|') !== back;
+        },
+        back,
+        { timeout: 20000 }
+      );
+      await waitWireQuiet(page);
     });
   },
 

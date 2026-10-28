@@ -2,10 +2,12 @@ const { test, expect } = require('@playwright/test');
 const fs = require('node:fs/promises');
 const { gestureSent } = require('../helpers/article_gestures');
 const {
-  bootNestedShortcutSearch, nestedSessionAfterLogin, nativeBack, visibleText, waitArticle, waitList, readToMiddle, topLine, tapShortcut
+  bootNestedShortcutSearch, nestedSessionAfterLogin, nativeBack, visibleText, waitArticle, waitList, readToMiddle, topLine, tapShortcut,
+  tapCard, disconnectAndReconnect
 } = require('../helpers/article_shortcut_search');
 const { waitConnected } = require('../helpers/replay');
 const { pauseClockNow } = require('../helpers/clock');
+const { watchReveals, revealedSinceWatch } = require('../helpers/stack_routes');
 const ptt = require('../helpers/ptt');
 
 // Search return history through interruption (docs/article-swipe-drawer-spec.md): the
@@ -35,26 +37,6 @@ test.afterEach(async ({ page }, info) => {
   await fs.writeFile(path, JSON.stringify(state, null, 2));
   await info.attach('recovery-state', { path, contentType: 'application/json' });
 });
-
-async function tapCard(page, title) {
-  await expect(page.locator('#mainContainer .listBodyView')).toBeVisible();
-  await page.locator('#mainContainer .listCard', { hasText: title }).locator('.listCardBody').tap();
-}
-
-// The connection drops; the reader taps Reconnect and logs in again.
-async function disconnectAndReconnect(page, session = {}) {
-  await page.evaluate(() => window.__stubWS.close());
-  await page.locator('#reactAlert button', { hasText: 'Reconnect' }).tap();
-  await waitConnected(page);
-  await nestedSessionAfterLogin(page, session);
-  // The old results can remain visible while the new main-menu frame is
-  // settling. Wait for actual recovery, not the retained DOM from before close.
-  await expect.poll(() => page.evaluate(() => {
-    const app = window.__app;
-    return !app.reconnectResume.hasPending() && !app.articleShortcutSearch.suspended &&
-      !app.aidNavigation.active && !app.searchInFlight;
-  }), { timeout: 15000 }).toBe(true);
-}
 
 async function reloadForRecovery(page) {
   // Keep the save/read boundary at one clock time. Renderer-local advancing
@@ -358,11 +340,15 @@ test('a reload in a reopened nested source restores it by AID and keeps unwindin
   await waitArticle(page, 'Beta');
   await expect.poll(() => bodyText(page)).toContain(RESTORED);
 
+  // The page stack is not saved: no page from before the reload is revealed,
+  // and each Back waits for PTT as without a stack (#35).
+  await watchReveals(page);
   await keyboardBack(page);
   await waitList(page, { has: ['Alpha topic', '□ [Talk] Beta topic'], lacks: ['Re: [Talk] Beta topic', 'Delta topic'] });
   await keyboardBack(page);
   await waitArticle(page, 'Alpha');
   await expect.poll(() => topLine(page)).toBe(position);
+  expect(await revealedSinceWatch(page)).toBe(false);
 });
 
 test('a source deleted while disconnected stops on its board list and leaves the route inactive', async ({ page }) => {

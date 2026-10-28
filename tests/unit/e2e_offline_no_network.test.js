@@ -22,6 +22,7 @@ describe("offline e2e：瀏覽器層硬斷網", () => {
       "offline",
       "offline-broken",
       "offline-firefox",
+      "offline-measure",
       "offline-mixed",
       "offline-mobile",
       "offline-slow",

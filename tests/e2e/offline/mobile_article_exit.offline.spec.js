@@ -4,6 +4,7 @@ const { nextFrames } = require('../helpers/real_input');
 const { bootGestureArticle, beginArticleTouch, gestureSent } = require('../helpers/article_gestures');
 const ptt = require('../helpers/ptt');
 const { bootOffline, loadCassette, replayListCassette } = require('../helpers/replay');
+const { MAIN } = require('../helpers/stack_routes');
 
 test('right dragging retracts title and content together above a dark fallback while the toolbar stays fixed', async ({ page }, testInfo) => {
   await bootGestureArticle(page);
@@ -98,7 +99,9 @@ async function enterArticleFromList(page, beforeOpen = async () => {}) {
   await waitRectStable(page, '.listCard[data-list-author="kylin936"] .listCardBody');
   await beforeOpen();
   await page.locator('.listCard[data-list-author="kylin936"] .listCardBody').first().tap();
-  await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
+  // The list's live layer shows beside the article while it slides in.
+  await expect(page.locator(MAIN)).toHaveClass(/articleHorizontalGestures/);
+  await waitRectStable(page, MAIN);
 }
 
 async function visibleTextMetrics(page, selector) {
@@ -122,7 +125,7 @@ async function visibleTextMetrics(page, selector) {
   });
 }
 
-test('the static list preview preserves the original rendered text size', async ({ page }, testInfo) => {
+test('the revealed list layer preserves the original rendered text size', async ({ page }, testInfo) => {
   let original;
   await enterArticleFromList(page, async () => {
     original = await visibleTextMetrics(page, '.main');
@@ -131,17 +134,26 @@ test('the static list preview preserves the original rendered text size', async 
   const main = await waitRectStable(page, '.main');
   const contact = await beginArticleTouch(page, { x: 20, y: main.top + 100 });
   await contact.move({ x: page.viewportSize().width - 20, y: main.top + 100 });
-  const preview = await visibleTextMetrics(page, '.articleExitListPreview');
+  const preview = await visibleTextMetrics(page, '[data-stack-layer]');
   await testInfo.attach('text-metrics', { body: JSON.stringify({ original, preview }, null, 2), contentType: 'application/json' });
   expect(preview.length).toBeGreaterThan(10);
   const originalByText = new Map(original.map(sample => [sample.text, sample]));
   const shared = preview.filter(sample => sample.text.trim().length > 2 && originalByText.has(sample.text));
   expect(shared.length).toBeGreaterThan(10);
-  for (const sample of shared) expect(sample).toEqual(originalByText.get(sample.text));
+  // The layer is a second instance of the same renderer; computed sizes may
+  // differ only in sub-pixel rounding.
+  const sizes = ({ font, fontSize, ...box }) => ({ box, font: parseFloat(fontSize), line: parseFloat(font.split('/')[1]) });
+  for (const sample of shared) {
+    const copy = sizes(sample);
+    const original = sizes(originalByText.get(sample.text));
+    expect(copy.box).toEqual(original.box);
+    expect(Math.abs(copy.font - original.font)).toBeLessThan(0.01);
+    expect(Math.abs(copy.line - original.line)).toBeLessThan(0.01);
+  }
   await contact.release({ cancel: true });
 });
 
-test('entering from a real list preserves only a bounded inert matching preview and exits to that list', async ({ page }, testInfo) => {
+test('entering from a real list keeps that list as an inert layer while dragging and exits to it', async ({ page }, testInfo) => {
   await enterArticleFromList(page);
   const sentBefore = await page.evaluate(() => window.__replay.sent.length);
   const main = await waitRectStable(page, '.main');
@@ -149,19 +161,20 @@ test('entering from a real list preserves only a bounded inert matching preview 
   const contact = await beginArticleTouch(page, { x: 20, y });
   await contact.move({ x: page.viewportSize().width - 20, y });
   const underlay = page.locator('[data-article-exit-underlay]');
-  await expect(underlay).toHaveAttribute('data-preview', 'list');
-  await expect(underlay).toHaveAttribute('inert', '');
-  expect(await underlay.locator('[id], a, img, iframe, button, input, [src], [href], [data-row]').count()).toBe(0);
-  expect(await underlay.locator('.articleExitListPreview > span').count()).toBeLessThanOrEqual(64);
-  await expect(underlay.locator('.articleExitListTitle')).toHaveText('C_Chat');
+  await expect(underlay).toHaveAttribute('data-preview', 'layer');
+  // Until the release commits, the revealed list takes no input.
+  await expect(page.locator('[data-stack-layer]')).toHaveAttribute('inert', '');
+  await expect(page.locator('[data-stack-layer]')).toBeVisible();
+  await expect(underlay.locator('.stackUnderlayTitle')).toHaveText('C_Chat');
   await page.screenshot({ path: testInfo.outputPath('article-exit-matching-list.png') });
   await contact.release();
-  await expect(page.locator('#mainContainer .listBodyView')).toBeVisible();
+  await expect(underlay).toHaveCount(0, { timeout: 10000 });
+  await expect(page.locator('.main #mainContainer .listBodyView')).toBeVisible();
   const outgoing = await page.evaluate(n => window.__replay.sent.slice(n).join(''), sentBefore);
   expect(outgoing.match(/\x1b\[D/g) || []).toHaveLength(1);
 });
 
-test('browser bar height changes keep the matching list preview, while a width change discards it', async ({ page }, testInfo) => {
+test('browser bar height changes and a width change both keep the list layer', async ({ page }, testInfo) => {
   await enterArticleFromList(page);
   const { width, height } = page.viewportSize();
   const underlay = page.locator('[data-article-exit-underlay]');
@@ -178,18 +191,20 @@ test('browser bar height changes keep the matching list preview, while a width c
     await page.setViewportSize({ width, height: height + change });
     await nextFrames(page, 4);
     const contact = await dragToPreview();
-    await expect(underlay).toHaveAttribute('data-preview', 'list');
-    await expect(underlay.locator('.articleExitListTitle')).toHaveText('C_Chat');
+    await expect(underlay).toHaveAttribute('data-preview', 'layer');
+    await expect(underlay.locator('.stackUnderlayTitle')).toHaveText('C_Chat');
     if (change < 0) await page.screenshot({ path: testInfo.outputPath('article-exit-preview-after-resize.png') });
     await contact.release({ cancel: true });
     await expect(underlay).toHaveCount(0);
   }
 
-  // Rotation re-lays out the list, so the old copy no longer matches it.
+  // Rotation re-lays out the list: the layer is rendered again at the new
+  // width (#35).
   await page.setViewportSize({ width: width - 52, height });
-  await nextFrames(page, 4);
+  await expect.poll(async () => (await waitRectStable(page, '.main')).width).toBeCloseTo(width - 52, 0);
   const contact = await dragToPreview();
-  await expect(underlay).toHaveAttribute('data-preview', 'fallback');
+  await expect(underlay).toHaveAttribute('data-preview', 'layer');
+  expect((await page.locator('[data-stack-layer="articleList"]').boundingBox()).width).toBeCloseTo(width - 52, 0);
   await contact.release({ cancel: true });
   await expect(underlay).toHaveCount(0);
 });
