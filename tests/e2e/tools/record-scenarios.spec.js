@@ -259,6 +259,66 @@ const boardListEngaged = async (page) => {
   await waitWireQuiet(page);
 };
 
+// A board list under 分類看板 that holds a folder row (目錄, board_list_parse.js#isBoardListFolderRow),
+// with the native cursor parked on that row. Depth-first from the class root, all native: each
+// Enter that lands on a board or on a list without a folder row is undone with ←.
+async function pickFolderRow(page) {
+  const screen = () =>
+    page.evaluate(() => {
+      const b = window.__app.buf;
+      const rows = [];
+      for (let r = 3; r < b.rows - 1; r++) rows.push(b.getRowText(r, 0, b.cols));
+      const nums = rows.map((t) => /^[>\s]*(\d+)/.exec(t)).filter(Boolean).map((m) => parseInt(m[1], 10));
+      const folder = rows.find((t) => t.indexOf('目錄') >= 0 && /^[>\s]*\d+/.test(t));
+      return {
+        nums,
+        names: rows.join('|').replace(/\d+/g, ''),
+        folder: folder ? parseInt(/^[>\s]*(\d+)/.exec(folder)[1], 10) : null,
+        pause: b.pageState !== 3 && b.isPassScreenNow(),
+        articleList: /編號/.test(b.getRowText(2, 0, b.cols)),
+      };
+    });
+  const back = async () => {
+    for (let k = 0; k < 3; k++) {
+      const f = await screen();
+      if (!f.pause) break;
+      await sendKey(page, 'Space');
+      await waitWireQuiet(page);
+    }
+    await sendKey(page, 'ArrowLeft');
+    await waitWireQuiet(page);
+  };
+  const search = async (depth) => {
+    const here = await screen();
+    for (const num of here.nums) {
+      await jumpTo(page, num);
+      await sendKey(page, 'Enter');
+      await waitWireQuiet(page);
+      const f = await screen();
+      if (f.pause || f.articleList) {
+        await back();
+        continue;
+      }
+      if (f.names === here.names) continue; // 分隔線／無權限板：零回應
+      if (f.folder != null) return f.folder;
+      if (depth < 2) {
+        const found = await search(depth + 1);
+        if (found != null) return found;
+      }
+      await back();
+    }
+    return null;
+  };
+  await sendKey(page, 'C');
+  await waitWireQuiet(page);
+  await sendKey(page, 'Enter');
+  await waitWireQuiet(page);
+  const num = await search(1);
+  if (num == null) throw new Error('分類看板裡找不到含目錄列的看板列表');
+  await jumpTo(page, num);
+  return num;
+}
+
 // The number of the first board in this (native) board list whose Enter lands on an article list. Each try returns to the list.
 async function pickPlainBoard(page) {
   const rows = await page.evaluate(() => {
@@ -666,6 +726,65 @@ const SCENARIOS = {
       await enteredBoardList(page);
       await sendKey(page, 'ArrowLeft');
       await boardListEngaged(page);
+    });
+  },
+
+  // A folder row opened from an engaged board list and left again (#25): the folder's
+  // board list replaces the parent, ← returns to the parent list at the folder row, and a
+  // second ← leaves the parent for its native class list. Prep parks the native cursor on
+  // the folder row (not recorded), so the engage adopts it as the selection.
+  'stack-boardlist-folder': async (page) => {
+    const prefs = { enableBoardListSmoothScroll: true, enableEasyReading: true, enableEasyReadingList: true };
+    await resetSession(page);
+    await applyPrefs(page, { enableBoardListSmoothScroll: false });
+    const num = await pickFolderRow(page);
+    await applyPrefs(page, { enableEasyReading: true, enableEasyReadingList: true });
+    await waitWireQuiet(page);
+    // Which list PTT shows: its board names, without live counts.
+    const names = () =>
+      page.evaluate(() => {
+        const b = window.__app.buf;
+        const out = [];
+        for (let r = 3; r < b.rows - 1; r++) out.push(b.getRowText(r, 0, b.cols).replace(/[\d\s]+/g, ''));
+        return out.join('|');
+      });
+    const otherList = async (before) => {
+      await page.waitForFunction(
+        (before) => {
+          const app = window.__app;
+          const b = app.buf;
+          const out = [];
+          for (let r = 3; r < b.rows - 1; r++) out.push(b.getRowText(r, 0, b.cols).replace(/[\d\s]+/g, ''));
+          return b.listRenderOwner === 'board-list' && app.boardListSession.state === 'active' && out.join('|') !== before;
+        },
+        before,
+        { timeout: 20000 }
+      );
+      await waitWireQuiet(page);
+    };
+    await record(page, 'stack-boardlist-folder', { boardNum: num, prefs }, async () => {
+      await applyPrefs(page, { enableBoardListSmoothScroll: true });
+      await boardListEngaged(page);
+      const parent = await names();
+      await sendKey(page, 'Enter');
+      await otherList(parent);
+      const folder = await names();
+      await sendKey(page, 'ArrowLeft');
+      await otherList(folder);
+      // The class list above: native at the root, another engaged list deeper.
+      const back = await names();
+      await sendKey(page, 'ArrowLeft');
+      await page.waitForFunction(
+        (back) => {
+          const b = window.__app.buf;
+          const out = [];
+          for (let r = 3; r < b.rows - 1; r++) out.push(b.getRowText(r, 0, b.cols).replace(/[\d\s]+/g, ''));
+          return b.listRenderOwner !== 'board-list' || out.join('|') !== back;
+        },
+        back,
+        { timeout: 20000 }
+      );
+      await waitWireQuiet(page);
     });
   },
 
