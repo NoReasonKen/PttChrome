@@ -259,9 +259,10 @@ const boardListEngaged = async (page) => {
   await waitWireQuiet(page);
 };
 
-// A board list under 分類看板 that holds a folder row (目錄, board_list_parse.js#isBoardListFolderRow),
-// with the native cursor parked on that row. Depth-first from the class root, all native: each
-// Enter that lands on a board or on a list without a folder row is undone with ←.
+// A row that opens another board list (a class group or a 目錄 folder) in a board list the
+// app engages (below the native class root), with the native cursor parked on it. Depth-first
+// from the class root, all native: each Enter is undone with ←. A class group's row carries
+// no 目錄 mark (2026-10 recording), so the search goes by where Enter lands.
 async function pickFolderRow(page) {
   const screen = () =>
     page.evaluate(() => {
@@ -269,12 +270,10 @@ async function pickFolderRow(page) {
       const rows = [];
       for (let r = 3; r < b.rows - 1; r++) rows.push(b.getRowText(r, 0, b.cols));
       const nums = rows.map((t) => /^[>\s]*(\d+)/.exec(t)).filter(Boolean).map((m) => parseInt(m[1], 10));
-      const folder = rows.find((t) => t.indexOf('目錄') >= 0 && /^[>\s]*\d+/.test(t));
       return {
         nums,
         // Which list this is, without the cursor mark and live counts.
         names: rows.join('|').replace(/[\d\s>]+/g, ''),
-        folder: folder ? parseInt(/^[>\s]*(\d+)/.exec(folder)[1], 10) : null,
         pause: b.pageState !== 3 && b.isPassScreenNow(),
         // A board list's header has 編號 too; only an article list's names the title column.
         articleList: b.getRowText(2, 0, b.cols).replace(/\s/g, '').indexOf('文章標題') >= 0,
@@ -297,13 +296,16 @@ async function pickFolderRow(page) {
       await sendKey(page, 'Enter');
       await waitWireQuiet(page);
       const f = await screen();
-      console.log(`[record] folder depth ${depth} #${num}: pause=${f.pause} articleList=${f.articleList} moved=${f.names !== here.names} folder=${f.folder}`);
+      console.log(`[record] folder depth ${depth} #${num}: pause=${f.pause} articleList=${f.articleList} moved=${f.names !== here.names}`);
       if (f.pause || f.articleList) {
         await back();
         continue;
       }
       if (f.names === here.names) continue; // 分隔線／無權限板：零回應
-      if (f.folder != null) return f.folder;
+      if (depth >= 2) {
+        await back();
+        return num;
+      }
       if (depth < 3) {
         const found = await search(depth + 1);
         if (found != null) return found;
@@ -317,7 +319,7 @@ async function pickFolderRow(page) {
   await sendKey(page, 'Enter');
   await waitWireQuiet(page);
   const num = await search(1);
-  if (num == null) throw new Error('分類看板裡找不到含目錄列的看板列表');
+  if (num == null) throw new Error('分類看板裡找不到會開出另一份看板列表的列');
   await jumpTo(page, num);
   return num;
 }
@@ -732,8 +734,8 @@ const SCENARIOS = {
     });
   },
 
-  // A folder row opened from an engaged board list and left again (#25): the folder's
-  // board list replaces the parent, ← returns to the parent list at the folder row, and a
+  // A folder row (a class group) opened from an engaged board list and left again (#25): the
+  // folder's board list replaces the parent, ← returns to the parent list at that row, and a
   // second ← leaves the parent for its native class list. Prep parks the native cursor on
   // the folder row (not recorded), so the engage adopts it as the selection.
   'stack-boardlist-folder': async (page) => {
@@ -769,11 +771,14 @@ const SCENARIOS = {
       await applyPrefs(page, { enableBoardListSmoothScroll: true });
       await boardListEngaged(page);
       const parent = await names();
+      console.log('[record] folder: engaged, opening the row');
       await sendKey(page, 'Enter');
       await otherList(parent);
       const folder = await names();
+      console.log('[record] folder: in the opened list, leaving it');
       await sendKey(page, 'ArrowLeft');
       await otherList(folder);
+      console.log('[record] folder: back on the parent list, leaving it');
       // The class list above: native at the root, another engaged list deeper.
       const back = await names();
       await sendKey(page, 'ArrowLeft');
