@@ -87,6 +87,15 @@ export class NavigationStack {
     }, 100);
   }
 
+  // A debug recording keeps each handoff's timeline (#24): the send, each
+  // redraw and settle, the presentation and the end, in ms since the send.
+  _mark(mark, info) {
+    const rec = this.core.debugRecorder;
+    const h = this.handoff;
+    if (!rec?.isRecording || !h) return;
+    rec.log('stack.handoff', { mark, ms: Math.round(performance.now() - h.sentAt), ...info });
+  }
+
   // The legacy caption is also an ordinary list's; it means results only after
   // a verified search on this board.
   _showsSearchResults() {
@@ -347,7 +356,14 @@ export class NavigationStack {
       }, { capture: true, passive: true });
     }
     listen(core.conn, 'close', () => this._end('disconnected'));
-    listen(core.buf, 'screenSettled', () => this._landed());
+    listen(core.buf, 'viewUpdate', () => h.presentedAt == null && this._mark('view'));
+    // A changed page state settles first, and a session may present its page
+    // from it.
+    listen(core.buf, 'pageStateSettled', () => this._mark('pageStateSettled', { pageState: core.buf.pageState }));
+    listen(core.buf, 'screenSettled', () => {
+      this._mark('settled', { pageState: core.buf.pageState });
+      this._landed();
+    });
     core._refreshScreenContext?.();
     let sent = false;
     try {
@@ -359,7 +375,10 @@ export class NavigationStack {
         cancel();
       }
     }
-    if (sent) this._step();
+    if (sent) {
+      this._mark('sent', { level, target: h.target, layer: !!layer });
+      this._step();
+    }
     return sent;
   }
 
@@ -392,6 +411,7 @@ export class NavigationStack {
       if (!sameBoard(board, h.board)) return this._end('unexpected');
     }
     h.presentedAt = performance.now();
+    this._mark('presented', { kind });
     this._step();
   }
 
@@ -445,6 +465,7 @@ export class NavigationStack {
     const h = this.handoff;
     if (!h) return;
     const core = this.core;
+    this._mark('end', { how });
     if (how === 'presented' && h.layer) h.layer.alignReal(core);
     this._cleanup();
     // The revealed page is now PTT's real page; its layer is spent.

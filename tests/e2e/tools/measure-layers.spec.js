@@ -12,7 +12,7 @@
 // times are only comparable with each other.
 const fs = require('fs');
 const path = require('path');
-const { test } = require('@playwright/test');
+const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { loadCassette, bootOffline, replayCassette } = require('../helpers/replay');
 const {
@@ -289,6 +289,17 @@ test('a debug recording logs each layer cost', async ({ page }) => {
   const kinds = logged.map(info => info.kind);
   if (!kinds.includes('home') || !kinds.includes('articleList') || !kinds.includes('article')) {
     throw new Error('missing layer costs: ' + JSON.stringify(kinds));
+  }
+  // Back to the list: the handoff's timeline (#24).
+  await ptt.sendKey(page, 'ArrowLeft');
+  await expect(page.locator('[data-stack-layer]')).toHaveCount(0, { timeout: 10000 });
+  const marks = await page.evaluate(() =>
+    window.__app.debugRecorder.events.filter(e => e.tag === 'stack.handoff').map(e => e.info));
+  console.log('handoff timeline', JSON.stringify(marks));
+  const named = marks.map(info => info.mark);
+  if (!['sent', 'view', 'presented', 'end'].every(mark => named.includes(mark)) ||
+      !named.some(mark => mark === 'settled' || mark === 'pageStateSettled')) {
+    throw new Error('missing handoff marks: ' + JSON.stringify(named));
   }
 });
 
