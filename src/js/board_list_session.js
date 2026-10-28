@@ -1537,10 +1537,9 @@ BoardListSession.prototype = {
       self._enqueueLandingKey(LEFT_ARROW, 'leave', '回上層逾時，已切至原生模式');
     };
     if (this._selectedNum == null || this._selectedNum === this._serverNum) send();
-    else
-      this._enqueueCursorSyncJump('leave-sync-jump', send, function() {
-        self._degradeToNative('回上層逾時，已切至原生模式');
-      });
+    // The sync only keeps the next entry's position: a sync that fails still
+    // leaves, so Back is never lost.
+    else this._enqueueCursorSyncJump('leave-sync-jump', send, send);
   },
 
   // 開看板／回上層**共用的落地腿**：送出鍵 → 任何一幀 settle 就交還畫面所有權

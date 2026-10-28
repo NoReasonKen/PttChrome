@@ -757,6 +757,21 @@ describe("離開（←/q）", () => {
     expect(s.state).toBe("idle");
     expect(termBuf.listRenderMode).toBe("native");
   });
+
+  // 同步只是為了下次進來的落點：失敗了一樣要離開，Back 不能不見。
+  test("sync 腿失敗 → 照樣送 ←；← 也失敗才顯性降級原生", () => {
+    const { s, termBuf, enqueued } = makeSession();
+    termBuf.feed(brdScreenRows());
+    seedBuffer(termBuf, 1, 20);
+    s._selectedNum = 5;
+    s._serverNum = 1;
+    s.onKeyDown(keyEvent("ArrowLeft"));
+    enqueued[0].onFail();
+    expect(enqueued[1].keys).toBe("\x1b[D");
+    expect(s._renderMode).not.toBe("native");
+    enqueued[1].onFail();
+    expect(s._renderMode).toBe("native");
+  });
 });
 
 // ---------------------------------------------------------------------------
