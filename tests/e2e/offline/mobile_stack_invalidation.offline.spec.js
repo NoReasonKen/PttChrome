@@ -6,10 +6,10 @@ const ptt = require('../helpers/ptt');
 const {
   bootNestedShortcutSearch, waitArticle, waitList, tapShortcut, tapCard
 } = require('../helpers/article_shortcut_search');
-const { loadCassette, waitScreenSettled } = require('../helpers/replay');
+const { loadCassette, waitScreenSettled, feedRaw } = require('../helpers/replay');
 const {
   MAIN, dashboardVisible, bootDashboard, boardOpened, holdLeaves, heldLeaves, releaseLeave, sentLeaves, articleRead,
-  watchReveals, revealedSinceWatch
+  watchReveals, revealedSinceWatch, holdBackReply, heldBack, boardList, boardListEngaged
 } = require('../helpers/stack_routes');
 
 const RESULTS = { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] };
@@ -87,6 +87,23 @@ test('after a Back that lands somewhere unexpected, the next Back reveals nothin
   await pressBack(page);
   await waitScreenSettled(page, { 0: '主功能表' });
   expect(await revealedSinceWatch(page)).toBe(false);
+});
+
+test('a Back answered with another page than the revealed one ends at once and keeps nothing from before', async ({ page }) => {
+  await bootDashboard(page);
+  await ptt.applyPrefs(page, { enableBoardListSmoothScroll: true });
+  await page.locator('#homeDashboard [data-home-board="C_Chat"]').tap();
+  await boardOpened(page);
+  await holdBackReply(page);
+  await pressBack(page);
+  await heldBack(page);
+  await expect(page.locator('[data-stack-layer="home"]')).toBeVisible();
+  // PTT answers with a board list instead of the main menu.
+  await feedRaw(page, Buffer.from(boardList.steps[0].recv, 'base64').toString('latin1'));
+  await boardListEngaged(page);
+  // Well inside the handoff's 5 s bound (page_stack.js#HANDOFF_TIMEOUT_MS).
+  await expect(page.locator('[data-stack-layer]')).toHaveCount(0, { timeout: 3000 });
+  expect(await page.evaluate(() => window.__app.articleGestures.stack.stack.pages.length)).toBeLessThanOrEqual(1);
 });
 
 // The first card at the top of an article list's viewport.

@@ -400,7 +400,12 @@ export class NavigationStack {
     if (h.presentedAt != null) return;
     // Search return history stopped on the board list instead of the article.
     if (h.target === 'article' && kind === 'articleList') return this._end('unexpected');
-    if (h.target && kind !== h.target) return;
+    if (h.target && kind !== h.target) {
+      // An article list presents itself again while it is being left; any
+      // other page is PTT leaving the route the stack describes.
+      if (kind === 'articleList' || kind === 'article') return;
+      return this._end('unexpected');
+    }
     if (kind === 'article' && openArticleKey(core) !== h.id) return this._end('unexpected');
     if (kind === 'articleList' && h.target) {
       if (core.buf.pageState !== 2 || core.listSession?.state !== 'active') return;
@@ -472,8 +477,9 @@ export class NavigationStack {
     h.layer?.hide();
     this.lower.length = Math.max(0, this.stack.pages.length - 2);
     this.stack = popPage(this.stack).stack;
-    // PTT left the route the stack describes: nothing below is the way back.
-    if (how === 'unexpected') this._discard();
+    // PTT left the route the stack describes, or never confirmed it: nothing
+    // below is known to be the way back.
+    if (how === 'unexpected' || how === 'timeout') this._discard();
     // Backs queued for a page PTT did not show have nothing left to unwind.
     if (how !== 'presented') this.stack = dropQueuedBacks(this.stack);
     const queued = takeQueuedBack(this.stack);
