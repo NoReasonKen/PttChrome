@@ -195,16 +195,18 @@ describe("ListSession 非白名單鍵一鍵切原生（[ ] = 沒反應回歸，2
     expect(enqueued[0].kind).toBe("leave-board");
   });
 
-  test("← 離板：sync 腿失敗 → 不送離板鍵、顯性降級原生", () => {
+  test("← 離板：sync 腿失敗 → 照樣送離板鍵；離板鍵也失敗才顯性降級原生", () => {
+    // sync 只是為了下次進板的落點（選取的編號可能已不存在，跳號落在別處）；
+    // 離板本身不需要它，丟掉離板鍵＝使用者的 Back 消失。
     const { s, enqueued } = makeSession();
-    const banners = [];
-    s._view.showListBanner = (m) => banners.push(m);
     s.state = "active";
     s._selectedNum = 42;
     s.onKeyDown(keyEvent("ArrowLeft"));
     enqueued[0].onFail("timeout");
-    expect(enqueued.length).toBe(1); // 離板鍵未入列
-    expect(s._serverNum).toBeNull();
+    expect(enqueued.length).toBe(2);
+    expect(enqueued[1].kind).toBe("leave-board");
+    expect(enqueued[1].keys).toBe("\x1b[D");
+    enqueued[1].onFail("timeout");
     expect(s._renderMode).toBe("native"); // 顯性降級，不靜默卡 frozen
   });
 

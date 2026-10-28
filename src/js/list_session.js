@@ -2064,10 +2064,12 @@ ListSession.prototype = {
     // (local T1 navigation is zero-network; 2026-07-08 report).
     // 置底列選取同理，走多腿的 pinned 同步（4+N 腿，換下次進板落點正確）。
     if (num == null && this._canPinnedCursorSync()) {
+      // The sync only keeps the next entry's position: a sync that fails
+      // still leaves, so Back is never lost.
       this._enqueuePinnedCursorSync('leave-pinned', function() {
         self._enqueueLeaveKey();
       }, function() {
-        self._degradeToNative('離開列表逾時，已切至原生模式');
+        self._enqueueLeaveKey();
       });
       return;
     }
@@ -2077,10 +2079,11 @@ ListSession.prototype = {
       this._enqueueLeaveKey();
       return;
     }
+    // A jump that lands elsewhere (the selected number is gone) still leaves.
     this._enqueueCursorSyncJump('leave-sync-jump', function() {
       self._enqueueLeaveKey();
     }, function() {
-      self._degradeToNative('離開列表逾時，已切至原生模式');
+      self._enqueueLeaveKey();
     });
   },
 
