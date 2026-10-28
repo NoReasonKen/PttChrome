@@ -16,6 +16,19 @@ The drawer contains these five actions in order, using existing same-thread term
 
 Search directly from the current article without an editable query prompt. Search the entire current board, including when the source article came from filtered results. Same-thread actions must share the existing thread meaning rather than exact whole-title string equality. Verify the actual PTT protocol before implementation; the two direct search shortcuts require integration beyond relocating existing controls.
 
+## Pages in the stack
+
+Each easy-reading page takes part in the page stack and the gestures as follows. A page kind added to the stack, or newly made stackable, fills in every column; review checks its row.
+
+| Page | Right swipe | Left swipe | Back and right swipe reveal | Kept alive under | Slides in when opened from |
+| --- | --- | --- | --- | --- | --- |
+| Easy-reading article | Exits the article | Opens the drawer | The article list it was opened from ([#28](https://github.com/NoReasonKen/PttChrome/issues/28)) | Its shortcut search results ([#49](https://github.com/NoReasonKen/PttChrome/issues/49)) | An article list ([#36](https://github.com/NoReasonKen/PttChrome/issues/36)) |
+| Easy-reading article list, including search results | Goes back ([#32](https://github.com/NoReasonKen/PttChrome/issues/32)) | Nothing | The home dashboard or board list it was opened from ([#31](https://github.com/NoReasonKen/PttChrome/issues/31)), or the source article for shortcut search results | Its articles ([#28](https://github.com/NoReasonKen/PttChrome/issues/28), [#33](https://github.com/NoReasonKen/PttChrome/issues/33)) | The home dashboard or a board list ([#36](https://github.com/NoReasonKen/PttChrome/issues/36)) |
+| Smooth-scrolling board list: 原生我的最愛, a class group or a 目錄 folder | Goes back ([#53](https://github.com/NoReasonKen/PttChrome/issues/53)) | Nothing | The board list it was opened from | Its boards' article lists ([#31](https://github.com/NoReasonKen/PttChrome/issues/31)) and the board lists opened from its rows | A board list's row |
+| Home dashboard | Nothing | Nothing | Nothing: it is the bottom page | Boards opened from it ([#31](https://github.com/NoReasonKen/PttChrome/issues/31)) | Never |
+
+With nothing alive below, Back and the right swipe show the dark fallback until PTT shows its next page. The class root (分類看板), other natively shown board lists and article lists with easy reading off are not stacked pages.
+
 ## Direction and input ownership
 
 | Starting state | Up/down | Left | Right |
