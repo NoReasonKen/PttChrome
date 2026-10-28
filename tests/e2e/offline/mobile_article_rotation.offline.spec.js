@@ -35,15 +35,20 @@ async function openArticle(page, { imageProfile, waitLoaded = true } = {}) {
       const c = ch.charCodeAt(0);
       return c < 128 ? ch : String.fromCharCode(window.lib.u2bArray[2 * c], window.lib.u2bArray[2 * c + 1]);
     }).join('');
+    let painted = null;
     const emit = frame => {
-      let bytes = '\x1b[2J\x1b[H';
+      // PTT's pfterm diffs ordinary application repaints against its stored
+      // screen. Only redrawwin (including NAWS) forces a raw terminal clear.
+      const clear = !painted || frame.fullRepaint;
+      let bytes = clear ? '\x1b[2J\x1b[H' : '';
       frame.texts.forEach((line, row) => {
-        if (line) {
+        if (clear || line !== painted[row]) {
           bytes += `\x1b[${row + 1};1H`;
           if (frame.list && (row === 0 || row === 2)) bytes += '\x1b[30;47m' + ' '.repeat(80) + '\r';
-          bytes += encode(line) + '\x1b[m';
+          bytes += encode(line) + '\x1b[m\x1b[K';
         }
       });
+      painted = frame.texts.slice();
       app.onData(bytes + `\x1b[${frame.cursor.y + 1};${frame.cursor.x + 1}H`);
     };
     const responses = [];
@@ -59,6 +64,8 @@ async function openArticle(page, { imageProfile, waitLoaded = true } = {}) {
     };
     window.__rotation = { commands: [], sizes: [] };
     window.__stubWSSent = bytes => {
+      const fullRepaint = bytes.endsWith('\f');
+      if (fullRepaint) bytes = bytes.slice(0, -1);
       const at = bytes.indexOf('\xff\xfa\x1f');
       if (at >= 0) {
         const rows = bytes.charCodeAt(at + 5) * 256 + bytes.charCodeAt(at + 6);
@@ -66,7 +73,7 @@ async function openArticle(page, { imageProfile, waitLoaded = true } = {}) {
         serverRows = rows;
         const stored = old.texts.slice(0, rows);
         while (stored.length < rows) stored.push('');
-        responses.push({ texts: stored, cursor: { x: 79, y: rows - 1 } });
+        responses.push({ texts: stored, fullRepaint: true, cursor: { x: 79, y: rows - 1 } });
         window.__rotation.sizes.push(rows);
         drain();
       } else if (bytes === '\x1b[D' && inArticle) {
@@ -92,6 +99,7 @@ async function openArticle(page, { imageProfile, waitLoaded = true } = {}) {
         if (response) responses.push(...response.frames);
         drain();
       }
+      if (fullRepaint && responses.length) responses[responses.length - 1].fullRepaint = true;
     };
     emit(sim.screen());
   }, SIM_SOURCE);

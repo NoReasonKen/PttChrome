@@ -4,7 +4,7 @@ import { EasyReading, PAGE_DOWN_GRACE_MS, PAGE_DOWN_MAX_RETRIES } from '../../sr
 import { parseStatusRow, statusSignature } from '../../src/js/string_util';
 
 const PAGE_DOWN = '\x1b[6~';
-const LEAVE = '\x1b[D';
+const LEAVE = '\x1b[D\f';
 const HEADER = ['Author: reader', 'Title: Retained article', 'Date: Thu Jan 1 00:00:00 2026'];
 const allRows = rows => new Set(Array.from({ length: rows }, (_, row) => row));
 const cells = text => Array.from(text, ch => ({ ch, isLeadByte: false }));
@@ -118,9 +118,9 @@ describe('Article resize ownership', () => {
     expect(h.record.begin).toHaveBeenCalledWith('article-resize');
     expect(h.resize.articleRecord).toEqual({ easy: true, lineIndex: 12.25 });
     expect(h.leave()).toBe('done');
-    expect(h.sent).toEqual([LEAVE, '\r']);
+    expect(h.sent).toEqual([LEAVE, '\r\f']);
     expect(h.open()).toBe('done');
-    expect(h.sent).toEqual([LEAVE, '\r', ':23\r']);
+    expect(h.sent).toEqual([LEAVE, '\r\f', ':23\r\f']);
     expect(h.resize.active).toBe(true);
     expect(h.buf.easyReadingResizeInFlight).toBe(true);
     expect(h.buf.pageLines).toBe(h.article);
@@ -135,6 +135,22 @@ describe('Article resize ownership', () => {
     expect(h.buf.easyReadingResizeInFlight).toBe(false);
     expect(h.queue.idle).toBe(true);
     expect(h.reader.onWireIdle).toHaveBeenCalledWith({ force: true });
+  });
+
+  test('a differential terminal completes resizing without falling back to native', () => {
+    const h = makeReader();
+    h.resize.request(80, 40);
+    // pfterm omits unchanged rows unless the command also asks redrawwin.
+    // These otherwise valid responses retain common blank rows on screen.
+    for (const [index, paint] of [h.leave, h.open, h.paint].entries()) {
+      if (h.sent.length <= index) break;
+      paint({ changedRows: h.sent[index].endsWith('\f') ? allRows(40) : new Set([0, 1, 2, 4, 39]) });
+    }
+    vi.advanceTimersByTime(6000);
+    expect(h.reader.exitEasyReading).not.toHaveBeenCalled();
+    expect(h.resize.active).toBe(false);
+    expect(h.queue.idle).toBe(true);
+    expect(h.record.end).toHaveBeenCalledExactlyOnceWith(h.record.begin.mock.results[0].value, 'done');
   });
 
   test('coalesces pending sizes without touching another queue owner or its successor', () => {
@@ -174,7 +190,7 @@ describe('Article resize ownership', () => {
     expect(h.sent).toEqual([LEAVE]);
     h.complete();
     expect(h.resize.active).toBe(true);
-    expect(h.sent).toEqual([LEAVE, '\r', ':23\r', LEAVE]);
+    expect(h.sent).toEqual([LEAVE, '\r\f', ':23\r\f', LEAVE]);
     expect(h.core._setTermSizeNow.mock.calls).toEqual([[80, 40], [80, 28]]);
     expect(h.record.end).toHaveBeenCalledTimes(1);
     expect(h.reader.onWireIdle).not.toHaveBeenCalled();
@@ -191,7 +207,7 @@ describe('Article resize ownership', () => {
     h.resize.request(80, 40);
     h.complete();
     expect(h.resize.active).toBe(false);
-    expect(h.sent).toEqual([LEAVE, '\r', ':23\r']);
+    expect(h.sent).toEqual([LEAVE, '\r\f', ':23\r\f']);
     expect(h.record.begin).toHaveBeenCalledTimes(1);
   });
 
@@ -238,7 +254,7 @@ describe('Article resize ownership', () => {
     h.resize.pump();
     expect(h.sent).toEqual([LEAVE]);
     h.toSeek();
-    expect(h.sent).toEqual([LEAVE, '\r', ':46\r']);
+    expect(h.sent).toEqual([LEAVE, '\r\f', ':46\r\f']);
     expect(h.reader._clearWatchdog).toHaveBeenCalledTimes(1);
     expect(h.reader._inFlightSig).toBeNull();
     expect(h.reader._inFlightKeys).toBeNull();
@@ -325,7 +341,7 @@ describe('Article resize ownership', () => {
     expect(h.sent).toEqual([LEAVE]);
     expect(h.record.end).not.toHaveBeenCalled();
     h.leave();
-    expect(h.sent).toEqual([LEAVE, '\r']);
+    expect(h.sent).toEqual([LEAVE, '\r\f']);
   });
 
   test.each([
@@ -349,7 +365,7 @@ describe('Article resize ownership', () => {
     const headers = [...HEADER];
     headers[row] += ' changed';
     h.open({ headers });
-    expect(h.sent).toEqual([LEAVE, '\r']);
+    expect(h.sent).toEqual([LEAVE, '\r\f']);
     expect(h.resize.active).toBe(false);
     expect(h.reader.exitEasyReading).toHaveBeenCalledTimes(1);
     expect(h.reader._forceRepaint).not.toHaveBeenCalled();
@@ -362,9 +378,9 @@ describe('Article resize ownership', () => {
     h.resize.request(80, 40);
     h.leave();
     expect(h.open({ text: footer(24, 62, 70) })).toBeNull();
-    expect(h.sent).toEqual([LEAVE, '\r']);
+    expect(h.sent).toEqual([LEAVE, '\r\f']);
     expect(h.open({ headers: HEADER.map(text => text + '   ') })).toBe('done');
-    expect(h.sent).toEqual([LEAVE, '\r', ':23\r']);
+    expect(h.sent).toEqual([LEAVE, '\r\f', ':23\r\f']);
   });
 
   test('failure ends ownership once when returning to native PTT view recursively cancels resizing', () => {
@@ -382,7 +398,7 @@ describe('Article resize ownership', () => {
     expect(h.resize.active).toBe(false);
     expect(h.buf.easyReadingResizeInFlight).toBe(false);
     expect(h.queue.idle).toBe(true);
-    expect(h.sent).toEqual([LEAVE, '\r']);
+    expect(h.sent).toEqual([LEAVE, '\r\f']);
     vi.advanceTimersByTime(7000);
     expect(h.record.end).toHaveBeenCalledTimes(1);
     expect(h.reader.onWireIdle).toHaveBeenCalledTimes(1);
@@ -445,7 +461,7 @@ describe('Article resize ownership', () => {
     h.resize.request(80, 40);
     h.leave();
     expect(h.open({ changedRows: new Set([39]) })).toBeNull();
-    expect(h.sent).toEqual([LEAVE, '\r']);
+    expect(h.sent).toEqual([LEAVE, '\r\f']);
     h.open();
     expect(h.paint({ changedRows: new Set([39]) })).toBeNull();
     expect(h.record.end).not.toHaveBeenCalled();
@@ -479,7 +495,7 @@ describe('Article resize ownership', () => {
     expect(h.resize.active).toBe(false);
     expect(h.buf.easyReadingResizeInFlight).toBe(false);
     expect(h.queue.idle).toBe(true);
-    expect(h.sent).toEqual([LEAVE, '\r', ':23\r']);
+    expect(h.sent).toEqual([LEAVE, '\r\f', ':23\r\f']);
     expect(h.record.end).toHaveBeenCalledExactlyOnceWith(h.record.begin.mock.results[0].value, 'fail');
     expect(h.reader.exitEasyReading).toHaveBeenCalledTimes(1);
     expect(h.reader._forceRepaint).not.toHaveBeenCalled();

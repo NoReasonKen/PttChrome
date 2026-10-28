@@ -36,6 +36,11 @@ buffer/NAWS write. Other surfaces keep their existing behavior.
   size, a valid footer covering the requested line, and the cursor at the new
   bottom-right corner. Coverage survives split response windows; an unchanged
   short-article status signature is allowed.
+- Each phase requests CommandQueue's explicit full repaint (`Ctrl-L`). PTT's
+  terminal output layer can omit unchanged rows from an ordinary application
+  repaint, including shared blank rows. Without this request a correct screen
+  can never satisfy full written-row coverage. The offline server models these
+  differential updates and only forces a clear for NAWS or an explicit repaint.
 - A sent operation uses the existing input guard and a six-second total deadline
   measured with a monotonic clock. Failure or cancellation releases its protection and bookmark. There
   is no polling or unbounded retry loop. Timeout exposes the current terminal

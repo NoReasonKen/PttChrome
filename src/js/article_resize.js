@@ -93,6 +93,9 @@ export class ArticleResize {
     core.commandQueue.enqueue({
       kind: KIND,
       keys: phase === 'leave' ? '\x1b[D' : phase === 'open' ? '\r' : `:${command.line}\r`,
+      // pfterm omits unchanged rows from ordinary application repaints.
+      // Request redrawwin explicitly before requiring full row coverage.
+      fullRepaint: true,
       probe: false,
       timeoutMs: remaining,
       hardTimeoutMs: remaining,
