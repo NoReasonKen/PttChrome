@@ -2,7 +2,7 @@
 // (#49): a second instance of the shared screen renderer re-renders the
 // article's whole last presented frame over the article's box, scrollable at
 // its reading position, so revealing it shows the article at once.
-import { renderScreen } from './term_ui';
+import { ScreenCopyLayer, setUsable } from './stack_layer';
 
 // The article row at the top of `scroller` and its offset from that top.
 function topRow(scroller) {
@@ -22,7 +22,7 @@ function scrollToRow(scroller, anchor) {
   return true;
 }
 
-export class StackArticleLayer {
+export class StackArticleLayer extends ScreenCopyLayer {
   // Render `view`'s current article frame as a live copy over the article's
   // box. Returns null when the view shows no article frame.
   static capture(view) {
@@ -35,22 +35,11 @@ export class StackArticleLayer {
   }
 
   constructor(view, rect, frame) {
+    super(view, frame, 'article');
     const main = view.mainDisplay;
-    this.view = view;
-    this.frame = frame;
-    this.el = document.createElement('div');
-    // Same classes and inline geometry as the article surface, so its CSS applies.
-    this.el.className = main.className;
-    this.el.style.cssText = main.style.cssText;
-    this.el.setAttribute('data-stack-layer', 'article');
-    this.el.setAttribute('aria-hidden', 'true');
-    this.el.inert = true;
     this._hold = () => {
       this.held = true;
     };
-    // Rendered now, so the reveal only attaches it. It stays out of the document
-    // until then: while the results are read there is one screen surface.
-    this.parent = main.parentNode;
     this._render(rect, frame.forceWidth);
     this.scrollTop = main.scrollTop;
     this.scrollHeight = main.scrollHeight;
@@ -59,12 +48,7 @@ export class StackArticleLayer {
   }
 
   _render(rect, forceWidth) {
-    this.width = window.innerWidth;
-    Object.assign(this.el.style, {
-      position: 'absolute', left: rect.left + 'px', top: rect.top + 'px',
-      width: rect.width + 'px', height: rect.height + 'px', margin: '0', translate: 'none', zIndex: '2'
-    });
-    this.screen = renderScreen(this.frame.lines, forceWidth, this.frame.enableLinkInlinePreview, false, this.el, this.frame.enhance);
+    this._renderOver(rect, forceWidth, this.frame.enableLinkInlinePreview, this.frame.enhance);
   }
 
   // Ready to be revealed at the current width; a width change renders the
@@ -95,9 +79,7 @@ export class StackArticleLayer {
       this.el.addEventListener('pointerdown', this._hold);
       this.el.addEventListener('wheel', this._hold, { passive: true });
     }
-    this.el.inert = !usable;
-    this.el.removeAttribute('aria-hidden');
-    if (!usable) this.el.setAttribute('aria-hidden', 'true');
+    setUsable(this.el, usable);
   }
 
   _place() {
@@ -123,15 +105,7 @@ export class StackArticleLayer {
     this.resizes = null;
     this.el.removeEventListener('pointerdown', this._hold);
     this.el.removeEventListener('wheel', this._hold);
-    this.el.remove();
-    this.el.inert = true;
-    this.el.setAttribute('aria-hidden', 'true');
-  }
-
-  destroy() {
-    this.hide();
-    this.screen?.release();
-    this.screen = null;
+    super.hide();
   }
 
   // Put the real article at this layer's reading position: the same row at

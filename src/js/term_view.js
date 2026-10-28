@@ -1,6 +1,6 @@
 // Terminal View
 
-import { TermKeyboard, isAltRemapEvent } from './term_keyboard';
+import { TermKeyboard, isAltRemapEvent, isPlainBack } from './term_keyboard';
 import { cursorColorForBg } from './cursor_color';
 import { DEFAULT_HIGHLIGHT_BG, cursorHighlightClasses, highlightColStart, resolveHighlightRow } from './cursor_highlight';
 import { clickableColStart, DEFAULT_LIST_CLICK_START, DEFAULT_PUSH_CLICK_START, DEFAULT_PUSH_CLICK_END, cursorCss, CUR_BACK, CUR_POINTER, CUR_AUTO, EXIT_COL_END, resolveMouseGates, resolveMouseRegion, visibleHintBand } from './mouse_regions';
@@ -38,9 +38,6 @@ import { keyEventPredatesModalClose } from './modal_key_gate';
 import icon128 from '../icon/icon_128.png';
 import { MOUSE_CURSOR_URLS } from './mouse_cursors';
 import { isAndroidApp, androidNotify } from './android_bridge';
-
-// A plain ← is a Back, from the keyboard, the toolbar or system Back.
-const isPlainBack = e => e.key === 'ArrowLeft' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey;
 
 const DEFINE_INPUT_BUFFER_SIZE = 12;
 

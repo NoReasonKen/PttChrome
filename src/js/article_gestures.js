@@ -8,6 +8,7 @@ import { StackEntry } from './stack_entry';
 import { createUnderlay, holdSurfaces, releaseSurfaces, paintSurfaces, slideDuration } from './stack_motion';
 import { OWNER_ARTICLE_LIST, OWNER_BOARD_LIST } from './list_render_owner';
 import { recordFor } from './reading_record';
+import { isPlainBack } from './term_keyboard';
 import { articleIdentity } from './article_shortcut_search';
 import '../css/article_gestures.css';
 
@@ -304,6 +305,17 @@ export class ArticleGestures {
     this._beginEntry();
   }
 
+  // An article shortcut search keeps its source article alive under the
+  // results (#49); it slides nothing in.
+  captureArticleLayer() {
+    this.stack.captureArticle();
+  }
+
+  // The toolbar of a page only revealed so far, or null.
+  toolbarContext() {
+    return this.stack.toolbarContext();
+  }
+
   bindListLayer() {
     this.stack.enterArticle();
     this.entry?.answered();
@@ -356,7 +368,7 @@ export class ArticleGestures {
   // list (←, system Back, the toolbar) reveals the lower page the same way the
   // article swipe does. Returns true when it took the key.
   handleBack(event) {
-    if (event.key !== 'ArrowLeft' || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return false;
+    if (!isPlainBack(event)) return false;
     this.entry?.land();
     if (this.sendingBack || this.stack.handingOff || this.entry || this.track || this.exitUnderlay || this.root) return false;
     const core = this.core;

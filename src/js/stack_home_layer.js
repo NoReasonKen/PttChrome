@@ -8,6 +8,7 @@ import { flushSync } from 'react-dom';
 import { HomeDashboard as HomeDashboardView } from '../components/HomeDashboard/index.jsx';
 import { applyHomeAnchor, homeAnchorOf } from './home_dashboard';
 import { i18n } from './i18n';
+import { setUsable } from './stack_layer';
 
 const BOARD_ENTRY = '[data-home-board], [data-home-recent]';
 
@@ -30,8 +31,7 @@ export class StackHomeLayer {
     // The real dashboard sits above the terminal, so it is held hidden while
     // this copy is shown (`stackHoldHome`).
     this.el = document.createElement('div');
-    this.el.setAttribute('aria-hidden', 'true');
-    this.el.inert = true;
+    setUsable(this.el, false);
     Object.assign(this.el.style, { position: 'fixed', left: '0', top: '0', width: '0', height: '0', zIndex: '2' });
     const view = {
       get state() {
@@ -64,16 +64,13 @@ export class StackHomeLayer {
       if (this.root) applyHomeAnchor(this.root, this.anchor);
     }
     document.body.classList.add('stackHoldHome');
-    this.el.inert = !usable;
-    this.el.removeAttribute('aria-hidden');
-    if (!usable) this.el.setAttribute('aria-hidden', 'true');
+    setUsable(this.el, usable);
   }
 
   hide() {
     if (this.el.isConnected) document.body.classList.remove('stackHoldHome');
     this.el.remove();
-    this.el.inert = true;
-    this.el.setAttribute('aria-hidden', 'true');
+    setUsable(this.el, false);
   }
 
   // The board a tap on this layer chose, or null.

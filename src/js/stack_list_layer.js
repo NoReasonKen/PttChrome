@@ -2,7 +2,7 @@
 // of the shared screen renderer re-renders the list's last presented frame in
 // its own scroll viewport, so revealing it shows the real list, scrollable at
 // once, instead of a static copy.
-import { renderScreen } from './term_ui';
+import { ScreenCopyLayer, setUsable } from './stack_layer';
 import { LIST_TITLE_COL_START } from './comment_parse';
 import { i18n } from './i18n';
 
@@ -33,7 +33,14 @@ function topCard(root, viewportTop) {
   return null;
 }
 
-export class StackListLayer {
+// How far `root`'s list scrolls to put `anchor`'s card back at its offset, or
+// null when the card is not there.
+function anchorShift(root, anchor) {
+  const card = anchor && findCard(root, anchor.id);
+  return card ? card.getBoundingClientRect().top - root.getBoundingClientRect().top - anchor.offset : null;
+}
+
+export class StackListLayer extends ScreenCopyLayer {
   // Render `view`'s current list frame of `kind` ('article' or 'board') as a
   // live copy over the list's box. Returns null when the view is not showing
   // such an easy-reading list.
@@ -49,36 +56,20 @@ export class StackListLayer {
   }
 
   constructor(view, rect, screen, frame) {
-    const main = view.mainDisplay;
-    this.view = view;
-    this.frame = frame;
-    this.el = document.createElement('div');
-    // Same classes and inline geometry as the list surface, so list CSS applies.
-    this.el.className = main.className;
-    this.el.style.cssText = main.style.cssText;
-    this.kind = frame.enhance.listScroll.kind;
-    this.el.setAttribute('data-stack-layer', this.kind === 'board' ? 'boardList' : 'articleList');
-    this.el.setAttribute('aria-hidden', 'true');
-    this.el.inert = true;
-    // Rendered now, so the reveal only attaches it. It stays out of the document
-    // until then: while the article is read there is one screen surface.
-    this.parent = main.parentNode;
+    const kind = frame.enhance.listScroll.kind;
+    super(view, frame, kind === 'board' ? 'boardList' : 'articleList');
+    this.kind = kind;
     this._render(rect, frame.forceWidth);
     this.scrollTop = screen.getListScrollTop();
     // The reading position by entry, for a render at another width.
-    this.anchor = topCard(main, rect.top);
+    this.anchor = topCard(view.mainDisplay, rect.top);
   }
 
   _render(rect, forceWidth) {
-    this.width = window.innerWidth;
-    Object.assign(this.el.style, {
-      position: 'absolute', left: rect.left + 'px', top: rect.top + 'px',
-      width: rect.width + 'px', height: rect.height + 'px', margin: '0', translate: 'none', zIndex: '2'
-    });
     const enhance = Object.assign({}, this.frame.enhance, {
       listScroll: Object.assign({}, this.frame.enhance.listScroll, { scrollable: true })
     });
-    this.screen = renderScreen(this.frame.lines, forceWidth, false, false, this.el, enhance);
+    this._renderOver(rect, forceWidth, false, enhance);
   }
 
   // Ready to be revealed at the current width. A width change, such as a
@@ -100,42 +91,23 @@ export class StackListLayer {
       if (this.scrollTop != null) this.screen.setListScrollTop(this.scrollTop);
       else this._restoreAnchor();
     }
-    this.el.inert = !usable;
-    this.el.removeAttribute('aria-hidden');
-    if (!usable) this.el.setAttribute('aria-hidden', 'true');
+    setUsable(this.el, usable);
   }
 
   // Put the entry that was at the top back at its offset.
   _restoreAnchor() {
-    const card = this.anchor && findCard(this.el, this.anchor.id);
-    if (!card) return;
-    const shift = card.getBoundingClientRect().top - this.el.getBoundingClientRect().top - this.anchor.offset;
+    const shift = anchorShift(this.el, this.anchor);
+    if (shift == null) return;
     this.screen.setListScrollTop(this.screen.getListScrollTop() + shift);
     this.scrollTop = this.screen.getListScrollTop();
-  }
-
-  hide() {
-    this.el.remove();
-    this.el.inert = true;
-    this.el.setAttribute('aria-hidden', 'true');
-  }
-
-  destroy() {
-    this.hide();
-    this.screen?.release();
-    this.screen = null;
   }
 
   // Put the real list at this layer's reading position: the same entry at
   // the same offset from the top of the view.
   alignReal(core) {
     const realScreen = core.view.componentScreen;
-    const realRoot = core.view.mainDisplay;
-    const top = this.el.getBoundingClientRect().top;
-    const anchor = topCard(this.el, top);
-    const card = anchor && findCard(realRoot, anchor.id);
-    if (!card) return false;
-    const shift = card.getBoundingClientRect().top - realRoot.getBoundingClientRect().top - anchor.offset;
+    const shift = anchorShift(core.view.mainDisplay, topCard(this.el, this.el.getBoundingClientRect().top));
+    if (shift == null) return false;
     realScreen.setListScrollTop(realScreen.getListScrollTop() + shift);
     return true;
   }

@@ -82,7 +82,7 @@ export class ArticleShortcutSearch {
       position: recordFor(core).begin('article-shortcut-search')
     };
     this.pending = origin;
-    core.articleGestures?.stack.captureArticle();
+    core.articleGestures?.captureArticleLayer();
     // A failed forward search adds no origin; its source stays where it was.
     this._begin({ missing: stoppedAtBoardList, emptied: route => reopenedAfterEmptySearch(route, origin) });
     const fail = () => this._fail();
@@ -289,7 +289,7 @@ export class ArticleShortcutSearch {
   _fail(notice = 'articleShortcutSearch_failed', transition = stoppedAtBoardList) {
     if (!this.active) return;
     // A search that found nothing keeps no layer of its source.
-    this.core.articleGestures?.stack.dropPending();
+    this.core.articleGestures?.dropPendingLayer();
     if (this.pending?.position) recordFor(this.core).end(this.pending.position, 'fail');
     if (this.route && transition !== keep) {
       this.route = fullBoardList(searchGateFacts(this.core), this.route.board) ? transition(this.route) : null;

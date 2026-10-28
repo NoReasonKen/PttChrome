@@ -34,6 +34,9 @@ function countNodes(root) {
   return n;
 }
 
+// The board the article list session reads, or null before it has read one.
+const listBoard = core => core.listSession?._boardName || null;
+
 function openArticleKey(core) {
   const key = core.easyReading?._articleKey;
   const board = core.view._articleBoard;
@@ -57,9 +60,13 @@ export class NavigationStack {
 
   // An entry is about to be opened from the shown page of `kind`, the page
   // that a Back from it may reveal. `ms`: how long the layer took to render.
-  // `id`: an article's identity.
-  _capture(kind, board, layer, ms, id) {
+  // `render` makes the live layer, timed for the debug recording; `id`: an
+  // article's identity.
+  _capture(kind, board, render, id) {
     this.dropPending();
+    const t = performance.now();
+    const layer = render();
+    const ms = performance.now() - t;
     if (!layer) return;
     const title = document.querySelector('#mobileAppBar .mobileAppBarTitle')?.textContent || board;
     this.pending = { kind, board, id, layer, appBar: this.core._screenContext?.appBar, title };
@@ -100,7 +107,7 @@ export class NavigationStack {
   // a verified search on this board.
   _showsSearchResults() {
     const core = this.core;
-    const board = core.listSession?._boardName;
+    const board = listBoard(core);
     const facts = searchGateFacts(core);
     return !!board && !!facts && isSearchResultsFrame(facts, board, !!readSearchResultsContext(core, board));
   }
@@ -109,10 +116,9 @@ export class NavigationStack {
   // results included (#33).
   captureList() {
     const core = this.core;
-    const board = core.listSession?._boardName;
+    const board = listBoard(core);
     if (!core.mobile || !board) return this.dropPending();
-    const t = performance.now();
-    this._capture('articleList', board, StackListLayer.capture(core.view, 'article'), performance.now() - t);
+    this._capture('articleList', board, () => StackListLayer.capture(core.view, 'article'));
   }
 
   // An article shortcut search is about to start from the shown article
@@ -120,23 +126,20 @@ export class NavigationStack {
   captureArticle() {
     const page = this._articlePage();
     if (!this.core.mobile || !page.id) return this.dropPending();
-    const t = performance.now();
-    this._capture('article', page.board, StackArticleLayer.capture(this.core.view), performance.now() - t, page.id);
+    this._capture('article', page.board, () => StackArticleLayer.capture(this.core.view), page.id);
   }
 
   // `board` is about to be opened from the shown home dashboard. Its article
   // list stacks only under article-list easy reading.
   captureHome(board) {
     if (!this._stacksBoard(board)) return this.dropPending();
-    const t = performance.now();
-    this._capture('home', board, StackHomeLayer.capture(this.core), performance.now() - t);
+    this._capture('home', board, () => StackHomeLayer.capture(this.core));
   }
 
   // `board` is about to be opened from the shown board list.
   captureBoardList(board) {
     if (!this._stacksBoard(board)) return this.dropPending();
-    const t = performance.now();
-    this._capture('boardList', board, StackListLayer.capture(this.core.view, 'board'), performance.now() - t);
+    this._capture('boardList', board, () => StackListLayer.capture(this.core.view, 'board'));
   }
 
   _stacksBoard(board) {
@@ -401,7 +404,7 @@ export class NavigationStack {
     const h = this.handoff;
     const core = this.core;
     if (!h) {
-      if (kind === 'articleList' && core.listSession?._boardName) this._enterList(core.listSession._boardName);
+      if (kind === 'articleList' && listBoard(core)) this._enterList(listBoard(core));
       // Back on the dashboard or a board list some other way: what was stacked
       // above it, or captured on the way to a board, no longer holds.
       else if (kind === 'home' || kind === 'boardList') this.clear();
@@ -423,7 +426,7 @@ export class NavigationStack {
       if (core.buf.pageState !== 2 || core.listSession?.state !== 'active') return;
       // A list that has not read its board yet, as after rebuilt search
       // results, presents itself again once it has.
-      const board = core.listSession._boardName;
+      const board = listBoard(core);
       if (!board) return;
       if (!sameBoard(board, h.board)) return this._end('unexpected');
     }
