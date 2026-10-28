@@ -594,8 +594,8 @@ export class ArticleGestures {
     else this._settle(false);
   }
 
-  // A captured list preview survives resizing; it checks whether it still
-  // matches the viewport when an exit drag shows it.
+  // Kept layers survive resizing: a revealed layer re-renders at the new
+  // width when it is shown (fitViewport).
   _resize() {
     if (this.track || this.exitUnderlay) this.close(true);
     else if (this.root) {

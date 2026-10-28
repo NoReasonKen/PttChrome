@@ -62,7 +62,7 @@ Suspend background interaction once a panel drag is recognized and while the dra
 - Touch cancellation or a second contact restores the pre-drag state without applying ordinary release/fling rules.
 - An already open drawer adapts to rotation or available-area changes.
 - A size change during an active drawer drag cancels it and closes the drawer without exiting the article; a size change during an article exit drag or its settling cancels the exit without navigation.
-- The kept list layer survives height-only changes, such as a mobile browser showing or hiding its address bar while the article scrolls. A width change (rotation) re-lays out the list, so the next exit shows the dark fallback.
+- The kept list layer survives height-only changes, such as a mobile browser showing or hiding its address bar while the article scrolls. A width change (rotation) re-renders the kept layers from their stored frames at the new width, so the next exit still reveals them ([#35](https://github.com/NoReasonKen/PttChrome/issues/35)).
 - Leaving the original article closes the drawer and invalidates any ongoing drag.
 - Keep Android system bars and system edge navigation under platform ownership.
 
