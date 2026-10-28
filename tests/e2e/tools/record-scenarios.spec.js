@@ -276,7 +276,8 @@ async function pickFolderRow(page) {
         names: rows.join('|').replace(/[\d\s>]+/g, ''),
         folder: folder ? parseInt(/^[>\s]*(\d+)/.exec(folder)[1], 10) : null,
         pause: b.pageState !== 3 && b.isPassScreenNow(),
-        articleList: /編號/.test(b.getRowText(2, 0, b.cols)),
+        // A board list's header has 編號 too; only an article list's names the title column.
+        articleList: b.getRowText(2, 0, b.cols).replace(/\s/g, '').indexOf('文章標題') >= 0,
       };
     });
   const back = async () => {
