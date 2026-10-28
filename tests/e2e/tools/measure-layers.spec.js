@@ -15,6 +15,7 @@ const path = require('path');
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { loadCassette, bootOffline, replayCassette } = require('../helpers/replay');
+const { waitPreviewsSettled } = require('../helpers/layout');
 const {
   bootArticleList, bootBoardList, bootDashboard, boardOpened, articleRead
 } = require('../helpers/stack_routes');
@@ -192,7 +193,7 @@ async function bootArticle(page, name) {
   await replayCassette(page, cassette, { easyReading: true });
   await page.waitForFunction(() => window.__replay.done, null, { timeout: 60000 });
   // Image previews and the last render settle; nothing else is fed.
-  await page.waitForTimeout(1500);
+  await waitPreviewsSettled(page);
 }
 
 test('article list layer', async ({ page }) => {
