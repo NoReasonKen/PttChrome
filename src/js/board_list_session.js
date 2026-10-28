@@ -507,9 +507,13 @@ BoardListSession.prototype = {
 
   _runAction: function(action, facts) {
     switch (action) {
-      case 'seed':
+      case 'seed': {
         this._seed(facts);
-        return this._presented(true);
+        // An open that landed on another board list, such as a class group's.
+        const another = this._openedAnother;
+        this._openedAnother = false;
+        return this._presented(another);
+      }
       case 'start-fill':
         return this._startFill();
       case 'continue-fill':
@@ -1510,6 +1514,7 @@ BoardListSession.prototype = {
     if (num == null) return this._abortOpen('這一列不能進入');
     if (isBoardListSeparatorRow(text)) return this._abortOpen('這是分隔線，不能進入');
     if (isBoardListBlockedRow(text)) return this._abortOpen('這個看板目前無法進入');
+    this._openedAnother = false;
     // This board list stays alive under the board's article list (#31).
     this._core.articleGestures?.captureBoardListLayer(parseBoardListName(text));
     this._freezeForTransaction();
@@ -1582,7 +1587,11 @@ BoardListSession.prototype = {
           landedCtx === 'brdlist-other' ||
           landedCtx === 'menu';
         if (opts && opts.enteringBoard && !otherSpace) self._suspend();
-        else self._reset();
+        else {
+          self._reset();
+          // The next seed presents that list as opened from this one.
+          self._openedAnother = !!(opts && opts.enteringBoard) && landedCtx !== 'menu';
+        }
       },
       onFail: function() {
         if (opts && opts.enteringBoard) self._core.articleGestures?.dropPendingLayer();
