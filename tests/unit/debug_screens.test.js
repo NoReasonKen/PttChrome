@@ -9,7 +9,12 @@
 import { TermBuf } from "../../src/js/term_buf";
 import { AnsiParser } from "../../src/js/ansi_parser";
 import { serializeRecording } from "../../src/js/debug_recorder_logic";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
+  buildMismatch,
   decodeRecording,
   escapeBytes,
   formatScreen,
@@ -146,10 +151,44 @@ describe("parseArgs", () => {
       rows: 30,
       from: null,
       to: null,
+      expect: null,
     });
+  });
+
+  test("--expect names the build the capture should come from", () => {
+    expect(parseArgs(["f.json", "--expect", "claude/topic"]).expect).toBe("claude/topic");
   });
 
   test("看不懂的參數直接報錯（不可默默忽略成空結果）", () => {
     expect(() => parseArgs(["f.json", "abc"])).toThrow();
+  });
+});
+
+// A device capture from another build than the one under test sends the
+// analysis after a bug that build does not have.
+describe("buildMismatch", () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "debug-screens-build-"));
+  const git = (...args) =>
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", ...args], { cwd: repo })
+      .toString().trim();
+  git("init", "-q");
+  git("commit", "-q", "--allow-empty", "-m", "older");
+  const older = git("rev-parse", "--short", "HEAD");
+  git("commit", "-q", "--allow-empty", "-m", "tested");
+  const tested = git("rev-parse", "--short", "HEAD");
+  afterAll(() => fs.rmSync(repo, { recursive: true, force: true }));
+
+  test("a capture from the expected commit or a later one passes", () => {
+    expect(buildMismatch(tested, tested, { cwd: repo })).toBeNull();
+    expect(buildMismatch(tested, older, { cwd: repo })).toBeNull();
+  });
+
+  test("a capture from an older build warns", () => {
+    expect(buildMismatch(older, tested, { cwd: repo })).toMatch(/does not include/);
+  });
+
+  test("a build missing from the capture or this checkout warns", () => {
+    expect(buildMismatch(undefined, tested, { cwd: repo })).toMatch(/unknown/);
+    expect(buildMismatch("1234567", tested, { cwd: repo })).toMatch(/not in this checkout/);
   });
 });

@@ -15,10 +15,12 @@
 //   yarn debug:screens <錄製檔> 13417 13891     印出這兩個時間點（ms）的畫面
 //   yarn debug:screens <錄製檔> --from 13000 --to 14000   只看這段時間軸
 //   --rows N   覆寫終端機列數（預設取錄製檔 cassette.rows，舊檔沒有就 24）
+//   --expect <ref>   warn when the capture's build does not include this branch or commit
 //
 // 限制：錄製是**中途開始**的，第一個 recv 之前的畫面不在檔案裡 ⇒ 開頭幾幀可能
 // 只有局部更新，要等 server 送整頁重繪（\x1b[2J 或 \f 回應）之後才完整。
 // 畫面列文字走 buf.getRowText（Big5 → Unicode，與 app 讀畫面同一條路）。
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -153,17 +155,41 @@ export function formatScreen(shot) {
 }
 
 export function parseArgs(argv) {
-  const out = { file: null, times: [], rows: null, from: null, to: null };
+  const out = { file: null, times: [], rows: null, from: null, to: null, expect: null };
   for (let i = 0; i < argv.length; ++i) {
     const a = argv[i];
     if (a === '--rows') out.rows = Number(argv[++i]);
     else if (a === '--from') out.from = Number(argv[++i]);
     else if (a === '--to') out.to = Number(argv[++i]);
+    else if (a === '--expect') out.expect = argv[++i];
     else if (out.file == null) out.file = a;
     else if (/^\d+$/.test(a)) out.times.push(Number(a));
     else throw new Error('看不懂的參數：' + a);
   }
   return out;
+}
+
+// Why a capture's `build` cannot show the behavior of `ref`, or null when the
+// build is `ref` or a later commit that includes it.
+export function buildMismatch(build, ref, { cwd = ROOT } = {}) {
+  const commit = (rev) => {
+    try {
+      return execFileSync('git', ['rev-parse', '--verify', '--quiet', `${rev}^{commit}`], { cwd, stdio: ['ignore', 'pipe', 'ignore'] })
+        .toString().trim();
+    } catch {
+      return null;
+    }
+  };
+  if (!build || build === 'unknown') return `build unknown: cannot confirm the capture includes ${ref}`;
+  const expected = commit(ref);
+  if (!expected) return `${ref} is not in this checkout`;
+  if (!commit(build)) return `build ${build} is not in this checkout: fetch, then check it includes ${ref}`;
+  try {
+    execFileSync('git', ['merge-base', '--is-ancestor', expected, build], { cwd, stdio: 'ignore' });
+    return null;
+  } catch {
+    return `build ${build} does not include ${ref} (${expected.slice(0, 8)}): the device ran another build`;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -190,13 +216,15 @@ async function main() {
     return;
   }
   if (!args.file) {
-    console.error('用法：yarn debug:screens <錄製檔> [時間點 ms …] [--from ms --to ms] [--rows N]');
+    console.error('用法：yarn debug:screens <錄製檔> [時間點 ms …] [--from ms --to ms] [--rows N] [--expect ref]');
     process.exitCode = 2;
     return;
   }
   const rec = decodeRecording(JSON.parse(fs.readFileSync(args.file, 'utf8')), { rows: args.rows });
   const m = rec.meta;
   console.log(`# ${m.recordedAt || '?'} build=${m.build || '?'} ${rec.cols}x${rec.rows} events=${rec.events.length}`);
+  const mismatch = args.expect && buildMismatch(m.build, args.expect);
+  if (mismatch) console.log(`# WARNING: ${mismatch}`);
   if (!args.times.length) {
     console.log(formatTimeline(rec, { from: args.from, to: args.to }));
     return;
