@@ -2,8 +2,10 @@
 // stack base to the current page. Pure state; the owner holds the live layers
 // and PTT stays the authority for what is really on screen.
 //
-// A page is { kind, board, layer }: the kind of page, the board it shows, and
-// whether a live layer of it exists underneath. An article list that shows
+// A page is { kind, board, layer }: the kind of page, the board it shows (for
+// a board list, the board its selected row opens), and whether a live layer of
+// it exists underneath. A board list opened from a board list's row has that
+// row as its `folder`. An article list that shows
 // search results has `results`; an article has its `id` when known. `queued`
 // counts the Backs made while a handoff was under way, still to run.
 import { sameBoard } from './screen_titles';
@@ -109,7 +111,9 @@ export function revealTarget(stack) {
   const current = stack.pages[n - 1];
   const below = stack.pages[n - 2];
   if (current.results && below.kind !== 'article') return null;
-  return below.layer && sameBoard(below.board, current.board) ? below : null;
+  // A board list opened from a board list names the row it was opened from.
+  const opened = current.kind === 'boardList' ? current.folder : current.board;
+  return below.layer && sameBoard(below.board, opened) ? below : null;
 }
 
 // The reader is idle when no finger is down and nothing has scrolled

@@ -508,7 +508,7 @@ BoardListSession.prototype = {
     switch (action) {
       case 'seed':
         this._seed(facts);
-        return this._presented();
+        return this._presented(true);
       case 'start-fill':
         return this._startFill();
       case 'continue-fill':
@@ -533,9 +533,11 @@ BoardListSession.prototype = {
   },
 
   // A board list the reader can use is on screen: a revealed one may hand off
-  // to it (#31).
-  _presented: function() {
-    if (this.state === 'active' && this._renderMode === 'buffer') this._core.articleGestures?.pagePresented('boardList');
+  // to it (#31). `another`: a list other than the one shown before, such as
+  // a class group's.
+  _presented: function(another) {
+    if (this.state === 'active' && this._renderMode === 'buffer')
+      this._core.articleGestures?.pagePresented('boardList', { another: !!another });
   },
 
   // ---- 外部入口 --------------------------------------------------------------

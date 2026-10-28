@@ -166,7 +166,12 @@ export class NavigationStack {
       this.stack = pushPage(createPageStack(), page);
       return;
     }
-    const top = this._top();
+    let top = this._top();
+    // A board list's page names the row it opens, chosen just before.
+    if (top?.kind === 'boardList' && pending.kind === 'boardList') {
+      top = { ...top, board: pending.board };
+      this.stack = { ...this.stack, pages: [...this.stack.pages.slice(0, -1), top] };
+    }
     if (!top || top.kind !== pending.kind || !sameBoard(top.board, pending.board) || top.id !== pending.id) {
       this._discard();
       this.stack = pushPage(createPageStack(), { kind: pending.kind, board: pending.board, id: pending.id });
@@ -190,6 +195,13 @@ export class NavigationStack {
     const page = this._articlePage();
     this._enter(page,
       pending => pending.kind === 'articleList' && !!page.id && sameBoard(pending.board, page.board));
+  }
+
+  // A board list opened from a board list's row was entered: it keeps that
+  // list as its lower page. `folder` is the row it was opened from.
+  enterBoardList() {
+    const folder = this.pending?.board;
+    this._enter({ kind: 'boardList', board: folder, folder }, pending => pending.kind === 'boardList');
   }
 
   _articlePage() {

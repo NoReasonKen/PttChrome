@@ -51,6 +51,18 @@ test('each Back reveals the next lower page, and a revealed page\'s layer is spe
     .toMatchObject({ kind: 'articleList' });
 });
 
+test('a board list opened from a board list\'s row reveals that list, whichever row it opens since', () => {
+  const parent = { kind: 'boardList', board: 'OtherBBS', layer: true };
+  let stack = pushPage(pushPage(createPageStack(), parent), { kind: 'boardList', board: 'OtherBBS', folder: 'OtherBBS' },
+    { fromBelow: true });
+  expect(revealTarget(stack)).toMatchObject({ kind: 'boardList', board: 'OtherBBS' });
+  // The group's list selected another row, as before opening a board from it.
+  stack = { pages: [parent, { kind: 'boardList', board: 'FPGinPTT', folder: 'OtherBBS' }] };
+  expect(revealTarget(stack)).toMatchObject({ kind: 'boardList', board: 'OtherBBS' });
+  stack = { pages: [parent, { kind: 'boardList', board: 'FPGinPTT', folder: 'Announce' }] };
+  expect(revealTarget(stack)).toBeNull();
+});
+
 // The dashboard → board → article route, each page kept alive under the next.
 const homeListArticle = () => {
   let stack = withLayer(pushPage(createPageStack(), { kind: 'home', board: 'C_Chat' }));

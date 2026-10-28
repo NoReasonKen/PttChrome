@@ -6,7 +6,7 @@ import { ArticleHorizontalGesture, ARTICLE_GESTURE_SLOP } from './article_horizo
 import { NavigationStack } from './navigation_stack';
 import { StackEntry } from './stack_entry';
 import { createUnderlay, holdSurfaces, releaseSurfaces, paintSurfaces, slideDuration } from './stack_motion';
-import { OWNER_ARTICLE_LIST } from './list_render_owner';
+import { OWNER_ARTICLE_LIST, OWNER_BOARD_LIST } from './list_render_owner';
 import { recordFor } from './reading_record';
 import { articleIdentity } from './article_shortcut_search';
 import '../css/article_gestures.css';
@@ -163,8 +163,9 @@ export class ArticleGestures {
     const identity = [board, author, title, this.core.easyReading?._articleKey].join('\n');
     // A list being swiped or left stays while it can be left: its own paging
     // redraws the screen meanwhile.
-    const leavingList = (this.track?.level || (this.exitUnderlay && this.exitLevel)) === 'list';
-    const lost = leavingList ? !this._listLeaveable() : !available || (this.identity && identity !== this.identity);
+    const leaving = this.track?.level || (this.exitUnderlay && this.exitLevel);
+    const lost = leaving && leaving !== 'article' ? !this._leaveable(leaving) :
+      !available || (this.identity && identity !== this.identity);
     if (lost) this.close(true);
     this.identity = identity;
   }
@@ -335,24 +336,32 @@ export class ArticleGestures {
   }
 
   // A session presented a real page: an article list, a board list or the
-  // home dashboard.
-  pagePresented(kind) {
-    // The page an open came from, presented again: nothing was entered.
-    if (this.entry?.loading && kind === this.entry.from) this.dropPendingLayer();
+  // home dashboard. `another`: a board list other than the one shown before.
+  pagePresented(kind, { another = false } = {}) {
+    if (this.entry?.loading && kind === this.entry.from) {
+      // A board list opened from a board list's row, such as a class group,
+      // stacks over it like a board.
+      if (kind === 'boardList' && another) {
+        this.stack.enterBoardList();
+        return this.entry.answered();
+      }
+      // The page an open came from, presented again: nothing was entered.
+      this.dropPendingLayer();
+    }
     this.stack.pagePresented(kind);
     this.entry?.answered();
   }
 
-  // Back from an article or an article list (←, system Back, the toolbar)
-  // reveals the lower page the same way the article swipe does. Returns true
-  // when it took the key.
+  // Back from an article, an article list or a board list opened from a board
+  // list (←, system Back, the toolbar) reveals the lower page the same way the
+  // article swipe does. Returns true when it took the key.
   handleBack(event) {
     if (event.key !== 'ArrowLeft' || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return false;
     this.entry?.land();
     if (this.sendingBack || this.stack.handingOff || this.entry || this.track || this.exitUnderlay || this.root) return false;
     const core = this.core;
     if (this._otherModalOpen()) return false;
-    const level = this._articleLeaveable() ? 'article' : this._listLeaveable() ? 'list' : null;
+    const level = ['article', 'list', 'boardList'].find(level => this._leaveable(level));
     if (!level || core.buf.pageState !== (level === 'article' ? 3 : 2) || !this.stack.revealable()) return false;
     this.exitLevel = level;
     this._ensureExit();
@@ -387,7 +396,7 @@ export class ArticleGestures {
       this.timer = null;
       const earlyBacks = this.earlyBacks || 0;
       this.earlyBacks = null;
-      const valid = commit && this._leaveable() && identity === this.identity;
+      const valid = commit && this._leaveable(this.exitLevel) && identity === this.identity;
       if (valid) this._handoff(earlyBacks);
       else this._removeExit();
     }, duration);
@@ -402,7 +411,7 @@ export class ArticleGestures {
       level: this.exitLevel,
       send: () => {
         const record = recordFor(core);
-        const bookmark = record.begin(this.exitLevel === 'list' ? 'list-back-reveal' : 'article-swipe-exit');
+        const bookmark = record.begin(this.exitLevel === 'article' ? 'article-swipe-exit' : 'list-back-reveal');
         core.noteUserAction();
         // The exit surfaces hold the modal gate; release it only for the send.
         core.setModalOpen(MODAL_SOURCE, false);
@@ -425,8 +434,11 @@ export class ArticleGestures {
   }
 
   // The current page can be left now, by any Back.
-  _leaveable() {
-    return this.exitLevel === 'list' ? this._listLeaveable() : this._articleLeaveable();
+  // Whether the page of `level` ('article', 'list' or 'boardList') is shown
+  // and can be left.
+  _leaveable(level) {
+    if (level === 'article') return this._articleLeaveable();
+    return level === 'list' ? this._listLeaveable() : this._boardListLeaveable();
   }
 
   _articleLeaveable() {
@@ -441,6 +453,14 @@ export class ArticleGestures {
     const ls = core.listSession;
     return !!(core.mobile && core.conn?.isConnected && core.view.listCards && core.buf.listRenderOwner === OWNER_ARTICLE_LIST &&
       ls?.state === 'active' && ls._renderMode === 'buffer' && !serializedOpHint(core));
+  }
+
+  // A smooth-scrolling board list showing its cards, idle.
+  _boardListLeaveable() {
+    const core = this.core;
+    const bs = core.boardListSession;
+    return !!(core.mobile && core.conn?.isConnected && core.buf.listRenderOwner === OWNER_BOARD_LIST &&
+      bs?.state === 'active' && bs._renderMode === 'buffer' && !serializedOpHint(core));
   }
 
   _removeExit() {
