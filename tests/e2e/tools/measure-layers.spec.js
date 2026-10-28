@@ -26,8 +26,14 @@ const results = [];
 test.afterAll(() => {
   const file = process.env.MEASURE_OUT || path.join(__dirname, '../__measurements__/layer-cost.json');
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  // Merged by label, so a run of a few cases (-g) updates only those.
-  const previous = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : [];
+  // Merged by label, so a run of a few cases (-g) updates only those. Read
+  // once, without checking first: the file could change between the two.
+  let previous = [];
+  try {
+    previous = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   const labels = new Set(results.map(r => r.label));
   fs.writeFileSync(file, JSON.stringify([...previous.filter(r => !labels.has(r.label)), ...results], null, 2));
   console.log(`\n[measure] layer cost in ${file} (nodes: layer subtree / CDP delta; heap: CDP delta after GC; pss: renderer process)`);
