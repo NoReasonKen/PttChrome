@@ -1416,8 +1416,11 @@ export const en_US = {
     "message": "Article horizontal gestures"
   },
   "tooltip_articleHorizontalGestures": {
-    "message": "In mobile article easy reading, swipe left to reveal article shortcuts. Normal vertical scrolling, taps and long presses remain available."
+    "message": "In mobile easy reading, swipe left on an article to reveal its shortcuts, and swipe right on an article or an article list to go back. Normal vertical scrolling, taps and long presses remain available."
   },
+  "stack_articleGone": { "message": "That article is no longer in the list" },
+  "stack_boardGone": { "message": "That board is no longer in the list" },
+  "stack_handoffTimeout": { "message": "Returning to the list timed out; staying on the current PTT screen" },
   "articleShortcutDrawer_title": {
     "message": "Article shortcuts"
   },

@@ -757,6 +757,21 @@ describe("離開（←/q）", () => {
     expect(s.state).toBe("idle");
     expect(termBuf.listRenderMode).toBe("native");
   });
+
+  // 同步只是為了下次進來的落點：失敗了一樣要離開，Back 不能不見。
+  test("sync 腿失敗 → 照樣送 ←；← 也失敗才顯性降級原生", () => {
+    const { s, termBuf, enqueued } = makeSession();
+    termBuf.feed(brdScreenRows());
+    seedBuffer(termBuf, 1, 20);
+    s._selectedNum = 5;
+    s._serverNum = 1;
+    s.onKeyDown(keyEvent("ArrowLeft"));
+    enqueued[0].onFail();
+    expect(enqueued[1].keys).toBe("\x1b[D");
+    expect(s._renderMode).not.toBe("native");
+    enqueued[1].onFail();
+    expect(s._renderMode).toBe("native");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -897,6 +912,17 @@ describe("靜置探針（看板列表 session）", () => {
     vi.advanceTimersByTime(200);
     expect(h.s.state).toBe("functionMode");
     vi.advanceTimersByTime(100);
+    expect(h.s.state).toBe("active");
+  });
+
+  test("牆鐘往回跳（NTP 校時）不得拉長靜置等待：照單調時鐘滿 250ms 就回", () => {
+    const h = parked();
+    h.termBuf._rowTexts = brdScreenRows();
+    h.termBuf.cur_x = 0;
+    h.termBuf.cur_y = 3;
+    h.s.noteNativeInput();
+    vi.setSystemTime(Date.now() - 7000); // Date 倒退，performance.now() 照走
+    vi.advanceTimersByTime(400);
     expect(h.s.state).toBe("active");
   });
 

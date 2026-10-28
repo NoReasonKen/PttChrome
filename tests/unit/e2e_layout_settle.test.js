@@ -69,6 +69,12 @@ const EXEMPT = {
   "selection.offline.spec.js": "單行 feedLine，無好讀、無行內預覽",
 };
 
+// Specs that ask elementFromPoint only which surface is on top, never to pick a
+// point to click: the exclusion lists are about click targets, not stacking.
+const STACKING_ONLY = {
+  "mobile_stack_board_reveal.offline.spec.js": "checks that the dashboard copy stays on top; picks no click point",
+};
+
 describe("offline e2e 版面穩定契約", () => {
   test("掃描範圍不是空的（檔名規則改了要在這裡發現，不能靜默通過）", () => {
     expect(offlineSpecs.length).toBeGreaterThanOrEqual(25);
@@ -112,7 +118,7 @@ describe("offline e2e 版面穩定契約", () => {
   // 手寫的那份必然會跟產品端的早退順序漂移（就是上面那條註解說的現場）。
   test("自己挑座標的 spec 一律用 layout 的排除清單常數", () => {
     const offenders = offlineSpecs.filter((f) => {
-      if (EXEMPT[f]) return false;
+      if (EXEMPT[f] || STACKING_ONLY[f]) return false;
       const src = read(f);
       if (!/elementFromPoint\(/.test(src)) return false;
       return !/(OVERRIDING_SEL|EDGE_PAGING_BLOCKERS)/.test(src);

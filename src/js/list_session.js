@@ -82,6 +82,7 @@ import {
   OWNER_ARTICLE_LIST,
   isBoardListCommandKind
 } from './list_render_owner';
+import { PAGE } from './page_stack';
 
 // 程式化平滑捲動的最長等待：超過就放棄「等它到站」，把 scroll 事件當成使用者
 // 自己捲的（動畫會被使用者的滾輪／拖曳取消，那時永遠到不了目標）。
@@ -940,13 +941,15 @@ export function ListSession(core, view, termBuf, queue) {
   this._holdReason = null;
   this._externalResumeNotice = null;
   // 靜置探針的 timer handle 與它的兩個時鐘來源（見 RESUME_QUIET_MS）。
+  // 這幾個時刻（含 _resumedAt）都用 performance.now()：牆鐘會被校時往回跳（實測
+  // 7 秒），Date.now() 算出負的靜置時間，探針就多等好幾秒才回好讀。
   // _lastServerActivityAt 只在 settle 上更新（settle 本身就是「server 活動後靜止
   // SETTLE_MS」）——**不要**去 term_buf 另外開 hook，那會踩到不變量 2/2b。
   this._resumeProbe = null;
-  this._lastServerActivityAt = 0;
-  this._lastUserByteAt = 0;
+  this._lastServerActivityAt = -Infinity;
+  this._lastUserByteAt = -Infinity;
   // 最近一次回到 active 的時刻（RESUME_GRACE_MS 的起點，不變量 N4）。
-  this._resumedAt = 0;
+  this._resumedAt = -Infinity;
   // MODE_SELECT (`/` filtered list) sub-state: its article-number space is
   // independent from the main list (protocol §8) — entering/leaving forces a
   // rebuild (via _boardName=null) so numbers never alias.
@@ -1010,7 +1013,7 @@ ListSession.prototype = {
       return;
     // 這一幀是 server 活動後的靜止點 ⇒ 自動回復的時鐘從這裡起算（洞 3）。上面
     // 那道守門已經把純本地重繪擋掉了，所以不會誤把自己的重繪當成 server 活動。
-    this._lastServerActivityAt = Date.now();
+    this._lastServerActivityAt = performance.now();
     const facts = this._collectFacts(snap);
     // The resize owner briefly visits the same board to rebuild pmore's page
     // boundary. Drive its queue without adopting those hidden list screens.
@@ -1090,7 +1093,7 @@ ListSession.prototype = {
         facts.cursorRowNum != null &&
         (this._termBuf.listLineNums || []).indexOf(facts.cursorRowNum) !== -1,
       holdReason: this._holdReason,
-      withinResumeGrace: Date.now() - this._resumedAt < RESUME_GRACE_MS,
+      withinResumeGrace: performance.now() - this._resumedAt < RESUME_GRACE_MS,
       hasNumberedRow: hasNumberedEntryRow(facts),
       engageEligible: this._engageEligible()
     };
@@ -1129,7 +1132,7 @@ ListSession.prototype = {
   // activeListSession()，所以這條是**無條件**從 term_view / pttchrome 呼進來的）。
   // **只記時間戳，不得有任何其他副作用**（不變量 N2）。
   noteNativeInput: function() {
-    this._lastUserByteAt = Date.now();
+    this._lastUserByteAt = performance.now();
     this._scheduleResumeProbe();
   },
 
@@ -1162,7 +1165,7 @@ ListSession.prototype = {
     if (this._holdReason !== 'passthrough' || !this._autoResumeEnabled()) return;
     // 洞 3：畫面與使用者都要靜止。還沒靜置滿就補排剩下的時間（不是輪詢）。
     const quietSince = Math.max(this._lastServerActivityAt, this._lastUserByteAt);
-    const waited = Date.now() - quietSince;
+    const waited = performance.now() - quietSince;
     if (waited < RESUME_QUIET_MS) return this._scheduleResumeProbe(RESUME_QUIET_MS - waited);
     // 洞 2：命令還在線上。它自己的回應會帶來 settle → 由那裡重排；但「PTT 完全
     // 忽略這個鍵」的情形是零 byte 零 settle，只能等命令自己 timeout ⇒ 這裡補排
@@ -1198,7 +1201,8 @@ ListSession.prototype = {
   _runAction: function(action, facts) {
     switch (action) {
       case 'seed':
-        return this._seed(facts);
+        this._seed(facts);
+        return this._presented();
       case 'start-fill':
         return this._startFill();
       case 'continue-fill':
@@ -1207,7 +1211,8 @@ ListSession.prototype = {
         // 驗證要在 _rebuild **之前**：它自己那次重繪的 applyScrollAfterRender 就會
         // 嘗試套用待還原的錨。
         this._adoptPendingViewport(facts);
-        return this._rebuild(facts);
+        this._rebuild(facts);
+        return this._presented();
       case 'handoff-article':
         return this._handoffArticle();
       case 'enable-article-reading': {
@@ -1216,15 +1221,17 @@ ListSession.prototype = {
         const er = this._core.easyReading;
         if (er && er.ensureEnabledOnArticle) er.ensureEnabledOnArticle(true, 'listOpen');
         // Parked-list entry may establish the article header key only here.
-        this._core.articleGestures?.bindListPreview();
+        this._core.articleGestures?.bindListLayer();
         return;
       }
       case 'enter-function-mode':
         return this._enterFunctionMode(facts);
       case 'resume-buffer':
-        return this._resumeBuffer(facts);
+        this._resumeBuffer(facts);
+        return this._presented();
       case 'resume-in-place':
-        return this._resumeInPlace(facts);
+        this._resumeInPlace(facts);
+        return this._presented();
       case 'cleanup':
         return this._cleanup();
       // 'move-selection' / 'begin-open*' carry key context; executed in onKeyDown.
@@ -1235,6 +1242,12 @@ ListSession.prototype = {
       default:
         return;
     }
+  },
+
+  // A landing action has rebuilt, scrolled and positioned the list. A leave
+  // waiting to hand over to it may do so now (#28).
+  _presented: function() {
+    if (this.state === 'active' && this._renderMode === 'buffer') this._core.articleGestures?.pagePresented(PAGE.ARTICLE_LIST);
   },
 
   // ---- external entry points ------------------------------------------------
@@ -2058,10 +2071,12 @@ ListSession.prototype = {
     // (local T1 navigation is zero-network; 2026-07-08 report).
     // 置底列選取同理，走多腿的 pinned 同步（4+N 腿，換下次進板落點正確）。
     if (num == null && this._canPinnedCursorSync()) {
+      // The sync only keeps the next entry's position: a sync that fails
+      // still leaves, so Back is never lost.
       this._enqueuePinnedCursorSync('leave-pinned', function() {
         self._enqueueLeaveKey();
       }, function() {
-        self._degradeToNative('離開列表逾時，已切至原生模式');
+        self._enqueueLeaveKey();
       });
       return;
     }
@@ -2071,10 +2086,11 @@ ListSession.prototype = {
       this._enqueueLeaveKey();
       return;
     }
+    // A jump that lands elsewhere (the selected number is gone) still leaves.
     this._enqueueCursorSyncJump('leave-sync-jump', function() {
       self._enqueueLeaveKey();
     }, function() {
-      self._degradeToNative('離開列表逾時，已切至原生模式');
+      self._enqueueLeaveKey();
     });
   },
 
@@ -2176,7 +2192,7 @@ ListSession.prototype = {
   _resumeInPlace: function(facts) {
     this._holdReason = null;
     this._cancelResumeProbe();
-    this._resumedAt = Date.now();
+    this._resumedAt = performance.now();
     this._breakChain();
     this._renderMode = 'buffer';
     this._setLoading(false);
@@ -3144,7 +3160,7 @@ ListSession.prototype = {
   _beginOpen: function() {
     const num = this._selectedNum;
     if (num == null) return;
-    this._core.articleGestures?.captureListPreview();
+    this._core.articleGestures?.captureListLayer();
     this._cancelScroll(); // 同 _freezeForTransaction
     // Active last-read teaching: opening this article sets the server's
     // currtitle to its subject (bbs.c:2424) — capture it now so the return
@@ -3243,7 +3259,7 @@ ListSession.prototype = {
       this._openFailed();
       return;
     }
-    this._core.articleGestures?.captureListPreview();
+    this._core.articleGestures?.captureListLayer();
     this._renderMode = 'frozen';
     this._setLoading(true);
     this._armFrozenWatchdog();
@@ -3408,7 +3424,7 @@ ListSession.prototype = {
   // Nothing is opened: stay on the list, merge PTT's current page into the
   // buffer at the reader's position, and say why.
   _openMismatched: function(landed) {
-    this._core.articleGestures?.clearListPreview();
+    this._core.articleGestures?.dropPendingLayer();
     this.state = 'active';
     this._resumeInPlace(landed);
     if (this._view.flashListHint)
@@ -3416,7 +3432,7 @@ ListSession.prototype = {
   },
 
   _openFailed: function() {
-    this._core.articleGestures?.clearListPreview();
+    this._core.articleGestures?.dropPendingLayer();
     // v5 contract #5: failures are visible — banner, then the reducer routes
     // opening → functionMode (native mirror).
     if (this._view.flashListHint)
@@ -3509,7 +3525,7 @@ ListSession.prototype = {
   _resumeBuffer: function(facts) {
     this._holdReason = null;
     this._cancelResumeProbe();
-    this._resumedAt = Date.now(); // 不變量 N4：殘餘幀不得打到 active 的 catch-all
+    this._resumedAt = performance.now(); // 不變量 N4：殘餘幀不得打到 active 的 catch-all
     this._breakChain();
     this._renderMode = 'buffer';
     this._setLoading(false);

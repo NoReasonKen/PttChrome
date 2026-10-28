@@ -627,7 +627,7 @@ App.prototype.onData = function(data) {
 };
 
 App.prototype.onClose = function() {
-  this.articleGestures?.close(true);
+  this.articleGestures?.disconnected();
   console.info("pttchrome onClose");
   this.imageViewer?.close();
   this.debugRecorder?.log('app.onClose');

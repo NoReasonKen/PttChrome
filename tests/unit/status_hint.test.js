@@ -78,7 +78,7 @@ test('an external recovery failure survives the automatic switch back to list ea
   const session = {
     state: 'functionMode', _holdReason: 'external',
     _diag() {}, _scheduleResumeProbe() {},
-    _autoResumeEnabled: () => true, _lastServerActivityAt: 0, _lastUserByteAt: 0,
+    _autoResumeEnabled: () => true, _lastServerActivityAt: -Infinity, _lastUserByteAt: -Infinity,
     _queue: { inFlightKind: null }, _collectFacts: () => ({ kind: 'clean-list' }),
     _settleEvent: () => ({}), _dispatch() { this.state = 'active'; },
     _view: { flashListHint: vi.fn() }
@@ -103,6 +103,16 @@ describe("TermView.setListLoading（讀取中）", () => {
     expect(el.style.display).toBe("block");
     v.showStatusHints = false;
     setLoading.call(v, false);
+    expect(el.style.display).toBe("none");
+  });
+  test("每個擁有者各自放手：還有人持有就繼續顯示", () => {
+    const v = fakeView(true);
+    setLoading.call(v, true);
+    setLoading.call(v, true, "stackEntry");
+    const el = document.querySelector(".ListLoadingHint");
+    setLoading.call(v, false);
+    expect(el.style.display).toBe("block");
+    setLoading.call(v, false, "stackEntry");
     expect(el.style.display).toBe("none");
   });
 });

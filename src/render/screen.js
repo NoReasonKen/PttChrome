@@ -431,11 +431,17 @@ export class ScreenController {
   }
 
   destroy() {
+    this.release();
+    destroyCaptionAi();
+    destroyUrlAi();
+  }
+
+  // Everything this controller owns, without the module-wide AI annotators
+  // that other screens still use: a page stack layer is a second screen.
+  release() {
     this._captionAiTask.stop();
     this._urlAiTask.stop();
     this._fixAiTask.stop();
-    destroyCaptionAi();
-    destroyUrlAi();
     for (let i = 0; i < this._nodes.length; ++i) disposeNode(this._nodes[i]);
     this._nodes = [];
     this._staleNodes = [];

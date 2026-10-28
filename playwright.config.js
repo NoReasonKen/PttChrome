@@ -221,6 +221,20 @@ module.exports = defineConfig({
       testMatch: ['tools/record-cassette.spec.js', 'tools/record-scenarios.spec.js'],
     },
     {
+      // offline-measure：活層成本量測（tools/measure-layers.spec.js，`yarn measure:layers`）。
+      // 與 offline-mobile 同一組手機模擬與硬斷網；不在任何 suite 裡。
+      name: 'offline-measure',
+      // The spec runs its cases serially in one worker (describe.configure).
+      fullyParallel: true,
+      use: {
+        ...devices['Pixel 7'],
+        viewport: { width: 412, height: 390 },
+        proxy: OFFLINE_NO_NETWORK,
+        video: 'off',
+      },
+      testMatch: 'tools/measure-layers.spec.js',
+    },
+    {
       // offline-triage：live 錄製檔逐幀重放＋不跑版檢查，紅幀切成待轉素材
       // （`yarn triage:recordings`，見 docs/offline-replay-testing.md「live 錄製檔分流」）。
       // 零網路（同 offline 硬斷網）；會寫 cassettes/pending/，所以**不在** test:e2e:offline 裡。

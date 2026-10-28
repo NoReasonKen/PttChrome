@@ -1,6 +1,6 @@
 // Terminal View
 
-import { TermKeyboard, isAltRemapEvent } from './term_keyboard';
+import { TermKeyboard, isAltRemapEvent, isPlainBack } from './term_keyboard';
 import { cursorColorForBg } from './cursor_color';
 import { DEFAULT_HIGHLIGHT_BG, cursorHighlightClasses, highlightColStart, resolveHighlightRow } from './cursor_highlight';
 import { clickableColStart, DEFAULT_LIST_CLICK_START, DEFAULT_PUSH_CLICK_START, DEFAULT_PUSH_CLICK_END, cursorCss, CUR_BACK, CUR_POINTER, CUR_AUTO, EXIT_COL_END, resolveMouseGates, resolveMouseRegion, visibleHintBand } from './mouse_regions';
@@ -625,6 +625,13 @@ export function TermView() {
   });
 
   addEventListener('keydown', (e) => {
+    // A Back while a leave is on its way to PTT is queued (#34); the leave's
+    // own modal gate holds every other key.
+    if (this.bbscore.articleGestures?.holdsInput() && isPlainBack(e)) {
+      e.preventDefault();
+      this.bbscore.articleGestures.queueBack();
+      return;
+    }
     if (!shouldAcceptInput() || belongsToClosedModal(e) || !keyEventFilter(e))
       return;
 
@@ -1455,6 +1462,14 @@ TermView.prototype = {
       this.flashListHint(busyHint);
       return;
     }
+    // Leaving an article for its revealed list (#28, #30): only that leave may
+    // reach PTT until the real list takes over. Toolbar keys come through here
+    // too, past the modal gate that holds the hardware keyboard.
+    if (this.bbscore.articleGestures?.holdsInput()) {
+      if (isPlainBack(e)) this.bbscore.articleGestures.queueBack();
+      e.preventDefault();
+      return;
+    }
     // 手機黏滯 Ctrl：下一個按鍵改送組合鍵（用一次就解除）。重新走 sendKeyAsUser ⇒
     // 整條分派（好讀／列表好讀／原生）照組合鍵的語意處理。
     if (this.bbscore.mobileCtrlArmed && !e.ctrlKey && !e.altKey && !e.metaKey &&
@@ -1472,6 +1487,11 @@ TermView.prototype = {
     // is never read as a plain Back or search key. An unrelated list search
     // replaces the route.
     if (this.bbscore.articleShortcutSearch?.handleBack(e)) {
+      e.preventDefault();
+      return;
+    }
+    // Back from an article opened from a list reveals that list (#28).
+    if (this.bbscore.articleGestures?.handleBack(e)) {
       e.preventDefault();
       return;
     }
@@ -2194,7 +2214,13 @@ TermView.prototype = {
   // serialized transaction freezes the render and while a demand prefetch is
   // filling past a window edge (list_session._setLoading). Small fixed pill in
   // the bottom-right corner — the frozen 24-row screen itself stays untouched.
-  setListLoading: function(on) {
+  // Each owner holds it on until it lets go: 'list' (the list sessions), or a
+  // page sliding in while it is opened (#36).
+  setListLoading: function(on, owner) {
+    var owners = this._listLoadingOwners || (this._listLoadingOwners = new Set());
+    if (on) owners.add(owner || 'list');
+    else owners.delete(owner || 'list');
+    on = owners.size > 0;
     // 「讀取中…」屬一般提示：關掉 showStatusHints 就不出現（關閉仍要照常隱藏）。
     if (on && !shouldShowHint(null, this.showStatusHints)) on = false;
     var el = this._listLoadingEl;
