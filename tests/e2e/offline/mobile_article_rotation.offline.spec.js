@@ -43,13 +43,16 @@ async function openArticle(page, { imageProfile, waitLoaded = true } = {}) {
       let bytes = clear ? '\x1b[2J\x1b[H' : '';
       frame.texts.forEach((line, row) => {
         if (clear || line !== painted[row]) {
-          bytes += `\x1b[${row + 1};1H`;
+          bytes += `\x1b[${row + 1};1H\x1b[m\x1b[2K`;
           if (frame.list && (row === 0 || row === 2)) bytes += '\x1b[30;47m' + ' '.repeat(80) + '\r';
-          bytes += encode(line) + '\x1b[m\x1b[K';
+          bytes += encode(line) + '\x1b[m';
         }
       });
       painted = frame.texts.slice();
       app.onData(bytes + `\x1b[${frame.cursor.y + 1};${frame.cursor.x + 1}H`);
+      if (frame.list && (!app.buf.isUnicolor(0, 0, 29) || !app.buf.isUnicolor(2, 0, 70))) {
+        throw new Error('Rotation fixture must preserve the full-width list header background');
+      }
     };
     const responses = [];
     let sending = false;
