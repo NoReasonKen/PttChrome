@@ -272,7 +272,8 @@ async function pickFolderRow(page) {
       const folder = rows.find((t) => t.indexOf('目錄') >= 0 && /^[>\s]*\d+/.test(t));
       return {
         nums,
-        names: rows.join('|').replace(/\d+/g, ''),
+        // Which list this is, without the cursor mark and live counts.
+        names: rows.join('|').replace(/[\d\s>]+/g, ''),
         folder: folder ? parseInt(/^[>\s]*(\d+)/.exec(folder)[1], 10) : null,
         pause: b.pageState !== 3 && b.isPassScreenNow(),
         articleList: /編號/.test(b.getRowText(2, 0, b.cols)),
@@ -295,13 +296,14 @@ async function pickFolderRow(page) {
       await sendKey(page, 'Enter');
       await waitWireQuiet(page);
       const f = await screen();
+      console.log(`[record] folder depth ${depth} #${num}: pause=${f.pause} articleList=${f.articleList} moved=${f.names !== here.names} folder=${f.folder}`);
       if (f.pause || f.articleList) {
         await back();
         continue;
       }
       if (f.names === here.names) continue; // 分隔線／無權限板：零回應
       if (f.folder != null) return f.folder;
-      if (depth < 2) {
+      if (depth < 3) {
         const found = await search(depth + 1);
         if (found != null) return found;
       }
@@ -745,7 +747,7 @@ const SCENARIOS = {
       page.evaluate(() => {
         const b = window.__app.buf;
         const out = [];
-        for (let r = 3; r < b.rows - 1; r++) out.push(b.getRowText(r, 0, b.cols).replace(/[\d\s]+/g, ''));
+        for (let r = 3; r < b.rows - 1; r++) out.push(b.getRowText(r, 0, b.cols).replace(/[\d\s>]+/g, ''));
         return out.join('|');
       });
     const otherList = async (before) => {
@@ -754,7 +756,7 @@ const SCENARIOS = {
           const app = window.__app;
           const b = app.buf;
           const out = [];
-          for (let r = 3; r < b.rows - 1; r++) out.push(b.getRowText(r, 0, b.cols).replace(/[\d\s]+/g, ''));
+          for (let r = 3; r < b.rows - 1; r++) out.push(b.getRowText(r, 0, b.cols).replace(/[\d\s>]+/g, ''));
           return b.listRenderOwner === 'board-list' && app.boardListSession.state === 'active' && out.join('|') !== before;
         },
         before,
@@ -778,7 +780,7 @@ const SCENARIOS = {
         (back) => {
           const b = window.__app.buf;
           const out = [];
-          for (let r = 3; r < b.rows - 1; r++) out.push(b.getRowText(r, 0, b.cols).replace(/[\d\s]+/g, ''));
+          for (let r = 3; r < b.rows - 1; r++) out.push(b.getRowText(r, 0, b.cols).replace(/[\d\s>]+/g, ''));
           return b.listRenderOwner !== 'board-list' || out.join('|') !== back;
         },
         back,
