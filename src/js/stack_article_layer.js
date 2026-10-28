@@ -3,6 +3,7 @@
 // article's whole last presented frame over the article's box, scrollable at
 // its reading position, so revealing it shows the article at once.
 import { ScreenCopyLayer, setUsable } from './stack_layer';
+import { PAGE } from './page_stack';
 
 // The article row at the top of `scroller` and its offset from that top.
 function topRow(scroller) {
@@ -35,7 +36,7 @@ export class StackArticleLayer extends ScreenCopyLayer {
   }
 
   constructor(view, rect, frame) {
-    super(view, frame, 'article');
+    super(view, frame, PAGE.ARTICLE);
     const main = view.mainDisplay;
     this._hold = () => {
       this.held = true;

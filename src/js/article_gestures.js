@@ -4,11 +4,14 @@ import { i18n } from './i18n';
 import { serializedOpHint } from './serialized_op_gate';
 import { ArticleHorizontalGesture, ARTICLE_GESTURE_SLOP } from './article_horizontal_gesture';
 import { NavigationStack } from './navigation_stack';
+import { PAGE } from './page_stack';
 import { StackEntry } from './stack_entry';
 import { createUnderlay, holdSurfaces, releaseSurfaces, paintSurfaces, slideDuration } from './stack_motion';
+import { STACK_NOTICE_MS } from './stack_layer';
 import { OWNER_ARTICLE_LIST, OWNER_BOARD_LIST } from './list_render_owner';
 import { recordFor } from './reading_record';
 import { isPlainBack } from './term_keyboard';
+import { DrawerDiagnostics } from './article_gesture_diag';
 import { articleIdentity } from './article_shortcut_search';
 import '../css/article_gestures.css';
 
@@ -27,19 +30,6 @@ const DRAWER_WIDTH = 0.75;
 const DRAWER_HEIGHT = 0.6;
 const DRAWER_TOP = (1 - DRAWER_HEIGHT) / 2;
 
-// What a debug recording names an event's target by.
-function diagTarget(target) {
-  const el = target?.nodeType === 1 ? target : target?.parentElement;
-  if (!el) return null;
-  const shortcut = el.closest('[data-article-shortcut]');
-  if (shortcut) return 'shortcut:' + shortcut.getAttribute('data-article-shortcut');
-  if (el.matches('[data-article-drawer]')) return 'backdrop';
-  if (el.closest('.articleShortcutDrawer')) return 'panel';
-  if (el.closest('.main')) return 'article';
-  return el.tagName.toLowerCase();
-}
-
-
 // Own the contact outside the portal so mounting/focus changes cannot lose it.
 // Article exit and search shortcuts extend this owner rather than add listeners.
 export class ArticleGestures {
@@ -56,7 +46,7 @@ export class ArticleGestures {
     this.entry = null;
     // Backs made during a committed exit slide, before its handoff starts;
     // null while no exit is committing.
-    this.earlyBacks = null;
+    this.backsDuringSlide = null;
     this.listeners = [];
     this.stack = new NavigationStack(core);
     this._listen(window, 'pointerdown', event => this._start(event), true);
@@ -71,13 +61,14 @@ export class ArticleGestures {
     this._listen(window, 'click', event => {
       if (performance.now() >= this.suppressClickUntil) return;
       this._consume(event);
-      this._diag('clickSuppressed', event);
+      this.diag.log('clickSuppressed', event);
     }, true);
     this._listen(window, 'contextmenu', event => {
       if (this.track?.gesture.operation || this.opened) this._consume(event);
     }, true);
     this._listen(window, 'keydown', event => this._key(event), true);
-    this._diagInput();
+    this.diag = new DrawerDiagnostics(this);
+    this.diag.listen((target, type, listener, options) => this._listen(target, type, listener, options));
     this._listen(window, 'resize', () => this._resize());
     if (window.visualViewport) this._listen(window.visualViewport, 'resize', () => this._resize());
     this._refresh = () => this.update();
@@ -85,49 +76,6 @@ export class ArticleGestures {
     core.buf.addEventListener('screenSettled', this._refresh);
     this.unsubscribeMobile = core.onMobileChange(this._refresh);
     this.update();
-  }
-
-  // A debug recording keeps what each contact and click on the drawer met, so
-  // a tap that does nothing on a device can be traced (taps right after the
-  // drawer opens). Listeners run after the ones above, so states are after
-  // handling.
-  _diagInput() {
-    let contact = null;
-    const drawerInput = () => this.root || this.track;
-    for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'touchstart', 'touchend', 'touchcancel', 'click']) {
-      this._listen(window, type, event => {
-        if (type === 'touchstart' && event.touches.length === 1) contact = { uncancelable: false, scrolled: false };
-        if (drawerInput()) this._diag(type, event);
-      }, true);
-    }
-    // Native scrolling that took the contact over leaves later moves
-    // uncancelable; record the first such move and scroll of each contact.
-    this._listen(window, 'touchmove', event => {
-      if (!contact || contact.uncancelable || event.cancelable || !drawerInput()) return;
-      contact.uncancelable = true;
-      this._diag('touchmoveUncancelable', event);
-    }, { capture: true, passive: true });
-    this._listen(window, 'scroll', event => {
-      if (!contact || contact.scrolled || !drawerInput()) return;
-      contact.scrolled = true;
-      this._diag('scroll', event);
-    }, { capture: true, passive: true });
-  }
-
-  _diag(name, event, info) {
-    const rec = this.core.debugRecorder;
-    if (!rec?.isRecording) return;
-    const now = performance.now();
-    rec.log('articleGestures.' + name, {
-      t: Math.round(event?.timeStamp ?? now),
-      target: event ? diagTarget(event.target) : null,
-      cancelable: event?.cancelable, prevented: event?.defaultPrevented,
-      primary: event?.isPrimary, pointer: event?.pointerType,
-      state: this.root?.dataset.state || null, settling: !!this.settling, opened: this.opened,
-      suppressMs: Math.max(0, Math.round(this.suppressClickUntil - now)),
-      operation: this.track?.gesture.operation || null,
-      ...info
-    });
   }
 
   _listen(target, type, listener, options) {
@@ -149,9 +97,9 @@ export class ArticleGestures {
     return !!(readEffectivePrefs().articleHorizontalGestures && this.core.buf.pageState === 2 && this._listLeaveable());
   }
 
-  // The page a contact starting now would swipe: 'article', 'list' or null.
+  // The kind of page a contact starting now would swipe, or null.
   _swipeLevel() {
-    return this.available() ? 'article' : this.listSwipeAvailable() ? 'list' : null;
+    return this.available() ? PAGE.ARTICLE : this.listSwipeAvailable() ? PAGE.ARTICLE_LIST : null;
   }
 
   update() {
@@ -165,7 +113,7 @@ export class ArticleGestures {
     // A list being swiped or left stays while it can be left: its own paging
     // redraws the screen meanwhile.
     const leaving = this.track?.level || (this.exitUnderlay && this.exitLevel);
-    const lost = leaving && leaving !== 'article' ? !this._leaveable(leaving) :
+    const lost = leaving && leaving !== PAGE.ARTICLE ? !this._leaveable(leaving) :
       !available || (this.identity && identity !== this.identity);
     if (lost) this.close(true);
     this.identity = identity;
@@ -205,7 +153,7 @@ export class ArticleGestures {
       id: event.pointerId,
       level,
       gesture: new ArticleHorizontalGesture({
-        width, opened: this.opened, allowExit: true, allowOpen: level === 'article', x: event.clientX, y: event.clientY, t: event.timeStamp
+        width, opened: this.opened, allowExit: true, allowOpen: level === PAGE.ARTICLE, x: event.clientX, y: event.clientY, t: event.timeStamp
       })
     };
   }
@@ -339,12 +287,12 @@ export class ArticleGestures {
   // A leave is on its way to PTT, from the committed slide on: other input
   // waits for the swap.
   holdsInput() {
-    return (this.stack.handingOff || this.earlyBacks != null) && !this.sendingBack;
+    return (this.stack.handingOff || this.backsDuringSlide != null) && !this.sendingBack;
   }
 
   // A Back made meanwhile unwinds further after the swap (#34).
   queueBack() {
-    if (!this.stack.queueBack() && this.earlyBacks != null) this.earlyBacks++;
+    if (!this.stack.queueBack() && this.backsDuringSlide != null) this.backsDuringSlide++;
   }
 
   // A session presented a real page: an article list, a board list or the
@@ -353,7 +301,7 @@ export class ArticleGestures {
     if (this.entry?.loading && kind === this.entry.from) {
       // A board list opened from a board list's row, such as a class group,
       // stacks over it like a board.
-      if (kind === 'boardList' && another) {
+      if (kind === PAGE.BOARD_LIST && another) {
         this.stack.enterBoardList();
         return this.entry.answered();
       }
@@ -373,8 +321,8 @@ export class ArticleGestures {
     if (this.sendingBack || this.stack.handingOff || this.entry || this.track || this.exitUnderlay || this.root) return false;
     const core = this.core;
     if (this._otherModalOpen()) return false;
-    const level = ['article', 'list', 'boardList'].find(level => this._leaveable(level));
-    if (!level || core.buf.pageState !== (level === 'article' ? 3 : 2) || !this.stack.revealable()) return false;
+    const level = [PAGE.ARTICLE, PAGE.ARTICLE_LIST, PAGE.BOARD_LIST].find(level => this._leaveable(level));
+    if (!level || core.buf.pageState !== (level === PAGE.ARTICLE ? 3 : 2) || !this.stack.revealable()) return false;
     this.exitLevel = level;
     this._ensureExit();
     this._settleExit(true);
@@ -401,29 +349,29 @@ export class ArticleGestures {
     this.settling = true;
     const identity = this.identity;
     const duration = slideDuration();
-    this.earlyBacks = commit ? 0 : null;
+    this.backsDuringSlide = commit ? 0 : null;
     for (const { node } of this.exitSurfaces) node.style.transition = `translate ${duration}ms ease-out`;
     this._paintExit(commit ? window.innerWidth : 0);
     this.timer = setTimeout(() => {
       this.timer = null;
-      const earlyBacks = this.earlyBacks || 0;
-      this.earlyBacks = null;
+      const backsDuringSlide = this.backsDuringSlide || 0;
+      this.backsDuringSlide = null;
       const valid = commit && this._leaveable(this.exitLevel) && identity === this.identity;
-      if (valid) this._handoff(earlyBacks);
+      if (valid) this._handoff(backsDuringSlide);
       else this._removeExit();
     }, duration);
   }
 
   // The article stays off screen over the revealed list, or the dark fallback,
-  // until the real list is presented (#20, #28). `earlyBacks` made during the
+  // until the real list is presented (#20, #28). `backsDuringSlide` made during the
   // slide are queued once the handoff is under way.
-  _handoff(earlyBacks) {
+  _handoff(backsDuringSlide) {
     const core = this.core;
     const sent = this.stack.begin({
       level: this.exitLevel,
       send: () => {
         const record = recordFor(core);
-        const bookmark = record.begin(this.exitLevel === 'article' ? 'article-swipe-exit' : 'list-back-reveal');
+        const bookmark = record.begin(this.exitLevel === PAGE.ARTICLE ? 'article-swipe-exit' : 'list-back-reveal');
         core.noteUserAction();
         // The exit surfaces hold the modal gate; release it only for the send.
         core.setModalOpen(MODAL_SOURCE, false);
@@ -440,17 +388,16 @@ export class ArticleGestures {
       },
       finish: () => this._removeExit(),
       cancel: () => this._settleExit(false),
-      hint: () => core.view.flashListHint?.(i18n('stack_handoffTimeout'), 4000)
+      hint: () => core.view.flashListHint?.(i18n('stack_handoffTimeout'), STACK_NOTICE_MS)
     });
-    for (let i = 0; sent && i < earlyBacks; i++) this.stack.queueBack();
+    for (let i = 0; sent && i < backsDuringSlide; i++) this.stack.queueBack();
   }
 
   // The current page can be left now, by any Back.
-  // Whether the page of `level` ('article', 'list' or 'boardList') is shown
-  // and can be left.
+  // Whether a page of kind `level` is shown and can be left.
   _leaveable(level) {
-    if (level === 'article') return this._articleLeaveable();
-    return level === 'list' ? this._listLeaveable() : this._boardListLeaveable();
+    if (level === PAGE.ARTICLE) return this._articleLeaveable();
+    return level === PAGE.ARTICLE_LIST ? this._listLeaveable() : this._boardListLeaveable();
   }
 
   _articleLeaveable() {
@@ -478,7 +425,7 @@ export class ArticleGestures {
   _removeExit() {
     if (!this.exitUnderlay) return;
     this._stopMotion();
-    this.earlyBacks = null;
+    this.backsDuringSlide = null;
     if (!this.stack.handingOff) this.stack.revealable()?.hide();
     releaseSurfaces(this.exitSurfaces);
     this.exitUnderlay.remove();
@@ -515,7 +462,7 @@ export class ArticleGestures {
       if (button ? !button.contains(event.target) : tap.target !== this.root || event.target !== this.root || this.settling) return;
       this._consume(event);
       this.suppressClickUntil = performance.now() + 400;
-      this._diag('tapUp', event, { action: button?.getAttribute('data-article-shortcut') || null });
+      this.diag.log('tapUp', event, { action: button?.getAttribute('data-article-shortcut') || null });
       if (button) this._runShortcut(ACTIONS.find(action => action.key === button.getAttribute('data-article-shortcut')));
       else this.close();
     });
@@ -533,7 +480,7 @@ export class ArticleGestures {
       button.textContent = i18n(action.label);
       button.addEventListener('click', event => {
         this._consume(event);
-        this._diag('shortcutClick', event, { action: action.key });
+        this.diag.log('shortcutClick', event, { action: action.key });
         this._runShortcut(action);
       });
       this.panel.appendChild(button);
@@ -547,7 +494,7 @@ export class ArticleGestures {
 
   _runShortcut(action) {
     const gate = !this.opened ? 'closed' : this.settling ? 'settling' : !this.available() ? 'unavailable' : null;
-    if (gate) return this._diag('shortcutRefused', null, { action: action.key, gate });
+    if (gate) return this.diag.log('shortcutRefused', null, { action: action.key, gate });
     this.close(true);
     if (!mobileToolbarContext(this.core).threadNav) return;
     this.core.noteUserAction();
@@ -579,7 +526,7 @@ export class ArticleGestures {
     this.opened = opened;
     this.settling = true;
     this.root.dataset.state = opened ? 'opening' : 'closing';
-    this._diag('settle', null, { to: this.root.dataset.state });
+    this.diag.log('settle', null, { to: this.root.dataset.state });
     // Keep opening buttons as touch targets; their click handlers remain gated
     // until settling finishes or a fresh contact completes it early.
     this.panel.inert = !opened;
@@ -595,7 +542,7 @@ export class ArticleGestures {
     if (!opened) this._remove();
     else {
       this.root.dataset.state = 'open';
-      this._diag('settle', null, { to: 'open' });
+      this.diag.log('settle', null, { to: 'open' });
       this.panel.style.transition = '';
       this.panel.inert = false;
       this.panel.querySelector('button').focus({ preventScroll: true });

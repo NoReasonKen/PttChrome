@@ -2,9 +2,10 @@
 // of the shared screen renderer re-renders the list's last presented frame in
 // its own scroll viewport, so revealing it shows the real list, scrollable at
 // once, instead of a static copy.
-import { ScreenCopyLayer, setUsable } from './stack_layer';
+import { ScreenCopyLayer, setUsable, STACK_NOTICE_MS } from './stack_layer';
 import { LIST_TITLE_COL_START } from './comment_parse';
 import { i18n } from './i18n';
+import { PAGE } from './page_stack';
 
 // Identity of a list card. An article is its author and title: its number can
 // move when earlier articles are deleted. A board is its name.
@@ -57,7 +58,7 @@ export class StackListLayer extends ScreenCopyLayer {
 
   constructor(view, rect, screen, frame) {
     const kind = frame.enhance.listScroll.kind;
-    super(view, frame, kind === 'board' ? 'boardList' : 'articleList');
+    super(view, frame, kind === 'board' ? PAGE.BOARD_LIST : PAGE.ARTICLE_LIST);
     this.kind = kind;
     this._render(rect, frame.forceWidth);
     this.scrollTop = screen.getListScrollTop();
@@ -123,7 +124,7 @@ export class StackListLayer extends ScreenCopyLayer {
   openTapped(core, id) {
     const row = findCard(core.view.mainDisplay, id)?.querySelector('.listCardBody')?.closest('[data-row]')?.dataset.row;
     if (row == null) {
-      core.view.flashListHint?.(i18n(this.kind === 'board' ? 'stack_boardGone' : 'stack_articleGone'), 4000);
+      core.view.flashListHint?.(i18n(this.kind === 'board' ? 'stack_boardGone' : 'stack_articleGone'), STACK_NOTICE_MS);
       return;
     }
     core.noteUserAction?.();

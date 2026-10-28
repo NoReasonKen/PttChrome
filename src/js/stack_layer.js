@@ -2,6 +2,9 @@
 // inert while the page above slides away, and usable during the handoff.
 import { renderScreen } from './term_ui';
 
+// How long a stack notice stays, such as a tapped entry that is gone.
+export const STACK_NOTICE_MS = 4000;
+
 // Inert and hidden from assistive technology unless `usable`.
 export function setUsable(el, usable) {
   el.inert = !usable;

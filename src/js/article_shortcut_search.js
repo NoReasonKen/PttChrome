@@ -13,6 +13,7 @@ import { i18n } from './i18n';
 import { isBoardArticleList as boardList, isSearchResultsFrame as resultList, searchResultsLanded, SEARCH_RESULT_NOTICE as MESSAGE } from './search_results_screen';
 import { recordSearchResults, readSearchResultsContext, clearSearchResultsContext } from './search_results_context';
 import { footerCaption } from './screen_captions';
+import { PAGE } from './page_stack';
 
 const PRESS_ANY_KEY = /(?:請)?按任意鍵繼續|請按 空白鍵 繼續/;
 const LIST_BACK_KEYS = ['ArrowLeft', 'q', 'e'];
@@ -244,7 +245,7 @@ export class ArticleShortcutSearch {
       this.route = transition(this.route);
       this.pending = null;
       this._finish();
-      this.core.articleGestures?.pagePresented('article');
+      this.core.articleGestures?.pagePresented(PAGE.ARTICLE);
       this._hint(notice);
     })) this._fail();
   }

@@ -14,7 +14,7 @@ import { OWNER_ARTICLE_LIST } from './list_render_owner';
 import { sameBoard } from './screen_titles';
 import {
   createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, queueBack, takeQueuedBack, dropQueuedBacks, boundLayers,
-  pageShown
+  pageShown, PAGE
 } from './page_stack';
 import { StackListLayer } from './stack_list_layer';
 import { StackHomeLayer } from './stack_home_layer';
@@ -49,7 +49,7 @@ export class NavigationStack {
     this.stack = createPageStack();
     // The live layer of each page that has one, with what the reveal shows of
     // it (title, App Bar), by depth in the stack.
-    this.lower = [];
+    this.captured = [];
     this.pending = null;
     this.handoff = null;
   }
@@ -87,8 +87,8 @@ export class NavigationStack {
       const memory = performance.memory;
       rec.log('stack.layerCost', {
         kind, nodes, renderMs: Math.round(ms * 10) / 10, depth: this.stack.pages.length,
-        liveLayers: this.lower.filter(Boolean).length,
-        liveLayerNodes: this.lower.reduce((n, lower) => n + (lower?.nodes || 0), 0),
+        liveLayers: this.captured.filter(Boolean).length,
+        liveLayerNodes: this.captured.reduce((n, lower) => n + (lower?.nodes || 0), 0),
         pageNodes: countNodes(document.body), heapKB: memory ? Math.round(memory.usedJSHeapSize / 1024) : null
       });
     }, 100);
@@ -118,7 +118,7 @@ export class NavigationStack {
     const core = this.core;
     const board = listBoard(core);
     if (!core.mobile || !board) return this.dropPending();
-    this._capture('articleList', board, () => StackListLayer.capture(core.view, 'article'));
+    this._capture(PAGE.ARTICLE_LIST, board, () => StackListLayer.capture(core.view, 'article'));
   }
 
   // An article shortcut search is about to start from the shown article
@@ -126,20 +126,20 @@ export class NavigationStack {
   captureArticle() {
     const page = this._articlePage();
     if (!this.core.mobile || !page.id) return this.dropPending();
-    this._capture('article', page.board, () => StackArticleLayer.capture(this.core.view), page.id);
+    this._capture(PAGE.ARTICLE, page.board, () => StackArticleLayer.capture(this.core.view), page.id);
   }
 
   // `board` is about to be opened from the shown home dashboard. Its article
   // list stacks only under article-list easy reading.
   captureHome(board) {
     if (!this._stacksBoard(board)) return this.dropPending();
-    this._capture('home', board, () => StackHomeLayer.capture(this.core));
+    this._capture(PAGE.HOME, board, () => StackHomeLayer.capture(this.core));
   }
 
   // `board` is about to be opened from the shown board list.
   captureBoardList(board) {
     if (!this._stacksBoard(board)) return this.dropPending();
-    this._capture('boardList', board, () => StackListLayer.capture(this.core.view, 'board'));
+    this._capture(PAGE.BOARD_LIST, board, () => StackListLayer.capture(this.core.view, 'board'));
   }
 
   _stacksBoard(board) {
@@ -171,7 +171,7 @@ export class NavigationStack {
     }
     let top = this._top();
     // A board list's page names the row it opens, chosen just before.
-    if (top?.kind === 'boardList' && pending.kind === 'boardList') {
+    if (top?.kind === PAGE.BOARD_LIST && pending.kind === PAGE.BOARD_LIST) {
       top = { ...top, board: pending.board };
       this.stack = { ...this.stack, pages: [...this.stack.pages.slice(0, -1), top] };
     }
@@ -181,13 +181,13 @@ export class NavigationStack {
     }
     const depth = this.stack.pages.length - 1;
     this.stack = withLayer(this.stack);
-    this.lower[depth]?.layer?.destroy();
-    this.lower[depth] = pending;
+    this.captured[depth]?.layer?.destroy();
+    this.captured[depth] = pending;
     this.stack = pushPage(this.stack, page, { fromBelow: true });
     const bounded = boundLayers(this.stack);
     for (const released of bounded.released) {
-      this.lower[released]?.layer?.destroy();
-      this.lower[released] = undefined;
+      this.captured[released]?.layer?.destroy();
+      this.captured[released] = undefined;
     }
     this.stack = bounded.stack;
   }
@@ -197,18 +197,18 @@ export class NavigationStack {
   enterArticle() {
     const page = this._articlePage();
     this._enter(page,
-      pending => pending.kind === 'articleList' && !!page.id && sameBoard(pending.board, page.board));
+      pending => pending.kind === PAGE.ARTICLE_LIST && !!page.id && sameBoard(pending.board, page.board));
   }
 
   // A board list opened from a board list's row was entered: it keeps that
   // list as its lower page. `folder` is the row it was opened from.
   enterBoardList() {
     const folder = this.pending?.board;
-    this._enter({ kind: 'boardList', board: folder, folder }, pending => pending.kind === 'boardList');
+    this._enter({ kind: PAGE.BOARD_LIST, board: folder, folder }, pending => pending.kind === PAGE.BOARD_LIST);
   }
 
   _articlePage() {
-    return { kind: 'article', board: this.core.view._articleBoard, id: openArticleKey(this.core) };
+    return { kind: PAGE.ARTICLE, board: this.core.view._articleBoard, id: openArticleKey(this.core) };
   }
 
   // An article list is presented outside a handoff. A board opened from the
@@ -216,16 +216,16 @@ export class NavigationStack {
   // results of an article shortcut search keep their source article.
   _enterList(board) {
     // An article being opened from this list stays captured.
-    if (this.pending?.kind === 'articleList') return;
-    const shown = { kind: 'articleList', board, results: this._showsSearchResults() };
+    if (this.pending?.kind === PAGE.ARTICLE_LIST) return;
+    const shown = { kind: PAGE.ARTICLE_LIST, board, results: this._showsSearchResults() };
     // The search passes its board's list on the way to the results.
-    if (this.pending?.kind === 'article') {
+    if (this.pending?.kind === PAGE.ARTICLE) {
       if (shown.results) this._enter(shown, pending => sameBoard(pending.board, board));
       return;
     }
     if (this.pending) {
       return this._enter(shown,
-        pending => (pending.kind === 'home' || pending.kind === 'boardList') && sameBoard(pending.board, board));
+        pending => (pending.kind === PAGE.HOME || pending.kind === PAGE.BOARD_LIST) && sameBoard(pending.board, board));
     }
     this._shown(shown);
   }
@@ -235,7 +235,7 @@ export class NavigationStack {
   _shown(page) {
     const { stack, kept } = pageShown(this.stack, page);
     if (stack === this.stack) return;
-    this._spend(kept);
+    this._releaseFrom(kept);
     this.stack = stack;
   }
 
@@ -245,7 +245,7 @@ export class NavigationStack {
     if (this.handoff) return;
     if (!this.core.conn?.isConnected) return this._discard();
     // An article being opened is entered once its open is bound.
-    if (this.pending?.kind === 'articleList') return;
+    if (this.pending?.kind === PAGE.ARTICLE_LIST) return;
     const page = this._articlePage();
     if (this.core.buf.pageState !== 3 || !page.id) return;
     this._shown(page);
@@ -264,14 +264,14 @@ export class NavigationStack {
     this._discard();
   }
 
-  // Drop the layers from `depth` up.
-  _spend(depth) {
-    for (const lower of this.lower.slice(depth)) lower?.layer?.destroy();
-    this.lower.length = Math.min(this.lower.length, depth);
+  // Release the captured layers from `depth` up.
+  _releaseFrom(depth) {
+    for (const lower of this.captured.slice(depth)) lower?.layer?.destroy();
+    this.captured.length = Math.min(this.captured.length, depth);
   }
 
   _discard() {
-    this._spend(0);
+    this._releaseFrom(0);
     this.stack = createPageStack();
   }
 
@@ -280,9 +280,9 @@ export class NavigationStack {
     // Search results the stack was not told of: their Back follows search
     // return history, not the page below (#33).
     const top = this._top();
-    if (top?.kind === 'articleList' && !top.results && this._showsSearchResults()) return null;
+    if (top?.kind === PAGE.ARTICLE_LIST && !top.results && this._showsSearchResults()) return null;
     const target = revealTarget(this.stack);
-    const lower = target && this.lower[this.stack.pages.length - 2];
+    const lower = target && this.captured[this.stack.pages.length - 2];
     // Fitting a list layer to a changed width renders it again.
     return lower?.layer.fitViewport() ? { page: target, ...lower } : null;
   }
@@ -322,14 +322,15 @@ export class NavigationStack {
   // The current page has slid away. `send` sends PTT's Back and returns
   // whether it was sent; `finish` restores the surfaces once the real page
   // takes over; `cancel` brings the current page back when Back was not sent.
-  // `level` is the page left: 'article' or 'list'. A list with nothing
-  // revealed below waits for whatever page PTT shows next (#32).
-  begin({ level = 'article', send, finish, cancel, hint }) {
+  // `level` is the kind of page left: an article, an article list or a board
+  // list. An article list with nothing revealed below waits for whatever page
+  // PTT shows next (#32).
+  begin({ level = PAGE.ARTICLE, send, finish, cancel, hint }) {
     const core = this.core;
     const revealed = this._revealed();
     const layer = revealed?.layer || null;
     const h = this.handoff = {
-      layer, target: revealed?.page.kind || (level === 'list' ? null : 'articleList'), id: revealed?.page.id,
+      layer, target: revealed?.page.kind || (level === PAGE.ARTICLE_LIST ? null : PAGE.ARTICLE_LIST), id: revealed?.page.id,
       board: this._top()?.board || core.view._articleBoard,
       identity: openArticleKey(core), appBar: revealed?.appBar || null,
       sentAt: performance.now(), presentedAt: null, touches: 0, lastScrollAt: -Infinity,
@@ -377,7 +378,7 @@ export class NavigationStack {
     listen(core.buf, 'pageStateSettled', () => this._mark('pageStateSettled', { pageState: core.buf.pageState }));
     listen(core.buf, 'screenSettled', () => {
       this._mark('settled', { pageState: core.buf.pageState });
-      this._landed();
+      this._screenAnswered();
     });
     core._refreshScreenContext?.();
     let sent = false;
@@ -404,25 +405,25 @@ export class NavigationStack {
     const h = this.handoff;
     const core = this.core;
     if (!h) {
-      if (kind === 'articleList' && listBoard(core)) this._enterList(listBoard(core));
+      if (kind === PAGE.ARTICLE_LIST && listBoard(core)) this._enterList(listBoard(core));
       // Back on the dashboard or a board list some other way: what was stacked
       // above it, or captured on the way to a board, no longer holds.
-      else if (kind === 'home' || kind === 'boardList') this.clear();
+      else if (kind === PAGE.HOME || kind === PAGE.BOARD_LIST) this.clear();
       // The search returned to its source without results.
-      else if (kind === 'article') this.dropPending();
+      else if (kind === PAGE.ARTICLE) this.dropPending();
       return;
     }
     if (h.presentedAt != null) return;
     // Search return history stopped on the board list instead of the article.
-    if (h.target === 'article' && kind === 'articleList') return this._end('unexpected');
+    if (h.target === PAGE.ARTICLE && kind === PAGE.ARTICLE_LIST) return this._end('unexpected');
     if (h.target && kind !== h.target) {
       // An article list presents itself again while it is being left; any
       // other page is PTT leaving the route the stack describes.
-      if (kind === 'articleList' || kind === 'article') return;
+      if (kind === PAGE.ARTICLE_LIST || kind === PAGE.ARTICLE) return;
       return this._end('unexpected');
     }
-    if (kind === 'article' && openArticleKey(core) !== h.id) return this._end('unexpected');
-    if (kind === 'articleList' && h.target) {
+    if (kind === PAGE.ARTICLE && openArticleKey(core) !== h.id) return this._end('unexpected');
+    if (kind === PAGE.ARTICLE_LIST && h.target) {
       if (core.buf.pageState !== 2 || core.listSession?.state !== 'active') return;
       // A list that has not read its board yet, as after rebuilt search
       // results, presents itself again once it has.
@@ -435,8 +436,9 @@ export class NavigationStack {
     this._step();
   }
 
-  // PTT answered with something other than the page this Back expects.
-  _landed() {
+  // A screen settled during the handoff: it ends the handoff when it is PTT's
+  // answer and something other than the page this Back expects.
+  _screenAnswered() {
     const h = this.handoff;
     const core = this.core;
     if (!h || h.presentedAt != null) return;
@@ -447,12 +449,12 @@ export class NavigationStack {
       if (pageState === 2 && core.buf.listRenderOwner === OWNER_ARTICLE_LIST) return;
       return this._end('presented');
     }
-    if (h.target === 'article') {
+    if (h.target === PAGE.ARTICLE) {
       // Search return history reopens the article by its code, through screens
       // of its own, and presents it.
       if (core.articleShortcutSearch?.active) return;
       if (pageState === 3 && openArticleKey(core) === h.id) return;
-    } else if (h.target === 'articleList') {
+    } else if (h.target === PAGE.ARTICLE_LIST) {
       if (pageState === 3 && openArticleKey(core) === h.identity) return;
       if (pageState === 2 && readEffectivePrefs().enableEasyReadingList) return;
     } else if (pageState === 1 || pageState === 2) {
@@ -490,7 +492,7 @@ export class NavigationStack {
     this._cleanup();
     // The revealed page is now PTT's real page; its layer is spent.
     h.layer?.hide();
-    this.lower.length = Math.max(0, this.stack.pages.length - 2);
+    this.captured.length = Math.max(0, this.stack.pages.length - 2);
     this.stack = popPage(this.stack).stack;
     // PTT left the route the stack describes, or never confirmed it: nothing
     // below is known to be the way back.

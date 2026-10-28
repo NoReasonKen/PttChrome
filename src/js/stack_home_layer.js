@@ -8,7 +8,8 @@ import { flushSync } from 'react-dom';
 import { HomeDashboard as HomeDashboardView } from '../components/HomeDashboard/index.jsx';
 import { applyHomeAnchor, homeAnchorOf } from './home_dashboard';
 import { i18n } from './i18n';
-import { setUsable } from './stack_layer';
+import { setUsable, STACK_NOTICE_MS } from './stack_layer';
+import { PAGE } from './page_stack';
 
 const BOARD_ENTRY = '[data-home-board], [data-home-recent]';
 
@@ -47,7 +48,7 @@ export class StackHomeLayer {
     this.reactRoot = createRoot(this.el);
     flushSync(() => this.reactRoot.render(createElement(HomeDashboardView, { pttchrome: host, layer: true })));
     this.root = this.el.querySelector('.homeDashboard');
-    this.root?.setAttribute('data-stack-layer', 'home');
+    this.root?.setAttribute('data-stack-layer', PAGE.HOME);
     this.anchor = homeAnchorOf(real);
   }
 
@@ -94,8 +95,8 @@ export class StackHomeLayer {
   openTapped(core, id) {
     const home = core.homeDashboard;
     const shown = [...(home.rootElement()?.querySelectorAll(BOARD_ENTRY) || [])].some(entry => boardOf(entry) === id.board);
-    if (!shown) return core.view.flashListHint?.(i18n('stack_boardGone'), 4000);
-    if (!home.openBoard(id.board) && home.state.fetching) core.view.flashListHint?.(i18n('home_updating'), 4000);
+    if (!shown) return core.view.flashListHint?.(i18n('stack_boardGone'), STACK_NOTICE_MS);
+    if (!home.openBoard(id.board) && home.state.fetching) core.view.flashListHint?.(i18n('home_updating'), STACK_NOTICE_MS);
   }
 
   destroy() {

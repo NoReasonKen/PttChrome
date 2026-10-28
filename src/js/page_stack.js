@@ -10,6 +10,12 @@
 // counts the Backs made while a handoff was under way, still to run.
 import { sameBoard } from './screen_titles';
 
+// The kinds of stacked page. A layer's element carries its kind as
+// data-stack-layer.
+export const PAGE = Object.freeze({
+  ARTICLE: 'article', ARTICLE_LIST: 'articleList', BOARD_LIST: 'boardList', HOME: 'home'
+});
+
 export function createPageStack() {
   return { pages: [] };
 }
@@ -21,7 +27,7 @@ export function pushPage(stack, page, { fromBelow = false } = {}) {
 }
 
 const samePage = (a, b) => a.kind === b.kind && sameBoard(a.board, b.board) &&
-  !!a.results === !!b.results && (a.kind !== 'article' || a.id === b.id);
+  !!a.results === !!b.results && (a.kind !== PAGE.ARTICLE || a.id === b.id);
 
 // A page shown outside a handoff and not opened from the current page (#35).
 // The stack keeps only what is still the way back from it; anything else
@@ -38,12 +44,12 @@ export function pageShown(stack, shown) {
     const pages = [...stack.pages.slice(0, n - 2), { ...below, layer: false }];
     return { stack: { ...stack, pages }, kept: n - 2 };
   }
-  const fromList = top?.kind === 'article' && below?.kind === 'articleList' &&
+  const fromList = top?.kind === PAGE.ARTICLE && below?.kind === PAGE.ARTICLE_LIST &&
     sameBoard(top.board, shown.board) && sameBoard(below.board, shown.board);
   // Another article in place of the current one (the next one, a thread
   // move): the list's layer showed where the first one was opened, but the
   // pages below the list still hold.
-  if (fromList && shown.kind === 'article') {
+  if (fromList && shown.kind === PAGE.ARTICLE) {
     const pages = [...stack.pages.slice(0, n - 2), { ...below, layer: false }, shown];
     return { stack: { ...stack, pages }, kept: n - 2 };
   }
@@ -110,9 +116,9 @@ export function revealTarget(stack) {
   if (n < 2) return null;
   const current = stack.pages[n - 1];
   const below = stack.pages[n - 2];
-  if (current.results && below.kind !== 'article') return null;
+  if (current.results && below.kind !== PAGE.ARTICLE) return null;
   // A board list opened from a board list names the row it was opened from.
-  const opened = current.kind === 'boardList' ? current.folder : current.board;
+  const opened = current.kind === PAGE.BOARD_LIST ? current.folder : current.board;
   return below.layer && sameBoard(below.board, opened) ? below : null;
 }
 

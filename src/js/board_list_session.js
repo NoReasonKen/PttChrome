@@ -67,6 +67,7 @@ import { LEFT_ARROW } from './function_key_plan';
 import { readEffectivePrefs } from './pref_storage';
 import { HINT_ERROR } from './status_hint';
 import { recordFor, boardListRecordMatches } from './reading_record';
+import { PAGE } from './page_stack';
 
 // 待還原捲動錨（_pendingViewport）的壽命與往回補頁的上限（同 list_session）。
 const PENDING_VIEWPORT_MAX_MS = 10000;
@@ -537,7 +538,7 @@ BoardListSession.prototype = {
   // a class group's.
   _presented: function(another) {
     if (this.state === 'active' && this._renderMode === 'buffer')
-      this._core.articleGestures?.pagePresented('boardList', { another: !!another });
+      this._core.articleGestures?.pagePresented(PAGE.BOARD_LIST, { another: !!another });
   },
 
   // ---- 外部入口 --------------------------------------------------------------

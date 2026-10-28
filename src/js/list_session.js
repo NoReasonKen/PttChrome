@@ -82,6 +82,7 @@ import {
   OWNER_ARTICLE_LIST,
   isBoardListCommandKind
 } from './list_render_owner';
+import { PAGE } from './page_stack';
 
 // 程式化平滑捲動的最長等待：超過就放棄「等它到站」，把 scroll 事件當成使用者
 // 自己捲的（動畫會被使用者的滾輪／拖曳取消，那時永遠到不了目標）。
@@ -1240,7 +1241,7 @@ ListSession.prototype = {
   // A landing action has rebuilt, scrolled and positioned the list. A leave
   // waiting to hand over to it may do so now (#28).
   _presented: function() {
-    if (this.state === 'active' && this._renderMode === 'buffer') this._core.articleGestures?.pagePresented('articleList');
+    if (this.state === 'active' && this._renderMode === 'buffer') this._core.articleGestures?.pagePresented(PAGE.ARTICLE_LIST);
   },
 
   // ---- external entry points ------------------------------------------------

@@ -37,6 +37,7 @@ import { isRefreshKeyEvent } from './screen_refresh';
 import { readEffectivePrefs } from './pref_storage';
 import { recordFor } from './reading_record';
 import { HINT_ERROR } from './status_hint';
+import { PAGE } from './page_stack';
 
 export const HOME_FAV_FETCH_FLAG = 'homeFavFetchInFlight';
 export const HOME_FAV_CACHE_KEY = 'pttchrome.homeFavorites.v1';
@@ -517,7 +518,7 @@ HomeDashboard.prototype = {
   attachRoot: function(el) {
     this._root = el || null;
     // The dashboard is visible again: a revealed copy may hand off to it (#31).
-    if (this._root) this._core.articleGestures?.pagePresented('home');
+    if (this._root) this._core.articleGestures?.pagePresented(PAGE.HOME);
   },
 
   // Only the copy that is registered may clear the registration, so another
