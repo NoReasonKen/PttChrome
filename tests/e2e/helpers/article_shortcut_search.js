@@ -156,12 +156,13 @@ const NESTED_ARTICLES = [
 //   login does, so reconnect/open resume may capture and store a plan.
 // options.resumeLastPlace: reloads resume the last place (the product default).
 // `homeMenu`: the main menu has My Favorites, so the home dashboard shows on it.
-async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false, legacyCaptions = false, extraArticles = 0, homeMenu = false } = {}) {
+// `dynamicRows`: model negotiated terminal rows separately from application layout.
+async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false, legacyCaptions = false, extraArticles = 0, homeMenu = false, dynamicRows = false, pinned = false } = {}) {
   await bootGestureArticle(page, { resumeLastPlace });
   // The image-article boot disables the easy-reading list; the reader's
   // default enables it before any list from this server is seen.
   if (easyList) await ptt.applyPrefs(page, { enableEasyReadingList: true });
-  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article', legacyCaptions, extraArticles, homeMenu });
+  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article', legacyCaptions, extraArticles, homeMenu, dynamicRows, pinned });
   if (loggedIn) {
     await waitScreenSettled(page, { 0: '主功能表' });
     await page.evaluate(() => {
@@ -197,53 +198,75 @@ async function installNestedServer(page, session) {
     // surface: article | list | info | prompt | empty | missing | main
     const state = {
       surface: session.surface, board: 'Test', filter: null, cursor: 0, open: articles[0],
-      deleted: new Set(session.deleted || []), prompt: null
+      deleted: new Set(session.deleted || []), prompt: null,
+      terminalRows: session.dynamicRows ? app.buf.rows : 24,
+      applicationRows: session.dynamicRows ? app.buf.rows : 24, sizeChanges: [],
+      replyDelayMs: 90, holdResponses: false, queuedResponses: 0
     };
     const listed = () => {
-      const all = articles.filter(article => !state.deleted.has(article.aid));
+      const all = articles.filter(article => !state.deleted.has(article.aid) && (!state.filter || !article.pinned));
       return state.filter ? all.filter(state.filter.match) : all;
     };
     const selected = () => listed()[state.cursor];
-    const articleRows = article => {
+    let storedScreen = null;
+    let painted = null;
+    const render = (screen, fullRepaint) => {
+      const clear = fullRepaint || !painted;
+      let data = clear ? '\x1b[2J' : '';
+      const next = Array.from({ length: state.terminalRows }, (_, row) => ({
+        text: screen.rows[row] || '', inverse: screen.inverse.includes(row)
+      }));
+      next.forEach((line, row) => {
+        const previous = painted?.[row];
+        if (!clear && previous?.text === line.text && previous.inverse === line.inverse) return;
+        data += `\x1b[${row + 1};1H\x1b[0m\x1b[2K`;
+        const encoded = encode(line.text);
+        data += (line.inverse ? `\x1b[7m${encoded.padEnd(80)}` : encoded) + '\x1b[0m';
+      });
+      painted = next;
+      return data + `\x1b[${Math.min(screen.cursor[0], state.terminalRows)};${screen.cursor[1]}H`;
+    };
+    const articleRows = (article, termRows) => {
       const rows = {
         0: `作者  ${article.author} (${article.author}) 看板 Test`,
         1: '標題  ' + article.title,
         2: '時間  Mon Sep  1 12:00:00 2025',
-        23: '  瀏覽 第 1/1 頁 (100%)  目前顯示: 第 01~23 行  (y)回應(X%)推文(h)說明(←)離開 '
+        [termRows - 1]: `  瀏覽 第 1/1 頁 (100%)  目前顯示: 第 01~${termRows - 1} 行  (y)回應(X%)推文(h)說明(←)離開 `
       };
       // Long rows wrap on a phone, so the article scrolls and has a position.
-      for (let row = 4; row < 22; row++) {
+      for (let row = 4; row < Math.min(22, termRows - 1); row++) {
         rows[row] = `${article.body} line ${String(row).padStart(2, '0')}: ` + 'reading text '.repeat(5);
       }
       return rows;
     };
-    const frame = () => {
-      let rows, cursor = [24, 80], inverse = [];
-      if (state.surface === 'article') rows = articleRows(state.open);
-      else if (state.surface === 'boardPrompt') {
-        // The board jump asks for the name on the second row (board.c).
-        rows = { 0: '【主功能表】', 1: '請輸入看板名稱(按空白鍵自動搜尋)：' };
-        cursor = [2, 35];
+    const frame = (fullRepaint = false) => {
+      const termRows = session.dynamicRows ? state.applicationRows : 24;
+      const bodyRows = termRows - 4;
+      let rows, cursor = [termRows, 80], inverse = [];
+      if (state.surface === 'article') {
+        rows = articleRows(state.open, termRows);
       } else if (state.surface === 'main') {
-        rows = { 0: '【主功能表】', 3: '  (B)oard 看板列表', 23: '我是測試主選單' };
+        rows = { 0: '【主功能表】', 3: '  (B)oard 看板列表', [termRows - 1]: '我是測試主選單' };
         if (session.homeMenu) rows[4] = '  (F)avorite 我 的 最愛';
         cursor = [4, 1];
+      } else if (state.surface === 'boardPrompt') {
+        // CompleteBoard asks on row two; cancellation preserves this list.
+        rows = { 0: '【主功能表】', 1: '請輸入看板名稱(按空白鍵自動搜尋)：' };
+        cursor = [2, 35];
       } else {
         const entries = listed();
         rows = {
           0: `【板主：test】看板《${state.board}》`,
           1: '[←]離開 [→]閱讀 [^P]發表文章 [b]備忘錄',
           2: '  編號    日 期 作  者       文  章  標  題',
-          23: session.legacyCaptions ? ' 文章選讀 [←]離開 [→]閱讀'
+          [termRows - 1]: session.legacyCaptions ? ' 文章選讀 [←]離開 [→]閱讀'
             : state.filter ? ' 系列文章  [←]離開 [→]閱讀' : ' 文章列表  [←]離開 [→]閱讀'
         };
         inverse = [0, 2];
-        // Keep native pages at twenty body rows even when the controlled board
-        // is large enough to exercise the real scrolling/restore pipeline.
-        const start = Math.max(0, Math.min(state.cursor - 10, entries.length - 20));
-        entries.slice(start, start + 20).forEach((article, offset) => {
+        const start = Math.max(0, Math.min(state.cursor - Math.floor(bodyRows / 2), entries.length - bodyRows));
+        entries.slice(start, start + bodyRows).forEach((article, offset) => {
           const index = start + offset;
-          const num = String(state.filter ? index + 1 : 101 + index).padStart(7);
+          const num = article.pinned ? '      ★' : String(state.filter ? index + 1 : 101 + index).padStart(7);
           // The current-generation cursor marker replaces the first column.
           const mark = index === state.cursor ? '>' : ' ';
           rows[3 + offset] = `${mark}${num.slice(1)}     9/01 ${article.author.padEnd(12)} □ ${article.title}`;
@@ -251,19 +274,23 @@ async function installNestedServer(page, session) {
         cursor = [4 + state.cursor - start, 1];
         if (state.surface === 'info') {
           rows[18] = `│ 文章代碼(AID): #${state.open.aid} (Test) [ptt.cc] ${state.open.title}`;
-          rows[23] = '請按任意鍵繼續';
-          cursor = [24, 1];
+          rows[termRows - 1] = '請按任意鍵繼續';
+          cursor = [termRows, 1];
         } else if (state.surface === 'prompt') {
-          rows[23] = state.prompt.label;
-          cursor = [24, state.prompt.label.length + 1];
+          rows[termRows - 1] = state.prompt.label;
+          cursor = [termRows, state.prompt.label.length + 1];
         } else if (state.surface === 'empty') {
-          rows[23] = ' ◆ 找不到符合條件的文章。 [按任意鍵繼續]';
-          cursor = [24, 1];
+          rows[termRows - 1] = ' ◆ 找不到符合條件的文章。 [按任意鍵繼續]';
+          cursor = [termRows, 1];
         } else if (state.surface === 'missing') {
-          rows[22] = '找不到這個文章代碼(AID)，可能是文章已消失，或是你找錯看板了';
-          rows[23] = '請按任意鍵繼續';
-          cursor = [24, 1];
+          rows[termRows - 2] = '找不到這個文章代碼(AID)，可能是文章已消失，或是你找錯看板了';
+          rows[termRows - 1] = '請按任意鍵繼續';
+          cursor = [termRows, 1];
         }
+      }
+      if (session.dynamicRows) {
+        storedScreen = { rows, cursor, inverse };
+        return render(storedScreen, fullRepaint);
       }
       let data = '\x1b[2J';
       for (const [index, text] of Object.entries(rows)) {
@@ -291,6 +318,10 @@ async function installNestedServer(page, session) {
     };
     const step = rest => {
       if (state.surface === 'boardPrompt') {
+        if (rest[0] === '\x03') {
+          state.surface = 'list';
+          return rest.slice(1);
+        }
         const end = rest.indexOf('\r');
         if (end < 0) return '';
         state.board = rest.slice(0, end);
@@ -330,8 +361,8 @@ async function installNestedServer(page, session) {
         const last = listed().length - 1;
         if (nav === '\x1b[1~') state.cursor = 0;
         else if (nav === '\x1b[4~') state.cursor = last;
-        else if (nav === '\x1b[5~') state.cursor = Math.max(0, state.cursor - 20);
-        else if (nav === '\x1b[6~') state.cursor = Math.min(last, state.cursor + 20);
+        else if (nav === '\x1b[5~') state.cursor = Math.max(0, state.cursor - (session.dynamicRows ? state.applicationRows - 4 : 20));
+        else if (nav === '\x1b[6~') state.cursor = Math.min(last, state.cursor + (session.dynamicRows ? state.applicationRows - 4 : 20));
         else state.cursor = Math.min(Math.max(0, state.cursor + (nav === '\x1b[A' ? -1 : 1)), last);
         return rest.slice(nav.length);
       }
@@ -374,16 +405,55 @@ async function installNestedServer(page, session) {
       return rest.slice(1);
     };
     window.__gestureSent = [];
+    const replies = [];
+    let delivering = false;
+    const drain = () => {
+      if (delivering || state.holdResponses || !replies.length) return;
+      delivering = true;
+      setTimeout(() => {
+        // A hold also stops delivery already scheduled before it was enabled.
+        if (state.holdResponses) { delivering = false; return; }
+        app.onData(replies.shift());
+        state.queuedResponses = replies.length;
+        delivering = false;
+        drain();
+      }, state.replyDelayMs);
+    };
+    const respond = data => {
+      replies.push(data);
+      state.queuedResponses = replies.length;
+      drain();
+    };
     window.__stubWSSent = bytes => {
       window.__gestureSent.push(bytes);
+      const naws = bytes.indexOf('\xff\xfa\x1f');
+      if (session.dynamicRows && naws >= 0) {
+        state.terminalRows = bytes.charCodeAt(naws + 5) * 256 + bytes.charCodeAt(naws + 6);
+        state.sizeChanges.push(state.terminalRows);
+        // NAWS only redraws stored cells; application pagination changes later.
+        if (storedScreen) respond(render(storedScreen, true));
+        return;
+      }
       let rest = bytes.replace(/\f/g, '');
       const responds = rest.length > 0 || bytes.includes('\f');
+      if (session.dynamicRows && rest) state.applicationRows = state.terminalRows;
       while (rest) rest = step(rest);
-      if (responds) setTimeout(() => app.onData(frame()), 0);
+      if (responds) {
+        if (session.dynamicRows) respond(bytes.replace(/\f/g, '') ? frame(bytes.includes('\f')) : render(storedScreen, true));
+        else setTimeout(() => app.onData(frame()), 0);
+      }
     };
-    window.__shortcutServer = { state, frame };
-    app.onData(frame());
-  }, { articles: [...NESTED_ARTICLES, ...extras], session });
+    window.__shortcutServer = {
+      state, frame,
+      releaseResponses() { state.holdResponses = false; drain(); }
+    };
+    app.onData(frame(true));
+  }, {
+    articles: [...NESTED_ARTICLES, ...extras, ...(session.pinned ? [{
+      aid: '1gIeu-3P', author: 'mod', title: '[Notice] Pinned rules', body: 'Rules', pinned: true
+    }] : [])],
+    session
+  });
 }
 
 // Input is deliberately swallowed while a serialized navigation owns the

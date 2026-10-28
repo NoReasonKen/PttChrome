@@ -1430,6 +1430,7 @@ export const en_US = {
   "articleShortcutSearch_busy": { "message": "Searching or returning to the source article…" },
   "articleResize_busy": { "message": "Adjusting the reading layout…" },
   "articleResize_failed": { "message": "The article could not adapt to the new screen size. Native PTT view is available." },
+  "listResize_failed": { "message": "The article list could not adapt to the new screen size. Native PTT view is available." },
   "articleShortcutSearch_results": { "message": "Same-author search results. Back returns to the source article." },
   "articleShortcutSearch_empty": { "message": "No matching articles. Returned to the source article." },
   "articleShortcutSearch_failed": { "message": "Article search stopped because the current screen could not be verified." },

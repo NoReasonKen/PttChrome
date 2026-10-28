@@ -244,6 +244,7 @@ export class NavigationStack {
   update() {
     if (this.handoff) return;
     if (!this.core.conn?.isConnected) return this._discard();
+    if (this.core.articleResize?.active || this.core.listResize?.active) return;
     // An article being opened is entered once its open is bound.
     if (this.pending?.kind === PAGE.ARTICLE_LIST) return;
     const page = this._articlePage();
@@ -515,5 +516,8 @@ export class NavigationStack {
       // handoff: the Backs still queued have no swap to run after.
       if (!this.handoff) this.stack = dropQueuedBacks(this.stack);
     });
+    // A size change made during Back waits until the revealed page has
+    // handed over its reading position. A queued Back keeps priority.
+    if (!queued.back) core.listResize?.pump();
   }
 }

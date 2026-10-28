@@ -1015,9 +1015,9 @@ ListSession.prototype = {
     // 那道守門已經把純本地重繪擋掉了，所以不會誤把自己的重繪當成 server 活動。
     this._lastServerActivityAt = performance.now();
     const facts = this._collectFacts(snap);
-    // The resize owner briefly visits the same board to rebuild pmore's page
-    // boundary. Drive its queue without adopting those hidden list screens.
-    if (this._core.articleResize?.active) {
+    // Resize owners briefly visit native screens to rebuild layout. Drive
+    // their queue without adopting those hidden intermediate screens.
+    if (this._core.articleResize?.active || this._core.listResize?.active) {
       this._queue.onSettle(snap, facts);
       return;
     }
@@ -1046,6 +1046,8 @@ ListSession.prototype = {
     const consumed = isBoardListCommandKind(this._queue.inFlightKind)
       ? null
       : this._queue.onSettle(snap, facts);
+    // A completed background command can hand the wire to a pending resize.
+    if (this._core.listResize?.active) return;
     // A completed leg IS progress: re-arm the frozen backstop so it measures
     // "nothing advanced for FROZEN_WATCHDOG_MS" rather than capping a whole
     // multi-leg transaction (_beginOpenPinned's per-row steps would otherwise
@@ -1054,6 +1056,7 @@ ListSession.prototype = {
       this._armFrozenWatchdog();
     this._dispatch(this._settleEvent(facts, consumed), facts);
     this._scheduleResumeProbe();
+    this._core.listResize?.pump();
   },
 
   // One facts object per settle: everything the classifier, the queue expects
@@ -2189,7 +2192,7 @@ ListSession.prototype = {
   // 就是 server 那一頁」設計的，會把 _topNum 重設成原生畫面第一列並設
   // _anchorOverride ⇒ 使用者自己捲出來的位置被 read.c 的分頁蓋掉，視野瞬間跳走。
   // 這裡只做兩件事：採用落點當選取／server 游標，然後把它帶進視野（不變量 N6）。
-  _resumeInPlace: function(facts) {
+  _resumeInPlace: function(facts, opts) {
     this._holdReason = null;
     this._cancelResumeProbe();
     this._resumedAt = performance.now();
@@ -2197,7 +2200,9 @@ ListSession.prototype = {
     this._renderMode = 'buffer';
     this._setLoading(false);
     this._view.hideCursor();
-    if (facts && facts.cursorRowNum != null) {
+    if (opts?.preserveSelection) {
+      this._serverNum = facts ? facts.cursorRowNum : null;
+    } else if (facts && facts.cursorRowNum != null) {
       this._serverNum = facts.cursorRowNum;
       this._selectedNum = facts.cursorRowNum;
       this._selectedPinnedKey = null;
@@ -2221,6 +2226,7 @@ ListSession.prototype = {
     // 同步重繪：把落地那一頁併回緩衝（t 的 tag 標記之類的逐列變化靠這一趟生效）。
     // 錨（_topNum/_topPinnedKey/_scrollFrac）一律不碰。
     this._forceRedraw();
+    if (opts?.preserveSelection) return;
     const seq = this._sequence();
     const pos = this._cursorPos(seq);
     if (pos >= 0 && !this._isPosVisible(seq, pos)) {
@@ -2306,6 +2312,10 @@ ListSession.prototype = {
     if (budget > ms) ms = budget <= FROZEN_WATCHDOG_MAX_MS ? budget : FROZEN_WATCHDOG_MAX_MS;
     this._frozenWatchdog = setTimeout(function() {
       self._frozenWatchdog = null;
+      if (self._core.listResize?.active) {
+        self._core.listResize.fail();
+        return;
+      }
       if (self._renderMode === 'frozen' || self.state === 'opening')
         self._degradeToNative('指令逾時，已切至原生模式');
     }, ms);
@@ -2855,6 +2865,10 @@ ListSession.prototype = {
   // enough visible rows, the page cap, or the top edge. One command at a time,
   // chained via onDone — never in parallel with anything.
   _maybeFill: function() {
+    if (this._core.listResize?.pending || this._core.listResize?.active) {
+      this._core.listResize.pump();
+      return;
+    }
     if (this.state !== 'active') return;
     // 往上補把待還原的錨帶進來之後，下方可能還不夠捲到它（見 _demandDownIfWindowShort）。
     if (this._pendingViewport && this._queue.idle) this._demandDownIfWindowShort();
@@ -2890,6 +2904,10 @@ ListSession.prototype = {
   // finish before the user gets there). Only the direction of travel is
   // extended — in a small buffer everything is "near" both edges.
   _maybeDemand: function(direction) {
+    if (this._core.listResize?.pending || this._core.listResize?.active) {
+      this._core.listResize.pump();
+      return;
+    }
     if (this.state !== 'active' || !this._queue.idle) return;
     const seq = this._sequence();
     if (!seq.length) return;
@@ -3488,7 +3506,9 @@ ListSession.prototype = {
     this._openedNum = null;
     this._breakChain();
     this._prunePivotOverride = undefined; // flush is silent — reset here
-    this._queue.flush();
+    // A scoped owner releases only its own commands after this native state
+    // is fully installed, so another queued owner is not flushed or overwritten.
+    if (!opts?.preserveQueue) this._queue.flush();
     this._renderMode = 'native';
     this._view.showCursor();
     this._forceRedraw();
@@ -3508,9 +3528,9 @@ ListSession.prototype = {
   // Explicit visible degrade for transaction failures (timeout after the \f
   // probe, unexpected screens): banner + native mirror. v5 contract #5 — no
   // silent falls.
-  _degradeToNative: function(msg) {
+  _degradeToNative: function(msg, opts) {
     if (this._view.flashListHint) this._view.flashListHint(msg, 4000, HINT_ERROR);
-    this._enterFunctionMode();
+    this._enterFunctionMode(null, opts);
   },
 
   // Reusable "loading" indicator (v5 contract #4): shown while a serialized
@@ -3520,6 +3540,12 @@ ListSession.prototype = {
     if (!!on !== !!this._loadingShown) this._diag('listSession.loading', { on: !!on });
     this._loadingShown = !!on;
     if (this._view.setListLoading) this._view.setListLoading(on);
+  },
+
+  _resumeAfterResize: function(facts) {
+    this.state = 'active';
+    this._anchorOverride = true;
+    this._resumeInPlace(facts, { preserveSelection: true });
   },
 
   _resumeBuffer: function(facts) {
@@ -3611,6 +3637,7 @@ ListSession.prototype = {
   },
 
   _cleanup: function() {
+    this._core.listResize?.cancel();
     this._externalResumeNotice = null;
     this._cancelScroll();
     this._holdReason = null;

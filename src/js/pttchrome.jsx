@@ -6,6 +6,7 @@ import { TelnetConnection } from './telnet';
 import { Websocket } from './websocket';
 import { EasyReading, switchModePlan } from './easy_reading';
 import { ArticleResize } from './article_resize';
+import { ListResize } from './list_resize';
 import { ListSession } from './list_session';
 import { BoardListSession } from './board_list_session';
 import { OWNER_BOARD_LIST, listRenderOwnerOf } from './list_render_owner';
@@ -187,11 +188,14 @@ export const App = function() {
     // **延後**不是丟棄，而文章落地那一幀好讀必定比 queue 早跑（見上面的 ORDER
     // MATTERS）⇒ 第一個 PageDown 一定被擋。少了這條線就只剩好讀自己的 620ms
     // watchdog 能救，等於每篇文章開頭固定卡一下。見 easy_reading.onWireIdle。
-    onIdle: () => this.easyReading.onWireIdle()
+    onIdle: () => {
+      if (!this.listResize?.pump()) this.easyReading.onWireIdle();
+    }
   });
   this.articleResize = new ArticleResize(this);
   this.articleResize.attach();
   this.listSession = new ListSession(this, this.view, this.buf, this.commandQueue);
+  this.listResize = new ListResize(this);
   // 看板列表（我的最愛／分類看板子分類）的平滑捲動。與 listSession 共用
   // buf.listRenderMode（所有權層見 js/list_render_owner.js）與同一條 CommandQueue
   // （命令一律 'brd-' 前綴，那是佇列的所有權判準）。
@@ -352,8 +356,8 @@ export const App = function() {
   this._screenContext = EMPTY_TOOLBAR_CONTEXT;
   this._screenContextListeners = new Set();
   this.buf.addEventListener('screenSettled', () => {
-    // Keep the article's controls through the resize's stale terminal frame.
-    if (this.buf.easyReadingResizeInFlight) return;
+    // Keep the reading page's controls through a resize's hidden frames.
+    if (this.buf.easyReadingResizeInFlight || this.listResize?.active) return;
     if (shouldClearArticleContextOnSettle({
       pageState: this.buf.pageState,
       functionMode: this.buf.easyReadingFunctionMode,
@@ -645,6 +649,7 @@ App.prototype.onClose = function() {
   // disable／reset 之前**（它們會丟掉看板身分與跳文落地的那篇）。
   this.reconnectResume.capture(loggedOut);
   this.articleResize?.cancel();
+  this.listResize?.cancel();
 
   // Connection gone: the list buffer is stale by definition — hard reset to
   // idle/native so the reconnect starts clean.
@@ -1528,6 +1533,7 @@ App.prototype.onWindowResize = function(opts) {
 
 App.prototype.setTermSize = function(cols, rows) {
   if (this.articleResize?.request(cols, rows)) return;
+  if (this.listResize?.request(cols, rows)) return;
   this._setTermSizeNow(cols, rows);
 };
 

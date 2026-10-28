@@ -24,7 +24,8 @@ export class ArticleResize {
 
   _eligible() {
     const { easyReading: er, buf, conn, view } = this.core;
-    return !!(this.core.mobile && conn?.isConnected && er?._enabled && !er._functionMode &&
+    return !!(this.core.mobile && !this.core.articleGestures?.stack?.handingOff &&
+      conn?.isConnected && er?._enabled && !er._functionMode &&
       buf?.pageLines?.length && view._articleBoard && this.core.commandQueue);
   }
 

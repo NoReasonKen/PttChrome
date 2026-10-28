@@ -787,7 +787,7 @@ TermView.prototype = {
     // Track the 原PO id for same-author comment highlighting. The "作者" header
     // only appears on the first page of an article, so keep the last parsed value
     // across page-downs; a new article's first page overwrites it.
-    if (this.buf.pageState === 3 && !this.buf.easyReadingResizeInFlight) {
+    if (this.buf.pageState === 3 && !this.buf.easyReadingResizeInFlight && !this.bbscore?.listResize?.active) {
       // Author AND board come from the SAME header line ("作者 x (y) 看板 Z"), so
       // they are adopted as one event: a 站內信 header has no 看板 field and must
       // therefore CLEAR the board, not inherit the previous post's (a boardless
@@ -800,7 +800,7 @@ TermView.prototype = {
         lines[1] ? rowToText(lines[1]) : '',
         parseStatusRow(rowToText(lines[rows - 1])));
       if (ctx) this._setArticleContext(ctx);
-    } else if (!this.buf.easyReadingResizeInFlight) {
+    } else if (!this.buf.easyReadingResizeInFlight && !this.bbscore?.listResize?.active) {
       // Leaving the article clears any pusher highlight selection. 只設欄位就好：
       // 這裡跑在 _renderScreenLines **之前**，下面那次 render 會把新值同步進
       // ScreenController（update ⇒ _selectedPusher ⇒ 收尾 _appliedPusher 對帳）。
@@ -844,7 +844,7 @@ TermView.prototype = {
         this._renderScreenLines(lines.slice(), /* dropHidden */ false, /* inlinePreview */ false, /* hoverPreview */ false, { changedRows: changedRows });
       } else if (
         (this.buf.listRenderMode === 'buffer' || this.buf.listRenderMode === 'frozen') &&
-        this.buf.pageState !== 3
+        (this.buf.pageState !== 3 || this.bbscore?.listResize?.active)
       ) {
         // List easy reading (v4, ListSession owns the mode; see list_session.js).
         // pageState 3 (article) frames MUST fall through to the article branches

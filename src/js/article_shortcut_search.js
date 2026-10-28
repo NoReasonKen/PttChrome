@@ -315,7 +315,7 @@ export class ArticleShortcutSearch {
   }
 
   noteSettle() {
-    if (this.core.articleResize?.active) return;
+    if (this.core.articleResize?.active || this.core.listResize?.active) return;
     if (this._explainLater && this.core.conn?.isConnected) {
       this._explainLater = false;
       this._hint('articleShortcutSearch_recoveryInactive');

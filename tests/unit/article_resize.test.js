@@ -99,6 +99,7 @@ describe('Article resize ownership', () => {
     ['native input mode', h => { h.reader._functionMode = true; }],
     ['no accumulated article', h => { h.buf.pageLines = []; }],
     ['unknown article board', h => { h.view._articleBoard = null; }],
+    ['stacked Back handoff', h => { h.core.articleGestures = { stack: { handingOff: true } }; }],
     ['no command queue', h => { h.core.commandQueue = null; }],
   ])('declines ownership when %s', (_name, arrange) => {
     const h = makeReader();

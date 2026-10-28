@@ -52,6 +52,7 @@ do not count as reader input. See `src/js/scroll_restore_follow.js` and
 | `aid-board-pick` 無看板 AID 指定看板 | 不還原（跳文） | 取消：重開原文、文章原列（`reopenPicked` 落地時下）；失敗：不還原 |
 | `article-refresh` 文章重新整理 | 文章：`auto`（在文末就黏回文末，否則原列） | 不還原 |
 | `article-resize` mobile article rotation | Original article row and fraction, unless reader input canceled restoration | No restoration |
+| `list-resize` mobile article-list rotation | Original visible entry and within-entry offset; local selection stays independent of the server cursor | No restoration |
 | `deep-link-copy` 複製連結（Q 路徑） | 文章：原列 | 文章：原列 |
 | `deep-link-jump` 外部帶進來的連結 | 不還原（出發點推進返回堆疊） | 不還原 |
 | `list-refresh` 列表重新整理（F5／工具列／下拉） | 列表：原處 | 列表：原處 |

@@ -496,7 +496,7 @@ ReconnectResume.prototype = {
   },
 
   _onSettled: function() {
-    if (this._core.articleResize?.active) return;
+    if (this._core.articleResize?.active || this._core.listResize?.active) return;
     this._scheduleCheckpoint();
     if (!this._atMainMenu()) {
       // 登入後不在主功能表 ＝使用者自己走開了（我們只在主功能表出發）。

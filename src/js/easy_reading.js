@@ -556,6 +556,7 @@ EasyReading.prototype._isJumpParkedListNow = function() {
 // Fired once per term_buf settle edge. Auto-enable easy reading when we have just
 // settled from a board list (2) into an article (3) with the pref on.
 EasyReading.prototype._onPageStateSettled = function() {
+  if (this._core?.listResize?.active) return;
   if (this._termBuf.easyReadingResizeInFlight) return;
   // ARTICLE BOUNDARY — the only structural place the per-article paging transaction is
   // guaranteed to be reset. Do NOT rely on the key handlers for this: ← leaves an
@@ -604,6 +605,7 @@ EasyReading.prototype._navActive = function() {
 };
 
 EasyReading.prototype._onChanged = function(e) {
+  if (this._core?.listResize?.active) return;
   if (TRACE)
     console.log("page state: " + this._termBuf.prevPageState + "->" + this._termBuf.pageState);
   const values = readEffectivePrefs()
@@ -806,6 +808,7 @@ EasyReading.prototype._clearWatchdog = function() {
 // runs the pure nextPageDownDecision, writes the resulting transaction state back and
 // sends at most one key. See nextPageDownDecision for the pmore invariants behind it.
 EasyReading.prototype._maybeSendPageDown = function(keys, recovery) {
+  if (this._core?.listResize?.active) return 'blocked';
   if (this._core.articleResize?.pump()) return 'blocked';
   if (this._core.articleResize?.pending && !this._reverse &&
       (!recovery || this._inFlightSig == null || this._currentPageSignature() !== this._inFlightSig)) {
@@ -1379,6 +1382,7 @@ EasyReading.prototype._healFromTop = function() {
 // against the fast path so a slow PTT response cannot trigger a double page-down (which
 // would skip a page). See docs/easy-reading.md.
 EasyReading.prototype._onScreenSettled = function() {
+  if (this._core?.listResize?.active) return;
   if (this._core.articleResize?.pump()) return;
   this._lastSettleParkedList = this._isJumpParkedListNow();
   // pmore 設定頁的偵測要在**停在設定頁的那一幀**做：離開之後那一幀，設定頁的字
@@ -1684,6 +1688,7 @@ EasyReading.prototype._evalFunctionModeExit = function() {
 };
 
 EasyReading.prototype._onViewUpdated = function(e) {
+  if (this._core?.listResize?.active) return;
   if (this._core.articleResize?.pump()) return;
   if (TRACE) console.log('view update');
   // accumulatePageLines (which just ran inside view.update()) may have found a lost
