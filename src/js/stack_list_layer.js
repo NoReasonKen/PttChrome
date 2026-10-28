@@ -122,6 +122,8 @@ export class StackListLayer {
 
   destroy() {
     this.hide();
+    this.screen?.release();
+    this.screen = null;
   }
 
   // Put the real list at this layer's reading position: the same entry at

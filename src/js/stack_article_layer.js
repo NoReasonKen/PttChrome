@@ -130,6 +130,8 @@ export class StackArticleLayer {
 
   destroy() {
     this.hide();
+    this.screen?.release();
+    this.screen = null;
   }
 
   // Put the real article at this layer's reading position: the same row at
