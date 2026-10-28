@@ -169,31 +169,61 @@ test('short lists retain a pinned selection without needing a numeric jump', asy
   expect(await page.evaluate(() => window.__app.listSession._selectedPinnedKey)).toBe(selected);
 });
 
-test('rotation waits for an in-flight prefetch and coalesces repeated viewport changes', async ({ page }) => {
+test('rotation waits for the paired in-flight prefetch response before changing terminal rows', async ({ page }) => {
   await openList(page, { extraArticles: 40 });
-  await page.evaluate(() => { window.__shortcutServer.state.holdResponses = true; });
+  const before = await page.evaluate(() => ({
+    rows: window.__app.buf.rows, sizes: window.__shortcutServer.state.sizeChanges.length
+  }));
+  await page.evaluate(() => {
+    const app = window.__app;
+    const server = window.__shortcutServer;
+    const request = app.listResize.request;
+    window.__prefetchResize = null;
+    // Observe the real resize entry point without changing its decision.
+    // Release the simulated network here, before PTT's ordinary probe expires;
+    // Node/browser round trips must not decide how long a reply stays held.
+    app.listResize.request = function(cols, rows) {
+      const command = app.commandQueue.inFlightKind;
+      const accepted = request.call(this, cols, rows);
+      if (!window.__prefetchResize && this.pending && /^prefetch/.test(command)) {
+        window.__prefetchResize = {
+          accepted, command, rows: app.buf.rows, active: this.active,
+          pending: { ...this.pending }, sizes: server.state.sizeChanges.length,
+          replies: server.state.queuedResponses,
+        };
+        server.releaseResponses();
+      }
+      return accepted;
+    };
+    server.state.holdResponses = true;
+  });
   await page.locator(LIST).hover();
   await page.mouse.wheel(0, 900);
-  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.inFlightKind)).toMatch(/^prefetch/);
+  await page.setViewportSize(LANDSCAPE);
+  await expect.poll(() => page.evaluate(() => window.__prefetchResize)).toBeTruthy();
+  const waiting = await page.evaluate(() => window.__prefetchResize);
+  expect(waiting).toMatchObject({ accepted: true, rows: before.rows, sizes: before.sizes, active: false });
+  expect(waiting.command).toMatch(/^prefetch/);
+  expect(waiting.replies).toBeGreaterThan(0);
+  expect(waiting.pending.rows).toBeLessThan(before.rows);
+  await stableList(page);
+  expect(await page.evaluate(() => window.__app.buf.rows)).toBeLessThan(before.rows);
+  expect(await page.evaluate(() => window.__shortcutServer.state.sizeChanges.length)).toBe(before.sizes + 1);
+  expect((await position(page)).board).toBe('Test');
+});
+
+test('repeated viewport changes coalesce while a resize response is in flight', async ({ page }) => {
+  await openList(page);
   const rows = await page.evaluate(() => window.__app.buf.rows);
   const sizes = await page.evaluate(() => window.__shortcutServer.state.sizeChanges.length);
+  await page.evaluate(() => { window.__shortcutServer.state.holdResponses = true; });
   await page.setViewportSize(LANDSCAPE);
-  // Resize is debounced for 500ms; the background command's ordinary probe
-  // expires at 850ms. Observe that bounded waiting state before releasing it.
-  await expect.poll(() => page.evaluate(() => ({
-    pending: !!window.__app.listResize.pending,
-    rows: window.__app.buf.rows,
-    active: window.__app.listResize.active,
-    list: window.__app.listSession.state,
-    render: window.__app.listSession._renderMode,
-    command: window.__app.commandQueue.inFlightKind,
-  })), { intervals: [20], timeout: 1000 }).toMatchObject({ pending: true });
-  expect(await page.evaluate(() => window.__app.listResize.active)).toBe(false);
-  expect(await page.evaluate(() => window.__app.buf.rows)).toBe(rows);
+  await expect.poll(() => page.evaluate(() => window.__app.listResize.active)).toBe(true);
   await page.setViewportSize(PORTRAIT);
+  await expect.poll(() => page.evaluate(() => window.__app.listResize.pending?.rows)).toBe(rows);
   await page.setViewportSize(LANDSCAPE);
-  await expect.poll(() => page.evaluate(() => !!window.__app.listResize.pending)).toBe(true);
-  expect(await page.evaluate(() => window.__shortcutServer.state.sizeChanges.length)).toBe(sizes);
+  await expect.poll(() => page.evaluate(() => window.__app.listResize.pending)).toBeNull();
+  expect(await page.evaluate(() => window.__shortcutServer.state.sizeChanges.length)).toBe(sizes + 1);
   await page.evaluate(() => window.__shortcutServer.releaseResponses());
   await stableList(page);
   expect(await page.evaluate(() => window.__app.buf.rows)).toBeLessThan(rows);
