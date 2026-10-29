@@ -13,6 +13,7 @@
 // Misclassification always degrades toward NATIVE (functionMode mirrors the raw
 // screen), never toward a stale buffer.
 import { listRowSpan, listFillRows } from './mobile_layout';
+import { i18n } from './i18n';
 import { isHiddenListText } from './list_row_filter';
 import {
   parseListAuthor,
@@ -3540,6 +3541,42 @@ ListSession.prototype = {
     if (!!on !== !!this._loadingShown) this._diag('listSession.loading', { on: !!on });
     this._loadingShown = !!on;
     if (this._view.setListLoading) this._view.setListLoading(on);
+  },
+
+  resizeContext: function() {
+    if (this.state !== 'active' || this._renderMode !== 'buffer' ||
+        !this._engageEligible() || !this._boardName || !this._termBuf.listLines?.length) return null;
+    return { board: this._boardName, mode: this._selectMode ? 'select' : 'plain' };
+  },
+
+  waitingToResize: function() {
+    return this.state === 'opening' || this._renderMode === 'frozen' ||
+      !!this._core.articleGestures?.stack?.handingOff;
+  },
+
+  beginResize: function(timeoutMs) {
+    this._freezeForTransaction();
+    this._frozenStepBudgetMs = timeoutMs;
+    this._armFrozenWatchdog();
+  },
+
+  // Install the final session state before releasing the scoped wire owner.
+  // Restore its bookmark before presenting the page, then let another queued
+  // resize take priority over background loading.
+  endResize: function(outcome, facts, { bookmark, continueResizing }) {
+    if (this._frozenWatchdog) clearTimeout(this._frozenWatchdog);
+    this._frozenWatchdog = null;
+    this._frozenStepBudgetMs = 0;
+    if (outcome === 'done') this._resumeAfterResize(facts);
+    else if (this._renderMode === 'frozen' && this.state !== 'idle' && this.state !== 'suspended') {
+      this.state = 'functionMode';
+      if (outcome === 'fail') this._degradeToNative(i18n('listResize_failed'), { preserveQueue: true });
+      else this._enterFunctionMode(null, { preserveQueue: true });
+    }
+    this._queue.flushKind('list-resize');
+    recordFor(this._core).end(bookmark, outcome);
+    if (outcome === 'done') this._presented();
+    if (!continueResizing()) this._maybeFill();
   },
 
   _resumeAfterResize: function(facts) {

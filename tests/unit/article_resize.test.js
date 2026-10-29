@@ -110,6 +110,30 @@ describe('Article resize ownership', () => {
     expect(h.sent).toEqual([]);
   });
 
+  test('coordinates through the reader resize interface while an eligible article waits', () => {
+    const h = makeReader();
+    const reader = h.core.easyReading = {
+      resizeContext: h.reader.resizeContext.bind(h.reader),
+      yieldForResize: vi.fn(() => h.reader.yieldForResize()),
+      finishResize: vi.fn(outcome => h.reader.finishResize(outcome)),
+      onWireIdle: h.reader.onWireIdle,
+      _advanceScrollRestore: h.reader._advanceScrollRestore,
+    };
+    h.reader._reverse = {};
+    expect(h.resize.request(80, 40)).toBe(true);
+    expect(h.resize.pending).toEqual({ cols: 80, rows: 40 });
+    expect(h.sent).toEqual([]);
+    expect(reader.yieldForResize).not.toHaveBeenCalled();
+    h.reader._reverse = null;
+    h.resize.pump();
+    expect(reader.yieldForResize).toHaveBeenCalledTimes(1);
+    expect(h.sent).toEqual([LEAVE]);
+    h.complete();
+    expect(reader.finishResize).toHaveBeenCalledExactlyOnceWith('done');
+    expect(h.reader._forceRepaint).toHaveBeenCalledTimes(1);
+    expect(h.resize.active).toBe(false);
+  });
+
   test('resizes before leaving, verifies the same article, then seeks the retained frontier', () => {
     const h = makeReader();
     expect(h.resize.request(80, 40)).toBe(true);

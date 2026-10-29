@@ -1,11 +1,11 @@
-import { parseStatusRow, statusSignature } from './string_util';
+import { parseStatusRow } from './string_util';
 import { rowToText } from './comment_parse';
 import { sameBoard } from './screen_titles';
 import { ArticleResizeAnchor } from './article_resize_anchor';
+import { coalesceResize, resizeDeadline, resizePhase } from './resize_transaction';
 import { i18n } from './i18n';
 
 const KIND = 'article-resize';
-const DEADLINE_MS = 6000;
 const header = lines => lines.slice(0, 3).map(row => rowToText(row).trimEnd()).join('\n');
 
 // pmore fixes its last-page boundary at attachment. Reopen the verified same
@@ -22,11 +22,10 @@ export class ArticleResize {
   get active() { return !!this.command; }
   get articleRecord() { return this.command?.position.bookmark.article || null; }
 
-  _eligible() {
-    const { easyReading: er, buf, conn, view } = this.core;
+  _eligible(context = this.core.easyReading?.resizeContext()) {
+    const { conn } = this.core;
     return !!(this.core.mobile && !this.core.articleGestures?.stack?.handingOff &&
-      conn?.isConnected && er?._enabled && !er._functionMode &&
-      buf?.pageLines?.length && view._articleBoard && this.core.commandQueue);
+      conn?.isConnected && context && this.core.commandQueue);
   }
 
   attach() { this.anchor.attach(() => this.capturePosition()); }
@@ -37,16 +36,19 @@ export class ArticleResize {
     const { buf } = this.core;
     if (this.finishing) return true;
     if (this.active) {
-      this.pending = cols === this.command.cols && rows === this.command.rows ? null : { cols, rows };
+      this.pending = coalesceResize(cols, rows, this.command);
       return true;
     }
     if (!this._eligible()) { this.pending = null; return false; }
-    if (cols === buf.cols && rows === buf.rows) { this.pending = null; return false; }
-    this.pending = { cols, rows };
+    this.pending = coalesceResize(cols, rows, buf);
+    if (!this.pending) return false;
     this.pump();
     return true;
   }
 
+  // Retried after article accumulation, quiet/cursor-only settles, PageDown
+  // recovery, and onWireIdle (queue or long-comment release). Each can satisfy
+  // a different readiness guard without another resize event.
   pump() {
     if (this.active || this.finishing) return true;
     if (!this.pending) {
@@ -54,32 +56,24 @@ export class ArticleResize {
       return false;
     }
     const core = this.core;
-    const { easyReading: er, buf, view } = core;
-    if (!this._eligible()) { this.pending = null; return false; }
+    const { easyReading: er, buf } = core;
+    const context = er?.resizeContext();
+    if (!this._eligible(context)) { this.pending = null; return false; }
     if (this.pending.cols === buf.cols && this.pending.rows === buf.rows) {
       this.pending = null;
       return false;
     }
-    if (!core.commandQueue.idle || er._wireBusy() || er._reverse) return false;
-    const status = parseStatusRow(buf.getRowText(buf.rows - 1, 0, buf.cols));
-    const sig = status && statusSignature(status);
-    if (!sig || buf.cur_x !== buf.cols - 1 || buf.cur_y !== buf.rows - 1 ||
-        view._lastAccumulatedSig !== sig ||
-        (er._inFlightSig != null && er._inFlightSig === sig)) return false;
+    if (!core.commandQueue.idle || !context.ready) return false;
     const command = this.command = {
       ...this.pending,
-      line: Math.max(1, view._accEndRow || status.rowIndexEnd || 1),
-      board: view._articleBoard,
+      line: context.line,
+      board: context.board,
       header: header(buf.pageLines),
       position: this.anchor.take(),
-      deadline: performance.now() + DEADLINE_MS,
+      deadline: resizeDeadline(),
     };
     this.pending = null;
-    er._clearWatchdog();
-    er._inFlightSig = null;
-    er._inFlightKeys = null;
-    er._deferredPageDownKeys = null;
-    er.sendCommandAfterUpdate = '';
+    er.yieldForResize();
     buf.easyReadingResizeInFlight = true;
     this._enqueue(command, 'leave');
     return true;
@@ -88,30 +82,17 @@ export class ArticleResize {
   _enqueue(command, phase) {
     const core = this.core;
     const { buf, view } = core;
-    const seenRows = new Set();
-    const remaining = Math.max(1, command.deadline - performance.now());
     command.phase = phase;
     core.commandQueue.enqueue({
       kind: KIND,
       keys: phase === 'leave' ? '\x1b[D' : phase === 'open' ? '\r' : `:${command.line}\r`,
-      // pfterm omits unchanged rows from ordinary application repaints.
-      // Request redrawwin explicitly before requiring full row coverage.
-      fullRepaint: true,
-      probe: false,
-      timeoutMs: remaining,
-      hardTimeoutMs: remaining,
       onSend: () => {
         if (phase !== 'leave') return;
         core._setTermSizeNow(command.cols, command.rows);
         core._applyMobileGeometry();
         view.redraw(true);
       },
-      expect: (snapshot, facts) => {
-        for (const row of snapshot?.changedRows || []) {
-          if (row >= 0 && row < command.rows) seenRows.add(row);
-        }
-        if (this.command !== command || buf.rows !== command.rows || buf.cols !== command.cols ||
-            seenRows.size < command.rows) return false;
+      ...resizePhase(core, command, () => this.command === command, (snapshot, facts) => {
         if (phase === 'leave') {
           return facts?.kind === 'clean-list' && sameBoard(facts.boardName, command.board) &&
             facts.curY >= 3 && facts.curY < command.rows - 1;
@@ -125,7 +106,7 @@ export class ArticleResize {
           return actual === command.header ? 'same' : 'different';
         }
         return next.rowsUnknown || (next.rowIndexStart <= command.line && next.rowIndexEnd >= command.line);
-      },
+      }),
       onDone: result => {
         if (this.command !== command) return;
         if (result === 'different') this._finish(command, 'fail');
@@ -145,10 +126,7 @@ export class ArticleResize {
     this.command = null;
     core.buf.easyReadingResizeInFlight = false;
     if (outcome !== 'done') this.pending = null;
-    if (outcome === 'done') {
-      core.buf.prevPageState = 3;
-      core.easyReading._forceRepaint();
-    } else core.easyReading.exitEasyReading();
+    core.easyReading.finishResize(outcome);
     this.anchor.finish(command.position, outcome);
     this.finishing = false;
     if (outcome === 'fail') core.view.flashListHint(i18n('articleResize_failed'));

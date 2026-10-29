@@ -116,6 +116,13 @@ then cancels with Ctrl-C. Upstream `read.c` returns `FULLUPDATE`: the same list
 is redrawn at the new dimensions without rebuilding its search predicates.
 Both phases request full repaint and verify every terminal row.
 
+The coordinator reads `ListSession.resizeContext()` and `waitingToResize()`.
+`beginResize()` owns freezing and the watchdog; `endResize()` owns success or
+native fallback, scoped queue release, bookmark restoration, and presentation.
+Its continuation lets another pending resize precede background loading. The
+shared transaction helpers and pump scheduling are described in
+[article rotation](article-rotation.md#module-interfaces-and-scheduling).
+
 The owner waits for foreground navigation and already-sent background pages.
 Pending resize prevents new prefetch chains; repeated sizes coalesce. A stacked
 Back hands the revealed page's position to the real list before resize starts.

@@ -1862,6 +1862,40 @@ EasyReading.prototype._wireBusy = function() {
   return false;
 };
 
+// Resize may retain an article while waiting for its outstanding page to be
+// accumulated. Keep eligibility separate from readiness so that wait survives.
+EasyReading.prototype.resizeContext = function() {
+  const buf = this._termBuf;
+  const view = this._view;
+  if (!this._enabled || this._functionMode || !buf?.pageLines?.length || !view?._articleBoard)
+    return null;
+  const status = this._currentPageStatus();
+  const sig = status && statusSignature(status);
+  return {
+    board: view._articleBoard,
+    line: Math.max(1, view._accEndRow || status?.rowIndexEnd || 1),
+    ready: !!(!this._wireBusy() && !this._reverse && sig &&
+      buf.cur_x === buf.cols - 1 && buf.cur_y === buf.rows - 1 &&
+      view._lastAccumulatedSig === sig &&
+      (this._inFlightSig == null || this._inFlightSig !== sig)),
+  };
+};
+
+EasyReading.prototype.yieldForResize = function() {
+  this._clearWatchdog();
+  this._inFlightSig = null;
+  this._inFlightKeys = null;
+  this._deferredPageDownKeys = null;
+  this.sendCommandAfterUpdate = '';
+};
+
+EasyReading.prototype.finishResize = function(outcome) {
+  if (outcome === 'done') {
+    this._termBuf.prevPageState = 3;
+    this._forceRepaint();
+  } else this.exitEasyReading();
+};
+
 // 線路空出來了（CommandQueue.onIdle → pttchrome 接線）。把被閘門延後的那個自動翻頁
 // 補送出去。
 //

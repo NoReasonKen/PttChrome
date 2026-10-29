@@ -1,4 +1,5 @@
 import { ListResize } from '../../src/js/list_resize';
+import { ListSession } from '../../src/js/list_session';
 import { CommandQueue } from '../../src/js/command_queue';
 import { BOARD_PROMPT } from '../../src/js/article_search';
 
@@ -40,7 +41,8 @@ function makeReader(mode = 'plain') {
   const queue = core.commandQueue = new CommandQueue({
     send: keys => { sent.push(keys); events.push('send'); },
   });
-  const list = core.listSession = {
+  const list = core.listSession = Object.assign(Object.create(ListSession.prototype), {
+    _core: core, _view: view, _termBuf: buf, _queue: queue,
     state: 'active', _renderMode: 'buffer', _boardName: 'Test',
     _selectMode: mode === 'select', _topNum: 107, _scrollFrac: 3.25,
     _selectedNum: 110, _serverNum: 110,
@@ -62,9 +64,9 @@ function makeReader(mode = 'plain') {
       if (!options?.preserveQueue) queue.flush();
     }),
     _degradeToNative: vi.fn((_message, options) => list._enterFunctionMode(null, options)),
-    _armFrozenWatchdog: vi.fn(), _maybeFill: vi.fn(),
+    _armFrozenWatchdog: vi.fn(), _maybeFill: vi.fn(), _presented: vi.fn(),
     _frozenStepBudgetMs: 0,
-  };
+  });
   const resize = core.listResize = new ListResize(core);
   function paint({
     kind = 'clean-list', boardName = 'Test', rowTexts,
@@ -92,6 +94,27 @@ function makeReader(mode = 'plain') {
 describe('Article-list resize coordination', () => {
   beforeEach(() => vi.useFakeTimers({ toFake: ['Date', 'performance', 'setTimeout', 'clearTimeout'] }));
   afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+
+  test('uses only the session resize interface while preserving release order', () => {
+    const h = makeReader();
+    const session = h.list;
+    h.core.listSession = {
+      resizeContext: () => session.resizeContext(),
+      waitingToResize: () => session.waitingToResize(),
+      readingPosition: () => session.readingPosition(),
+      beginResize: timeout => session.beginResize(timeout),
+      endResize: (outcome, facts, lifecycle) => session.endResize(outcome, facts, lifecycle),
+    };
+    expect(h.resize.request(80, 40)).toBe(true);
+    expect(h.list._renderMode).toBe('frozen');
+    h.complete();
+    expect(h.list._renderMode).toBe('buffer');
+    expect(h.list._presented).toHaveBeenCalledTimes(1);
+    expect(h.list._maybeFill).toHaveBeenCalledTimes(1);
+    expect(h.events.indexOf('resume')).toBeLessThan(h.events.indexOf('end:done'));
+    expect(h.record.end).toHaveBeenCalledTimes(1);
+    expect(h.queue.idle).toBe(true);
+  });
 
   test('waits for a stacked Back handoff before changing terminal rows', () => {
     const h = makeReader();

@@ -66,6 +66,25 @@ An open shortcut drawer retains its state and adapts its geometry; a viewport
 change cancels an active drag. Temporary terminal classification changes do not
 remove the article's controls or dismiss an open drawer.
 
+## Module interfaces and scheduling
+
+`ArticleResize` owns the server protocol. `EasyReading.resizeContext()` supplies
+the article identity, frontier, and readiness without exposing paging fields;
+an eligible but unready reader can retain a pending size. `yieldForResize()`
+releases automatic paging state, and `finishResize()` applies the outcome to
+the reader. These methods preserve the existing cancellation behavior.
+
+`resize_transaction.js` shares only size coalescing, the six-second monotonic
+deadline, and each phase's full-repaint/row-coverage options with `ListResize`.
+The two protocol state machines and their lifecycle guards remain independent.
+
+Pending article sizes are retried by reader updates/settles, paging recovery,
+and wire-idle notifications (including release by another operation). Request
+and completion handle immediate acquisition and successive sizes. List sizes
+are retried by list settles, queue idle, and the end of a stacked Back after
+its revealed page is aligned. Each pump rechecks eligibility and ownership;
+calling a pump does not authorize bypassing another operation.
+
 ## Verification
 
 - `app_mobile_rotation.test.js`: both row-count transitions through the real
