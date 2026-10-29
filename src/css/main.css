@@ -604,18 +604,19 @@ html.commentBarShown #mainContainer::after {
   color: #ffffff;
 }
 /* Bars after JPTT: blue for unread, light blue for ~ (read has none), pushed
-   further apart than JPTT (#5677fc / #b0bfff) so the two tell apart at a glance. A ~
+   further apart than JPTT (#5677fc / #b0bfff, luma 124 / 194) to luma 102 / 204 in
+   the same hues, so the two tell apart at a glance (the owner's pick). A ~
    card's 0.8 dimming would dim its bar too, so in this style the dimming moves
    from the card to its two text lines and the bar keeps the full color. */
 #mainContainer.dimReadList.readStyle-brightUnreadBar
   span.listCard[data-list-mark="unread"]
   > .listCardBody[class="listCardBody"] {
-  box-shadow: inset 3px 0 0 #2f4fd8;
+  box-shadow: inset 3px 0 0 #4762cf;
 }
 #mainContainer.dimReadList.readStyle-brightUnreadBar
   span.listCard[data-list-mark="updated"]
   > .listCardBody[class="listCardBody"] {
-  box-shadow: inset 3px 0 0 #d4dcff;
+  box-shadow: inset 3px 0 0 #bdcaff;
 }
 #mainContainer.dimReadList.readStyle-brightUnreadBar
   span.listCard[data-list-mark="updated"]:not(
