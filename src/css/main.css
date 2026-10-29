@@ -581,15 +581,16 @@ html.commentBarShown #mainContainer::after {
 
 /* Read vs unread beyond the dimming (#60): with the dimming alone the two still
    looked alike on Android. After comparing styles on the phone the owner kept
-   these two. Both hang under .dimReadList and skip the cursor card, and they
-   change colors only, so the fixed card height holds. Only the mobile cards
-   carry data-list-mark, so the desktop grid keeps plain dimming.
+   these two as fixed defaults: they do not follow dimReadArticles, which only
+   dims read cards. Both skip the cursor card and change colors only, so the
+   fixed card height holds. Only the mobile cards carry data-list-mark, so the
+   desktop grid is unchanged.
 
    Unread titles brighten one step, the cursorBrighten step: the default
    foreground q7 becomes q15 white, and colored title text keeps its color.
    Levels stay unread 1 / ~ 0.8 / read 0.6 in opacity (about 100% / 60% / 45% of
    the white title); the owner tried JPTT's proportional levels and kept these. */
-#mainContainer.dimReadList
+#mainContainer
   span.listCard[data-list-mark="unread"]:not(
     :has(> .listCardBody:not([class="listCardBody"]))
   )
@@ -600,12 +601,12 @@ html.commentBarShown #mainContainer::after {
 /* JPTT's left bars: blue #5677fc for unread, light blue #b0bfff for ~, none for
    read. The owner tried them further apart (luma 102 / 204) and went back to
    JPTT's own colors. */
-#mainContainer.dimReadList
+#mainContainer
   span.listCard[data-list-mark="unread"]
   > .listCardBody[class="listCardBody"] {
   box-shadow: inset 3px 0 0 #5677fc;
 }
-#mainContainer.dimReadList
+#mainContainer
   span.listCard[data-list-mark="updated"]
   > .listCardBody[class="listCardBody"] {
   box-shadow: inset 3px 0 0 #b0bfff;

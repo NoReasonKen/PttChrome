@@ -102,10 +102,12 @@ describe("未讀提亮與左側色條 CSS", () => {
   const bars = rules(/\[data-list-mark=/).filter((r) => /box-shadow/.test(r.body));
   const styled = [...brighten, ...bars];
 
-  test("都掛在 dimReadList 下、排除游標卡片，pref 關掉就全部失效", () => {
+  // Fixed defaults: dimReadArticles only dims read cards, so these do not follow it.
+  test("不跟著已讀低亮（dimReadList）開關，且排除游標卡片", () => {
     expect(brighten.length).toBe(1);
     for (const r of styled) {
-      expect(r.sel).toMatch(/^#mainContainer\.dimReadList\s/);
+      expect(r.sel).toMatch(/^#mainContainer\s/);
+      expect(r.sel).not.toMatch(/dimReadList/);
       expect(r.sel).toMatch(/:not\(\s*:has\(>\s*\.listCardBody:not\(\[class="listCardBody"\]\)\)|\.listCardBody\[class="listCardBody"\]/);
     }
   });
