@@ -12,7 +12,7 @@
 //   wmsg:<模式>  先收下 seed 的 W 列水球（write_request），再進主功能表；模式 default＝一般
 //                水球、ofo＝一對一（UF_PAGER_OFO）。之後送 ^R 就是 upstream 的回水球畫面。
 // seed 檔（Big5，tab 分隔）：
-//   B <brdname> <class> <desc> <BM>                       開一個看板（之後的 A／N 屬於它）
+//   B <brdname> <class> <desc> <板主 ID，多位用 />          開一個看板（之後的 A／N 屬於它）
 //   A <owner> <date> <rating>    <flags> <title>          一篇文章；flags: m=marked b=置底
 //   G <count> <owner> <title>                             批次 count 篇「<title> <i>」（無內文）
 //   N <text>                                              一列進板畫面（notes）
@@ -119,6 +119,27 @@ static void inject_waterballs(void)
     }
 }
 
+// 板主是 bh->moderators 裡的 uid（1 起算），顯示時照 common/bbs/cache.c#board_format_moderators
+// 從 SHM->userid 查名字：同一個 ID 只登記一次，種子的 "a/b" 依序成為第 1、2 位板主。
+static void seed_moderators(boardheader_t *bh, const char *list)
+{
+    static int users = 0;
+    char buf[IDLEN * MAX_BMs + MAX_BMs];
+    STRLCPY(buf, list);
+    int m = 0;
+    for (char *id = strtok(buf, "/"); id && m < MAX_BMs; id = strtok(NULL, "/")) {
+        int uid = 0;
+        for (int u = 1; u <= users; u++)
+            if (strcmp(SHM->userid[u - 1], id) == 0)
+                uid = u;
+        if (!uid) {
+            uid = ++users;
+            strlcpy(SHM->userid[uid - 1], id, IDLEN + 1);
+        }
+        bh->moderators[m++].unum = uid;
+    }
+}
+
 static void seed(const char *path)
 {
     FILE *fp = fopen(path, "r");
@@ -144,7 +165,7 @@ static void seed(const char *path)
             STRLCPY(bh->brdname, f[1]);
             STRLCPY(bh->bclass, f[2]);
             STRLCPY(bh->desc, f[3]);
-            STRLCPY(bh->BM, f[4]);
+            seed_moderators(bh, f[4]);
             bh->nuser = 42;
             bid++;
             SHM->Bnumber = bid;
