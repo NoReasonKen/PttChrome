@@ -10,7 +10,7 @@
 // ArticleGestures owns the surfaces that slide away; this module owns the
 // stack, the layers and the handoff.
 import { readEffectivePrefs } from './pref_storage';
-import { OWNER_ARTICLE_LIST } from './list_render_owner';
+import { OWNER_ARTICLE_LIST, OWNER_BOARD_LIST } from './list_render_owner';
 import { sameBoard } from './screen_titles';
 import {
   createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, queueBack, takeQueuedBack, dropQueuedBacks, boundLayers,
@@ -324,14 +324,14 @@ export class NavigationStack {
   // whether it was sent; `finish` restores the surfaces once the real page
   // takes over; `cancel` brings the current page back when Back was not sent.
   // `level` is the kind of page left: an article, an article list or a board
-  // list. An article list with nothing revealed below waits for whatever page
-  // PTT shows next (#32).
+  // list. A list with nothing revealed below waits for whatever page PTT shows
+  // next (#32, #53).
   begin({ level = PAGE.ARTICLE, send, finish, cancel, hint }) {
     const core = this.core;
     const revealed = this._revealed();
     const layer = revealed?.layer || null;
     const h = this.handoff = {
-      layer, target: revealed?.page.kind || (level === PAGE.ARTICLE_LIST ? null : PAGE.ARTICLE_LIST), id: revealed?.page.id,
+      layer, level, target: revealed?.page.kind || (level === PAGE.ARTICLE ? PAGE.ARTICLE_LIST : null), id: revealed?.page.id,
       board: this._top()?.board || core.view._articleBoard,
       identity: openArticleKey(core), appBar: revealed?.appBar || null,
       sentAt: performance.now(), presentedAt: null, touches: 0, lastScrollAt: -Infinity,
@@ -445,9 +445,10 @@ export class NavigationStack {
     if (!h || h.presentedAt != null) return;
     const pageState = core.buf.pageState;
     if (!h.target) {
-      // An article list until a session presents its page; any other screen
-      // is PTT's answer.
-      if (pageState === 2 && core.buf.listRenderOwner === OWNER_ARTICLE_LIST) return;
+      // The list being left until a session presents its page; any other
+      // screen is PTT's answer.
+      const leaving = h.level === PAGE.BOARD_LIST ? OWNER_BOARD_LIST : OWNER_ARTICLE_LIST;
+      if (pageState === 2 && core.buf.listRenderOwner === leaving) return;
       return this._end('presented');
     }
     if (h.target === PAGE.ARTICLE) {

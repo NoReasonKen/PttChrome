@@ -91,15 +91,17 @@ export class ArticleGestures {
       !core.buf.easyReadingFunctionMode && mobileToolbarContext(core).threadNav);
   }
 
-  // An easy-reading article list swipes right to go back (#32), under the
-  // same preference; it has no drawer.
-  listSwipeAvailable() {
-    return !!(readEffectivePrefs().articleHorizontalGestures && this.core.buf.pageState === 2 && this._listLeaveable());
+  // An easy-reading article list (#32) or a smooth-scrolling board list (#53)
+  // swipes right to go back, under the same preference; neither has a drawer.
+  // The kind of list, or null.
+  listSwipeLevel() {
+    if (!readEffectivePrefs().articleHorizontalGestures || this.core.buf.pageState !== 2) return null;
+    return [PAGE.ARTICLE_LIST, PAGE.BOARD_LIST].find(level => this._leaveable(level)) || null;
   }
 
   // The kind of page a contact starting now would swipe, or null.
   _swipeLevel() {
-    return this.available() ? PAGE.ARTICLE : this.listSwipeAvailable() ? PAGE.ARTICLE_LIST : null;
+    return this.available() ? PAGE.ARTICLE : this.listSwipeLevel();
   }
 
   update() {
@@ -108,7 +110,7 @@ export class ArticleGestures {
     // A temporary PTT footer mismatch must not dismiss that open panel.
     if (this.core.buf.easyReadingResizeInFlight && this.root && !this.track) return;
     const available = this.available();
-    const swipeable = available || this.listSwipeAvailable();
+    const swipeable = available || !!this.listSwipeLevel();
     this.core.view.mainDisplay.classList.toggle('articleHorizontalGestures', swipeable);
     this._setNativeTouchMove(swipeable);
     const { board, author, title } = articleIdentity(this.core);
