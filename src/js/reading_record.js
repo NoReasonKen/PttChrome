@@ -70,6 +70,8 @@ export const RESTORE_TABLE = {
   'aid-board-pick': { done: NONE, cancel: cell('origin'), fail: NONE },
   // 文章重新整理：原本在文末就黏回文末（新推文在那裡），否則同一列。
   'article-refresh': { done: cell('auto'), cancel: NONE, fail: NONE },
+  'article-resize': { done: cell('origin'), cancel: NONE, fail: NONE },
+  'list-resize': { done: cell(null, 'origin'), cancel: NONE, fail: NONE },
   // 複製本篇連結（Q 路徑會被踢回列表再重開）：一律回原列。
   'deep-link-copy': {
     done: cell('origin'),
@@ -237,6 +239,10 @@ ReadingRecord.prototype = {
   // ctx { view, buf }：發起交易的模組手上的 view／termBuf（unit 的假 core 沒掛這兩個）。
   _liveArticle: function(ctx) {
     const core = this._core || {};
+    // A resize's temporary footerless screen must not erase the reading
+    // location used by background checkpoints and reconnect recovery.
+    const resizing = core.articleResize?.articleRecord;
+    if (resizing) return { ...resizing };
     const c = ctx || {};
     const buf = c.buf || core.buf;
     const view = c.view || core.view;
@@ -268,6 +274,8 @@ ReadingRecord.prototype = {
   },
 
   _liveList: function() {
+    const resizing = this._core?.listResize?.listRecord;
+    if (resizing) return { ...resizing };
     const ls = this._core && this._core.listSession;
     return ls && typeof ls.readingPosition === 'function' ? ls.readingPosition() : null;
   },

@@ -106,3 +106,31 @@ this.BBSWin.setAttribute("align", "center");
 
 回歸守護：`tests/unit/list_session.test.js`、`tests/unit/board_list_session.test.js`、
 `tests/unit/list_mark_read.test.js` 各一條 `rows: 40` 的 case。
+
+## Mobile article-list rotation
+
+`ListResize` retains the rendered article list while the terminal changes row
+count. NAWS only redraws stored cells, leaving the old footer at its old row.
+The transaction opens CompleteBoard with `s`, verifies its board-name prompt,
+then cancels with Ctrl-C. Upstream `read.c` returns `FULLUPDATE`: the same list
+is redrawn at the new dimensions without rebuilding its search predicates.
+Both phases request full repaint and verify every terminal row.
+
+The coordinator reads `ListSession.resizeContext()` and `waitingToResize()`.
+`beginResize()` owns freezing and the watchdog; `endResize()` owns success or
+native fallback, scoped queue release, bookmark restoration, and presentation.
+Its continuation lets another pending resize precede background loading. The
+shared transaction helpers and pump scheduling are described in
+[article rotation](article-rotation.md#module-interfaces-and-scheduling).
+
+The owner waits for foreground navigation and already-sent background pages.
+Pending resize prevents new prefetch chains; repeated sizes coalesce. A stacked
+Back hands the revealed page's position to the real list before resize starts.
+The visible entry, within-entry offset and local selection survive independently
+of the prefetch cursor. Search metadata and lower page layers are retained.
+
+The phases share a six-second deadline. Failure shows a native fallback;
+cancellation releases only this owner's commands and bookmark. Board-list
+smooth scrolling remains a separate surface. Regression coverage lives in
+`app_mobile_list_rotation.test.js`, `list_resize.test.js` and
+`mobile_list_rotation.offline.spec.js`; installed Android acceptance is separate.

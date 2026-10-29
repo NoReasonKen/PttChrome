@@ -19,6 +19,8 @@ import { i18n } from './i18n';
 
 export function serializedOpHint(core) {
   if (!core) return null;
+  if (core.articleResize?.active) return i18n('articleResize_busy');
+  if (core.listResize?.active) return i18n('articleResize_busy');
   if (core.articleShortcutSearch?.active) return i18n('articleShortcutSearch_busy');
   if (core.aidNavigation && core.aidNavigation.active)
     return core.aidNavigation.opHint || 'AID 跳文中，請稍候…';
