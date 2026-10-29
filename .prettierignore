@@ -9,9 +9,13 @@
 #                behaviour changes in code with thin (e2e-only) test coverage.
 #   src/css/** — hand-maintained stylesheets.
 #   dist/**    — build output.
+#   tests/unit/fixtures/ptt_src_screens/** — written by tools/ptt-src-screens; the
+#                scheduled workflow compares a fresh run to them with `git diff`, so a
+#                reformat reads as an upstream screen change on every run.
 #
 # If src/js ever really needs unifying, do it as ONE isolated "prettier all of src/js"
 # commit (no logic changes) so the churn is quarantined — never mixed into a feature diff.
 src/js/
 src/css/
 dist/
+tests/unit/fixtures/ptt_src_screens/

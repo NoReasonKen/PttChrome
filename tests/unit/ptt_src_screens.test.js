@@ -68,6 +68,7 @@ import goodbyeFx from "./fixtures/ptt_src_screens/goodbye.json";
 import { markReadPromptShown } from "../../src/js/mark_read_prompt";
 import { resolveDismiss, DISMISS_INPUT } from "../../src/js/screen_dismiss";
 import { isGoodbyeConfirm, isAnyKeyPause, logoutEscapeKey } from "../../src/js/logout_session";
+import { parseFunctionKeys } from "../../src/js/footer_keys";
 
 loadBig5Tables();
 
@@ -327,6 +328,14 @@ describe("upstream pttbbs 產的看板列表（我的最愛）", () => {
 
   test("在看板列表按 ⏎ 是進板 ⇒ arm", () => {
     expect(boardEntryArms(rowTexts, "\r")).toBe(true);
+  });
+
+  // psb.c#vs_cmd_bar（upstream 7e58998d）：底列只要放得下就保留 (←)回上層，
+  // 寬度不夠時改擠掉 HIGH 指令（這一幀是 (v)已讀/未讀）。
+  test("底列的 (←)回上層 是可點的 ← 鍵", () => {
+    const { buf } = screenAt(boardListFx, "fav");
+    const keys = parseFunctionKeys(buf.lines[buf.rows - 1]);
+    expect(keys.find((k) => k.label === "(←)")).toMatchObject({ keyBytes: "\x1b[D" });
   });
 });
 

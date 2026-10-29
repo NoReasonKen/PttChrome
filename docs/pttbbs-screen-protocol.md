@@ -1308,11 +1308,11 @@ server 的頁指標被移走而長頁不知道（症狀：翻頁跳格／重複�
 ### 指令列產生器：`psb.c#vs_cmd_bar(row_type, prompt, cmd_layers)`
 
 - 候選＝各 layer 裡有 label、`prio > CMD_PRIO_NONE`、權限過、（`need_item` 時列表非空）的指令；同一鍵以先出現的 layer 為準。
-  依 prio 由高到低排（`CMD_PRIO_NAV 10／LOW 30／NORM 50／HIGH 80／TOP 90／MAX 100`，`include/psb.h`）。
+  依 prio 由高到低排（`CMD_PRIO_LOW 10／NAV 30／NORM 50／QUIT 70／HIGH 80／TOP 90／USAGE 99／MAX 100`，`include/psb.h` @ 9008ac84）。
 - 格式（`cmd_bar_draw_cmd_ex`／`psb_key_name`）：底列 `" (k)名"`；其他列 `"[k]名"`（首項無前導空白）。
   鍵名：Ctrl 鍵 `^X`、方向鍵 `←→↑↓`、`Enter`／`Tab`／`S-Tab`／`DEL`／`Ins`／`BS`／`Home`／`End`／`PgUp`／`PgDn`／`Space`／`ESC`／`F1`…、
   `Esc-<c>`（編輯器的 ESC 組合鍵），其餘字元原樣。`footer_keys.js` 認得能送單一序列的那些；`S-Tab`／`F<n>`／`Esc-<c>` 整組維持純文字（**不可**把 `Esc-h` 拆出一顆裸 `Esc`）。
-- **右端兩顆**：`CMD_PRIO_QUIT`（或 `KEY_LEFT`）＋`CMD_PRIO_USAGE`（或 `h`）靠右，例 `(←)離開 (h)說明`；放不下先丟離開那顆。
+- **右端兩顆**：`CMD_PRIO_QUIT`（或 `KEY_LEFT`）＋`CMD_PRIO_USAGE`（或 `h`）靠右，例 `(←)離開 (h)說明`。離開那顆只要跟 caption 一起放得下就保留，寬度不夠時改丟其他放不下的指令（7e58998d 起；之前是 prio ≥ HIGH 的指令全部放得下才保留它）。例：原生我的最愛的底列是 `(a)增加看板 (d)刪除 (g)新增目錄 (M)移動位置 (←)回上層 (h)說明`，`(v)已讀/未讀` 被擠掉。
 - **inline 形（caption 為 NULL，pmore 用）**：從 `vgetx()` 接著印，**第一項前一格空白、其餘項目之間沒有空白**，右端兩顆也不加空白：
   `" (y)回應(X)推文(s)切換看板…      (←)離開(h)說明 "`。
 - 兩列模式（`VS_SUB_HEADER|VS_FOOTER`，文章列表與看板列表）：`KEY_LEFT` 先放 row 1；**prio ≤ NORM 進 row 1、
