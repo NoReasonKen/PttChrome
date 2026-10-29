@@ -145,8 +145,8 @@ describe("已讀／未讀樣式（readContrastStyle）CSS", () => {
       return r[0].body.match(/box-shadow:\s*inset 3px 0 0 (#[0-9a-f]+)/)[1];
     };
     expect(bars.length).toBe(2);
-    expect(color("unread")).toBe("#4762cf");
-    expect(color("updated")).toBe("#bdcaff");
+    expect(color("unread")).toBe("#5677fc");
+    expect(color("updated")).toBe("#b0bfff");
   });
 
   // A ~ card's 0.8 sits on the card, which would dim its bar as well.
