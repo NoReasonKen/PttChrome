@@ -193,6 +193,15 @@
 - CSS 排除游標列（`:has()` 看 bbsline／`.listCardBody` 是否帶 highlight class）。
   程度 `opacity: 0.6`（使用者定案：0.45 太暗看不清，只要與未讀明顯不同；範圍 [0.55, 0.75] 由 `list_card_css.test.js` 守）。
 - 測試：`list_read.test.js`（判定表）、`dim_read_class.test.js`（接線）、`list_card_css.test.js`（CSS 契約）。
+- 已讀／未讀樣式（`readContrastStyle`，#60）：只靠低亮，在 Android 卡片上仍分不清已讀與未讀 ⇒ 設定頁在低亮底下
+  提供幾種樣式比對，容器 class `readStyle-<值>`（`render/screen.js#_setReadStyle`，同 `_setDimRead` 不重建列、
+  不進 `annotationsKey`）。每條規則都掛在 `.dimReadList` 下、排除游標卡片、只改顏色（卡片固定高不變）。
+  - `dim`：只調暗已讀（#60 之前的行為，目前預設）。
+  - `brightUnread`：未讀卡片標題的預設前景 q7 提亮成白色（同 `cursorBrighten` 那一階）；標題自帶的顏色不動。
+  - `brightUnreadDim`：同上，已讀再暗到可讀下限 0.55。
+  - `brightUnreadBar`：同 `brightUnread`，未讀卡片左側加色條（inset box-shadow）。
+  - 「未讀」＝ `data-list-mark="unread"`（`+`／`M`），只有手機卡片帶；桌機格線沒有未讀標記，各樣式在桌機只差在
+    `brightUnreadDim` 的 0.55。
 
 ## URL 結尾修剪（`src/js/url_trim.js`）
 **一條純函式、四個消費點**：結尾的句尾標點（`. , ; : ! ?`）與**不成對**的 `) ] }` 屬於句子不屬於 URL。

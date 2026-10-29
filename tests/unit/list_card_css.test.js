@@ -94,3 +94,42 @@ describe("已讀文章低亮 CSS", () => {
     expect(sel).toMatch(/:not\(:has\(>\s*\.listCardBody/);
   });
 });
+
+// #60: the user could not tell read from unread cards on Android with dimming alone.
+// readStyle-<value> variants, chosen in settings (pref readContrastStyle).
+describe("已讀／未讀樣式（readContrastStyle）CSS", () => {
+  const styled = rules(/readStyle-/);
+  const brighten = styled.filter((r) => /color:/.test(r.body));
+
+  test("每條規則都掛在 dimReadList 下，pref 關掉就全部失效", () => {
+    expect(styled.length).toBeGreaterThan(0);
+    for (const r of styled)
+      for (const sel of r.sel.split(","))
+        expect(sel).toMatch(/#mainContainer\.dimReadList\.readStyle-/);
+  });
+
+  test("提亮：三種「未讀提亮」都只把未讀卡片標題的預設前景 q7 換成白色，排除游標卡片", () => {
+    expect(brighten.length).toBe(1);
+    const sels = brighten[0].sel.split(",").map((s) => s.replace(/\s+/g, " ").trim());
+    for (const v of ["brightUnread", "brightUnreadDim", "brightUnreadBar"])
+      expect(sels.some((s) => s.includes(`.readStyle-${v} `))).toBe(true);
+    for (const s of sels) {
+      expect(s).toMatch(/\[data-list-mark="unread"\]/);
+      expect(s).toMatch(/:not\(\s*:has\(>\s*\.listCardBody/);
+      expect(s).toMatch(/\.listCardTitleText\s+\.q7$/);
+    }
+    expect(brighten[0].body).toMatch(/color:\s*#ffffff/);
+  });
+
+  test("只改顏色：不改字重、字級或尺寸（卡片固定高不能變）", () => {
+    for (const r of styled)
+      expect(r.body).not.toMatch(/(^|[;\s])(font-weight|font-size|height|line-height|margin|padding)\s*:/);
+  });
+
+  test("左側色條畫在非游標卡片的本體上（inset box-shadow，不佔版面）", () => {
+    const bar = styled.filter((r) => /readStyle-brightUnreadBar/.test(r.sel) && /box-shadow/.test(r.body));
+    expect(bar.length).toBe(1);
+    expect(bar[0].sel).toMatch(/\[data-list-mark="unread"\]\s*>\s*\.listCardBody\[class="listCardBody"\]/);
+    expect(bar[0].body).toMatch(/box-shadow:\s*inset/);
+  });
+});

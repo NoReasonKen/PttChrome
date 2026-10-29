@@ -646,6 +646,24 @@
   "tooltip_dimReadArticles": {
     "message": "文章列表中已讀過的文章整列調暗，未讀文章（+ 標記）一眼就能分辨。"
   },
+  "options_readContrastStyle": {
+    "message": "已讀／未讀樣式"
+  },
+  "tooltip_readContrastStyle": {
+    "message": "手機文章列表卡片上，已讀與未讀文章怎麼區分。只在開啟「已讀文章低亮顯示」時作用。"
+  },
+  "options_readContrastDim": {
+    "message": "只調暗已讀"
+  },
+  "options_readContrastBrightUnread": {
+    "message": "未讀標題提亮"
+  },
+  "options_readContrastBrightUnreadDim": {
+    "message": "未讀提亮＋已讀更暗"
+  },
+  "options_readContrastBrightUnreadBar": {
+    "message": "未讀提亮＋左側色條"
+  },
   "options_commentBlockSpacing": {
     "message": "推文區塊加大行距 (僅好讀模式，同作者合併的推文自成一組)"
   },

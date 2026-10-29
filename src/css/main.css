@@ -576,6 +576,48 @@ html.commentBarShown #mainContainer::after {
   opacity: 0.8;
 }
 
+/* Read/unread card treatments (pref readContrastStyle, #60), a #mainContainer
+   class readStyle-<value> set by render/screen.js#_setReadStyle. Every rule hangs
+   under .dimReadList, so turning the dimming off disables all of them, and every
+   rule skips the cursor card (same :has() test as above) so the selection keeps
+   its own highlight. Unread is data-list-mark="unread" (+ and M), which only the
+   mobile cards carry; the desktop grid has no unread marker and keeps plain
+   dimming. "Brighten" is the cursorBrighten step: the default foreground q7
+   becomes q15 white, and colored title text keeps its color.
+   Colors only: no font-weight or size change, so the fixed card height holds. */
+#mainContainer.dimReadList.readStyle-brightUnread
+  span.listCard[data-list-mark="unread"]:not(
+    :has(> .listCardBody:not([class="listCardBody"]))
+  )
+  .listCardTitleText
+  .q7,
+#mainContainer.dimReadList.readStyle-brightUnreadDim
+  span.listCard[data-list-mark="unread"]:not(
+    :has(> .listCardBody:not([class="listCardBody"]))
+  )
+  .listCardTitleText
+  .q7,
+#mainContainer.dimReadList.readStyle-brightUnreadBar
+  span.listCard[data-list-mark="unread"]:not(
+    :has(> .listCardBody:not([class="listCardBody"]))
+  )
+  .listCardTitleText
+  .q7 {
+  color: #ffffff;
+}
+/* "Dim read more": the readable floor the user settled on (0.45 was too dark). */
+#mainContainer.dimReadList.readStyle-brightUnreadDim
+  span[type="bbsrow"][data-list-read]:not(
+    :has(> div > [data-type="bbsline"][class]:not([class=""]))
+  ):not(:has(> .listCardBody:not([class="listCardBody"]))) {
+  opacity: 0.55;
+}
+#mainContainer.dimReadList.readStyle-brightUnreadBar
+  span.listCard[data-list-mark="unread"]
+  > .listCardBody[class="listCardBody"] {
+  box-shadow: inset 3px 0 0 #4fc3f7;
+}
+
 /* 列表好讀模式的 body 捲動視口。高度由 JS 設成 body 列數 × 列高，內容是整段
    緩衝（≤ MAX_LIST_ROWS 列）⇒ 有真正的可捲距離，捲動交給瀏覽器（與文章好讀
    同一套引擎）。`overflow-y` 也由 JS 控（auto／hidden，見 screen.js
