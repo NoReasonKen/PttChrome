@@ -458,10 +458,14 @@ async function installNestedServer(page, session) {
 
 // Input is deliberately swallowed while a serialized navigation owns the
 // connection; the next real gesture must wait until that operation ends.
+// That includes an easy-reading list open: its article frames already paint
+// before the settle hands the article over, and a Back in that window is
+// swallowed (#43).
 async function waitIdle(page) {
   await expect.poll(() => page.evaluate(() => {
     const app = window.__app;
-    return !app.articleShortcutSearch.active && !app.aidNavigation.active && !app.searchInFlight;
+    return !app.articleShortcutSearch.active && !app.aidNavigation.active && !app.searchInFlight &&
+      app.listSession.state !== 'opening';
   })).toBe(true);
 }
 
