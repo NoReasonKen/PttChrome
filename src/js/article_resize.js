@@ -22,10 +22,13 @@ export class ArticleResize {
   get active() { return !!this.command; }
   get articleRecord() { return this.command?.position.bookmark.article || null; }
 
-  _eligible(context = this.core.easyReading?.resizeContext()) {
+  _available(context) {
     const { conn } = this.core;
-    return !!(this.core.mobile && !this.core.articleGestures?.stack?.handingOff &&
-      conn?.isConnected && context && this.core.commandQueue);
+    return !!(this.core.mobile && conn?.isConnected && context && this.core.commandQueue);
+  }
+
+  _eligible(context = this.core.easyReading?.resizeContext()) {
+    return this._available(context) && !this.core.articleGestures?.stack?.handingOff;
   }
 
   attach() { this.anchor.attach(() => this.capturePosition()); }
@@ -58,7 +61,16 @@ export class ArticleResize {
     const core = this.core;
     const { easyReading: er, buf } = core;
     const context = er?.resizeContext();
-    if (!this._eligible(context)) { this.pending = null; return false; }
+    if (!this._eligible(context)) {
+      const size = this.pending;
+      this.pending = null;
+      // Back owns the wire now. The normal router lets ListResize retain the
+      // request until that handoff ends; never send raw NAWS from cancel().
+      if (core.articleGestures?.stack?.handingOff && this._available(context)) {
+        core.setTermSize(size.cols, size.rows);
+      }
+      return false;
+    }
     if (this.pending.cols === buf.cols && this.pending.rows === buf.rows) {
       this.pending = null;
       return false;

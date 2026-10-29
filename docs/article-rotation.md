@@ -85,6 +85,19 @@ are retried by list settles, queue idle, and the end of a stacked Back after
 its revealed page is aligned. Each pump rechecks eligibility and ownership;
 calling a pump does not authorize bypassing another operation.
 
+If Back starts while an article size is still waiting, the article owner clears
+its pending request and routes that size through `App.setTermSize()`. Only this
+handoff case is forwarded: the connected, eligible reader must still exist.
+`ListResize` retains the size until Back finishes aligning the revealed page;
+neither owner sends NAWS during that handoff.
+
+Cancellation itself never forwards a size. Function-mode entry's native-grid
+render reconciles geometry, and returning to article rendering reconciles it
+again. After disconnect, the initial `doNaws` negotiation can use retained
+buffer dimensions; rendering the first reconnect screen reconciles the current
+viewport and sends corrected dimensions. Regression coverage in
+`app_mobile_resize_recovery.test.js` exercises those existing lifecycle paths.
+
 ## Verification
 
 - `app_mobile_rotation.test.js`: both row-count transitions through the real

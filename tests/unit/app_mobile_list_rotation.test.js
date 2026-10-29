@@ -1,6 +1,7 @@
 // @unit-env browser
 import { App } from '../../src/js/pttchrome';
 import { ListResize } from '../../src/js/list_resize';
+import { ArticleResize } from '../../src/js/article_resize';
 import { NavigationStack } from '../../src/js/navigation_stack';
 import { TermBuf } from '../../src/js/term_buf';
 import { ListSession } from '../../src/js/list_session';
@@ -97,6 +98,43 @@ describe('Mobile article-list rotation', () => {
   beforeAll(loadBig5Tables);
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+
+  test('Back transfers a waiting article resize to the list owner before changing terminal rows', () => {
+    const { app, buf, view, list } = makeReader(PORTRAIT, 'plain');
+    const originalRows = buf.rows;
+    const targetRows = geometry(LANDSCAPE).rows;
+    app.easyReading.resizeContext = vi.fn(() => ({ board: 'Test', line: 23, ready: false }));
+    app.articleResize = new ArticleResize(app);
+    const stack = new NavigationStack(app);
+    app.articleGestures = { stack };
+    stack.stack.pages = [
+      { kind: 'articleList', board: 'Test' },
+      { kind: 'article', board: 'Test', id: 'source' },
+    ];
+    list.state = 'suspended';
+    list._renderMode = 'native';
+    view.innerBounds = LANDSCAPE;
+    app.setTermSize(80, targetRows);
+    expect(app.articleResize.pending).toEqual({ cols: 80, rows: targetRows });
+    expect(app.conn.sendNaws).not.toHaveBeenCalled();
+
+    stack.handoff = { listeners: [], finish: vi.fn(), layer: null };
+    app.articleResize.pump();
+    expect(app.articleResize.pending).toBeNull();
+    expect(app.listResize.pending).toEqual({ cols: 80, rows: targetRows });
+    expect(buf.rows).toBe(originalRows);
+    expect(app.commandQueue.idle).toBe(true);
+    expect(app.conn.sendNaws).not.toHaveBeenCalled();
+
+    app.easyReading.resizeContext.mockReturnValue(null);
+    list.state = 'active';
+    list._renderMode = 'buffer';
+    stack._end('presented');
+    expect(app.listResize.active).toBe(true);
+    expect(buf.rows).toBe(targetRows);
+    expect(app.conn.sendNaws).toHaveBeenCalledExactlyOnceWith(80, targetRows);
+    expect(app.conn.send).toHaveBeenCalledExactlyOnceWith('s\f');
+  });
 
   test('a completed stacked Back starts the deferred list resize', () => {
     const { app, list } = makeReader(PORTRAIT, 'plain');

@@ -134,6 +134,28 @@ describe('Article resize ownership', () => {
     expect(h.resize.active).toBe(false);
   });
 
+  test.each([
+    ['desktop layout', h => { h.core.mobile = false; }],
+    ['disconnected', h => { h.core.conn.isConnected = false; }],
+    ['easy reading disabled', h => { h.reader._enabled = false; }],
+    ['native input mode', h => { h.reader._functionMode = true; }],
+    ['unknown article board', h => { h.view._articleBoard = null; }],
+    ['no command queue', h => { h.core.commandQueue = null; }],
+  ])('drops a waiting size without forwarding when Back coincides with %s', (_name, arrange) => {
+    const h = makeReader();
+    h.core.setTermSize = vi.fn();
+    h.reader._reverse = {};
+    h.resize.request(80, 40);
+    expect(h.resize.pending).toEqual({ cols: 80, rows: 40 });
+    h.core.articleGestures = { stack: { handingOff: true } };
+    arrange(h);
+    h.resize.pump();
+    expect(h.resize.pending).toBeNull();
+    expect(h.core.setTermSize).not.toHaveBeenCalled();
+    expect(h.core._setTermSizeNow).not.toHaveBeenCalled();
+    expect(h.sent).toEqual([]);
+  });
+
   test('resizes before leaving, verifies the same article, then seeks the retained frontier', () => {
     const h = makeReader();
     expect(h.resize.request(80, 40)).toBe(true);
