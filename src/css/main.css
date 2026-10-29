@@ -557,7 +557,7 @@ html.commentBarShown #mainContainer::after {
   span[type="bbsrow"][data-list-read]:not(
     :has(> div > [data-type="bbsline"][class]:not([class=""]))
   ):not(:has(> .listCardBody:not([class="listCardBody"]))) {
-  opacity: 0.6;
+  opacity: 0.7;
 }
 
 /* 手機列表卡片的未讀標記（render/list_card.js#articleCardMark → data-list-mark）：
@@ -586,7 +586,7 @@ html.commentBarShown #mainContainer::after {
    holds.
 
    Brighten is the cursorBrighten step: an unread title's default foreground q7
-   becomes q15 white, and colored title text keeps its color. Read (0.6) and ~
+   becomes q15 white, and colored title text keeps its color. Read (0.7) and ~
    (0.8) keep their levels: the owner compared these against JPTT's levels and
    kept them (2026-10-30). */
 #mainContainer.dimReadList.readStyle-brightUnread
