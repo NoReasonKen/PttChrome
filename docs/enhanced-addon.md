@@ -196,11 +196,11 @@
 - 已讀／未讀樣式（`readContrastStyle`，#60）：只靠低亮，在 Android 卡片上仍分不清已讀與未讀 ⇒ 設定頁在低亮底下
   提供幾種樣式比對，容器 class `readStyle-<值>`（`render/screen.js#_setReadStyle`，同 `_setDimRead` 不重建列、
   不進 `annotationsKey`）。每條規則都掛在 `.dimReadList` 下、排除游標卡片、只改顏色（卡片固定高不變）。
-  - `dim`：只調暗已讀（#60 之前的行為，目前預設）。
+  - `dim`：只調暗已讀（#60 之前的行為）。
   - `brightUnread`：未讀卡片標題的預設前景 q7（#c0c0c0）提亮成白色（同 `cursorBrighten` 那一階，標題自帶的顏色不動）；
     已讀 0.6、`~` 0.8 不變。使用者 2026-10-30 比過照 JPTT 等比例換算的三段亮度（`~` 不調暗、已讀 0.68），選擇保留這組。
-  - `brightUnreadBar`：同 `brightUnread`，左側色條照 JPTT 的配色：未讀藍 `#5677fc`、`~` 淺藍 `#b0bfff`，已讀不畫（使用者試過拉開深淺到亮度 102／204，透明度回到 1／0.8／0.6 後覺得太開，改回 JPTT 原色）
-    （3px inset box-shadow）。`~` 卡片整張 0.8 會把色條一起調暗 ⇒ 這個樣式把 0.8 改掛在卡片的兩行文字上，色條維持原色。
+  - `brightUnreadBar`（預設，使用者在手機上比過後定案）：同 `brightUnread`，左側色條（3px inset box-shadow）照 JPTT 的配色：
+    未讀藍 `#5677fc`、`~` 淺藍 `#b0bfff`，已讀不畫。使用者試過拉開深淺到亮度 102／204，透明度回到 1／0.8／0.6 後覺得太開，改回 JPTT 原色。`~` 卡片整張 0.8 會把色條一起調暗 ⇒ 這個樣式把 0.8 改掛在卡片的兩行文字上，色條維持原色。
   - 「未讀」＝ `data-list-mark="unread"`（`+`／`M`）、`~` ＝ `"updated"`，只有手機卡片帶；桌機格線沒有標記，各樣式在
     桌機都等於 `dim`。
 

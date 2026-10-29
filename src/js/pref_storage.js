@@ -314,8 +314,9 @@ export const DEFAULT_PREFS = {
   // (render/screen.js#_setReadStyle), not part of annotationsKey.
   //   dim             — read cards dimmed only (the behavior before #60)
   //   brightUnread    — plus unread titles brightened one step (q7 → white)
-  //   brightUnreadBar — the same, plus JPTT's bars on unread and ~ cards
-  readContrastStyle: "dim",
+  //   brightUnreadBar — the same, plus JPTT's bars on unread and ~ cards (default,
+  //                     the owner's pick after comparing on the phone)
+  readContrastStyle: "brightUnreadBar",
   highlightAuthorComments: true,
   // 自己的推文：只染 id 格（綠），帳號取自選單底部狀態列（term_view._selfId）。
   highlightSelfComments: true,
