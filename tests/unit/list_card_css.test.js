@@ -115,7 +115,7 @@ describe("已讀／未讀樣式（readContrastStyle）CSS", () => {
         expect(sel).toMatch(/:not\( ?:has\(> \.listCardBody:not\(\[class="listCardBody"\]\)\)|\.listCardBody\[class="listCardBody"\]/);
   });
 
-  // The owner compared JPTT's proportional levels and kept the base read / ~ levels
+  // The owner compared JPTT's proportional levels and kept read 0.6 / ~ 0.8
   // (2026-10-30), so the styles only brighten unread titles.
   test("提亮：兩種樣式都只把未讀卡片標題的預設前景 q7 換成白色；已讀與 ~ 的亮度不覆寫", () => {
     const bright = ruleFor(/\.q7/);

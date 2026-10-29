@@ -191,14 +191,14 @@
   （`row.js`／`list_card.js`）；pref 只 toggle 容器 class `#mainContainer.dimReadList`
   （`render/screen.js#_setDimRead`，同 `_setCommentSpacing` 形狀）⇒ **不進 `annotationsKey`**、切換不重建列。
 - CSS 排除游標列（`:has()` 看 bbsline／`.listCardBody` 是否帶 highlight class）。
-  程度 `opacity: 0.7`（使用者定案：0.45 太暗看不清，只要與未讀明顯不同；0.6 在手機上偏暗，2026-10-30 調到 0.7；範圍 [0.55, 0.75] 由 `list_card_css.test.js` 守）。
+  程度 `opacity: 0.6`（使用者定案：0.45 太暗看不清，只要與未讀明顯不同；範圍 [0.55, 0.75] 由 `list_card_css.test.js` 守）。
 - 測試：`list_read.test.js`（判定表）、`dim_read_class.test.js`（接線）、`list_card_css.test.js`（CSS 契約）。
 - 已讀／未讀樣式（`readContrastStyle`，#60）：只靠低亮，在 Android 卡片上仍分不清已讀與未讀 ⇒ 設定頁在低亮底下
   提供幾種樣式比對，容器 class `readStyle-<值>`（`render/screen.js#_setReadStyle`，同 `_setDimRead` 不重建列、
   不進 `annotationsKey`）。每條規則都掛在 `.dimReadList` 下、排除游標卡片、只改顏色（卡片固定高不變）。
   - `dim`：只調暗已讀（#60 之前的行為，目前預設）。
   - `brightUnread`：未讀卡片標題的預設前景 q7（#c0c0c0）提亮成白色（同 `cursorBrighten` 那一階，標題自帶的顏色不動）；
-    已讀 0.7、`~` 0.8 不變。使用者 2026-10-30 比過照 JPTT 等比例換算的三段亮度（`~` 不調暗、已讀 0.68），選擇保留這組。
+    已讀 0.6、`~` 0.8 不變。使用者 2026-10-30 比過照 JPTT 等比例換算的三段亮度（`~` 不調暗、已讀 0.68），選擇保留這組。
   - `brightUnreadBar`：同 `brightUnread`，左側色條照 JPTT 的配色但拉開深淺（JPTT `#5677fc`／`#b0bfff` 一眼分不清）：未讀深藍 `#4762cf`、`~` 淺藍 `#bdcaff`（同色相、亮度 124／194 拉到使用者挑的 102／204），已讀不畫
     （3px inset box-shadow）。`~` 卡片整張 0.8 會把色條一起調暗 ⇒ 這個樣式把 0.8 改掛在卡片的兩行文字上，色條維持原色。
   - 「未讀」＝ `data-list-mark="unread"`（`+`／`M`）、`~` ＝ `"updated"`，只有手機卡片帶；桌機格線沒有標記，各樣式在
