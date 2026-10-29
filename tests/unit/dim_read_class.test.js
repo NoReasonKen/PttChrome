@@ -25,11 +25,11 @@ const LINES = [
   row(seg("  文章選讀  (y)回應(X)推文(^X)轉錄")),
 ];
 
-const props = (dimReadArticles, readContrastStyle) => ({
+const props = (dimReadArticles) => ({
   lines: LINES,
   enableLinkInlinePreview: false,
   enableLinkHoverPreview: false,
-  enhance: { pageState: 2, dimReadArticles, readContrastStyle },
+  enhance: { pageState: 2, dimReadArticles },
 });
 
 const readRows = (m) =>
@@ -53,32 +53,5 @@ describe("已讀文章低亮", () => {
     expect(m.container.classList.contains("dimReadList")).toBe(false);
     m.update(props(true));
     expect(m.container.classList.contains("dimReadList")).toBe(true);
-  });
-});
-
-// #60: the read/unread treatment is one container class next to dimReadList.
-describe("已讀／未讀樣式（readContrastStyle）", () => {
-  const styleClasses = (m) => [...m.container.classList].filter((c) => c.startsWith("readStyle-"));
-
-  test("掛 readStyle-<值>，切換當場換成新的那一個，不留舊的", () => {
-    const m = mountScreen(props(true, "dim"));
-    expect(styleClasses(m)).toEqual(["readStyle-dim"]);
-    m.update(props(true, "brightUnreadBar"));
-    expect(styleClasses(m)).toEqual(["readStyle-brightUnreadBar"]);
-    m.update(props(true, "brightUnread"));
-    expect(styleClasses(m)).toEqual(["readStyle-brightUnread"]);
-  });
-
-  test("沒有值 ⇒ 不掛任何 readStyle-", () => {
-    const m = mountScreen(props(true, "brightUnread"));
-    m.update(props(true, undefined));
-    expect(styleClasses(m)).toEqual([]);
-  });
-
-  test("不重建列：切換前後是同一批列節點", () => {
-    const m = mountScreen(props(true, "dim"));
-    const before = m.container.querySelector('[srow="4"]');
-    m.update(props(true, "brightUnread"));
-    expect(m.container.querySelector('[srow="4"]')).toBe(before);
   });
 });

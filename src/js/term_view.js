@@ -371,9 +371,6 @@ export function TermView() {
   // 已讀文章低亮（列表）：純 CSS，容器 class 由 render/screen.js#_setDimRead 掛。
   // Set via App.onPrefChange.
   this.dimReadArticles = true;
-  // Read/unread card treatment under dimReadArticles (pref readContrastStyle).
-  // Set via App.onPrefChange.
-  this.readContrastStyle = 'brightUnreadBar';
   // 裝置端 AI（Chrome Prompt API）總開關。每個 AI 子功能的生效條件都是
   // `enableAi && <子開關>`，AND 在下面 _renderScreenLines 匯總（單一 choke point）。
   // Set via App.onPrefChange.
@@ -1175,7 +1172,6 @@ TermView.prototype = {
           commentBlockSpacing: this.commentBlockSpacing,
           // 已讀文章低亮：同上，只影響容器 class、不進 annotationsKey。
           dimReadArticles: this.dimReadArticles,
-          readContrastStyle: this.readContrastStyle,
           captionAiEnabled: this.enableAi && this.enableCaptionAi,
           // 浮動鈕開關：只影響尾端浮層，不進 annotationsKey。
           mergeCaptionButton: this.showMergeCaptionButton,

@@ -308,15 +308,6 @@ export const DEFAULT_PREFS = {
   // 已讀列整列低亮。判定見 comment_parse#isListRowRead；**純 CSS**：列永遠帶
   // data-list-read，這個 pref 只 toggle #mainContainer.dimReadList。預設開。
   dimReadArticles: true,
-  // How read and unread article cards differ while dimReadArticles is on (#60). The
-  // mobile card list carries every variant; the desktop grid keeps "dim" as is,
-  // since its rows do not mark unread ones. Pure CSS: a #mainContainer class
-  // (render/screen.js#_setReadStyle), not part of annotationsKey.
-  //   dim             — read cards dimmed only (the behavior before #60)
-  //   brightUnread    — plus unread titles brightened one step (q7 → white)
-  //   brightUnreadBar — the same, plus JPTT's bars on unread and ~ cards (default,
-  //                     the owner's pick after comparing on the phone)
-  readContrastStyle: "brightUnreadBar",
   highlightAuthorComments: true,
   // 自己的推文：只染 id 格（綠），帳號取自選單底部狀態列（term_view._selfId）。
   highlightSelfComments: true,

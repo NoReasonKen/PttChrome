@@ -1278,28 +1278,6 @@ export const PrefModal = ({
                 <Text size="xs" c="dimmed" mb="xs">
                   {i18n("tooltip_dimReadArticles")}
                 </Text>
-                <Select
-                  label={i18n("options_readContrastStyle")}
-                  description={i18n("tooltip_readContrastStyle")}
-                  name="readContrastStyle"
-                  value={values.readContrastStyle}
-                  allowDeselect={false}
-                  disabled={!values.dimReadArticles}
-                  onChange={(val) => onSelectStr("readContrastStyle", val)}
-                  data={[
-                    { value: "dim", label: i18n("options_readContrastDim") },
-                    {
-                      value: "brightUnread",
-                      label: i18n("options_readContrastBrightUnread"),
-                    },
-                    {
-                      value: "brightUnreadBar",
-                      label: i18n("options_readContrastBrightUnreadBar"),
-                    },
-                  ]}
-                  mb="xs"
-                  {...anchor("readContrastStyle")}
-                />
                 <PrefAnchor anchorKey="ui:theme">
                   <Text size="sm" fw={500} mb={4}>
                     {i18n("options_theme")}

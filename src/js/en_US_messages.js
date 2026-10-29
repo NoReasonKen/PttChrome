@@ -647,21 +647,6 @@ export const en_US = {
   "tooltip_dimReadArticles": {
     "message": "Dims already-read rows in the article list so unread ones (+ mark) stand out at a glance."
   },
-  "options_readContrastStyle": {
-    "message": "Read / unread style"
-  },
-  "tooltip_readContrastStyle": {
-    "message": "How read and unread articles differ on the mobile article list cards. Applies only while “Dim read articles” is on."
-  },
-  "options_readContrastDim": {
-    "message": "Dim read only"
-  },
-  "options_readContrastBrightUnread": {
-    "message": "Brighten unread titles"
-  },
-  "options_readContrastBrightUnreadBar": {
-    "message": "Brighten unread, accent bars"
-  },
   "options_commentBlockSpacing": {
     "message": "Add spacing between comment blocks (easy reading only; merged same-author comments stay grouped)"
   },

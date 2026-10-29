@@ -164,8 +164,6 @@ export class ScreenController {
     this._commentSpacing = false;
     // 已讀文章低亮的容器 class（pref dimReadArticles），同 _commentSpacing 的形狀。
     this._dimRead = false;
-    // Read/unread card treatment class (pref readContrastStyle), same shape.
-    this._readStyle = null;
     // 好讀「圖左字右合併」三態：null（關）→ "imageFirst" → "captionFirst" → null。
     // Its article-scoped state resets when navigation changes articleId.
     this._mergeCaption = null;
@@ -651,22 +649,6 @@ export class ScreenController {
     this.container.classList.toggle("dimReadList", next);
   }
 
-  // Read/unread card treatment (pref readContrastStyle, #60): one container class
-  // readStyle-<value>. main.css only styles it under .dimReadList, so turning the
-  // dimming off disables every variant. Same no-rebuild rule as _setDimRead.
-  _setReadStyle(next) {
-    const cls = next ? "readStyle-" + next : null;
-    const prev = this._readStyle ? "readStyle-" + this._readStyle : null;
-    if (
-      this._readStyle === next &&
-      (!cls || this.container.classList.contains(cls))
-    )
-      return;
-    if (prev) this.container.classList.remove(prev);
-    if (cls) this.container.classList.add(cls);
-    this._readStyle = next;
-  }
-
   // 版面**寬度**改變的唯一入口（字級／視窗 resize 走 term_view.setTermFontSize，
   // 圖左字右合併走 _toggleMergeCaption）。佔位盒記的 pinned 高度是在舊寬度下量到
   // 的，換寬度就過期；aspect（原尺寸）與寬度無關，一律保留讓替身盒接手。
@@ -712,7 +694,6 @@ export class ScreenController {
       ),
     );
     this._setDimRead(!!(enhance && enhance.dimReadArticles));
-    this._setReadStyle((enhance && enhance.readContrastStyle) || null);
     const prevCache = this._cache;
     // 可重用的形狀：純 append（suffix 0）；或反向讀取（End）把新頁插在接合點 J
     // （suffix > 0）。後者只在插入點不早於 J 時成立 —— tail 不編樓層，J 之後的列
