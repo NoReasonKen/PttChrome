@@ -63,18 +63,22 @@ function isBlankCell(ch) {
 // （吃剩餘寬度，放不下省略號）、end（靠右，包在 endClass 裡）。
 export const CARD_LAYOUT = {
   article: {
-    // 第一行：推文數 [9,11)｜標題；第二行：標記 [7,9)（+ 未讀／~ 有新推文）｜作者
-    // ……序號・日期。
+    // 第一行：推文數 [9,11)｜標題；第二行：（左欄留空）序號・作者……標記 [7,9)
+    // （+ 未讀／~ 有新推文）・日期。The empty lead keeps the number and author
+    // aligned under the title, and the mark sits next to the date (#60).
     title: {
       lead: [9, 11, "listCardPush"],
       main: [[LIST_AUTHOR_COL_END, 80, "listCardTitleText"]],
       end: [],
     },
     meta: {
-      lead: [7, 9, "listCardMark"],
-      main: [[LIST_AUTHOR_COL_START, LIST_AUTHOR_COL_END, "listCardAuthor"]],
-      end: [
+      lead: null,
+      main: [
         [0, 7, "listCardNum"],
+        [LIST_AUTHOR_COL_START, LIST_AUTHOR_COL_END, "listCardAuthor"],
+      ],
+      end: [
+        [7, 9, "listCardMark"],
         [11, 17, "listCardDate"],
       ],
       endClass: "listCardInfo",

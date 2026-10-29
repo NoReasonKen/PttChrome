@@ -48,11 +48,12 @@ describe("未讀標記（data-list-mark）CSS", () => {
     expect(r[0].body).toMatch(/font-weight:\s*bold/);
     expect(r[0].body).not.toMatch(/(^|[;\s])(font-size|height|line-height|margin|padding)/);
   });
-  test("~ 卡片調暗一階：介於已讀低亮與未讀之間、跟著 dimReadList、排除游標卡片", () => {
-    const r = rules(/\[data-list-mark="updated"\]/);
+  // The dimming sits on the two text lines, not the card, so the ~ bar keeps its color.
+  test("~ 卡片調暗一階：介於已讀低亮與未讀之間、跟著 dimReadList、排除游標卡片、色條不跟著暗", () => {
+    const r = rules(/\[data-list-mark="updated"\]/).filter((x) => /opacity/.test(x.body));
     expect(r.length).toBe(1);
     expect(r[0].sel).toMatch(/#mainContainer\.dimReadList/);
-    expect(r[0].sel).toMatch(/:not\(\s*:has\(>\s*\.listCardBody/);
+    expect(r[0].sel).toMatch(/>\s*\.listCardBody\[class="listCardBody"\]\s*>\s*\.listCardLine\s*$/);
     const op = Number(r[0].body.match(/opacity:\s*([\d.]+)/)[1]);
     const readOp = Number(rules(/\[data-list-read\]/)[0].body.match(/opacity:\s*([\d.]+)/)[1]);
     expect(op).toBeGreaterThan(readOp);
@@ -92,5 +93,47 @@ describe("已讀文章低亮 CSS", () => {
     const sel = dim.map((r) => r.sel).join("\n");
     expect(sel).toMatch(/:not\(\s*:has\([^)]*data-type="bbsline"/);
     expect(sel).toMatch(/:not\(:has\(>\s*\.listCardBody/);
+  });
+});
+
+// #60: the user could not tell read from unread cards on Android with dimming alone.
+describe("未讀提亮與左側色條 CSS", () => {
+  const brighten = rules(/\.listCardTitleText\s+\.q7\s*$/);
+  const bars = rules(/\[data-list-mark=/).filter((r) => /box-shadow/.test(r.body));
+  const styled = [...brighten, ...bars];
+
+  // Fixed defaults: dimReadArticles only dims read cards, so these do not follow it.
+  test("不跟著已讀低亮（dimReadList）開關，且排除游標卡片", () => {
+    expect(brighten.length).toBe(1);
+    for (const r of styled) {
+      expect(r.sel).toMatch(/^#mainContainer\s/);
+      expect(r.sel).not.toMatch(/dimReadList/);
+      expect(r.sel).toMatch(/:not\(\s*:has\(>\s*\.listCardBody:not\(\[class="listCardBody"\]\)\)|\.listCardBody\[class="listCardBody"\]/);
+    }
+  });
+
+  // The owner compared JPTT's proportional levels and kept the base read / ~ levels
+  // (2026-10-30), so only unread titles change.
+  test("提亮：只把未讀卡片標題的預設前景 q7 換成白色；已讀與 ~ 的亮度不覆寫", () => {
+    expect(brighten[0].sel).toMatch(/\[data-list-mark="unread"\]/);
+    expect(brighten[0].body).toMatch(/color:\s*#ffffff/);
+    expect(rules(/\[data-list-read\]/).length).toBe(1);
+  });
+
+  test("只改顏色：不改字重、字級或尺寸（卡片固定高不能變）", () => {
+    for (const r of styled)
+      expect(r.body).not.toMatch(/(^|[;\s])(font-weight|font-size|height|line-height|margin|padding)\s*:/);
+  });
+
+  test("左側色條：JPTT 的配色，未讀藍、~ 淺藍、已讀沒有；畫在非游標卡片本體上（inset，不佔版面）", () => {
+    const color = (mark) => {
+      const r = bars.filter((x) => x.sel.includes(`[data-list-mark="${mark}"]`));
+      expect(r.length).toBe(1);
+      expect(r[0].sel).toMatch(/\]\s*>\s*\.listCardBody\[class="listCardBody"\]\s*$/);
+      return r[0].body.match(/box-shadow:\s*inset 3px 0 0 (#[0-9a-f]+)/)[1];
+    };
+    expect(bars.length).toBe(2);
+    expect(color("unread")).toBe("#5677fc");
+    expect(color("updated")).toBe("#b0bfff");
   });
 });

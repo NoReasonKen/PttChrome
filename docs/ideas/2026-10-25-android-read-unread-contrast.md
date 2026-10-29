@@ -1,7 +1,7 @@
 # Improve Read and Unread Article Contrast on Android
 
 - Date: 2026-10-25 (Asia/Taipei)
-- Status: Idea, not implemented
+- Status: Promoted to development: https://github.com/NoReasonKen/PttChrome/issues/60
 
 ## Problem
 
