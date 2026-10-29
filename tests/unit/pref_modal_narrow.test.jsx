@@ -99,7 +99,9 @@ describe("設定頁：窄螢幕（手機直向）", () => {
     expect(getComputedStyle(rightCol()).display).toBe("none");
   });
 
-  test("系統返回：在分類裡才登記，觸發＝回清單、解除登記", async () => {
+  // #63: on the category list nothing was registered, so Back fell through to the
+  // leave-app hint. One handler is registered for as long as settings are open.
+  test("系統返回：開著就登記一個；在分類裡＝回清單，在清單＝關閉並存檔", async () => {
     await page.viewport(390, 800);
     const handlers = [];
     const off = vi.fn();
@@ -107,14 +109,31 @@ describe("設定頁：窄螢幕（手機直向）", () => {
       handlers.push(fn);
       return off;
     });
-    openModal({ registerBack });
+    const onSave = vi.fn();
+    const view = openModal({ registerBack, onSave });
     await mounted();
-    expect(registerBack).not.toHaveBeenCalled();
-    fireEvent.click(category("mouse"));
     expect(registerBack).toHaveBeenCalledTimes(1);
+    fireEvent.click(category("mouse"));
     act(() => handlers[0]());
     expect(category("mouse")).not.toBeNull();
+    expect(onSave).not.toHaveBeenCalled();
+    act(() => handlers[0]());
+    expect(onSave).toHaveBeenCalledTimes(1);
+    // ContextMenu hides the modal on save; hiding unregisters the handler.
+    view.rerender(
+      <MantineProvider>
+        <PrefModal
+          show={false}
+          onSave={onSave}
+          onReset={() => {}}
+          debugMode={false}
+          onDebugModeChange={() => {}}
+          registerBack={registerBack}
+        />
+      </MantineProvider>,
+    );
     expect(off).toHaveBeenCalledTimes(1);
+    expect(registerBack).toHaveBeenCalledTimes(1);
   });
 
   test("指令面板跳到某個設定項 ⇒ 直接進那個分類，不停在清單", async () => {
@@ -138,6 +157,15 @@ describe("設定頁：窄螢幕（手機直向）", () => {
 });
 
 describe("設定頁：寬螢幕維持原版型", () => {
+  test("系統返回＝關閉並存檔", async () => {
+    const handlers = [];
+    const onSave = vi.fn();
+    openModal({ registerBack: (fn) => (handlers.push(fn), () => {}), onSave });
+    await vi.waitFor(() => expect(handlers.length).toBe(1));
+    act(() => handlers[0]());
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
   test("左欄垂直分頁、非全螢幕", async () => {
     await page.viewport(1024, 768);
     openModal();
