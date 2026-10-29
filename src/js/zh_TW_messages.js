@@ -656,10 +656,10 @@
     "message": "只調暗已讀"
   },
   "options_readContrastBrightUnread": {
-    "message": "未讀提亮（三段亮度）"
+    "message": "未讀標題提亮"
   },
   "options_readContrastBrightUnreadBar": {
-    "message": "未讀提亮（三段亮度）＋左側色條"
+    "message": "未讀提亮＋左側色條"
   },
   "options_commentBlockSpacing": {
     "message": "推文區塊加大行距 (僅好讀模式，同作者合併的推文自成一組)"

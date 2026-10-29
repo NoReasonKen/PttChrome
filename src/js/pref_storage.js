@@ -313,9 +313,8 @@ export const DEFAULT_PREFS = {
   // since its rows do not mark unread ones. Pure CSS: a #mainContainer class
   // (render/screen.js#_setReadStyle), not part of annotationsKey.
   //   dim             — read cards dimmed only (the behavior before #60)
-  //   brightUnread    — JPTT's three levels: unread titles white, ~ undimmed,
-  //                     read dimmed to 51% of unread (main.css has the numbers)
-  //   brightUnreadBar — the same, plus JPTT's blue bar on the left of unread cards
+  //   brightUnread    — plus unread titles brightened one step (q7 → white)
+  //   brightUnreadBar — the same, plus JPTT's bars on unread and ~ cards
   readContrastStyle: "dim",
   highlightAuthorComments: true,
   // 自己的推文：只染 id 格（綠），帳號取自選單底部狀態列（term_view._selfId）。

@@ -115,26 +115,19 @@ describe("已讀／未讀樣式（readContrastStyle）CSS", () => {
         expect(sel).toMatch(/:not\( ?:has\(> \.listCardBody:not\(\[class="listCardBody"\]\)\)|\.listCardBody\[class="listCardBody"\]/);
   });
 
-  // The owner's measurement of JPTT (2026-10-30), with each app's brightest
-  // title as 100%: unread 255, ~ 194 (76%), read 130 (51%).
-  test("三段亮度照 JPTT：未讀標題白、~ 不調暗、已讀 0.68（兩種提亮樣式都一樣）", () => {
+  // The owner compared JPTT's proportional levels and kept read 0.6 / ~ 0.8
+  // (2026-10-30), so the styles only brighten unread titles.
+  test("提亮：兩種樣式都只把未讀卡片標題的預設前景 q7 換成白色；已讀與 ~ 的亮度不覆寫", () => {
     const bright = ruleFor(/\.q7/);
     expect(bright.length).toBe(1);
     expect(bright[0].body).toMatch(/color:\s*#ffffff/);
-    const updated = ruleFor(/data-list-mark="updated"/);
-    expect(updated.length).toBe(1);
-    expect(updated[0].body).toMatch(/opacity:\s*1\s*;?\s*$/);
-    const read = ruleFor(/data-list-read/);
-    expect(read.length).toBe(1);
-    expect(Number(read[0].body.match(/opacity:\s*([\d.]+)/)[1])).toBe(0.68);
-    for (const r of [bright[0], updated[0], read[0]]) {
-      const sels = norm(r.sel);
-      for (const v of BRIGHT) expect(sels.some((s) => s.includes(`.readStyle-${v} `))).toBe(true);
-    }
-    for (const s of norm(bright[0].sel)) {
+    const sels = norm(bright[0].sel);
+    for (const v of BRIGHT) expect(sels.some((s) => s.includes(`.readStyle-${v} `))).toBe(true);
+    for (const s of sels) {
       expect(s).toMatch(/\[data-list-mark="unread"\]/);
       expect(s).toMatch(/\.listCardTitleText \.q7$/);
     }
+    expect(ruleFor(/data-list-read/)).toEqual([]);
   });
 
   test("只改顏色：不改字重、字級或尺寸（卡片固定高不能變）", () => {
@@ -142,11 +135,31 @@ describe("已讀／未讀樣式（readContrastStyle）CSS", () => {
       expect(r.body).not.toMatch(/(^|[;\s])(font-weight|font-size|height|line-height|margin|padding)\s*:/);
   });
 
-  test("左側色條：JPTT 的藍，畫在非游標的未讀卡片本體上（inset box-shadow，不佔版面）", () => {
-    const bar = styled.filter((r) => /box-shadow/.test(r.body));
-    expect(bar.length).toBe(1);
-    expect(bar[0].sel).toMatch(/readStyle-brightUnreadBar/);
-    expect(bar[0].sel).toMatch(/\[data-list-mark="unread"\]\s*>\s*\.listCardBody\[class="listCardBody"\]/);
-    expect(bar[0].body).toMatch(/box-shadow:\s*inset 3px 0 0 #5677fc/);
+  test("左側色條：JPTT 的顏色，未讀藍、~ 淺藍、已讀沒有；畫在非游標卡片本體上（inset，不佔版面）", () => {
+    const bars = styled.filter((r) => /box-shadow/.test(r.body));
+    const color = (mark) => {
+      const r = bars.filter((x) => x.sel.includes(`[data-list-mark="${mark}"]`));
+      expect(r.length).toBe(1);
+      expect(r[0].sel).toMatch(/readStyle-brightUnreadBar/);
+      expect(r[0].sel).toMatch(/\]\s*>\s*\.listCardBody\[class="listCardBody"\]\s*$/);
+      return r[0].body.match(/box-shadow:\s*inset 3px 0 0 (#[0-9a-f]+)/)[1];
+    };
+    expect(bars.length).toBe(2);
+    expect(color("unread")).toBe("#5677fc");
+    expect(color("updated")).toBe("#b0bfff");
   });
+
+  // A ~ card's 0.8 sits on the card, which would dim its bar as well.
+  test("~ 卡片的色條不被調暗：0.8 從卡片移到兩行文字上，亮度跟沒有色條時一樣", () => {
+    const base = rules(/\[data-list-mark="updated"\]/).filter((x) => !/readStyle-/.test(x.sel))[0];
+    const baseOp = base.body.match(/opacity:\s*([\d.]+)/)[1];
+    const card = ruleFor(/data-list-mark="updated"\][\s\S]*:not\(/).filter((r) => /opacity/.test(r.body));
+    expect(card.length).toBe(1);
+    expect(card[0].body).toMatch(/opacity:\s*1\s*;?\s*$/);
+    const lines = ruleFor(/\.listCardLine\s*$/);
+    expect(lines.length).toBe(1);
+    expect(lines[0].sel).toMatch(/readStyle-brightUnreadBar[\s\S]*data-list-mark="updated"/);
+    expect(lines[0].body.match(/opacity:\s*([\d.]+)/)[1]).toBe(baseOp);
+  });
+
 });
