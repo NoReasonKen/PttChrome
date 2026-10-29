@@ -514,7 +514,7 @@ describe("送不出去就等同 blocked：交易狀態是 commit 不是樂觀寫
     const h = pagingHarness({ conn: false });
     h.ctx._inFlightSig = "1~23";
     h.ctx._inFlightKeys = "\x1b[6~";
-    h.ctx._inFlightSentAt = Date.now() - 700; // 已過 grace ⇒ 決策會回 retry
+    h.ctx._inFlightSentAt = performance.now() - 700; // 已過 grace ⇒ 決策會回 retry
     h.ctx._pageDownRetries = 0;
     const stampBefore = h.ctx._inFlightSentAt;
 
@@ -617,5 +617,24 @@ describe("送不出去就等同 blocked：交易狀態是 commit 不是樂觀寫
     expect(h.ctx._inFlightSig).toBe(null);
     expect(h.ctx._inFlightSentAt).toBe(null);
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+// #23：在途鍵的等待時間量的是真的經過時間，不是牆鐘。牆鐘會被校時往前跳（實測 WSL
+// 一次 +8.7 秒），用 Date.now() 算就像「等了 8 秒沒回應」⇒ 回應還在路上就補送，
+// 之後每個回應各觸發一次送鍵，線上一直有兩個鍵。
+describe("在途鍵的等待時間：牆鐘校時不算", () => {
+  beforeEach(() => vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] }));
+  afterEach(() => vi.useRealTimers());
+
+  test("REGRESSION：剛送出的翻頁鍵，牆鐘往前跳也不補送", () => {
+    const h = pagingHarness();
+    expect(h.ctx._maybeSendPageDown("\x1b[6~")).toBe("send");
+    expect(h.sent).toEqual(["\x1b[6~"]);
+
+    vi.setSystemTime(Date.now() + 9000); // 只有牆鐘跳，實際時間幾乎沒過
+    expect(h.ctx._maybeSendPageDown(null, /* recovery */ true)).toBe("wait");
+    expect(h.sent).toEqual(["\x1b[6~"]);
+    expect(h.ctx._pageDownRetries).toBe(0);
   });
 });

@@ -288,7 +288,7 @@ describe('Article resize ownership', () => {
     const h = makeReader();
     h.reader._inFlightSig = '1~23';
     h.reader._inFlightKeys = PAGE_DOWN;
-    h.reader._inFlightSentAt = Date.now();
+    h.reader._inFlightSentAt = performance.now();
     h.reader.sendCommandAfterUpdate = PAGE_DOWN;
     h.resize.request(80, 40);
     expect(h.sent).toEqual([]);
@@ -312,7 +312,7 @@ describe('Article resize ownership', () => {
     const h = makeReader();
     h.reader._inFlightSig = '1~23';
     h.reader._inFlightKeys = PAGE_DOWN;
-    h.reader._inFlightSentAt = Date.now();
+    h.reader._inFlightSentAt = performance.now();
     h.resize.request(80, 40);
     h.rowTexts.set(23, footer(24, 46, 70));
     expect(h.reader._maybeSendPageDown(PAGE_DOWN)).toBe('blocked');
@@ -325,7 +325,7 @@ describe('Article resize ownership', () => {
     const h = makeReader();
     h.reader._inFlightSig = '1~23';
     h.reader._inFlightKeys = PAGE_DOWN;
-    h.reader._inFlightSentAt = Date.now();
+    h.reader._inFlightSentAt = performance.now();
     h.resize.request(80, 40);
     vi.advanceTimersByTime(PAGE_DOWN_GRACE_MS + 1);
     expect(h.reader._maybeSendPageDown(PAGE_DOWN, true)).toBe('retry');
@@ -338,7 +338,7 @@ describe('Article resize ownership', () => {
     const h = makeReader();
     h.reader._inFlightSig = '1~23';
     h.reader._inFlightKeys = PAGE_DOWN;
-    h.reader._inFlightSentAt = Date.now();
+    h.reader._inFlightSentAt = performance.now();
     h.reader._pageDownRetries = PAGE_DOWN_MAX_RETRIES;
     h.resize.request(80, 40);
     vi.advanceTimersByTime(PAGE_DOWN_GRACE_MS + 1);

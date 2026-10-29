@@ -444,7 +444,10 @@ export function EasyReading(core, view, termBuf) {
   // The exact bytes of the outstanding request, and when they went out. The watchdog
   // re-sends _inFlightKeys (never the caller's keys — the transaction may be a gap
   // heal, not a PageDown), and sinceSentMs is the ONLY evidence that a key was lost;
-  // see nextPageDownDecision.
+  // see nextPageDownDecision. The send time is on performance.now(): a wall-clock
+  // correction (Date.now() jumped +8.7s on a loaded WSL host) would otherwise read
+  // as a lost key, and the re-send leaves two keys on the wire for the rest of the
+  // read (#23; same clock rule as list_session's resume probe).
   this._inFlightKeys = null;
   this._inFlightSentAt = null;
   // Send-anchored recovery timer. term_buf's settle timer is re-armed only by SERVER
@@ -836,7 +839,7 @@ EasyReading.prototype._maybeSendPageDown = function(keys, recovery) {
     return this._maybeSendReverse(recovery);
   const status = this._currentPageStatus();
   const sinceSentMs = this._inFlightSentAt == null
-    ? null : Date.now() - this._inFlightSentAt;
+    ? null : performance.now() - this._inFlightSentAt;
   const d = nextPageDownDecision({
     enabled: this._enabled,
     functionMode: this._functionMode,
@@ -905,7 +908,7 @@ EasyReading.prototype._maybeSendPageDown = function(keys, recovery) {
       return 'blocked';
     }
     this._inFlightKeys = bytes;
-    this._inFlightSentAt = Date.now();
+    this._inFlightSentAt = performance.now();
   }
   // 單一 commit 點（刻意不複製成兩份：這三行漂移過一次就是整個交易機制失效）。
   this._inFlightSig = d.inFlightSig;
@@ -945,7 +948,7 @@ EasyReading.prototype._kickPageDown = function() {
   // 回來就再送一個 ＝ P4）。只在交易已經超過 grace（等同 giveup）時補一次額度，其餘
   // 交給 inFlightGate 判斷（未過 grace ⇒ wait）。
   if (this._reverse) {
-    const since = this._inFlightSentAt == null ? null : Date.now() - this._inFlightSentAt;
+    const since = this._inFlightSentAt == null ? null : performance.now() - this._inFlightSentAt;
     if (since == null || since >= PAGE_DOWN_GRACE_MS) {
       this._core.debugRecorder?.log('easyReading.reverse', {
         action: 'kick', inFlightSig: this._inFlightSig, retries: this._pageDownRetries,
@@ -1017,7 +1020,7 @@ EasyReading.prototype._maybeSendReverse = function(recovery) {
   const status = this._currentPageStatus();
   const sig = statusSignature(status);
   const sinceSentMs = this._inFlightSentAt == null
-    ? null : Date.now() - this._inFlightSentAt;
+    ? null : performance.now() - this._inFlightSentAt;
   const tailStart = vr ? vr.tailStartLine : null;
   const d = nextReverseReadDecision({
     enabled: this._enabled,
@@ -1066,7 +1069,7 @@ EasyReading.prototype._maybeSendReverse = function(recovery) {
         this._deferredPageDownKeys = bytes || '\x1b[6~';
         return 'blocked';
       }
-      this._inFlightSentAt = Date.now();
+      this._inFlightSentAt = performance.now();
       this._pageDownRetries = d.retries;
       this._armWatchdog();
       return d.action;
@@ -1109,7 +1112,7 @@ EasyReading.prototype._maybeSendReverse = function(recovery) {
       }
       this._inFlightSig = d.inFlightSig;
       this._inFlightKeys = d.keys;
-      this._inFlightSentAt = Date.now();
+      this._inFlightSentAt = performance.now();
       this._pageDownRetries = 0;
       this._armWatchdog();
       return d.action;
@@ -1338,7 +1341,7 @@ EasyReading.prototype._seekLine = function(line) {
   }
   this._inFlightSig = this._currentPageSignature();
   this._inFlightKeys = keys;
-  this._inFlightSentAt = Date.now();
+  this._inFlightSentAt = performance.now();
   this._pageDownRetries = 0;
   this._armWatchdog();
   return true;
@@ -1976,7 +1979,7 @@ EasyReading.prototype.reenterFromTop = function(status) {
       return;
     this._inFlightSig = sig;
     this._inFlightKeys = '\x1b[1~';
-    this._inFlightSentAt = Date.now();
+    this._inFlightSentAt = performance.now();
     this._pageDownRetries = 0;
     this._armWatchdog();
   }
