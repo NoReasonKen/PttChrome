@@ -135,7 +135,7 @@ describe("已讀／未讀樣式（readContrastStyle）CSS", () => {
       expect(r.body).not.toMatch(/(^|[;\s])(font-weight|font-size|height|line-height|margin|padding)\s*:/);
   });
 
-  test("左側色條：JPTT 的顏色，未讀藍、~ 淺藍、已讀沒有；畫在非游標卡片本體上（inset，不佔版面）", () => {
+  test("左側色條：照 JPTT 但拉開深淺，未讀藍、~ 淺藍、已讀沒有；畫在非游標卡片本體上（inset，不佔版面）", () => {
     const bars = styled.filter((r) => /box-shadow/.test(r.body));
     const color = (mark) => {
       const r = bars.filter((x) => x.sel.includes(`[data-list-mark="${mark}"]`));
@@ -145,8 +145,8 @@ describe("已讀／未讀樣式（readContrastStyle）CSS", () => {
       return r[0].body.match(/box-shadow:\s*inset 3px 0 0 (#[0-9a-f]+)/)[1];
     };
     expect(bars.length).toBe(2);
-    expect(color("unread")).toBe("#5677fc");
-    expect(color("updated")).toBe("#b0bfff");
+    expect(color("unread")).toBe("#2f4fd8");
+    expect(color("updated")).toBe("#d4dcff");
   });
 
   // A ~ card's 0.8 sits on the card, which would dim its bar as well.
