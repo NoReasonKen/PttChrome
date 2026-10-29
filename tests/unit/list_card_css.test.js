@@ -49,7 +49,7 @@ describe("未讀標記（data-list-mark）CSS", () => {
     expect(r[0].body).not.toMatch(/(^|[;\s])(font-size|height|line-height|margin|padding)/);
   });
   test("~ 卡片調暗一階：介於已讀低亮與未讀之間、跟著 dimReadList、排除游標卡片", () => {
-    const r = rules(/\[data-list-mark="updated"\]/);
+    const r = rules(/\[data-list-mark="updated"\]/).filter((x) => !/readStyle-/.test(x.sel));
     expect(r.length).toBe(1);
     expect(r[0].sel).toMatch(/#mainContainer\.dimReadList/);
     expect(r[0].sel).toMatch(/:not\(\s*:has\(>\s*\.listCardBody/);
@@ -99,26 +99,42 @@ describe("已讀文章低亮 CSS", () => {
 // readStyle-<value> variants, chosen in settings (pref readContrastStyle).
 describe("已讀／未讀樣式（readContrastStyle）CSS", () => {
   const styled = rules(/readStyle-/);
-  const brighten = styled.filter((r) => /color:/.test(r.body));
+  const BRIGHT = ["brightUnread", "brightUnreadBar"];
+  const norm = (sel) => sel.split(",").map((s) => s.replace(/\s+/g, " ").trim());
+  const ruleFor = (re) => styled.filter((r) => re.test(r.sel));
 
   test("每條規則都掛在 dimReadList 下，pref 關掉就全部失效", () => {
     expect(styled.length).toBeGreaterThan(0);
     for (const r of styled)
-      for (const sel of r.sel.split(","))
-        expect(sel).toMatch(/#mainContainer\.dimReadList\.readStyle-/);
+      for (const sel of norm(r.sel)) expect(sel).toMatch(/#mainContainer\.dimReadList\.readStyle-/);
   });
 
-  test("提亮：三種「未讀提亮」都只把未讀卡片標題的預設前景 q7 換成白色，排除游標卡片", () => {
-    expect(brighten.length).toBe(1);
-    const sels = brighten[0].sel.split(",").map((s) => s.replace(/\s+/g, " ").trim());
-    for (const v of ["brightUnread", "brightUnreadDim", "brightUnreadBar"])
-      expect(sels.some((s) => s.includes(`.readStyle-${v} `))).toBe(true);
-    for (const s of sels) {
-      expect(s).toMatch(/\[data-list-mark="unread"\]/);
-      expect(s).toMatch(/:not\(\s*:has\(>\s*\.listCardBody/);
-      expect(s).toMatch(/\.listCardTitleText\s+\.q7$/);
+  test("每條規則都排除游標卡片", () => {
+    for (const r of styled)
+      for (const sel of norm(r.sel))
+        expect(sel).toMatch(/:not\( ?:has\(> \.listCardBody:not\(\[class="listCardBody"\]\)\)|\.listCardBody\[class="listCardBody"\]/);
+  });
+
+  // The owner's measurement of JPTT (2026-10-30), with each app's brightest
+  // title as 100%: unread 255, ~ 194 (76%), read 130 (51%).
+  test("三段亮度照 JPTT：未讀標題白、~ 不調暗、已讀 0.68（兩種提亮樣式都一樣）", () => {
+    const bright = ruleFor(/\.q7/);
+    expect(bright.length).toBe(1);
+    expect(bright[0].body).toMatch(/color:\s*#ffffff/);
+    const updated = ruleFor(/data-list-mark="updated"/);
+    expect(updated.length).toBe(1);
+    expect(updated[0].body).toMatch(/opacity:\s*1\s*;?\s*$/);
+    const read = ruleFor(/data-list-read/);
+    expect(read.length).toBe(1);
+    expect(Number(read[0].body.match(/opacity:\s*([\d.]+)/)[1])).toBe(0.68);
+    for (const r of [bright[0], updated[0], read[0]]) {
+      const sels = norm(r.sel);
+      for (const v of BRIGHT) expect(sels.some((s) => s.includes(`.readStyle-${v} `))).toBe(true);
     }
-    expect(brighten[0].body).toMatch(/color:\s*#ffffff/);
+    for (const s of norm(bright[0].sel)) {
+      expect(s).toMatch(/\[data-list-mark="unread"\]/);
+      expect(s).toMatch(/\.listCardTitleText \.q7$/);
+    }
   });
 
   test("只改顏色：不改字重、字級或尺寸（卡片固定高不能變）", () => {
@@ -126,10 +142,11 @@ describe("已讀／未讀樣式（readContrastStyle）CSS", () => {
       expect(r.body).not.toMatch(/(^|[;\s])(font-weight|font-size|height|line-height|margin|padding)\s*:/);
   });
 
-  test("左側色條畫在非游標卡片的本體上（inset box-shadow，不佔版面）", () => {
-    const bar = styled.filter((r) => /readStyle-brightUnreadBar/.test(r.sel) && /box-shadow/.test(r.body));
+  test("左側色條：JPTT 的藍，畫在非游標的未讀卡片本體上（inset box-shadow，不佔版面）", () => {
+    const bar = styled.filter((r) => /box-shadow/.test(r.body));
     expect(bar.length).toBe(1);
+    expect(bar[0].sel).toMatch(/readStyle-brightUnreadBar/);
     expect(bar[0].sel).toMatch(/\[data-list-mark="unread"\]\s*>\s*\.listCardBody\[class="listCardBody"\]/);
-    expect(bar[0].body).toMatch(/box-shadow:\s*inset/);
+    expect(bar[0].body).toMatch(/box-shadow:\s*inset 3px 0 0 #5677fc/);
   });
 });

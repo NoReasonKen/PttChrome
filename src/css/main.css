@@ -581,17 +581,17 @@ html.commentBarShown #mainContainer::after {
    under .dimReadList, so turning the dimming off disables all of them, and every
    rule skips the cursor card (same :has() test as above) so the selection keeps
    its own highlight. Unread is data-list-mark="unread" (+ and M), which only the
-   mobile cards carry; the desktop grid has no unread marker and keeps plain
-   dimming. "Brighten" is the cursorBrighten step: the default foreground q7
-   becomes q15 white, and colored title text keeps its color.
-   Colors only: no font-weight or size change, so the fixed card height holds. */
+   mobile cards carry; the desktop grid has no unread marker and only gets the
+   read level. Colors only: no font-weight or size change, so the fixed card
+   height holds.
+
+   The three title levels copy JPTT's list (owner's screenshots, 2026-10-30),
+   taking each app's brightest title as 100%: JPTT unread 255, read-with-new-
+   comments (~) 194 = 76%, read 130 = 51%. Here unread is brightened from q7
+   #c0c0c0 to #ffffff (the cursorBrighten step; colored title text keeps its
+   color), so ~ = 76% of 255 = 194 is q7 undimmed (192, opacity 1) and read =
+   51% of 255 = 130 is q7 at opacity 0.68 (131). */
 #mainContainer.dimReadList.readStyle-brightUnread
-  span.listCard[data-list-mark="unread"]:not(
-    :has(> .listCardBody:not([class="listCardBody"]))
-  )
-  .listCardTitleText
-  .q7,
-#mainContainer.dimReadList.readStyle-brightUnreadDim
   span.listCard[data-list-mark="unread"]:not(
     :has(> .listCardBody:not([class="listCardBody"]))
   )
@@ -605,17 +605,31 @@ html.commentBarShown #mainContainer::after {
   .q7 {
   color: #ffffff;
 }
-/* "Dim read more": the readable floor the user settled on (0.45 was too dark). */
-#mainContainer.dimReadList.readStyle-brightUnreadDim
+#mainContainer.dimReadList.readStyle-brightUnread
+  span.listCard[data-list-mark="updated"]:not(
+    :has(> .listCardBody:not([class="listCardBody"]))
+  ),
+#mainContainer.dimReadList.readStyle-brightUnreadBar
+  span.listCard[data-list-mark="updated"]:not(
+    :has(> .listCardBody:not([class="listCardBody"]))
+  ) {
+  opacity: 1;
+}
+#mainContainer.dimReadList.readStyle-brightUnread
+  span[type="bbsrow"][data-list-read]:not(
+    :has(> div > [data-type="bbsline"][class]:not([class=""]))
+  ):not(:has(> .listCardBody:not([class="listCardBody"]))),
+#mainContainer.dimReadList.readStyle-brightUnreadBar
   span[type="bbsrow"][data-list-read]:not(
     :has(> div > [data-type="bbsline"][class]:not([class=""]))
   ):not(:has(> .listCardBody:not([class="listCardBody"]))) {
-  opacity: 0.55;
+  opacity: 0.68;
 }
+/* JPTT's unread bar color. */
 #mainContainer.dimReadList.readStyle-brightUnreadBar
   span.listCard[data-list-mark="unread"]
   > .listCardBody[class="listCardBody"] {
-  box-shadow: inset 3px 0 0 #4fc3f7;
+  box-shadow: inset 3px 0 0 #5677fc;
 }
 
 /* 列表好讀模式的 body 捲動視口。高度由 JS 設成 body 列數 × 列高，內容是整段

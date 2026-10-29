@@ -280,7 +280,7 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
   header（`[0,bodyStart)`）與 footer（末列）收起（Phase 8，`render/collapsed_row.js`）。
   `listCards` 進 `annotationsKey`（同一批列物件切換卡片模式要整批重建）。
 - 版型（欄位按 **cell** 切，出處見 `list_card.js` 檔頭；`CARD_LAYOUT` 每行 lead｜main｜end 三段 flex）：
-  文章列表＝推文數 [9,11)｜標題 [29,80)／標記 [7,9)｜作者 [17,29)｜序號・日期（靠右）；看板列表＝未讀 [8,10)｜板名・類別
+  文章列表＝推文數 [9,11)｜標題 [29,80)／（左欄留空）序號・作者 [17,29)｜標記 [7,9)・日期（靠右，照 JPTT，#60）；看板列表＝未讀 [8,10)｜板名・類別
   ｜人氣／◎敘述｜板主・序號。lead 左欄兩行同寬上下對齊（推文數加粗）。顏色全照原列（使用者定案：桌機／手機同 PTT 原色）。
 - **卡片固定高 3em（`LIST_CARD_ROWS`=3 × chh）是承重條件**：`list_scroll.js` 的位置↔scrollTop 是純乘除。
   兩行內容（`LIST_CARD_LINES`=2，標題行 1.3em＋次行 1.1em）＋卡片間距＝border-box 固定高內的 `padding-block`；分隔線用 inset

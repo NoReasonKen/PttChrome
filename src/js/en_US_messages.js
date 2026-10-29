@@ -657,13 +657,10 @@ export const en_US = {
     "message": "Dim read only"
   },
   "options_readContrastBrightUnread": {
-    "message": "Brighten unread titles"
-  },
-  "options_readContrastBrightUnreadDim": {
-    "message": "Brighten unread, dim read more"
+    "message": "Brighten unread (three levels)"
   },
   "options_readContrastBrightUnreadBar": {
-    "message": "Brighten unread, accent bar"
+    "message": "Brighten unread (three levels), accent bar"
   },
   "options_commentBlockSpacing": {
     "message": "Add spacing between comment blocks (easy reading only; merged same-author comments stay grouped)"

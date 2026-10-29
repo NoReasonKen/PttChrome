@@ -1293,10 +1293,6 @@ export const PrefModal = ({
                       label: i18n("options_readContrastBrightUnread"),
                     },
                     {
-                      value: "brightUnreadDim",
-                      label: i18n("options_readContrastBrightUnreadDim"),
-                    },
-                    {
                       value: "brightUnreadBar",
                       label: i18n("options_readContrastBrightUnreadBar"),
                     },

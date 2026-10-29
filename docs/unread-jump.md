@@ -48,6 +48,8 @@
 卡片次行縮字之後兩個標記一樣小、一樣亮。`render/list_card.js#articleCardMark` 依 cell 8 帶 `data-list-mark`
 （`unread`／`updated`），CSS：未讀標記加粗＋`transform: scale`（不佔版面，卡片固定高不變）；`~` 卡片在
 已讀低亮（`dimReadList`）開著時調暗一階（0.8，介於已讀 0.6 與未讀之間），游標卡片不調暗。
+已讀／未讀樣式選了提亮（`readContrastStyle`，#60）時改照 JPTT 的三段亮度：未讀標題白、`~` 不調暗、已讀 0.68
+（數字的由來見 `docs/enhanced-addon.md`「已讀文章低亮」）。
 
 ## 守護
 

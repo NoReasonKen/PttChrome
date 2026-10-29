@@ -197,11 +197,13 @@
   提供幾種樣式比對，容器 class `readStyle-<值>`（`render/screen.js#_setReadStyle`，同 `_setDimRead` 不重建列、
   不進 `annotationsKey`）。每條規則都掛在 `.dimReadList` 下、排除游標卡片、只改顏色（卡片固定高不變）。
   - `dim`：只調暗已讀（#60 之前的行為，目前預設）。
-  - `brightUnread`：未讀卡片標題的預設前景 q7 提亮成白色（同 `cursorBrighten` 那一階）；標題自帶的顏色不動。
-  - `brightUnreadDim`：同上，已讀再暗到可讀下限 0.55。
-  - `brightUnreadBar`：同 `brightUnread`，未讀卡片左側加色條（inset box-shadow）。
-  - 「未讀」＝ `data-list-mark="unread"`（`+`／`M`），只有手機卡片帶；桌機格線沒有未讀標記，各樣式在桌機只差在
-    `brightUnreadDim` 的 0.55。
+  - `brightUnread`：三段亮度照 JPTT 的列表（使用者 2026-10-30 的截圖，各以自己最亮的標題為 100%）。JPTT：未讀 255、
+    已讀有新推文（~）194＝76%、已讀 130＝51%。本專案未讀標題的預設前景 q7（#c0c0c0）提亮成白色（同 `cursorBrighten`
+    那一階，標題自帶的顏色不動）＝100%；~ ＝ 76% × 255 ≈ 194 ⇒ q7 不調暗（192，opacity 1）；已讀 ＝ 51% × 255 ≈ 130
+    ⇒ opacity 0.68（131）。opacity 作用在整張卡片，推文數與次行跟著同比例變暗（JPTT 也是）。
+  - `brightUnreadBar`：同 `brightUnread`，未讀卡片左側加 JPTT 的藍色條 `#5677fc`（3px inset box-shadow）。
+  - 「未讀」＝ `data-list-mark="unread"`（`+`／`M`），只有手機卡片帶；桌機格線沒有未讀標記，提亮樣式在桌機只有已讀的
+    0.68。
 
 ## URL 結尾修剪（`src/js/url_trim.js`）
 **一條純函式、四個消費點**：結尾的句尾標點（`. , ; : ! ?`）與**不成對**的 `) ] }` 屬於句子不屬於 URL。
