@@ -30,7 +30,7 @@ import { hintColors, shouldShowHint } from './status_hint';
 import { isPushKey, pushGateFacts, shouldInterceptPushKey } from './long_push_gate';
 import { tryOpenSearchModal } from './article_search';
 import { isRefreshKeyEvent } from './screen_refresh';
-import { mobileCtrlKey, mobileMenuLayout, listViewportGeometry, listFillRows } from './mobile_layout';
+import { mobileCtrlKey, mobileMenuLayout, mobileFillLayout, listViewportGeometry, listFillRows } from './mobile_layout';
 
 // 單獨按下修飾鍵本身（實體鍵盤按 Shift 準備打大寫）不算「下一個按鍵」，黏滯 Ctrl 不解除。
 var MODIFIER_KEY_NAMES = ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'AltGraph'];
@@ -272,6 +272,8 @@ export function TermView() {
   this.reflow = false;
   this.listCards = false;
   this.reflowWidth = null;
+  // Mobile: height between the App Bar and the toolbar (mobile_layout.mobileRowsHeight).
+  this.mobileRowsPx = 0;
   //new pref - end
 
   this.bbsViewMargin = 0;
@@ -1088,7 +1090,7 @@ TermView.prototype = {
       lsOv.viewportRows = listViewportGeometry({
         rows: this.buf.rows, headerRows: lsOv.bodyStart, cards: this.listCards
       }).viewportRows;
-      lsOv.viewportPx = (lsOv.viewportRows || 0) * this.chh;
+      lsOv.viewportPx = this.listCards ? this.listCardViewportPx() : (lsOv.viewportRows || 0) * this.chh;
       enhanceOverrides.listCards = this.listCards ? lsOv.kind : undefined;
     }
     // 這一幀實際畫出去的那一份 lines。`data-row` 的定義就是「傳給 <Screen> 的
@@ -1681,6 +1683,13 @@ TermView.prototype = {
       return;
   },
 
+  // List-card viewport (px): the whole height between the two bars (mobileRowsPx, written
+  // by App._applyMobileGeometry), so the rows' leftover is not a strip under the App Bar.
+  // Steady while the keyboard or keys panel opens, like the row count.
+  listCardViewportPx: function() {
+    return this.mobileRowsPx > 0 ? this.mobileRowsPx : this.buf.rows * this.chh;
+  },
+
   setTermFontSize: function(cw, ch) {
     var innerBounds = this.innerBounds;
     // Preview measurements depend on width and, in mobile reflow, the 50dvh cap.
@@ -1756,6 +1765,16 @@ TermView.prototype = {
       var menuLayout = mobileMenuLayout(layoutInput);
       this.mainDisplay.style.height = menuLayout.height + 'px';
       this.mainDisplay.style.marginTop = menuLayout.marginTop + 'px';
+    } else if (this.reflow || this.listCards) {
+      // Flush under the App Bar, no centring strip (mobile_layout.mobileFillLayout).
+      var fill = mobileFillLayout({
+        innerHeight: innerBounds.height,
+        bottomInset: this.keyboardInset,
+        topInset: this.topInset,
+        contentPx: this.listCards ? this.listCardViewportPx() : 0
+      });
+      this.mainDisplay.style.height = fill.height + 'px';
+      this.mainDisplay.style.marginTop = fill.marginTop + 'px';
     } else {
       this.mainDisplay.style.marginTop =
         termLayoutOffsets(layoutInput).marginTop + 'px';

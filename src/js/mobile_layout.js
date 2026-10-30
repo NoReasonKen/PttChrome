@@ -304,6 +304,21 @@ export function mobileMenuLayout({ innerHeight, bottomInset, topInset, chh, rows
   };
 }
 
+// `.main` height and top offset for the article and list-card surfaces. termLayoutOffsets
+// centres chh*rows, so the rows' leftover height showed as a black strip under the App Bar.
+// Both surfaces scroll inside their own viewport, so `.main` starts at the App Bar and
+// fills down to the bottom inset. contentPx is the height the content needs (list cards:
+// their viewport; article: 0, its scroller takes whatever is visible). Content that does
+// not fit (keys panel open) is bottom-aligned, like termLayoutOffsets.
+export function mobileFillLayout({ innerHeight, bottomInset, topInset, contentPx }) {
+  const inset = bottomInset > 0 ? bottomInset : 0;
+  const top = topInset > 0 ? topInset : 0;
+  const avail = Math.max(0, (Number(innerHeight) || 0) - inset - top);
+  const content = contentPx > 0 ? contentPx : 0;
+  if (content <= avail) return { marginTop: top, height: avail };
+  return { marginTop: top + avail - content, height: content };
+}
+
 // 手機主功能表（Phase 5）：點到的是哪一顆選單按鈕（render/menu_card.js 的
 // data-menu-row ＝ buf 列號）。不是按鈕回 -1。按鈕高 ≠ chh ⇒ 不可用 clientToPos 換算。
 export function menuCardTargetRow(target) {

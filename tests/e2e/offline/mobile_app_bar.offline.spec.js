@@ -69,6 +69,9 @@ test.describe('手機頂部 App Bar', () => {
         .getBoundingClientRect().top
     );
     expect(firstRowTop).toBeGreaterThanOrEqual(c.barBottom - 0.5);
+    // Flush under the App Bar and down to the toolbar: no centring strip (mobileFillLayout).
+    expect(firstRowTop).toBeLessThan(c.barBottom + 1);
+    expect(Math.abs(c.mainBottom - c.toolbarTop)).toBeLessThan(1);
   });
 
   test('tap App Bar 不送任何鍵（不會被當成點終端機）', async ({ page }) => {

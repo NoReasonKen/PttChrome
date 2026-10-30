@@ -1650,7 +1650,11 @@ App.prototype.clientToPos = function(cX, cY) {
     });
     var bodyTop = vg.bodyTopRows * rowH;
     var bodyRows = vg.viewportRows;
-    if (y >= bodyTop && y < bodyTop + bodyRows * rowH) {
+    // Cards: the viewport also takes the rows' leftover height (term_view.listCardViewportPx).
+    var bodyH = this.view.listCards
+      ? this.view.listCardViewportPx() * this.view.scaleY
+      : bodyRows * rowH;
+    if (y >= bodyTop && y < bodyTop + bodyH) {
       // 手機卡片（view.listCards）：一筆佔 LIST_CARD_ROWS 列（固定高，見
       // render/list_card.js）⇒ 同一條算式、除數換成卡片高。
       var itemH = rowH * listRowSpan(!!this.view.listCards);
@@ -2041,12 +2045,13 @@ App.prototype._applyMobileGeometry = function(surface) {
   var view = this.view;
   var s = surface || view._wantSurface || view.mobileSurface || 'grid';
   var b = view.innerBounds;
+  var rowsPx = mobileRowsHeight(b.height, this._readSafeInsets());
   var g = mobileTermGeometry({
     width: b.width,
     // 頂部 App Bar 與底部工具列都常駐 ⇒ 列數從兩者中間的高度算，只在進出手機模式
     // 時變（不因按鍵面板／軟鍵盤開關、畫面切換重送 NAWS）。位置由 _onVisualViewport
     // 把兩條 bar 併進 view 的上／下 inset。
-    height: mobileRowsHeight(b.height, this._readSafeInsets()),
+    height: rowsPx,
     dpr: window.devicePixelRatio || 1,
     surface: s,
     fontPx: this.mobileFontPx
@@ -2055,6 +2060,7 @@ App.prototype._applyMobileGeometry = function(surface) {
   this.setTermSize(g.cols, g.rows);
   view.setMobileSurface(s);
   view.reflowWidth = g.mainWidth;
+  view.mobileRowsPx = rowsPx;
   view.fixedResize(g.chh);
   this.articleResize?.afterLayout();
   return true;

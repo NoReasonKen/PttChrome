@@ -13,6 +13,7 @@ import {
   overlayKeyboardInset,
   mobileChromeInsets,
   mobileRowsHeight,
+  mobileFillLayout,
   MOBILE_APPBAR_PX,
   KEYBOARD_MIN_PX,
   MOBILE_KEYPAD_EXTRA_ROW,
@@ -227,6 +228,24 @@ describe("mobileChromeInsets／mobileRowsHeight", () => {
   test("列數高度扣兩條 bar 與兩邊 safe-area", () => {
     expect(mobileRowsHeight(800)).toBe(800 - MOBILE_APPBAR_PX - MOBILE_TOOLBAR_PX);
     expect(mobileRowsHeight(800, { top: 24, bottom: 16 })).toBe(800 - MOBILE_APPBAR_PX - MOBILE_TOOLBAR_PX - 40);
+  });
+});
+
+// Article and list-card surfaces sit flush under the App Bar: centring the rows' leftover
+// height left a black strip between the bar and the first line.
+describe("mobileFillLayout (article / list cards flush under the App Bar)", () => {
+  test("content fits ⇒ starts at the App Bar and fills down to the bottom inset", () => {
+    expect(
+      mobileFillLayout({ innerHeight: 915, topInset: 64, bottomInset: 48, contentPx: 803 }),
+    ).toEqual({ marginTop: 64, height: 803 });
+    expect(
+      mobileFillLayout({ innerHeight: 915, topInset: 64, bottomInset: 48, contentPx: 0 }),
+    ).toEqual({ marginTop: 64, height: 803 });
+  });
+  test("content taller than the visible area (keys panel open) ⇒ bottom-aligned", () => {
+    expect(
+      mobileFillLayout({ innerHeight: 915, topInset: 64, bottomInset: 248, contentPx: 803 }),
+    ).toEqual({ marginTop: 64 + 603 - 803, height: 803 });
   });
 });
 

@@ -366,7 +366,12 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
   自己不送鍵；列表捲到頂後照平常往上捲的規則補頁。reduced-motion 直接跳。守護 unit `app_bar_scroll_top`、offline e2e `mobile_app_bar`。
 - 幾何：高 `MOBILE_APPBAR_PX`(64＝22＋16＋16＋上下各 5，#66 從 48 加高放三行)＋`--safe-top`，**全畫面常駐** ⇒ rows 與
   surface 無關（不重送 NAWS）。App Bar 正下方的元件（`AidBackButton`、首頁儀表板、收件匣面板）跟著 64 走。上緣經
-  `term_size.termLayoutOffsets({topInset})`（0＝桌機舊值）、`mobileMenuLayout({topInset})`、`view.setTopInset`。`.main` 高公式不動。
+  `term_size.termLayoutOffsets({topInset})`（0＝桌機舊值）、`mobileMenuLayout({topInset})`、`view.setTopInset`。
+- 好讀文章與列表卡片**貼齊 App Bar**（`mobile_layout.mobileFillLayout`）：`termLayoutOffsets` 把 `chh*rows` 置中，
+  列數取整剩下的高度（約 5–13px）會變成 App Bar 下一條黑邊。這兩種畫面都在自己的視口裡捲，所以 `.main` 從 App Bar
+  下緣撐到底部 inset；卡片視口吃下兩條 bar 之間的整個高（`view.mobileRowsPx`，App._applyMobileGeometry 寫，
+  `term_view.listCardViewportPx`），`App.clientToPos` 的卡片範圍同源。按鍵面板展開、放不下時照舊底對齊。
+  格線畫面（原生 PTT 畫面）仍置中。回歸守 `mobile_app_bar.offline.spec.js`。
   `PageTopAlert` 手機下 margin-top 讓開 64px。
 
 ## Phase 8：收起終端機標頭／狀態列
