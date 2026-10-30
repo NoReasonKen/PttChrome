@@ -200,13 +200,22 @@ internal class UpdateAndroidPlatform(private val context: Context) : UpdatePlatf
         }
     }
 
+    @Volatile var awaitingInstallPermission = false
+
+    fun consumeInstallPermissionReturn(): Boolean {
+        val pending = awaitingInstallPermission
+        awaitingInstallPermission = false
+        return pending && context.packageManager.canRequestPackageInstalls()
+    }
+
     override fun install(file: String, release: UpdateRelease) {
         val host = activity.get() ?: error("Open the app before installing the update.")
         onMain {
             check(!host.isFinishing && !host.isDestroyed) { "Open the app before installing the update." }
             if (!context.packageManager.canRequestPackageInstalls()) {
+                awaitingInstallPermission = true
                 host.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}")))
-                error("Allow PttChrome Fork to install updates, then tap Install again.")
+                error("Allow PttChrome Fork to install updates, then return to continue installation.")
             }
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.updates", retainedFile(file))
             host.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")

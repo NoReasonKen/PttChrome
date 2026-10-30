@@ -29,7 +29,12 @@ internal class ApkUpdater private constructor(private val context: Context) {
     fun foreground(activity: Activity) {
         platform.activity = WeakReference(activity)
         platform.foreground = true
-        scope.launch { coordinator.refresh() }
+        scope.launch {
+            coordinator.refresh()
+            if (platform.consumeInstallPermissionReturn()) {
+                try { coordinator.install(null) } catch (e: Exception) { coordinator.fail(e) }
+            }
+        }
     }
     fun background() { platform.foreground = false }
 

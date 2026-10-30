@@ -41,11 +41,15 @@ The system completion receiver accepts DownloadProvider's signature-protected
 completion broadcast, then reconciles the updater's own persisted request rather
 than trusting a broadcast-supplied artifact. Background completion can notify
 without taking focus; denied notification permission does not block the flow.
-On return, native state restores progress or opens the ready result in About.
+On return, native state restores progress. Tapping the completion notification
+opens the retained APK in the system installer.
 
-Installation requires a separate confirmation, explains interruption and unsent
-input, and invokes the existing reading-position checkpoint. Android handles
-source-install permission and the installation UI. Canceling either does not
+Foreground download completion opens the system installer automatically after
+verification and the existing reading-position checkpoint. The system installer
+provides the installation confirmation; no extra in-app confirmation is added
+to this completion path. Android handles source-install permission; granting it
+and returning continues installation. Existing retained-file retry controls in
+About remain available. Canceling either does not
 delete the verified APK. The updater does not preserve drafts or force-launch the
 app afterward; existing recovery preferences govern normal next startup.
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Button, Modal, Text } from "@mantine/core";
 import { i18n } from "../js/i18n";
 import {
@@ -14,7 +14,6 @@ import "./AppUpdates.css";
 export function AppUpdates({ pttchrome }) {
   const state = useSyncExternalStore(subscribeUpdates, getUpdateState);
   const [error, setError] = useState("");
-  const readyShown = useRef(null);
   const blocking = updateBlocksInteraction(state);
   useEffect(() => startUpdateRuntime(pttchrome), [pttchrome]);
   useEffect(() => {
@@ -41,17 +40,6 @@ export function AppUpdates({ pttchrome }) {
       window.removeEventListener("keyup", stopEscape, true);
     };
   }, [blocking]);
-  useEffect(() => {
-    if (
-      state.phase !== "ready" ||
-      !state.release ||
-      readyShown.current === state.release.id
-    )
-      return;
-    readyShown.current = state.release?.id;
-    const timer = setTimeout(openUpdateAbout, 0);
-    return () => clearTimeout(timer);
-  }, [state.phase, state.release?.id]);
   const act = async (action) => {
     setError("");
     try {

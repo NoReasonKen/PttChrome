@@ -88,10 +88,7 @@ test.describe('controlled Android updater', () => {
 
   test('About downloads a signed newer APK and hands it to the real system installer', async ({ apk }) => {
     const { section, key } = await openUpdates(apk, false);
-    const install = section.getByRole('button', { name: await key('about_update_install'), exact: true });
-    await expect(install).toBeVisible({ timeout: 90000 });
-    await install.click();
-    await section.getByRole('button', { name: await key('about_update_confirm_install'), exact: true }).click();
+    // Foreground completion now opens the system installer automatically.
     await apk.device.tap({ text: /^(Update|Install)$/ });
     await expect.poll(async () => String(await apk.device.shell(`dumpsys package ${APK_PKG}`)), { timeout: 90000 })
       .toMatch(/versionCode=2\b/);

@@ -70,17 +70,39 @@ export function startUpdateRuntime(core) {
   readingCore = core;
   let stopped = false;
   let running = false;
+  let awaitingInstallation = updateBlocksInteraction() && !window.__PTT_ANDROID__?.openUpdate;
+  const installReady = async () => {
+    if (document.hidden || state.phase !== "ready" || !state.release) return;
+    try { await updateAction("install", { releaseId: state.release.id }); }
+    catch { openUpdateAbout(); }
+  };
+  const unsubscribe = subscribeUpdates(() => {
+    if (["downloading", "paused"].includes(state.phase)) awaitingInstallation = !document.hidden;
+    if (state.phase === "ready" && awaitingInstallation) {
+      awaitingInstallation = false;
+      // Defer until the native state reply and its mutation bookkeeping settle.
+      queueMicrotask(() => { if (!stopped) void installReady(); });
+    }
+    if (["idle", "error", "available"].includes(state.phase)) awaitingInstallation = false;
+  });
   const refresh = async (check = false) => {
     if (stopped || running || pendingMutations || document.hidden || !androidBridgeAvailable()) return;
     running = true;
     try {
       await updateAction("state");
-      if (check && state.supported) await updateAction("check", { manual: false });
+      if (check && state.supported && !pendingMutations) await updateAction("check", { manual: false });
     } catch { /* About retains the error; discovery must not interrupt reading. */ }
     finally { running = false; }
   };
-  const foreground = () => { if (!document.hidden) void refresh(true); };
-  const open = () => openUpdateAbout();
+  const foreground = () => {
+    if (document.hidden) awaitingInstallation = false;
+    else void refresh(true);
+  };
+  const open = async () => {
+    awaitingInstallation = false;
+    try { await updateAction("state"); await installReady(); }
+    catch { openUpdateAbout(); }
+  };
   document.addEventListener("visibilitychange", foreground);
   window.addEventListener("pttandroid:update-open", open);
   const timer = setInterval(() => {
@@ -91,6 +113,7 @@ export function startUpdateRuntime(core) {
   return () => {
     stopped = true;
     clearInterval(timer);
+    unsubscribe();
     document.removeEventListener("visibilitychange", foreground);
     window.removeEventListener("pttandroid:update-open", open);
     if (readingCore === core) readingCore = undefined;
