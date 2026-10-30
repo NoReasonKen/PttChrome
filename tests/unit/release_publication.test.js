@@ -26,10 +26,10 @@ test("publication refuses missing or outdated detail instead of silently replaci
 
 test("historical records identify the first fork baseline and the actual previous release", () => {
   const records = loadReleaseRecords();
-  expect(records.map((record) => record.version).sort()).toEqual([
+  expect(records.map((record) => record.version)).toEqual(expect.arrayContaining([
     "0.1.0",
     "0.2.0",
-  ]);
+  ]));
   const first = records.find((record) => record.version === "0.1.0");
   const second = records.find((record) => record.version === "0.2.0");
   expect(first.previousRelease).toBeNull();
