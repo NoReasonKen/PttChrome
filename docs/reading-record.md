@@ -54,6 +54,7 @@ do not count as reader input. See `src/js/scroll_restore_follow.js` and
 | `article-resize` mobile article rotation | Original article row and fraction, unless reader input canceled restoration | No restoration |
 | `list-resize` mobile article-list rotation | Original visible entry and within-entry offset; local selection stays independent of the server cursor | No restoration |
 | `deep-link-copy` 複製連結（Q 路徑） | 文章：原列 | 文章：原列 |
+| `headerless-reopen` headerless article read again for its list row and AID (#77) | Article origin | Article origin |
 | `deep-link-jump` 外部帶進來的連結 | 不還原（出發點推進返回堆疊） | 不還原 |
 | `list-refresh` 列表重新整理（F5／工具列／下拉） | 列表：原處 | 列表：原處 |
 | `board-list-refresh` 看板列表重新整理 | 看板列表：原處 | 看板列表：原處 |

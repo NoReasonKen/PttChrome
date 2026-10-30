@@ -1,4 +1,5 @@
 import {
+  articleContextFromListRow,
   articleContextFromScreen,
   shouldClearArticleContextOnSettle
 } from "../../src/js/comment_parse";
@@ -84,6 +85,28 @@ describe("articleContextFromScreen（每幀：設定／清空／沿用）", () =
         rowsUnknown: true
       })
     ).toBeNull();
+  });
+});
+
+// #77: a first page without a header takes the identity of the list row it
+// was opened from. Rows as mbbsd/bbs.c#readdoent prints them.
+describe("articleContextFromListRow", () => {
+  const row = (author, glyph) => `   1150 +  11/30 ${author.padEnd(13)}${glyph}`;
+
+  test("a reply row gives back the Re: its mark stands for", () => {
+    expect(articleContextFromListRow(row("Dave", "R: [Talk] Far topic"), "Test")).toEqual({
+      author: "dave", board: "Test", title: "Re: [Talk] Far topic", byline: "Dave", time: null
+    });
+  });
+
+  test("an original row drops its mark, a forwarded row gives back Fw:", () => {
+    expect(articleContextFromListRow(row("alice", "□ [Talk] Far topic"), "Test").title).toBe("[Talk] Far topic");
+    expect(articleContextFromListRow(row("alice", "轉 [Talk] Far topic"), "Test").title).toBe("Fw: [Talk] Far topic");
+  });
+
+  test("a row with no author is no article", () => {
+    expect(articleContextFromListRow("   1150 +  11/30 -            □ (本文已被刪除)", "Test")).toBeNull();
+    expect(articleContextFromListRow("", "Test")).toBeNull();
   });
 });
 

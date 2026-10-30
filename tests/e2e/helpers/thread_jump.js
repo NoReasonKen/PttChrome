@@ -28,11 +28,13 @@ const NEAR_REPLY_BOARD = [...FAR_BOARD, { num: 1120, author: 'erin', title: 'Re:
 // `delay`: how long the server takes to answer, so intermediate states last.
 // `fromList`: start on the article list, the cursor on `open`, and open it
 // from there with article-list easy reading, so the list is its lower page.
-async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, fromList = false, thread = FAR_BOARD } = {}) {
+// `nativeList`: the same from the native list, article-list easy reading off.
+async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, fromList = false, nativeList = false, thread = FAR_BOARD } = {}) {
   await bootOffline(page, ptt, {});
   await ptt.applyPrefs(page, {
     enableEasyReading: true, enableEasyReadingList: fromList, articleHorizontalGestures: true
   });
+  const onList = fromList || nativeList;
   await page.evaluate(({ thread, size, open, delay, fromList }) => {
     const app = window.__app;
     const encode = text => [...text].map(ch => {
@@ -48,7 +50,7 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
     const PAGE = 20;
     // surface: article | list; `filter`: the subject the results show.
     const state = {
-      surface: fromList ? 'list' : 'article', filter: null, cursor: open, open: articles[open - 1],
+      surface: fromList ? 'list' : 'article', filter: null, cursor: open, open: articles[open - 1], line: 1,
       currtitle: articles[open - 1].title
     };
     const view = () => state.filter == null ? articles : articles.filter(a => subject(a.title) === state.filter);
@@ -72,7 +74,15 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
       state.open = view()[state.cursor - 1];
       state.currtitle = state.open.title;
       state.surface = 'article';
+      state.line = 1;
     };
+    // `lines`: a headerless article that long, over pages of 23 lines.
+    const BODY = 23;
+    // Article `num` was posted at 1790000000 + num hours (its file name).
+    const urlLine = a => `※ 文章網址: https://www.ptt.cc/bbs/Test/M.${1790000000 + a.num * 3600}.A.${a.num.toString(16).toUpperCase().padStart(3, '0')}.html`;
+    // `url`: the article ends with its AID line, as ptt.cc's do.
+    const bodyLine = (a, n) => a.url && n === a.lines ? urlLine(a)
+      : n === 1 ? `Body of article ${a.num} by ${a.author}.` : `Line ${n} of article ${a.num}.`;
     const listRow = (article, index, cursor) => {
       const num = String(state.filter == null ? article.num : index).padStart(7);
       const glyph = article.title.startsWith('Re: ') ? 'R: ' + subject(article.title) : '□ ' + article.title;
@@ -81,15 +91,28 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
     };
     const frame = () => {
       let rows, cursor = [24, 80];
-      if (state.surface === 'article') {
+      if (state.surface === 'article' || state.surface === 'info') {
         const a = state.open;
-        rows = {
+        const status = '  瀏覽 第 1/1 頁 (100%)  目前顯示: 第 01~23 行  (y)回應(X%)推文(h)說明(←)離開 ';
+        // `headerless`: the author removed the header rows; the body starts on top.
+        if (a.lines) {
+          const end = Math.min(a.lines, state.line + BODY - 1);
+          const pages = Math.ceil(a.lines / BODY);
+          const pageNo = Math.ceil(end / BODY);
+          rows = { 23: `  瀏覽 第 ${pageNo}/${pages} 頁 (${Math.floor(end * 100 / a.lines)}%)  目前顯示: 第 ${String(state.line).padStart(2, '0')}~${end} 行  (y)回應(X%)推文(h)說明(←)離開 ` };
+          for (let n = state.line; n <= end; n++) rows[n - state.line] = bodyLine(a, n);
+        } else rows = a.headerless ? { 0: `Body of article ${a.num} by ${a.author}.`, ...(a.url && { 2: urlLine(a) }), 23: status } : {
           0: `作者  ${a.author} (${a.author}) 看板 Test`,
           1: `標題  ${a.title}`,
           2: `時間  Mon Sep  1 12:00:00 2025 #${a.num}`,
           4: `Body of article ${a.num} by ${a.author}.`,
-          23: '  瀏覽 第 1/1 頁 (100%)  目前顯示: 第 01~23 行  (y)回應(X%)推文(h)說明(←)離開 '
+          23: status
         };
+        // Q: the post info box over the page (bbs.c view_postinfo).
+        if (state.surface === 'info') {
+          rows[10] = '│ ' + urlLine(a).slice(2);
+          rows[23] = '請按任意鍵繼續';
+        }
       } else {
         const list = view();
         const top = Math.floor((state.cursor - 1) / PAGE) * PAGE + 1;
@@ -115,8 +138,20 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
     const TOKEN = /\x1b\[[0-9;]*[A-Za-z~]|\d+\r|[\s\S]/g;
     const apply = token => {
       const list = view();
+      // Leaving the box redraws the list (FULLUPDATE), the cursor on the article.
+      if (state.surface === 'info') {
+        state.surface = 'list';
+        return;
+      }
       if (state.surface === 'article') {
-        if (token === '\x1b[D') state.surface = 'list';
+        const lines = state.open.lines;
+        if (token === 'Q') {
+          state.surface = 'info';
+          return;
+        }
+        if (lines && ['\x1b[6~', ' ', '\x1b[C'].includes(token)) state.line = Math.max(1, Math.min(state.line + BODY, lines - BODY + 1));
+        else if (lines && token === '\x1b[5~') state.line = Math.max(1, state.line - BODY);
+        else if (token === '\x1b[D') state.surface = 'list';
         else if ('[]='.includes(token)) {
           const ln = threadMove(token);
           if (ln !== state.cursor) { state.cursor = ln; openCursor(); }
@@ -136,7 +171,7 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
       } else if (/^\d+\r$/.test(token)) {
         state.cursor = Math.min(Math.max(1, parseInt(token, 10)), list.length);
       } else if ('[]='.includes(token)) state.cursor = threadMove(token);
-      else if (token === '\r') openCursor();
+      else if (token === '\r' || token === '\x1b[C') openCursor();
       else if (token === '\x1b[5~') state.cursor = Math.max(1, state.cursor - PAGE);
       else if (token === '\x1b[6~') state.cursor = Math.min(list.length, state.cursor + PAGE);
       else if (token === '\x1b[A') state.cursor = Math.max(1, state.cursor - 1);
@@ -150,17 +185,19 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
     };
     window.__threadServer = { state, frame };
     app.onData(frame());
-  }, { thread, size, open, delay, fromList });
-  if (fromList) {
-    await listActive(page);
+  }, { thread, size, open, delay, fromList: onList });
+  if (onList) {
+    if (fromList) await listActive(page);
+    else await waitScreenSettled(page, { 0: '看板《Test》' });
     await ptt.sendKey(page, 'Enter');
     await expect.poll(() => page.locator('.main').first().innerText()).toContain(`Body of article ${open} by`);
     await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
   } else {
-    await waitScreenSettled(page, { 2: '#' + open });
+    await waitScreenSettled(page, thread.find(a => a.num === open)?.headerless ? { 0: `Body of article ${open} by` } : { 2: '#' + open });
     await page.evaluate(() => window.__app.easyReading.enterEasyReading());
   }
-  await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
+  // The real screen: a cover may still be up over it.
+  await expect(page.locator('.main:not([data-stack-layer])')).toHaveClass(/articleHorizontalGestures/);
 }
 
 const listActive = page => page.waitForFunction(() => {
@@ -220,4 +257,4 @@ async function stopWatching(page) {
 const sent = page => page.evaluate(() => window.__threadSent);
 const server = page => page.evaluate(() => ({ ...window.__threadServer.state, open: window.__threadServer.state.open.num }));
 
-module.exports = { THREAD, NEAR_REPLY_BOARD, bootThreadBoard, listActive, watchScreen, stopWatching, sent, server };
+module.exports = { THREAD, FAR_BOARD, NEAR_REPLY_BOARD, bootThreadBoard, listActive, watchScreen, stopWatching, sent, server };

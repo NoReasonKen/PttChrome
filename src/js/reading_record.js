@@ -78,6 +78,13 @@ export const RESTORE_TABLE = {
     cancel: cell('origin'),
     fail: cell('origin')
   },
+  // A headerless article read again out of sight for its list row and AID
+  // (#77, headerless_reopen.js): the same article, so the same row.
+  'headerless-reopen': {
+    done: cell('origin'),
+    cancel: cell('origin'),
+    fail: cell('origin')
+  },
   // 外部帶進來的連結：目的地就是結果；出發點進返回堆疊，返回時走 'aid-back'。
   'deep-link-jump': { done: NONE, cancel: NONE, fail: NONE },
   // 列表重新整理（F5／工具列／下拉）：游標原地（getkeep），視野也回原處。

@@ -51,6 +51,8 @@ describe("決策表", () => {
     ["aid-board-pick", "fail", "none", "none", "none"],
     ["article-refresh", "done", "auto", "none", "none"],
     ["deep-link-copy", "done", "origin", "none", "none"],
+    ["headerless-reopen", "done", "origin", "none", "none"],
+    ["headerless-reopen", "fail", "origin", "none", "none"],
     ["deep-link-jump", "done", "none", "none", "none"],
     ["list-refresh", "done", "none", "origin", "none"],
     ["list-resize", "done", "none", "origin", "none"],

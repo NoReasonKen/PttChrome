@@ -87,6 +87,7 @@ function makeHarness({
   const backButton = { shown: false, label: null, cb: null };
   const view = {
     flashListHint: (msg, ms) => hints.push(msg),
+    adoptListRowContext() {},
     _articleBoard: articleBoard,
     mainDisplay: scrollTop == null ? null : { scrollTop },
     // 同 term_view.currentLineIndex 量不到節點時的格線版面退路（真 DOM 量測見該函式）。
@@ -248,6 +249,24 @@ describe("AidNavigation", () => {
     // The 15s "跳至…" progress banner must be replaced by a short confirmation
     // on success (regression: it lingered long into the opened article).
     expect(hints[hints.length - 1]).toContain("已跳至");
+  });
+
+  // #77: an article without a header has only the row it was opened from, and
+  // the time its AID carries (`TZ=Asia/Taipei date` of M.1783270974).
+  test("the final open hands the cursor row and the AID's time to the view as the article's identity", () => {
+    const { nav, queue, view, termBuf } = makeHarness();
+    const adopted = [];
+    view.adoptListRowContext = ctx => adopted.push(ctx);
+    nav.start("1gIeu-3A", "Android");
+    answerOriginInfo(queue, "1gKF7GO4");
+    settle(queue, facts("clean-list", { boardName: "android" }));
+    termBuf.rowTexts = screen({ row0: "【板主:someone】 看板《Android》" });
+    termBuf.rowTexts[10] = `    123 +  10/30 ${"Dave".padEnd(13)}R: [問題] 手機`;
+    termBuf.cur_y = 10;
+    settle(queue, facts("clean-list", { boardName: "android", cursorRowNum: 123, curY: 10 }));
+    expect(adopted).toEqual([]);
+    settle(queue, facts("article"));
+    expect(adopted).toEqual([{ author: "dave", board: "Android", title: "Re: [問題] 手機", byline: "Dave", time: "Mon Jul  6 01:02:54 2026" }]);
   });
 
   test("no board → refuses to start, nothing sent", () => {

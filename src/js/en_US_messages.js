@@ -1430,6 +1430,8 @@ export const en_US = {
   "articleShortcutSearch_busy": { "message": "Searching or returning to the source article…" },
   "threadJump_busy": { "message": "Going to the same-thread article…" },
   "threadJump_failed": { "message": "Could not go to the same-thread article; the native PTT screen remains usable." },
+  "headerlessReopen_busy": { "message": "Reading the article's details…" },
+  "headerlessReopen_failed": { "message": "Could not read the article's details; the native PTT screen remains usable." },
   "articleResize_busy": { "message": "Adjusting the reading layout…" },
   "articleResize_failed": { "message": "The article could not adapt to the new screen size. Native PTT view is available." },
   "listResize_failed": { "message": "The article list could not adapt to the new screen size. Native PTT view is available." },

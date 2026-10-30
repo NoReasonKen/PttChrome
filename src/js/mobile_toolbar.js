@@ -127,8 +127,10 @@ export function mobileToolbarContext(core) {
   // A revealed lower page is not usable for actions until it takes over.
   const revealed = core && core.articleGestures && core.articleGestures.toolbarContext();
   if (revealed) return revealed;
-  // A far thread jump keeps its source article on screen until it lands.
-  const covered = core && core.threadJump && core.threadJump.toolbarContext();
+  // A far thread jump keeps its source article on screen until it lands, and
+  // so does the reopen that reads a headerless article's list row.
+  const covered = core && ((core.threadJump && core.threadJump.toolbarContext()) ||
+    (core.headerlessReopen && core.headerlessReopen.toolbarContext()));
   if (covered) return covered;
   const facts = searchGateFacts(core);
   const view = (core && core.view) || {};

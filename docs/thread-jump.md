@@ -17,7 +17,7 @@ The landing is the state of a jump in range: the full article list underneath wi
 
 ## What the reader sees
 
-A copy of the source article (`StackArticleLayer`) covers the screen from the key until the jump lands, the App Bar and toolbar keep the source's context (`toolbarContext`), and the progress bar is held for the whole transaction. Reader input waits (`serializedOpHint`). The list sessions are parked as for any external navigation, so the article list is rebuilt around the target when the reader goes back to it.
+A copy of the source article (`StackArticleLayer`) covers the screen from the key until the jump lands, the App Bar and toolbar keep the source's context (`toolbarContext`), and the progress bar is held for the whole transaction. Reader input waits (`serializedOpHint`). The list sessions are parked as for any external navigation, so the article list is rebuilt around the target when the reader goes back to it. The cover, the parked sessions, the step budget and the landing live in `src/js/hidden_article_route.js`, shared with the reopen that reads a headerless article's list row (#77, `docs/mobile.md`).
 
 ## Tests
 
