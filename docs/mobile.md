@@ -353,9 +353,11 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
   與 `_articleAuthor/_articleBoard` 同一個檔頭事件記；副標＝看板）；文章列表（listOwner 或 `boardListContextKind==='article-list'`；
   row 0 是 `【板主:x】` ⇒ 必須先於 menu）→ `parseBoardName`；看板列表 → row 0【X】；其他 row 0【X】（`screen_titles.parseHeaderTitle`）→ menu；
   都不是 ⇒ 沿用 prev（不閃）。`newMail`＝row 0 含「你有新信件」（`menu.c#redraw_title`）。
-- 文章三行（#66，使用者定案）：標題；看板靠左、時間靠右（檔頭「時間」列原樣，`view._articleTime`）；作者 ID（暱稱）
-  （作者列去掉看板欄，`view._articleByline`）。第二、三行同副標樣式（12px／行高 16px）。其他畫面照舊一或兩行。
-- 「目前這篇」（作者／看板／標題，連同 App Bar 的作者暱稱與時間）只准成組寫（`term_view._setArticleContext`）。逐幀規則 `comment_parse.articleContextFromScreen`：
+- Articles show three lines (#66, the owner's decision): the title; the board on the left and the time on the right
+  (the header's 時間 row as PTT shows it, `view._articleTime`); the author ID with nickname (the 作者 row without
+  its board field, `view._articleByline`). Lines 2 and 3 use the subtitle style (12px, line height 16px). Other screens
+  keep their one or two lines. The byline and time are written together with the article context below.
+- 「目前這篇」（作者／看板／標題）只准成組寫（`term_view._setArticleContext`）。逐幀規則 `comment_parse.articleContextFromScreen`：
   有檔頭 ⇒ 設；首頁（`第 01~`／舊式狀態列第 1 頁）卻無檔頭（進站系統公告等）⇒ 清空；其餘沿用。離開文章 ⇒ App 的 screenSettled
   依 `shouldClearArticleContextOnSettle` 整組清空（例外：functionMode／跳行修補／pageState 5）。守護 `tests/unit/article_context.test.js`。
   debug 錄製有 `article.context`／`appBar` log（起點補一筆、之後只記變動；info 字串照樣 redact）。
@@ -364,24 +366,33 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
   （新信徽章、收件匣不算）。捲動對象：首頁儀表板開著 ⇒ 它的容器；卡片列表視口在 DOM 上 ⇒ `screen.scrollListTo(0)`
   （**不可直接寫列表視口的 scrollTop**：頂端保留區會被算進去，平滑動畫也會被保留區重設殺掉）；其餘 ⇒ `view.mainDisplay`。
   自己不送鍵；列表捲到頂後照平常往上捲的規則補頁。reduced-motion 直接跳。守護 unit `app_bar_scroll_top`、offline e2e `mobile_app_bar`。
-- 幾何：高 `MOBILE_APPBAR_PX`(64＝22＋16＋16＋上下各 5，#66 從 48 加高放三行)＋`--safe-top`，**全畫面常駐** ⇒ rows 與
-  surface 無關（不重送 NAWS）。App Bar 正下方的元件（`AidBackButton`、首頁儀表板、收件匣面板）跟著 64 走。上緣經
-  `term_size.termLayoutOffsets({topInset})`（0＝桌機舊值）、`mobileMenuLayout({topInset})`、`view.setTopInset`。
-- 好讀文章與列表卡片**貼齊 App Bar**（`mobile_layout.mobileFillLayout`）：`termLayoutOffsets` 把 `chh*rows` 置中，
-  列數取整剩下的高度（約 5–13px）會變成 App Bar 下一條黑邊。這兩種畫面都在自己的視口裡捲，所以 `.main` 從 App Bar
-  下緣撐到底部 inset；卡片視口吃下兩條 bar 之間的整個高（`view.mobileRowsPx`，App._applyMobileGeometry 寫，
-  `term_view.listCardViewportPx`），`App.clientToPos` 的卡片範圍同源。按鍵面板展開、放不下時照舊底對齊。
-  格線畫面（原生 PTT 畫面）仍置中。回歸守 `mobile_app_bar.offline.spec.js`。
-  `PageTopAlert` 手機下 margin-top 讓開 64px。
+- Geometry: height `MOBILE_APPBAR_PX` (64 = 22 + 16 + 16 + 5 above and below; #66 raised it from 48 for three lines)
+  plus `--safe-top`. It shows on **every screen**, so rows do not depend on the surface and no NAWS is resent. The
+  components right under it (`AidBackButton`, the home dashboard, the inbox panel) and `PageTopAlert`'s mobile
+  margin-top follow the 64px. The top edge goes through `term_size.termLayoutOffsets({topInset})` (0 = the desktop
+  value), `mobileMenuLayout({topInset})` and `view.setTopInset`.
+- Article easy reading and list cards sit **flush under the App Bar** (`mobile_layout.mobileFillLayout`).
+  `termLayoutOffsets` centres `chh*rows`, so the height left after rounding to whole rows (about 5–13px) showed as a
+  black strip under the App Bar. Both surfaces scroll in their own scroll viewport, so `.main` runs from the App Bar
+  down to the bottom inset. The card viewport takes the whole height between the two bars (`view.mobileRowsPx`,
+  written by `App._applyMobileGeometry`; `term_view.listCardViewportPx`), and `App.clientToPos` maps taps over the same
+  range. A short card list is padded to that height (`listScroll.tailPx` → `--list-tail` on `.listBodyView::after`):
+  otherwise a scrollTop write past the top reserve is clamped and the list lands lower than its reading position
+  (seen when Back reveals search results). With the key panel open and no room, content is still bottom-aligned.
+  Grid surfaces (native PTT screens) stay centred. Guarded by `mobile_app_bar.offline.spec.js`,
+  `mobile_list_cards.offline.spec.js` and `mobile_stack_search_results.offline.spec.js`.
 
 ## Phase 8：收起終端機標頭／狀態列
 
 - 共用 `render/collapsed_row.js#buildCollapsedRow(row, cls)`（`.mobileCollapsedRow` display:none，bbsrow/srow/data-row 契約保留）。
   `_renderRow` 三個分支都只看列號＋該列文字 ⇒ `annotationsAreRowIndependent` 不動；桌機 golden 不經過。
   - listCards：`row < bodyStart || row === last`（視口幾何見 Phase 4）；menuCards：第 0 列與末列。
-  - 好讀文章（`enhance.commentCards`）前 `ARTICLE_META_MAX_ROWS`(5) 列：`render/article_meta_card.js`（pmore `_fh_disp_heads`
-    作者/標題/時間/轉信與整列 `─` 分隔線 → 全部收起，class `articleMeta--<種類>`；資訊在三行 App Bar，#66 之前是檔頭卡片；
-    形狀不吻合照舊）。長標題在手機上只剩 App Bar 那一行（省略號）。整篇複製讀 buffer，檔頭仍在；桌機照舊顯示檔頭。
+  - Article easy reading (`enhance.commentCards`), the first `ARTICLE_META_MAX_ROWS` (5) rows, in
+    `render/article_meta_card.js`: pmore's `_fh_disp_heads` rows (作者/標題/時間/轉信) and the full-width `─` rule are
+    all collapsed, class `articleMeta--<kind>`. Since #66 their facts are in the three-line App Bar instead of header
+    cards; rows of another shape render as usual. A long
+    title shows only as the App Bar's truncated first line. Whole-article copy reads the buffer, so the header is still
+    copied; the desktop still shows the header.
 - 好讀 footer `#easyReadingLastRow`：reflow 下 `display:none`（`_mirrorStatusRowToFooter` 與 `setMobileSurface` 切換時）。
   好讀累積頁底部 1em padding 仍在（無害）。
 - `term_view.pageRowTop` 跳過 `offsetParent===null` 的列（收起列 offsetTop＝0 會把閱讀位置還原拉回頂端）。

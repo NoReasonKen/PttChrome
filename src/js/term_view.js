@@ -30,7 +30,7 @@ import { hintColors, shouldShowHint } from './status_hint';
 import { isPushKey, pushGateFacts, shouldInterceptPushKey } from './long_push_gate';
 import { tryOpenSearchModal } from './article_search';
 import { isRefreshKeyEvent } from './screen_refresh';
-import { mobileCtrlKey, mobileMenuLayout, mobileFillLayout, listViewportGeometry, listFillRows } from './mobile_layout';
+import { mobileCtrlKey, mobileMenuLayout, mobileFillLayout, listViewportGeometry, listFillRows, listRowSpan } from './mobile_layout';
 
 // 單獨按下修飾鍵本身（實體鍵盤按 Shift 準備打大寫）不算「下一個按鍵」，黏滯 Ctrl 不解除。
 var MODIFIER_KEY_NAMES = ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'AltGraph'];
@@ -1091,6 +1091,12 @@ TermView.prototype = {
         rows: this.buf.rows, headerRows: lsOv.bodyStart, cards: this.listCards
       }).viewportRows;
       lsOv.viewportPx = this.listCards ? this.listCardViewportPx() : (lsOv.viewportRows || 0) * this.chh;
+      // Cards: pad a short list to the viewport height, which is not a whole number of
+      // cards (main.css `.listBodyView::after`). Body rows sit between the header and the footer.
+      var bodyCount = Math.max(0, lines.length - (lsOv.bodyStart || 0) - 1);
+      lsOv.tailPx = this.listCards
+        ? Math.max(0, lsOv.viewportPx - bodyCount * listRowSpan(true) * this.chh)
+        : 0;
       enhanceOverrides.listCards = this.listCards ? lsOv.kind : undefined;
     }
     // 這一幀實際畫出去的那一份 lines。`data-row` 的定義就是「傳給 <Screen> 的

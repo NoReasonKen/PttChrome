@@ -46,7 +46,15 @@ async function beginArticleTouch(page, point) {
 async function revealArticleDrawer(page) {
   const width = page.viewportSize().width;
   const main = await waitRectStable(page, '.main');
-  const y = main.top + Math.min(100, main.height / 2);
+  let y = main.top + Math.min(100, main.height / 2);
+  // A short article puts the next-article card near the top; a swipe that starts on the
+  // card does not open the drawer, so start above it.
+  const cardTop = await page.evaluate(() => {
+    const card = document.getElementById('nextArticleCard');
+    const r = card && !card.hidden ? card.getBoundingClientRect() : null;
+    return r && r.height ? r.top : null;
+  });
+  if (cardTop != null && y > cardTop - 8) y = Math.max(main.top + 16, cardTop - 16);
   const contact = await beginArticleTouch(page, { x: width - 24, y });
   await contact.move({ x: 12, y });
   await contact.release();

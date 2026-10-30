@@ -1297,6 +1297,13 @@ export class ScreenController {
     }
     const h = (ls.viewportPx || 0) + "px";
     if (this._bodyView.style.height !== h) this._bodyView.style.height = h;
+    // Short card list padded to the viewport (main.css `.listBodyView::after`); 0 drops
+    // the variable, as for the reserve.
+    const tail = ls.tailPx > 0 ? ls.tailPx + "px" : "";
+    if (this._bodyView.style.getPropertyValue("--list-tail") !== tail) {
+      if (tail) this._bodyView.style.setProperty("--list-tail", tail);
+      else this._bodyView.style.removeProperty("--list-tail");
+    }
     const ov = ls.scrollable ? "auto" : "hidden";
     if (this._bodyView.style.overflowY !== ov) {
       diag("listView.overflow", {

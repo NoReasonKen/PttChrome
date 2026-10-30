@@ -35,7 +35,7 @@ const layout = (page) =>
     const r = main.getBoundingClientRect();
     const chh = app.view.chh;
     const rows = Array.from(document.querySelectorAll('#mainContainer span[type="bbsrow"]'));
-    const lines = document.querySelectorAll('#mainContainer [data-type="bbsline"]');
+    const lines = Array.from(document.querySelectorAll('#mainContainer [data-type="bbsline"]'));
     const bar = document.getElementById('mobileAppBar');
     const tb = document.querySelector('.mobileToolbarBar');
     return {
@@ -53,7 +53,11 @@ const layout = (page) =>
       wrapped: rows.filter(
         (el) => !el.querySelector('.inlinePreviewSlot, img, video, iframe') && el.getBoundingClientRect().height > chh * 1.5
       ).length,
-      firstLineTop: lines.length ? lines[0].getBoundingClientRect().top : null,
+      // The header rows are collapsed (display:none, #66): the first row that shows.
+      firstLineTop: (() => {
+        const shown = lines.find((el) => el.offsetParent !== null);
+        return shown ? shown.getBoundingClientRect().top : null;
+      })(),
       barBottom: bar ? bar.getBoundingClientRect().bottom : null,
       toolbarTop: tb ? tb.getBoundingClientRect().top : null,
       title: app.view._articleTitle,

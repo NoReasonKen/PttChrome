@@ -88,7 +88,8 @@ test('Back from a board entered from a board list reveals that board list at onc
   const before = await topBoard(page, BOARD_LAYER);
   const box = await layer.boundingBox();
   const x = box.x + box.width / 2;
-  await touchDrag(page, { x, y: box.y + box.height - 40 }, { x, y: box.y + 60 }, 10);
+  // The list lands at its end (the cursor's board is near the bottom), so scroll it back.
+  await touchDrag(page, { x, y: box.y + 60 }, { x, y: box.y + box.height - 40 }, 10);
   await waitScrollStable(page, `${BOARD_LAYER} .listBodyView`);
   const scrolled = await topBoard(page, BOARD_LAYER);
   expect(scrolled).not.toEqual(before);

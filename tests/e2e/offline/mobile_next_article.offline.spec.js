@@ -77,7 +77,9 @@ async function setup(page) {
   await expect(card(page)).toContainText(POSTS[2].title);
   // 從文章內文起手（不是卡片本身、不在工具列／App Bar 上）。
   const box = await waitRectStable(page, '#mainContainer');
-  return { x: box.left + box.width / 2, y: box.top + 40 };
+  // A touch a few px above the toolbar lands on the toolbar: keep the pull's start clear of it.
+  const toolbarTop = await page.evaluate(() => document.querySelector('.mobileToolbarBar').getBoundingClientRect().top);
+  return { x: box.left + box.width / 2, y: box.top + 40, bottom: toolbarTop - 20 };
 }
 
 test.describe('手機：讀到文末往上拉開下一篇', () => {
@@ -89,7 +91,7 @@ test.describe('手機：讀到文末往上拉開下一篇', () => {
     await expect(card(page)).not.toHaveAttribute('data-pull');
     expect(await peekCapture(page)).toBe('');
 
-    await touchDrag(page, { x: at.x, y: at.y + 230 }, { x: at.x, y: at.y - 30 });
+    await touchDrag(page, { x: at.x, y: at.bottom }, { x: at.x, y: at.bottom - 260 });
     await expect.poll(() => peekCapture(page)).toContain('sTest\r');
     await expect(card(page)).toHaveAttribute('data-pending', '');
   });

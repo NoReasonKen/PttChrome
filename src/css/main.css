@@ -390,6 +390,17 @@ body.mobile-layout:not(.mobileSelectMode) #mainContainer {
    box-shadow（不佔版面）。間距落在 .listCardBody 之外 ⇒ 點到間距不開文
    （App.mouse_click 的 listCards 分支，防誤點）。守護 tests/unit/list_card_css.test.js。
    每行單行＋省略號；游標底色的 class 下在 .listCardBody（整張卡片上色）。 */
+/* The card viewport takes the whole height between the two bars
+   (term_view.listCardViewportPx), which is not a whole number of cards. A short list
+   would end above the viewport's bottom, and a scrollTop write past the reserve would
+   be clamped, leaving the list lower than its reading position (#66). --list-tail
+   (screen.js, from listScroll.tailPx) pads the content to the viewport height; it is
+   0 once the cards fill it, so the scroll maths (list_scroll.contentPx) is unchanged. */
+.main.mobileListCards .listBodyView::after {
+  content: "";
+  display: block;
+  height: var(--list-tail, 0px);
+}
 .main.mobileListCards .listBodyView > span.listCard {
   display: block;
   box-sizing: border-box;

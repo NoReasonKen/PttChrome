@@ -61,6 +61,20 @@ describe("列表好讀 body 捲動視口", () => {
     expect(inView[BODY_ROWS - 1]).toBe(String(2 + BODY_ROWS));
   });
 
+  // #66: a short card list is padded to the viewport (main.css `.listBodyView::after`),
+  // so a scrollTop write past the reserve is not clamped short.
+  test("tailPx ⇒ --list-tail on the viewport; 0 drops it", () => {
+    const withTail = (tailPx) => ({
+      ...props(),
+      enhance: { ...props().enhance, listScroll: { ...props().enhance.listScroll, tailPx } },
+    });
+    const m = mountScreen(withTail(13));
+    const view = m.container.querySelector(".listBodyView");
+    expect(view.style.getPropertyValue("--list-tail")).toBe("13px");
+    m.update(withTail(0));
+    expect(view.style.getPropertyValue("--list-tail")).toBe("");
+  });
+
   test("scrollable ⇒ overflow-y:auto（使用者捲得動）", () => {
     const m = mountScreen(props(true));
     expect(m.container.querySelector(".listBodyView").style.overflowY).toBe("auto");
