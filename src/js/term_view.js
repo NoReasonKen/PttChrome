@@ -426,6 +426,10 @@ export function TermView() {
   // third and second lines (#66).
   this._articleByline = null;
   this._articleTime = null;
+  // The top rows of a first page without a header whose identity came from the
+  // list row it was opened from (adoptListRowContext), so that page drawn
+  // again keeps it; null when the identity came from a header.
+  this._rowContextTop = null;
   this.onAidClick = null;
   // 「開燈」需要切 pmore 色彩顯示模式時的入口（App 指派，見 pttchrome.jsx）。
   this.onLightsRawMode = null;
@@ -779,7 +783,37 @@ TermView.prototype = {
 
   // 離開文章時整組清空（App 的 screenSettled，comment_parse.shouldClearArticleContextOnSettle）。
   clearArticleContext: function() {
+    this._rowContextTop = null;
     this._setArticleContext({ author: null, board: null, title: null, byline: null, time: null });
+  },
+
+  // An article just opened from a list row (#77): when its first page on
+  // screen has no header, the row is its identity (comment_parse.
+  // articleContextFromListRow). Called once the open is confirmed, before the
+  // App reads the settled screen; the header stays the authority otherwise.
+  adoptListRowContext: function(ctx) {
+    if (!ctx || this.buf.pageState !== 3) return;
+    var screen = this._screenArticleContext();
+    if (!screen || screen.author) return;
+    this._rowContextTop = this._screenTopKey();
+    this._setArticleContext(ctx);
+  },
+
+  _screenArticleContext: function() {
+    var lines = this.buf.lines, rows = this.buf.rows;
+    return articleContextFromScreen(
+      rowToText(lines[0]),
+      lines[1] ? rowToText(lines[1]) : '',
+      parseStatusRow(rowToText(lines[rows - 1])),
+      [lines[2] ? rowToText(lines[2]) : '', lines[3] ? rowToText(lines[3]) : '']);
+  },
+
+  // A headerless first page told apart from another by its top rows.
+  _screenTopKey: function() {
+    var texts = [];
+    for (var row = 0; row < 5 && row < this.buf.rows - 1; ++row)
+      texts.push(this.buf.lines[row] ? rowToText(this.buf.lines[row]) : '');
+    return texts.join('\n');
   },
 
   redraw: function(force) {
@@ -805,12 +839,15 @@ TermView.prototype = {
       // header row (a later page) → keep both across page-downs.
       // 標題（第二列）是手機 App Bar 用的（mobile_app_bar.js）。沒有檔頭的文章首頁
       // （系統公告）⇒ 清空，見 comment_parse.articleContextFromScreen。
-      var ctx = articleContextFromScreen(
-        rowToText(lines[0]),
-        lines[1] ? rowToText(lines[1]) : '',
-        parseStatusRow(rowToText(lines[rows - 1])),
-        [lines[2] ? rowToText(lines[2]) : '', lines[3] ? rowToText(lines[3]) : '']);
-      if (ctx) this._setArticleContext(ctx);
+      var ctx = this._screenArticleContext();
+      // The same headerless first page drawn again keeps its list-row identity
+      // (adoptListRowContext); another one has none.
+      if (ctx && !ctx.author && this._rowContextTop != null && this._rowContextTop === this._screenTopKey())
+        ctx = null;
+      if (ctx) {
+        this._rowContextTop = null;
+        this._setArticleContext(ctx);
+      }
     } else if (!this.buf.easyReadingResizeInFlight && !this.bbscore?.listResize?.active) {
       // Leaving the article clears any pusher highlight selection. 只設欄位就好：
       // 這裡跑在 _renderScreenLines **之前**，下面那次 render 會把新值同步進

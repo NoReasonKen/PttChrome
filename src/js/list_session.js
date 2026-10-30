@@ -26,6 +26,7 @@ import {
   parseListTitleRaw,
   subjectOfListRow,
   subjectOfListText,
+  articleContextFromListRow,
   LIST_AUTHOR_COL_START,
   LIST_AUTHOR_COL_END,
 } from './comment_parse';
@@ -3192,6 +3193,9 @@ ListSession.prototype = {
     // checked against this before Enter opens anything.
     const wantKey =
       lrIdx >= 0 ? articleIdentity(rowToText(this._termBuf.listLines[lrIdx])) : null;
+    // The identity of an article without a header (#77).
+    const rowContext =
+      lrIdx >= 0 ? articleContextFromListRow(rowToText(this._termBuf.listLines[lrIdx]), boardNameFromKey(this._boardName)) : null;
     let landed = null;
     // The article WE are opening, by number — the only number that is known to
     // match the post actually on screen. _selectedNum is not: while the list is
@@ -3242,6 +3246,7 @@ ListSession.prototype = {
           probeTimeoutMs: CMD_PROBE_WINDOW_MS,
           hardTimeoutMs: CMD_HARD_MS,
           onDone: function() {
+            self._view.adoptListRowContext(rowContext);
             self.noteLastRead(lrSubject);
           },
           onFail: function() {
@@ -3290,11 +3295,13 @@ ListSession.prototype = {
     // Active last-read teaching, same as _beginOpen: locate the pinned row in
     // the buffer by its key and capture its subject before the open runs.
     let lrSubject = null;
+    let rowContext = null;
     const lines = this._termBuf.listLines || [];
     const nums = this._termBuf.listLineNums || [];
     for (let i = 0; i < lines.length; ++i) {
       if (nums[i] == null && this._pinnedKeyAt(i) === key) {
         lrSubject = subjectOfListRow(lines[i]);
+        rowContext = articleContextFromListRow(rowToText(lines[i]), boardNameFromKey(this._boardName));
         break;
       }
     }
@@ -3312,6 +3319,7 @@ ListSession.prototype = {
         probeTimeoutMs: CMD_PROBE_WINDOW_MS,
         hardTimeoutMs: CMD_HARD_MS,
         onDone: function() {
+          self._view.adoptListRowContext(rowContext);
           self.noteLastRead(lrSubject);
         },
         onFail: fail

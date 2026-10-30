@@ -424,6 +424,26 @@ export function articleContextFromScreen(row0, row1, status, laterRows) {
   return atTop ? { ...NO_ARTICLE_CONTEXT } : null;
 }
 
+// A list row as the identity of the article it opens (#77): a first page
+// without a header has nothing else. The title gets back the Re:/Fw: its mark
+// stands for (readdoent prints "R:" / "轉" in their place); the list shows no
+// time, and its date has no year.
+export function articleContextFromListRow(text, board) {
+  const author = parseListAuthor(text);
+  if (!author) return null;
+  let title = parseListTitleRaw(text);
+  if (title.startsWith('R:')) title = 'Re: ' + title.substring(2).trim();
+  else if (title.startsWith('轉')) title = 'Fw: ' + title.substring(1).trim();
+  else if (title.charCodeAt(0) > 0x7f) title = title.substring(1).trim(); // □/鎖/ˇ state glyph
+  return {
+    author: author,
+    board: board || null,
+    title: title || null,
+    byline: realignListColumns(text).substring(LIST_AUTHOR_COL_START, LIST_AUTHOR_COL_END).trim(),
+    time: null
+  };
+}
+
 // 離開文章（settle 判定，不吃逐幀抖動）⇒ 整組清空，免得哪個消費端漏清又顯示舊值。
 // 例外都是「之後還會回到同一篇的非首頁」：好讀 functionMode（推文／回應 prompt、
 // 編輯器）、跳行修補的 prompt、按任意鍵繼續。

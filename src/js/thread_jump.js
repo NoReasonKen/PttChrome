@@ -4,7 +4,7 @@
 // returns to the article list, and `=` stops on the earliest reply it passed.
 // The same-thread search narrows the list to the thread, where the target is
 // always in range.
-import { articleContextFromScreen, pageArticleNums } from './comment_parse';
+import { articleContextFromListRow, articleContextFromScreen, pageArticleNums } from './comment_parse';
 import { searchResultIdentity } from './search_result_anchor';
 import { parseStatusRow } from './string_util';
 import { SLOW_STEP_BUDGET } from './aid_navigation';
@@ -204,7 +204,7 @@ export class ThreadJump {
         const same = target && target.author === this.sourceKey.author && target.title === this.sourceKey.title &&
           target.date === this.sourceKey.date;
         if (same && this.key === ']') return this._finishAtList();
-        this._open('\r');
+        this._open('\r', articleContextFromListRow(cursorText(facts), this.source.board));
       }
     });
   }
@@ -219,12 +219,15 @@ export class ThreadJump {
     this._enqueue({ keys: select, kind: 'thread-jump-select', expect: (snapshot, facts) => this._fullList(facts), onDone: () => this._finishAtList() });
   }
 
-  _open(keys) {
+  // `rowContext`: the target's list row, the identity of a target without a
+  // header (#77).
+  _open(keys, rowContext = null) {
     this._enqueue({
       keys,
       kind: 'thread-jump-open',
       expect: (snapshot, facts) => articleShown(facts),
       onDone: () => {
+        this.core.view.adoptListRowContext(rowContext);
         // Unlock first: easy reading's paging waits for no transaction.
         this.active = false;
         this.core.easyReading?.ensureEnabledOnArticle(true, 'threadJump');

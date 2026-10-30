@@ -65,9 +65,9 @@ import {
   isCrossPostHeaderLine
 } from './aid_parse';
 import { isAidc } from './aid_codec';
-import { isPinnedListRow } from './comment_parse';
+import { articleContextFromListRow, isPinnedListRow } from './comment_parse';
 import { parseListEntry } from './agent_parse';
-import { MAIN_MENU, boardNameFromKey, parseBoardKey, rowHasTitle, sameBoard } from './screen_titles';
+import { MAIN_MENU, boardNameFromKey, parseBoardKey, parseBoardName, rowHasTitle, sameBoard } from './screen_titles';
 import { isSubListFooter } from './screen_captions';
 import { HINT_ERROR } from './status_hint';
 import { recordFor } from './reading_record';
@@ -1851,6 +1851,11 @@ AidNavigation.prototype = {
   // re-enters on its settled edge), so finishing here is just an unlock.
   _enqueueOpen: function(run) {
     const self = this;
+    // The list row under the cursor: the identity of an article without a
+    // header (#77).
+    const buf = this._termBuf;
+    const rowContext = articleContextFromListRow(
+      buf.getRowText(buf.cur_y), parseBoardName(buf.getRowText(0)) || run.target.board);
     this._queue.enqueue({
       keys: '\r',
       kind: 'aid-open',
@@ -1874,6 +1879,7 @@ AidNavigation.prototype = {
         return !!parseStatusRow(lastRow);
       },
       onDone: function() {
+        self._view.adoptListRowContext(rowContext);
         if (run.dir === 'refresh') {
           // 同下面的 ORDER INVARIANT：_finishRefresh 先解鎖 active 再交給好讀。
           self._finishRefresh(run);

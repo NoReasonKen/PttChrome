@@ -83,12 +83,14 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
       let rows, cursor = [24, 80];
       if (state.surface === 'article') {
         const a = state.open;
-        rows = {
+        const status = '  瀏覽 第 1/1 頁 (100%)  目前顯示: 第 01~23 行  (y)回應(X%)推文(h)說明(←)離開 ';
+        // `headerless`: the author removed the header rows; the body starts on top.
+        rows = a.headerless ? { 0: `Body of article ${a.num} by ${a.author}.`, 23: status } : {
           0: `作者  ${a.author} (${a.author}) 看板 Test`,
           1: `標題  ${a.title}`,
           2: `時間  Mon Sep  1 12:00:00 2025 #${a.num}`,
           4: `Body of article ${a.num} by ${a.author}.`,
-          23: '  瀏覽 第 1/1 頁 (100%)  目前顯示: 第 01~23 行  (y)回應(X%)推文(h)說明(←)離開 '
+          23: status
         };
       } else {
         const list = view();
@@ -157,7 +159,7 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
     await expect.poll(() => page.locator('.main').first().innerText()).toContain(`Body of article ${open} by`);
     await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
   } else {
-    await waitScreenSettled(page, { 2: '#' + open });
+    await waitScreenSettled(page, thread.find(a => a.num === open)?.headerless ? { 0: `Body of article ${open} by` } : { 2: '#' + open });
     await page.evaluate(() => window.__app.easyReading.enterEasyReading());
   }
   await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
@@ -220,4 +222,4 @@ async function stopWatching(page) {
 const sent = page => page.evaluate(() => window.__threadSent);
 const server = page => page.evaluate(() => ({ ...window.__threadServer.state, open: window.__threadServer.state.open.num }));
 
-module.exports = { THREAD, NEAR_REPLY_BOARD, bootThreadBoard, listActive, watchScreen, stopWatching, sent, server };
+module.exports = { THREAD, FAR_BOARD, NEAR_REPLY_BOARD, bootThreadBoard, listActive, watchScreen, stopWatching, sent, server };
