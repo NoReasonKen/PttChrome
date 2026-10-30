@@ -1427,6 +1427,8 @@
   "articleShortcutSearch_thread": { "message": "找同主題同看板" },
   "articleShortcutSearch_threadResults": { "message": "同主題搜尋結果；返回可回到原文章。" },
   "articleShortcutSearch_busy": { "message": "搜尋或返回原文章中，請稍候…" },
+  "threadJump_busy": { "message": "正在前往同主題文章，請稍候…" },
+  "threadJump_failed": { "message": "無法前往同主題文章，可繼續使用原生 PTT 畫面。" },
   "articleResize_busy": { "message": "正在調整閱讀版面，請稍候…" },
   "articleResize_failed": { "message": "文章未能適應新的畫面尺寸，可繼續使用原生 PTT 畫面。" },
   "listResize_failed": { "message": "文章列表未能適應新的畫面尺寸，可繼續使用原生 PTT 畫面。" },

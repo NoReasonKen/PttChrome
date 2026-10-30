@@ -127,6 +127,9 @@ export function mobileToolbarContext(core) {
   // A revealed lower page is not usable for actions until it takes over.
   const revealed = core && core.articleGestures && core.articleGestures.toolbarContext();
   if (revealed) return revealed;
+  // A far thread jump keeps its source article on screen until it lands.
+  const covered = core && core.threadJump && core.threadJump.toolbarContext();
+  if (covered) return covered;
   const facts = searchGateFacts(core);
   const view = (core && core.view) || {};
   const prev = core && core._screenContext && core._screenContext.appBar;

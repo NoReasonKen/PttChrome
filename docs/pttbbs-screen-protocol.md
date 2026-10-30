@@ -499,7 +499,7 @@ client 端自動收掉見 `docs/board-note-skip.md`。
 - **輸入記憶（↑↓）是全 session 共用一份**（`vtuikit.c` `static InputHistory ih`，508 bytes、≥2 bytes 才存、只有 `VGET_NOECHO` 不存），跳號 ` 跳至第幾項: `（NUMECHO）也會存 ⇒ client 送的 `N\r` 會擠掉搜尋關鍵字。CONFIRMED；client 對策見 `docs/article-search.md`。
 - **新版（SR.* 換成 `search.svc`）**：`read.c#select_read` 命中 → `NEWDIRECT`、游標落在末列；`total <= 0` → `READ_REDRAW`；序號＝結果內 1-based（獨立空間、無置底）。
 - **退出：`q`／`e`／`←`**（`read.c#read_cmd_quit`）→ `board_select()` 回主 directory ＋ `NEWDIRECT` 全幅重建主列表。
-  落點兩代不同：舊版 `crs_ln=refer` ＝**帳號已讀進度**（live CONFIRMED，非進 select 前位置）；新版以 `read_view_real_recno` 換回**剛才游標那篇在主目錄的序號**。
+  The cursor lands on the article it was on in the results, at its number in the main directory (`read_view_real_recno`); live PTT confirms it (2026-10, #65). The account's read position that an older build landed on no longer applies.
   ⇒ client 不得假設退回畫面含進板時取樣的最新序號；測試判準用「序號回到主空間（> select 清單 max）」。
 - **select 清單 row0 指紋**：板名前綴由「看板」變「**系列**《板名》」——可做輔助指紋，但主要區分仍靠 client 自身交易狀態。
 

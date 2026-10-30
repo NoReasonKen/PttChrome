@@ -433,7 +433,7 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
 - `index.html`：`viewport-fit=cover`、`theme-color` #141418（＝manifest，`index_html_meta.test.js` 守；仍禁 interactive-widget／鎖縮放）。
 - safe-area：`App._readSafeInsets`（探針元素的 `env(safe-area-inset-*)` padding）→ `mobileChromeInsets` → CSS `--safe-top/--safe-bottom`
   ＋終端機 inset；`mobileRowsHeight(h, safe)` 扣掉。APK 原生已 padding ⇒ env＝0（`docs/android-app.md` 第 8 點）。
-- 等待進度條：`mobile_busy.busyNext`（action → 500ms 內真的 `conn.onDataSent` → pending → 300ms 後 shown → `screenSettled` 或 3s 逾時收）。
+- 等待進度條：`mobile_busy.busyNext`（action → 500ms 內真的 `conn.onDataSent` → pending → 300ms 後 shown → `screenSettled` 或 3s 逾時收）。A transaction of several round trips holds the bar from `App.holdBusy(true)` to `holdBusy(false)`, past settles and the timeout (far thread jumps, `docs/thread-jump.md`).
   action 只來自我們的 UI（`App.noteUserAction`：底部導覽 sendKey、選單大按鈕、列表卡片 tap）⇒ 列表本地捲動、實體鍵盤不亮。
   畫在 App Bar 底邊，reduced-motion 靜態。
 - 點擊波紋 `src/js/ripple.js#installRipple`（main.jsx 開站一次）：document capture-passive pointerdown 委派，只處理 `.pttRipple`，

@@ -7,6 +7,8 @@
 //           只有 action 之後 BUSY_ACTION_WINDOW_MS 內的 sent 才算 ⇒ 列表好讀的 PgDn
 //           是本地捲動、不送 byte，不會誤亮；實體鍵盤／程式化序列沒有 action，也不亮。
 //   settled 畫面 settle（buf 的 screenSettled）＝ server 回應了。
+//   hold／release  A transaction of several round trips (a far thread jump, #65)
+//           keeps the bar shown from hold to release, past settles and the timeout.
 // 送出後 BUSY_SHOW_DELAY_MS 才顯示（快速回應不閃一下）；PTT 對不認得的鍵不回應 ⇒
 // BUSY_TIMEOUT_MS 後自己收，不會轉到天荒地老。
 export const BUSY_ACTION_WINDOW_MS = 500;
@@ -26,10 +28,14 @@ export function busyNext(state, ev) {
       // 已經在等了（一次 tap 送出好幾段）就不重設起點。
       if (s.phase !== 'idle') return { ...s, actionAt: null };
       return { phase: 'pending', since: ev.t, actionAt: null };
+    case 'hold':
+      return { phase: 'held', since: ev.t, actionAt: null };
+    case 'release':
+      return s.phase === 'held' ? { ...s, phase: 'idle', since: null } : s;
     case 'settled':
-      return s.phase === 'idle' ? s : { ...s, phase: 'idle', since: null };
+      return s.phase === 'idle' || s.phase === 'held' ? s : { ...s, phase: 'idle', since: null };
     case 'tick':
-      if (s.phase === 'idle') return s;
+      if (s.phase === 'idle' || s.phase === 'held') return s;
       if (ev.t - s.since >= BUSY_TIMEOUT_MS) return { ...s, phase: 'idle', since: null };
       if (s.phase === 'pending' && ev.t - s.since >= BUSY_SHOW_DELAY_MS)
         return { ...s, phase: 'shown' };
@@ -40,5 +46,5 @@ export function busyNext(state, ev) {
 }
 
 export function isBusyShown(state) {
-  return !!state && state.phase === 'shown';
+  return !!state && (state.phase === 'shown' || state.phase === 'held');
 }

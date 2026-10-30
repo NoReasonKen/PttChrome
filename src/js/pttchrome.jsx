@@ -13,6 +13,7 @@ import { OWNER_BOARD_LIST, listRenderOwnerOf } from './list_render_owner';
 import { CommandQueue } from './command_queue';
 import { AidNavigation } from './aid_navigation';
 import { ArticleShortcutSearch } from './article_shortcut_search';
+import { ThreadJump } from './thread_jump';
 import { needsAidBoardChoice } from './aid_board_choice';
 import { ScreenRefresh } from './screen_refresh';
 import { ReadingRecord } from './reading_record';
@@ -208,6 +209,7 @@ export const App = function() {
   // the current article's board (tracked by term_view alongside articleAuthor).
   this.aidNavigation = new AidNavigation(this, this.view, this.buf, this.commandQueue);
   this.articleShortcutSearch = new ArticleShortcutSearch(this);
+  this.threadJump = new ThreadJump(this);
   // 長推文一鍵發送（右鍵選單）：把一大段話切成 N 則，逐則跑完 PTT 的推文互動。
   // 與 aidNavigation 共用同一條 CommandQueue（一次只有一個鍵在線上），並同樣用
   // `active` 擋住使用者輸入。
@@ -659,6 +661,7 @@ App.prototype.onClose = function() {
   // rely on this session's per-board cursors (pttbbs getkeep), which die with it.
   this.aidNavigation.reset();
   this.articleShortcutSearch.reset();
+  this.threadJump.reset();
   this.boardNoteSkip.reset();
   this.helpMenu.reset();
   // 長推文的探路成果同理：錨點是這條連線的列表游標（pttbbs getkeep），斷線就失效。
@@ -869,6 +872,12 @@ App.prototype.setMobileKeysPanelInset = function(px) {
 // BUSY_ACTION_WINDOW_MS 內真的送出 byte 才進入等待（mobile_busy.js）。
 App.prototype.noteUserAction = function() {
   if (this.mobile) this._busyEvent({ type: 'action' });
+};
+
+// A transaction of several round trips keeps the progress bar shown until it
+// releases it (mobile_busy.js hold／release).
+App.prototype.holdBusy = function(on) {
+  if (this.mobile) this._busyEvent({ type: on ? 'hold' : 'release' });
 };
 
 // 進度條狀態的唯一寫入點。計時器只在進入 pending 時排（顯示延遲、逾時各一個）。
