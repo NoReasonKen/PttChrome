@@ -15,6 +15,7 @@ import { STACK_NOTICE_MS } from './stack_layer';
 import { PAGE } from './page_stack';
 import { EMPTY_TOOLBAR_CONTEXT } from './mobile_toolbar';
 import { recordFor } from './reading_record';
+import { readEffectivePrefs } from './pref_storage';
 import { i18n } from './i18n';
 
 const KEYS = { '[': '[', '-': '[', ']': ']', '+': ']', '=': '=' };
@@ -240,13 +241,15 @@ export class ThreadJump {
     this._end();
   }
 
-  // Opened from the easy-reading list, the source slides away over that list
-  // as on Back, and the list takes over once its session presents it again.
+  // Under article-list easy reading, the source slides away as on Back, over
+  // the list it was opened from or the dark fallback when that list keeps no
+  // live layer (after a jump in place), and the list takes over once its
+  // session presents it again.
   _slideToList() {
     const core = this.core;
     const stack = core.articleGestures?.stack;
-    const layer = this.cover && stack?.revealable();
-    if (!layer) return false;
+    if (!this.cover || !stack || !readEffectivePrefs().enableEasyReadingList) return false;
+    const layer = stack.revealable();
     const underlay = createUnderlay(core, layer, stack.title);
     const surfaces = raiseSurfaces([this.cover.el, document.getElementById('mobileAppBar')]);
     const duration = slideDuration();

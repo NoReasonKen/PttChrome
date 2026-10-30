@@ -176,20 +176,27 @@ async function watchScreen(page) {
     const sample = () => {
       const main = document.querySelector('.main');
       const box = main?.getBoundingClientRect();
-      // A layer revealed under a sliding page is inert, which hit testing
-      // passes through; it still covers what lies below it.
-      const inert = [...document.querySelectorAll('[data-stack-layer][inert]')];
+      // A layer revealed under a sliding page and the underlay are inert, and
+      // the underlay takes no pointer, which hit testing passes through; both
+      // still cover what lies below them.
+      const inert = [...document.querySelectorAll('[data-stack-layer][inert], .stackUnderlay[inert]')];
+      const underlays = [...document.querySelectorAll('.stackUnderlay')];
       inert.forEach(el => { el.inert = false; });
-      const top = box && document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      underlays.forEach(el => { el.style.pointerEvents = 'auto'; });
+      // The real screen slides sideways on its way out: the middle of the window.
+      const top = box && document.elementFromPoint(window.innerWidth / 2, box.top + box.height / 2);
       inert.forEach(el => { el.inert = true; });
+      underlays.forEach(el => { el.style.pointerEvents = ''; });
       // The drawer closing over the screen is not the screen.
       if (top?.closest('[data-article-drawer]')) return requestAnimationFrame(sample);
       const entry = {
         title: document.querySelector('#mobileAppBar .mobileAppBarTitle')?.textContent || '',
         busy: !!document.querySelector('[data-key="__busy"]'),
-        screen: (top?.closest('.main')?.innerText || '').slice(0, 400),
+        // Text content: a screen just attached skips its chunks
+        // (content-visibility) until its first rendering, before any paint.
+        screen: (top?.closest('.main')?.textContent || '').slice(0, 400),
         // A live layer of the page stack, or the real screen.
-        layer: top?.closest('[data-stack-layer]')?.dataset.stackLayer || null,
+        layer: top?.closest('[data-stack-layer]')?.dataset.stackLayer || (top?.closest('.stackUnderlay') ? 'underlay' : null),
         cards: !!top?.closest('.main:not([data-stack-layer])')?.querySelector('.listCard')
       };
       const last = seen[seen.length - 1];

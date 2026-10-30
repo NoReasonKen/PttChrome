@@ -136,3 +136,23 @@ test('a next-in-thread jump with no later article slides back to the easy-readin
   }
   expect(await server(page)).toMatchObject({ surface: 'list', filter: null });
 });
+
+// After a jump in range the list below keeps no live layer: the article
+// slides away over the dark underlay instead, still without the native list.
+test('a next-in-thread jump past the last article after a jump in range slides back over the underlay', async ({ page }) => {
+  await bootThreadBoard(page, { open: 1120, fromList: true, thread: NEAR_REPLY_BOARD });
+  await jump(page, ']');
+  await landedOn(page, 1150);
+  await watchScreen(page);
+  await jump(page, ']');
+  await listActive(page);
+  await expect(page.locator('.main').first().locator('.listCard[data-list-author="dave"]')).toBeVisible();
+  const seen = await stopWatching(page);
+  const real = seen.findIndex(entry => entry.cards && !entry.layer);
+  expect(real, JSON.stringify(seen)).toBeGreaterThan(0);
+  const route = seen.slice(0, real);
+  expect(route.some(entry => entry.layer === 'underlay'), JSON.stringify(seen)).toBe(true);
+  for (const entry of route) {
+    expect(entry.layer === 'underlay' || entry.screen.includes(body(1150)), JSON.stringify(seen)).toBe(true);
+  }
+});
