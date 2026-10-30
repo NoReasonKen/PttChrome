@@ -154,7 +154,7 @@ The enabled-by-default `articleHorizontalGestures` preference applies only to mo
   reflow 相關另在 `mouse_regions`／`mouse_gating`／`scroll_restore`／`context_menu_items` 各有一組；
   Phase 6–10：`mobile_app_bar.test.js(x)`、`article_meta_card.test.js`、`page_row_top_collapsed.test.js`、`context_sheet.test.jsx`、
   `mobile_busy.test.js`、`ripple.test.js`、`index_html_meta.test.js`、`history_back_guard`（sheet）、`modal_shown_sources`（sheet 登記）、`deep_link_controller`（分享）
-- offline e2e：project `offline-mobile`（Pixel 7 模擬，只跑 `offline/mobile_*.spec.js`：換行版面、長按選單、推文卡片與檔頭卡片在
+- offline e2e：project `offline-mobile`（Pixel 7 模擬，只跑 `offline/mobile_*.spec.js`：換行版面、長按選單、推文卡片與收起的檔頭在
   `mobile_reflow`、列表卡片在 `mobile_list_cards`、底部導覽／按鍵面板／黏滯 Ctrl／進度條在 `mobile_toolbar`、「⋯」與設定頁窄版在 `mobile_float_tools`、
   App Bar 在 `mobile_app_bar`、sheet（遮罩不漏點、返回收 sheet、拖把手、搜尋 sheet）在 `mobile_sheet`；`offline` project 以 testIgnore 排除 mobile_*）。
   手機的長按／右鍵選單是 `[data-sheet="context"]`（項目 `[data-cmenu=<key>]`），**不是** `.DropdownMenu`；Drawer 內容非同步掛上、
@@ -348,12 +348,14 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
 
 ## Phase 6：App Bar（`components/MobileAppBar`）
 
-- 標題純函式 `mobile_app_bar.appBarFromFacts(facts, {pageState, articleTitle, articleBoard, prev})`，與底部導覽同一次計算
+- 標題純函式 `mobile_app_bar.appBarFromFacts(facts, {pageState, articleTitle, articleBoard, articleTime, articleByline, prev})`，與底部導覽同一次計算
   （`mobileToolbarContext` 的 `appBar` 欄位、`sameToolbarContext` 一併比）。判斷順序：pageState 3 → article（`view._articleTitle`，
   與 `_articleAuthor/_articleBoard` 同一個檔頭事件記；副標＝看板）；文章列表（listOwner 或 `boardListContextKind==='article-list'`；
   row 0 是 `【板主:x】` ⇒ 必須先於 menu）→ `parseBoardName`；看板列表 → row 0【X】；其他 row 0【X】（`screen_titles.parseHeaderTitle`）→ menu；
   都不是 ⇒ 沿用 prev（不閃）。`newMail`＝row 0 含「你有新信件」（`menu.c#redraw_title`）。
-- 「目前這篇」（作者／看板／標題）只准成組寫（`term_view._setArticleContext`）。逐幀規則 `comment_parse.articleContextFromScreen`：
+- 文章三行（#66，使用者定案）：標題；看板靠左、時間靠右（檔頭「時間」列原樣，`view._articleTime`）；作者 ID（暱稱）
+  （作者列去掉看板欄，`view._articleByline`）。第二、三行同副標樣式（12px／行高 16px）。其他畫面照舊一或兩行。
+- 「目前這篇」（作者／看板／標題，連同 App Bar 的作者暱稱與時間）只准成組寫（`term_view._setArticleContext`）。逐幀規則 `comment_parse.articleContextFromScreen`：
   有檔頭 ⇒ 設；首頁（`第 01~`／舊式狀態列第 1 頁）卻無檔頭（進站系統公告等）⇒ 清空；其餘沿用。離開文章 ⇒ App 的 screenSettled
   依 `shouldClearArticleContextOnSettle` 整組清空（例外：functionMode／跳行修補／pageState 5）。守護 `tests/unit/article_context.test.js`。
   debug 錄製有 `article.context`／`appBar` log（起點補一筆、之後只記變動；info 字串照樣 redact）。
@@ -362,9 +364,10 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
   （新信徽章、收件匣不算）。捲動對象：首頁儀表板開著 ⇒ 它的容器；卡片列表視口在 DOM 上 ⇒ `screen.scrollListTo(0)`
   （**不可直接寫列表視口的 scrollTop**：頂端保留區會被算進去，平滑動畫也會被保留區重設殺掉）；其餘 ⇒ `view.mainDisplay`。
   自己不送鍵；列表捲到頂後照平常往上捲的規則補頁。reduced-motion 直接跳。守護 unit `app_bar_scroll_top`、offline e2e `mobile_app_bar`。
-- 幾何：高 `MOBILE_APPBAR_PX`(48)＋`--safe-top`，**全畫面常駐** ⇒ rows 與 surface 無關（不重送 NAWS）。上緣經
+- 幾何：高 `MOBILE_APPBAR_PX`(64＝22＋16＋16＋上下各 5，#66 從 48 加高放三行)＋`--safe-top`，**全畫面常駐** ⇒ rows 與
+  surface 無關（不重送 NAWS）。App Bar 正下方的元件（`AidBackButton`、首頁儀表板、收件匣面板）跟著 64 走。上緣經
   `term_size.termLayoutOffsets({topInset})`（0＝桌機舊值）、`mobileMenuLayout({topInset})`、`view.setTopInset`。`.main` 高公式不動。
-  `PageTopAlert` 手機下 margin-top 讓開 48px。
+  `PageTopAlert` 手機下 margin-top 讓開 64px。
 
 ## Phase 8：收起終端機標頭／狀態列
 
@@ -372,7 +375,8 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
   `_renderRow` 三個分支都只看列號＋該列文字 ⇒ `annotationsAreRowIndependent` 不動；桌機 golden 不經過。
   - listCards：`row < bodyStart || row === last`（視口幾何見 Phase 4）；menuCards：第 0 列與末列。
   - 好讀文章（`enhance.commentCards`）前 `ARTICLE_META_MAX_ROWS`(5) 列：`render/article_meta_card.js`（pmore `_fh_disp_heads`
-    作者/標題/時間/轉信 → 卡片；整列 `─` 分隔線 → 收起；形狀不吻合照舊）。
+    作者/標題/時間/轉信與整列 `─` 分隔線 → 全部收起，class `articleMeta--<種類>`；資訊在三行 App Bar，#66 之前是檔頭卡片；
+    形狀不吻合照舊）。長標題在手機上只剩 App Bar 那一行（省略號）。整篇複製讀 buffer，檔頭仍在；桌機照舊顯示檔頭。
 - 好讀 footer `#easyReadingLastRow`：reflow 下 `display:none`（`_mirrorStatusRowToFooter` 與 `setMobileSurface` 切換時）。
   好讀累積頁底部 1em padding 仍在（無害）。
 - `term_view.pageRowTop` 跳過 `offsetParent===null` 的列（收起列 offsetTop＝0 會把閱讀位置還原拉回頂端）。

@@ -57,13 +57,13 @@ const layout = (page) =>
       barBottom: bar ? bar.getBoundingClientRect().bottom : null,
       toolbarTop: tb ? tb.getBoundingClientRect().top : null,
       title: app.view._articleTitle,
-      // 好讀的 80 欄狀態列是 #easyReadingLastRow；檔頭分隔線收成 0 高（檔頭改卡片）。
+      // 好讀的 80 欄狀態列是 #easyReadingLastRow；檔頭分隔線收成 0 高（檔頭整個收起，#66）。
       footerShown: (() => {
         const f = document.getElementById('easyReadingLastRow');
         return !!f && getComputedStyle(f).display !== 'none';
       })(),
       ruleH: (() => {
-        const rule = document.querySelector('#mainContainer .articleMetaRule');
+        const rule = document.querySelector('#mainContainer .articleMeta--rule');
         return rule ? rule.getBoundingClientRect().height : null;
       })(),
     };

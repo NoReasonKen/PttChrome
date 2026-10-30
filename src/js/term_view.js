@@ -420,6 +420,10 @@ export function TermView() {
   this._articleBoard = null;
   // 文章檔頭「標題」列（同一個 header 事件），手機 App Bar 的標題。
   this._articleTitle = null;
+  // Same header event: the 作者 field with nickname and the 時間 row, the App Bar's
+  // third and second lines (#66).
+  this._articleByline = null;
+  this._articleTime = null;
   this.onAidClick = null;
   // 「開燈」需要切 pmore 色彩顯示模式時的入口（App 指派，見 pttchrome.jsx）。
   this.onLightsRawMode = null;
@@ -758,18 +762,22 @@ TermView.prototype = {
 
   // 「目前這篇」的作者／看板／標題只准成組寫入（作者與看板同一列檔頭，見 redraw）。
   _setArticleContext: function(ctx) {
+    var byline = ctx.byline || null, time = ctx.time || null;
     if (ctx.author === this._articleAuthor && ctx.board === this._articleBoard &&
-        ctx.title === this._articleTitle) return;
+        ctx.title === this._articleTitle && byline === this._articleByline &&
+        time === this._articleTime) return;
     var rec = this.bbscore && this.bbscore.debugRecorder;
-    if (rec) rec.log('article.context', { author: ctx.author, board: ctx.board, title: ctx.title });
+    if (rec) rec.log('article.context', { author: ctx.author, board: ctx.board, title: ctx.title, byline: byline, time: time });
     this._articleAuthor = ctx.author;
     this._articleBoard = ctx.board;
     this._articleTitle = ctx.title;
+    this._articleByline = byline;
+    this._articleTime = time;
   },
 
   // 離開文章時整組清空（App 的 screenSettled，comment_parse.shouldClearArticleContextOnSettle）。
   clearArticleContext: function() {
-    this._setArticleContext({ author: null, board: null, title: null });
+    this._setArticleContext({ author: null, board: null, title: null, byline: null, time: null });
   },
 
   redraw: function(force) {
@@ -798,7 +806,8 @@ TermView.prototype = {
       var ctx = articleContextFromScreen(
         rowToText(lines[0]),
         lines[1] ? rowToText(lines[1]) : '',
-        parseStatusRow(rowToText(lines[rows - 1])));
+        parseStatusRow(rowToText(lines[rows - 1])),
+        [lines[2] ? rowToText(lines[2]) : '', lines[3] ? rowToText(lines[3]) : '']);
       if (ctx) this._setArticleContext(ctx);
     } else if (!this.buf.easyReadingResizeInFlight && !this.bbscore?.listResize?.active) {
       // Leaving the article clears any pusher highlight selection. 只設欄位就好：

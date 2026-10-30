@@ -226,7 +226,7 @@ describe("mobileChromeInsets／mobileRowsHeight", () => {
   });
   test("列數高度扣兩條 bar 與兩邊 safe-area", () => {
     expect(mobileRowsHeight(800)).toBe(800 - MOBILE_APPBAR_PX - MOBILE_TOOLBAR_PX);
-    expect(mobileRowsHeight(800, { top: 24, bottom: 16 })).toBe(800 - 96 - 40);
+    expect(mobileRowsHeight(800, { top: 24, bottom: 16 })).toBe(800 - MOBILE_APPBAR_PX - MOBILE_TOOLBAR_PX - 40);
   });
 });
 

@@ -12,5 +12,5 @@
 
 /* 手機：讓開常駐的頂部 App Bar（MOBILE_APPBAR_PX）。 */
 body.mobile-layout .PageTopAlert {
-  margin-top: calc(48px + 15px);
+  margin-top: calc(64px + 15px);
 }

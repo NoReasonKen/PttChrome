@@ -81,7 +81,7 @@
 
 .messageInboxInline .inboxPanel {
   position: fixed;
-  top: calc(48px + var(--safe-top, 0px));
+  top: calc(64px + var(--safe-top, 0px));
   right: 8px;
 }
 

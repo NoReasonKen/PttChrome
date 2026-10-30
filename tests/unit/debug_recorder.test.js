@@ -171,6 +171,8 @@ describe("DebugRecorder", () => {
       author: null,
       board: null,
       title: null,
+      byline: null,
+      time: null,
     });
     expect(dirs).toContain("recv");
     expect(dirs).toContain("send");

@@ -191,14 +191,18 @@ describe("upstream pttbbs 產的文章畫面（pmore）", () => {
     expect(buf.pageState).toBe(3);
   });
 
-  test("檔頭解析出作者／看板／標題", () => {
+  test("檔頭解析出作者／看板／標題，以及 App Bar 的作者（暱稱）與時間（#66）", () => {
     const { rowTexts, facts } = screenAt(articleFx, "article");
     const status = parseStatusRow(rowTexts[facts.rows - 1]);
-    expect(articleContextFromScreen(rowTexts[0], rowTexts[1], status)).toEqual({
+    const ctx = articleContextFromScreen(rowTexts[0], rowTexts[1], status, [rowTexts[2], rowTexts[3]]);
+    expect(ctx).toMatchObject({
       author: "alice",
       board: "Test",
       title: "[問題] 第一篇測試文章",
     });
+    expect(ctx.byline).toMatch(/^alice\b/);
+    expect(ctx.byline).not.toContain("看板");
+    expect(ctx.time).toMatch(/^\w{3} \w{3} +\d+ \d\d:\d\d:\d\d \d{4}$/);
   });
 });
 

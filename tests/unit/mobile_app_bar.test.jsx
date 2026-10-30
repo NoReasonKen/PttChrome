@@ -63,9 +63,32 @@ test("標題／副標／新信件跟著畫面走；空標題顯示預設名", ()
   expect(bar().dataset.kind).toBe("article");
   expect(bar().querySelector('[data-key="__title"]').textContent).toBe("[問卦] 測試");
   expect(bar().querySelector('[data-key="__subtitle"]').textContent).toBe("Gossiping");
+  expect(bar().querySelector('[data-key="__time"]')).toBeNull();
+  expect(bar().querySelector('[data-key="__byline"]')).toBeNull();
   act(() => core.setAppBar({ kind: "menu", title: "", subtitle: "", newMail: true }));
   expect(bar().querySelector('[data-key="__title"]').textContent).toBe(i18n("mobileAppBar_defaultTitle"));
   expect(bar().querySelector('[data-key="__newMail"]')).not.toBeNull();
+});
+
+// #66: an article's App Bar has three lines: title; board left, time right; author.
+test("文章三行：標題／看板與時間同一行（時間靠右）／作者帶暱稱", () => {
+  const core = makeCore({
+    appBar: {
+      kind: "article",
+      title: "[閒聊] 測試",
+      subtitle: "C_Chat",
+      time: "Thu Oct 29 23:10:05 2026",
+      byline: "wowBenny (阿 B)",
+      newMail: false,
+    },
+  });
+  render(<MobileAppBar pttchrome={core} />);
+  const sub = bar().querySelector('[data-key="__subtitle"]');
+  const time = bar().querySelector('[data-key="__time"]');
+  expect(sub.textContent).toBe("C_Chat");
+  expect(time.textContent).toBe("Thu Oct 29 23:10:05 2026");
+  expect(sub.parentElement).toBe(time.parentElement);
+  expect(bar().querySelector('[data-key="__byline"]').textContent).toBe("wowBenny (阿 B)");
 });
 
 test("沒有返回鍵（返回交給系統手勢）：首頁以外沒有任何按鈕", () => {
@@ -126,6 +149,30 @@ test("CSS 高度 ＝ MOBILE_APPBAR_PX（終端機列數扣的就是它）", () =
     render(<MobileAppBar pttchrome={makeCore()} />);
     expect(bar().getBoundingClientRect().height).toBe(MOBILE_APPBAR_PX);
     expect(getComputedStyle(bar()).position).toBe("fixed");
+  } finally {
+    style.remove();
+  }
+});
+
+// #66: three lines at the current sizes: 22 + 16 + 16 plus 5px above and below.
+test("三行放得下：App Bar 高 64px，文字區不超出", () => {
+  const style = document.createElement("style");
+  style.textContent = appBarCss;
+  document.head.appendChild(style);
+  try {
+    render(
+      <MobileAppBar
+        pttchrome={makeCore({
+          appBar: { kind: "article", title: "t", subtitle: "b", time: "x", byline: "a (n)", newMail: false },
+        })}
+      />,
+    );
+    expect(MOBILE_APPBAR_PX).toBe(64);
+    const box = bar().getBoundingClientRect();
+    const text = bar().querySelector(".mobileAppBarText").getBoundingClientRect();
+    expect(text.height).toBe(54);
+    expect(text.top).toBeGreaterThanOrEqual(box.top);
+    expect(text.bottom).toBeLessThanOrEqual(box.bottom);
   } finally {
     style.remove();
   }

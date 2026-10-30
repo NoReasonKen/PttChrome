@@ -24,7 +24,7 @@ body.stackHoldHome #homeDashboard {
 }
 
 .homeDashboard[data-mobile] {
-  top: calc(48px + var(--safe-top, 0px));
+  top: calc(64px + var(--safe-top, 0px));
   bottom: calc(48px + var(--safe-bottom, 0px));
 }
 

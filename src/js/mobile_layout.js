@@ -69,7 +69,7 @@ export const MOBILE_TOOLBAR_PX = 48;
 // 頂部 App Bar（components/MobileAppBar）的高度（px）。同樣**常駐**（手機模式下每個畫面
 // 都有）⇒ 列數從兩條 bar 中間的高度算，畫面切換不重送 NAWS。必須與 MobileAppBar.css 的
 // .mobileAppBar height 一致（守護 tests/unit/mobile_app_bar.test.jsx）。
-export const MOBILE_APPBAR_PX = 48;
+export const MOBILE_APPBAR_PX = 64;
 
 // 手機模式下終端機可用的高度（決定列數）：視窗高扣掉兩條常駐 bar。軟鍵盤／按鍵面板
 // 是暫態，不在這裡扣（它們只改位置，見 term_size.termLayoutOffsets 的 inset）。

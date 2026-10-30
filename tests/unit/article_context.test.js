@@ -23,7 +23,32 @@ describe("articleContextFromScreen（每幀：設定／清空／沿用）", () =
         "標題  [閒聊] 測試",
         top
       )
-    ).toEqual({ author: "wowbenny", board: "C_Chat", title: "[閒聊] 測試" });
+    ).toEqual({ author: "wowbenny", board: "C_Chat", title: "[閒聊] 測試", byline: "wowBenny (nick)", time: null });
+  });
+
+  // #66: the App Bar's third line (ID with nickname, original case) and the time
+  // exactly as the header shows it, from the rows after the title.
+  test("檔頭的暱稱與時間（App Bar 用）：作者原樣含暱稱、時間原樣；轉信列不影響", () => {
+    expect(
+      articleContextFromScreen(
+        " 作者  wowBenny (阿 B)                                 看板  C_Chat ",
+        " 標題  [閒聊] 測試",
+        top,
+        [" 時間  Thu Oct 29 23:10:05 2026", " 轉信  ptt.cc"]
+      )
+    ).toEqual({
+      author: "wowbenny",
+      board: "C_Chat",
+      title: "[閒聊] 測試",
+      byline: "wowBenny (阿 B)",
+      time: "Thu Oct 29 23:10:05 2026"
+    });
+    // 開燈的純文字模式（冒號）與站內信（沒有看板欄）。
+    expect(
+      articleContextFromScreen("作者: someone (暱稱) 看板: Test", "標題: x", top, ["時間: Wed Aug 12 00:19:48 2026"])
+    ).toMatchObject({ byline: "someone (暱稱)", time: "Wed Aug 12 00:19:48 2026" });
+    expect(articleContextFromScreen("作者  someone (暱稱)", "標題  信", top, ["時間  Wed Aug 12 00:19:48 2026"]))
+      .toMatchObject({ board: null, byline: "someone (暱稱)" });
   });
 
   test("沒有檔頭的文章首頁（系統公告）→ 全部清空，不可沿用上一篇", () => {
@@ -33,7 +58,7 @@ describe("articleContextFromScreen（每幀：設定／清空／沿用）", () =
         "   請各位使用者別把站內信箱拿來當熱門看板永久備份空間超收上千或上萬封文件，",
         top
       )
-    ).toEqual({ author: null, board: null, title: null });
+    ).toEqual({ author: null, board: null, title: null, byline: null, time: null });
   });
 
   test("非首頁沒有檔頭 → 沿用（null）", () => {
@@ -51,7 +76,7 @@ describe("articleContextFromScreen（每幀：設定／清空／沿用）", () =
         rowIndexStart: null,
         rowsUnknown: true
       })
-    ).toEqual({ author: null, board: null, title: null });
+    ).toEqual({ author: null, board: null, title: null, byline: null, time: null });
     expect(
       articleContextFromScreen("動畫", "", {
         pageIndex: 2,
