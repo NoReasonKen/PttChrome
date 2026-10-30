@@ -122,14 +122,20 @@ async function rotate(page, viewport) {
   expect(await page.evaluate(() => window.__app.buf.pageLines.length)).toBeGreaterThan(200);
 }
 
+// The collapsed body header already puts row 3 at the top, so wait for the
+// scroll itself rather than for a line index past the first rows.
+async function scrollIntoArticle(page) {
+  await page.locator('.main').hover();
+  await page.mouse.wheel(0, 600);
+  await expect.poll(() => page.evaluate(() => window.__app.view.mainDisplay.scrollTop)).toBeGreaterThan(0);
+}
+
 for (const imageProfile of ['cache', 'slow']) {
   test(`article rotation preserves content and its reading anchor with ${imageProfile} images`, async ({ page }, testInfo) => {
     await openArticle(page, { imageProfile });
     await rotate(page, PORTRAIT);
     await waitPreviewsSettled(page);
-    await page.locator('.main').hover();
-    await page.mouse.wheel(0, 600);
-    await expect.poll(() => page.evaluate(() => window.__app.view.currentLineIndex())).toBeGreaterThan(1);
+    await scrollIntoArticle(page);
     const anchor = await page.evaluate(() => window.__app.view.currentLineIndex());
     const count = await page.evaluate(() => window.__app.buf.pageLines.length);
     await rotate(page, LANDSCAPE);
@@ -145,9 +151,7 @@ for (const imageProfile of ['cache', 'slow']) {
 test('a viewport change with unchanged terminal rows restores locally without reopening PTT', async ({ page }) => {
   await openArticle(page);
   await waitPreviewsSettled(page);
-  await page.locator('.main').hover();
-  await page.mouse.wheel(0, 600);
-  await expect.poll(() => page.evaluate(() => window.__app.view.currentLineIndex())).toBeGreaterThan(1);
+  await scrollIntoArticle(page);
   const before = await page.evaluate(() => ({
     anchor: window.__app.view.currentLineIndex(),
     commands: window.__rotation.commands.length,
