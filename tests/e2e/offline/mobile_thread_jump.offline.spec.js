@@ -4,7 +4,7 @@
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { revealArticleDrawer } = require('../helpers/article_gestures');
-const { THREAD, bootThreadBoard, listActive, watchScreen, stopWatching, sent, server } = require('../helpers/thread_jump');
+const { THREAD, NEAR_REPLY_BOARD, bootThreadBoard, listActive, watchScreen, stopWatching, sent, server } = require('../helpers/thread_jump');
 
 const body = num => `Body of article ${num} by`;
 
@@ -16,7 +16,7 @@ async function jump(page, key) {
 async function landedOn(page, num) {
   await expect.poll(() => page.locator('.main').first().innerText()).toContain(body(num));
   await expect.poll(async () => (await server(page)).surface).toBe('article');
-  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle && !window.__app.threadJump.active)).toBe(true);
 }
 
 // From the tap until the target shows, the reader sees the source article
@@ -44,6 +44,22 @@ for (const [key, target] of [['[', 40], ['=', 1], [']', 1150]]) {
     expect(await server(page)).toMatchObject({ open: target, filter: null, cursor: target });
   });
 }
+
+test('a first-in-thread jump that PTT lands on a reply goes on to the original', async ({ page }) => {
+  await bootThreadBoard(page, { open: 1150, thread: NEAR_REPLY_BOARD });
+  await watchScreen(page);
+  await jump(page, '=');
+  await landedOn(page, 1);
+  expectHiddenRoute(await stopWatching(page), 1150, 1);
+  expect(await server(page)).toMatchObject({ open: 1, filter: null, cursor: 1 });
+});
+
+test('a first-in-thread jump that PTT lands on the original takes one round trip', async ({ page }) => {
+  await bootThreadBoard(page, { open: 40 });
+  await jump(page, '=');
+  await landedOn(page, 1);
+  expect(await sent(page)).toEqual(['=\f']);
+});
 
 test('Back from a far target returns to the full article list on the target', async ({ page }) => {
   await bootThreadBoard(page, { open: 600 });
@@ -90,4 +106,24 @@ test('a next-in-thread jump with no later article returns to the article list', 
   await expect.poll(() => server(page)).toMatchObject({ surface: 'list', filter: null, cursor: 1150 });
   await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
   await expect.poll(() => page.locator('.main').first().innerText()).toContain('dave');
+});
+
+// The article slides away over the list it was opened from, as on Back; the
+// native list never shows on the way.
+test('a next-in-thread jump with no later article slides back to the easy-reading list', async ({ page }) => {
+  await bootThreadBoard(page, { open: 1150, fromList: true });
+  await watchScreen(page);
+  await jump(page, ']');
+  await listActive(page);
+  await expect.poll(() => page.evaluate(() => window.__app.listSession._selectedNum)).toBe(1150);
+  await expect(page.locator('.main').first().locator('.listCard[data-list-author="dave"]')).toBeVisible();
+  const seen = await stopWatching(page);
+  const real = seen.findIndex(entry => entry.cards && !entry.layer);
+  expect(real, JSON.stringify(seen)).toBeGreaterThan(0);
+  const route = seen.slice(0, real);
+  expect(route.some(entry => entry.layer === 'articleList'), JSON.stringify(seen)).toBe(true);
+  for (const entry of route) {
+    expect(entry.layer === 'articleList' || entry.screen.includes(body(1150)), JSON.stringify(seen)).toBe(true);
+  }
+  expect(await server(page)).toMatchObject({ surface: 'list', filter: null });
 });

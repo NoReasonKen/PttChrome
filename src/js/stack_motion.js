@@ -31,7 +31,12 @@ export function createUnderlay(core, layer, title) {
 
 // The real screen and its title bar, raised over the underlay to slide.
 export function holdSurfaces(core) {
-  const surfaces = [core.view.mainDisplay, document.getElementById('mobileAppBar')].filter(Boolean).map(node => ({
+  return raiseSurfaces([core.view.mainDisplay, document.getElementById('mobileAppBar')]);
+}
+
+// `nodes`, raised over the underlay to slide.
+export function raiseSurfaces(nodes) {
+  const surfaces = nodes.filter(Boolean).map(node => ({
     node, translate: node.style.translate, transition: node.style.transition, zIndex: node.style.zIndex
   }));
   for (const { node } of surfaces) {

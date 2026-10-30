@@ -18,11 +18,17 @@ const FAR_BOARD = [
   { num: 1150, author: 'dave', title: 'Re: ' + THREAD, date: '11/30' }
 ];
 
-// Boot easy reading on article `open` of a 1200-article board 'Test'.
+// The same thread with a reply 30 records before its last one: from there,
+// PTT's first-in-thread jump lands on that reply, the nearest reply it passes
+// with the original beyond its range.
+const NEAR_REPLY_BOARD = [...FAR_BOARD, { num: 1120, author: 'erin', title: 'Re: ' + THREAD, date: '11/29' }];
+
+// Boot easy reading on article `open` of a 1200-article board 'Test', whose
+// thread articles are `thread`.
 // `delay`: how long the server takes to answer, so intermediate states last.
 // `fromList`: start on the article list, the cursor on `open`, and open it
 // from there with article-list easy reading, so the list is its lower page.
-async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, fromList = false } = {}) {
+async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, fromList = false, thread = FAR_BOARD } = {}) {
   await bootOffline(page, ptt, {});
   await ptt.applyPrefs(page, {
     enableEasyReading: true, enableEasyReadingList: fromList, articleHorizontalGestures: true
@@ -144,7 +150,7 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
     };
     window.__threadServer = { state, frame };
     app.onData(frame());
-  }, { thread: FAR_BOARD, size, open, delay, fromList });
+  }, { thread, size, open, delay, fromList });
   if (fromList) {
     await listActive(page);
     await ptt.sendKey(page, 'Enter');
@@ -170,23 +176,34 @@ async function watchScreen(page) {
     const sample = () => {
       const main = document.querySelector('.main');
       const box = main?.getBoundingClientRect();
+      // A layer revealed under a sliding page is inert, which hit testing
+      // passes through; it still covers what lies below it.
+      const inert = [...document.querySelectorAll('[data-stack-layer][inert]')];
+      inert.forEach(el => { el.inert = false; });
       const top = box && document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      inert.forEach(el => { el.inert = true; });
       // The drawer closing over the screen is not the screen.
       if (top?.closest('[data-article-drawer]')) return requestAnimationFrame(sample);
       const entry = {
         title: document.querySelector('#mobileAppBar .mobileAppBarTitle')?.textContent || '',
         busy: !!document.querySelector('[data-key="__busy"]'),
-        screen: (top?.closest('.main')?.innerText || '').slice(0, 400)
+        screen: (top?.closest('.main')?.innerText || '').slice(0, 400),
+        // A live layer of the page stack, or the real screen.
+        layer: top?.closest('[data-stack-layer]')?.dataset.stackLayer || null,
+        cards: !!top?.closest('.main:not([data-stack-layer])')?.querySelector('.listCard')
       };
       const last = seen[seen.length - 1];
-      if (!last || last.title !== entry.title || last.busy !== entry.busy || last.screen !== entry.screen) seen.push(entry);
+      if (!last || ['title', 'busy', 'screen', 'layer', 'cards'].some(key => last[key] !== entry[key])) seen.push(entry);
       if (!window.__threadSeenStop) requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
   });
 }
 
+// Stops after the next two frames, so the frame that shows the last change
+// is sampled.
 async function stopWatching(page) {
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   return page.evaluate(() => {
     window.__threadSeenStop = true;
     return window.__threadSeen;
@@ -196,4 +213,4 @@ async function stopWatching(page) {
 const sent = page => page.evaluate(() => window.__threadSent);
 const server = page => page.evaluate(() => ({ ...window.__threadServer.state, open: window.__threadServer.state.open.num }));
 
-module.exports = { THREAD, bootThreadBoard, listActive, watchScreen, stopWatching, sent, server };
+module.exports = { THREAD, NEAR_REPLY_BOARD, bootThreadBoard, listActive, watchScreen, stopWatching, sent, server };

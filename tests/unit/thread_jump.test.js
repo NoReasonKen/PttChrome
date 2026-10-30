@@ -43,6 +43,14 @@ test('the redrawn answer tells a landed jump from the same article shown again',
   expect(threadAnswer(articleFrame({ author: 'someone', title: '[活俠] 日本V或主播直播' }), source)).toBe('landed');
 });
 
+test('a first-in-thread jump that landed on a reply or forward has not reached the original', () => {
+  const other = { author: 'someone', time: 'Fri Oct  9 01:02:03 2026' };
+  expect(threadAnswer(articleFrame({ ...other, title: 'Re: [活俠] 日本V或主播直播' }), source, '=')).toBe('reply');
+  expect(threadAnswer(articleFrame({ ...other, title: 'Fw: [活俠] 日本V或主播直播' }), source, '=')).toBe('reply');
+  expect(threadAnswer(articleFrame({ ...other, title: '[活俠] 日本V或主播直播' }), source, '=')).toBe('landed');
+  expect(threadAnswer(articleFrame({ ...other, title: 'Re: [活俠] 日本V或主播直播' }), source, '[')).toBe('landed');
+});
+
 test('the article list is the answer of a next-in-thread jump that found nothing', () => {
   expect(threadAnswer(listFrame([row(1)], 0), source)).toBe('list');
 });

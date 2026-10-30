@@ -1,14 +1,18 @@
 // Far same-thread jumps from an article (#65). PTT's thread jump scans at most
 // THREAD_SEARCH_RANGE (500) records from the article being read and treats a
 // target beyond that as missing: `[` and `=` show the same article again, `]`
-// returns to the article list. The same-thread search narrows the list to the
-// thread, where the target is always in range.
+// returns to the article list, and `=` stops on the earliest reply it passed.
+// The same-thread search narrows the list to the thread, where the target is
+// always in range.
 import { articleContextFromScreen, pageArticleNums } from './comment_parse';
 import { searchResultIdentity } from './search_result_anchor';
 import { parseStatusRow } from './string_util';
 import { SLOW_STEP_BUDGET } from './aid_navigation';
 import { isBoardArticleList, isSearchResultsFrame, searchResultsLanded } from './search_results_screen';
 import { StackArticleLayer } from './stack_article_layer';
+import { createUnderlay, raiseSurfaces, releaseSurfaces, paintSurfaces, slideDuration } from './stack_motion';
+import { STACK_NOTICE_MS } from './stack_layer';
+import { PAGE } from './page_stack';
 import { EMPTY_TOOLBAR_CONTEXT } from './mobile_toolbar';
 import { recordFor } from './reading_record';
 import { i18n } from './i18n';
@@ -20,21 +24,26 @@ export function threadJumpKey(key) {
   return KEYS[key] || null;
 }
 
-// The answer to a thread key followed by a redraw, read on its frame. `source`
-// is the article the jump started from: { author, title, time }.
+// PTT's subject(): a reply or forward of the thread's original.
+const REPLY_TITLE = /^(?:re|fw):/i;
+
+// The answer to thread key `key` followed by a redraw, read on its frame.
+// `source` is the article the jump started from: { author, title, time }.
 //   'landed': another article, so the jump landed;
+//   'reply':  a first-in-thread jump on a reply: PTT falls back to the
+//             earliest reply it passed when the original lies beyond its range;
 //   'same':   the source again, so PTT found nothing within its range;
 //   'list':   the article list, the same for a next-in-thread jump;
 //   null:     not an answer yet.
-export function threadAnswer(facts, source) {
+export function threadAnswer(facts, source, key) {
   if (facts.kind === 'clean-list') return 'list';
   const rows = facts.rowTexts;
   const status = parseStatusRow(rows[facts.rows - 1] || '');
   if (facts.kind !== 'article' && !status) return null;
   const shown = articleContextFromScreen(rows[0], rows[1], status, rows.slice(2, 4));
   if (!shown?.title) return 'landed';
-  return shown.author === source.author && shown.title === source.title && shown.time === source.time
-    ? 'same' : 'landed';
+  if (shown.author === source.author && shown.title === source.title && shown.time === source.time) return 'same';
+  return key === '=' && REPLY_TITLE.test(shown.title) ? 'reply' : 'landed';
 }
 
 const rowNums = facts => pageArticleNums(facts.rowTexts, facts.curY).slice(3, facts.rows - 1);
@@ -62,6 +71,8 @@ const MAX_RESULT_PAGES = 10;
 const LIST_BACK = '\x1b[D';
 const PAGE_UP = '\x1b[5~';
 
+const MODAL_SOURCE = 'threadJump';
+
 const lastRow = facts => facts.rowTexts[facts.rows - 1] || '';
 const articleShown = facts => facts.kind === 'article' || !!parseStatusRow(lastRow(facts));
 const cursorText = facts => facts.rowTexts[facts.curY] || '';
@@ -77,6 +88,7 @@ export class ThreadJump {
     this.core = core;
     this.active = false;
     this.cover = null;
+    this.slide = null;
   }
 
   // Takes `key` when it is a same-thread key and the article on screen can be
@@ -98,7 +110,7 @@ export class ThreadJump {
       keys: k,
       kind: 'thread-jump',
       expect: (snapshot, facts) => {
-        const answer = threadAnswer(facts, source);
+        const answer = threadAnswer(facts, source, k);
         return answer && { answer, facts };
       },
       onDone: ({ answer, facts }) => {
@@ -222,9 +234,53 @@ export class ThreadJump {
   }
 
   _finishAtList() {
+    if (this._slideToList()) return;
     this.active = false;
     recordFor(this.core).releaseExternal();
     this._end();
+  }
+
+  // Opened from the easy-reading list, the source slides away over that list
+  // as on Back, and the list takes over once its session presents it again.
+  _slideToList() {
+    const core = this.core;
+    const stack = core.articleGestures?.stack;
+    const layer = this.cover && stack?.revealable();
+    if (!layer) return false;
+    const underlay = createUnderlay(core, layer, stack.title);
+    const surfaces = raiseSurfaces([this.cover.el, document.getElementById('mobileAppBar')]);
+    const duration = slideDuration();
+    this.slide = { underlay, surfaces, timer: null };
+    for (const { node } of surfaces) node.style.transition = `translate ${duration}ms ease-out`;
+    paintSurfaces(surfaces, window.innerWidth);
+    this.slide.timer = setTimeout(() => {
+      this.slide.timer = null;
+      stack.begin({
+        level: PAGE.ARTICLE,
+        // PTT already shows the list: the parked session presents it.
+        send: () => {
+          this.active = false;
+          core.holdBusy?.(false);
+          core.setModalOpen(MODAL_SOURCE, true);
+          recordFor(core).releaseExternal();
+          return true;
+        },
+        finish: () => this._end(),
+        cancel: () => this._end(),
+        hint: () => core.view.flashListHint?.(i18n('stack_handoffTimeout'), STACK_NOTICE_MS)
+      });
+    }, duration);
+    return true;
+  }
+
+  _removeSlide() {
+    const slide = this.slide;
+    if (!slide) return;
+    this.slide = null;
+    clearTimeout(slide.timer);
+    releaseSurfaces(slide.surfaces);
+    slide.underlay.remove();
+    this.core.setModalOpen(MODAL_SOURCE, false);
   }
 
   _fail() {
@@ -247,6 +303,7 @@ export class ThreadJump {
   _end() {
     const core = this.core;
     this.active = false;
+    this._removeSlide();
     this.cover?.destroy();
     this.cover = null;
     core.holdBusy?.(false);
