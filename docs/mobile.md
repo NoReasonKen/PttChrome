@@ -360,15 +360,20 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
 - 「目前這篇」（作者／看板／標題）只准成組寫（`term_view._setArticleContext`）。逐幀規則 `comment_parse.articleContextFromScreen`：
   有檔頭 ⇒ 設；首頁（`第 01~`／舊式狀態列第 1 頁）卻無檔頭（進站系統公告等）⇒ 清空；其餘沿用。離開文章 ⇒ App 的 screenSettled
   依 `shouldClearArticleContextOnSettle` 整組清空（例外：functionMode／跳行修補／pageState 5）。守護 `tests/unit/article_context.test.js`。
-- Articles without a header (#77): an author can remove the header rows, so the first page starts with the body. When
-  the app opened the article from a list row, that row is its identity (`comment_parse.articleContextFromListRow`:
-  title with the Re:/Fw: its mark stands for, the board, the author ID as byline, no time). The opens that know their
-  row hand it over once the article shows (`term_view.adoptListRowContext`): the easy-reading list, AID and number
-  opens (`aid_navigation._enqueueOpen`, cursor row), and far same-thread jumps (`thread_jump._open`). The same first
-  page drawn again keeps it (`_rowContextTop`, its top rows); a header or another headerless first page replaces it.
-  With no known source (in-article keys PTT answers directly, native list opens) the App Bar keeps its default
-  title. Guarded by `tests/e2e/offline/mobile_headerless_article.offline.spec.js`.
   debug 錄製有 `article.context`／`appBar` log（起點補一筆、之後只記變動；info 字串照樣 redact）。
+- Articles without a header (#77): an author can remove the header rows, so the first page starts with the body. Its
+  list row is its identity (`comment_parse.articleContextFromListRow`: title with the Re:/Fw: its mark stands for, the
+  board, the author ID as byline, no time), handed over once the article shows (`term_view.adoptListRowContext`). The
+  same first page drawn again keeps it (`_rowContextTop`, its top rows); a header or another headerless first page
+  replaces it.
+  - Opens that know their row pass it: the easy-reading list, AID and number opens (`aid_navigation._enqueueOpen`,
+    cursor row), and far same-thread jumps (`HiddenArticleRoute._open`).
+  - Otherwise (keys PTT answers directly, native list opens), `headerless_reopen.js` reads it out of sight: on an
+    easy-reading first page with no header and no identity, after a screen on a board, it covers the article, goes
+    back to the list (PTT keeps the cursor on the article being read), reads the cursor row and opens the article
+    again: two round trips, each first page once (`reopenStep`). With no board before it (a notice after login) the
+    App Bar keeps its default title.
+  - Guarded by `tests/e2e/offline/mobile_headerless_article.offline.spec.js` and `tests/unit/headerless_reopen.test.js`.
 - **無返回鍵**（使用者定案）。AID 跳文的「返回原文」不屬 App Bar：是浮在 App Bar 正下方置中的 `components/AidBackButton`（桌機共用，見 `docs/easy-reading.md`「返回原文」UI）；**不可放底部**（會被工具列蓋掉，回歸守 `mobile_app_bar.offline.spec.js`）。事件規則同工具列（mousedown preventDefault＋stopPropagation）。z-index 150（低於 Mantine overlay 200）。
 - **點標題捲回頂端**（pref `mobileAppBarScrollTop`，預設開）：`app_bar_scroll_top.scrollContentToTop`，只綁在標題塊
   （新信徽章、收件匣不算）。捲動對象：首頁儀表板開著 ⇒ 它的容器；卡片列表視口在 DOM 上 ⇒ `screen.scrollListTo(0)`

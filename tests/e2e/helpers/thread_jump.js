@@ -28,11 +28,13 @@ const NEAR_REPLY_BOARD = [...FAR_BOARD, { num: 1120, author: 'erin', title: 'Re:
 // `delay`: how long the server takes to answer, so intermediate states last.
 // `fromList`: start on the article list, the cursor on `open`, and open it
 // from there with article-list easy reading, so the list is its lower page.
-async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, fromList = false, thread = FAR_BOARD } = {}) {
+// `nativeList`: the same from the native list, article-list easy reading off.
+async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, fromList = false, nativeList = false, thread = FAR_BOARD } = {}) {
   await bootOffline(page, ptt, {});
   await ptt.applyPrefs(page, {
     enableEasyReading: true, enableEasyReadingList: fromList, articleHorizontalGestures: true
   });
+  const onList = fromList || nativeList;
   await page.evaluate(({ thread, size, open, delay, fromList }) => {
     const app = window.__app;
     const encode = text => [...text].map(ch => {
@@ -152,9 +154,10 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
     };
     window.__threadServer = { state, frame };
     app.onData(frame());
-  }, { thread, size, open, delay, fromList });
-  if (fromList) {
-    await listActive(page);
+  }, { thread, size, open, delay, fromList: onList });
+  if (onList) {
+    if (fromList) await listActive(page);
+    else await waitScreenSettled(page, { 0: '看板《Test》' });
     await ptt.sendKey(page, 'Enter');
     await expect.poll(() => page.locator('.main').first().innerText()).toContain(`Body of article ${open} by`);
     await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
@@ -162,7 +165,8 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
     await waitScreenSettled(page, thread.find(a => a.num === open)?.headerless ? { 0: `Body of article ${open} by` } : { 2: '#' + open });
     await page.evaluate(() => window.__app.easyReading.enterEasyReading());
   }
-  await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
+  // The real screen: a cover may still be up over it.
+  await expect(page.locator('.main:not([data-stack-layer])')).toHaveClass(/articleHorizontalGestures/);
 }
 
 const listActive = page => page.waitForFunction(() => {

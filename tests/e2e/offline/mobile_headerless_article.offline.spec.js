@@ -5,7 +5,7 @@ const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { beginArticleTouch, revealArticleDrawer } = require('../helpers/article_gestures');
 const { waitRectStable } = require('../helpers/layout');
-const { THREAD, FAR_BOARD, bootThreadBoard, listActive } = require('../helpers/thread_jump');
+const { THREAD, FAR_BOARD, bootThreadBoard, listActive, watchScreen, stopWatching, sent, server } = require('../helpers/thread_jump');
 
 const HEADERLESS = FAR_BOARD.map(article => article.num === 600 ? { ...article, headerless: true } : article);
 const MAIN = '.main:not([data-stack-layer])';
@@ -58,17 +58,50 @@ test('an article without a header and the next article never show each other\'s 
   await expect.poll(() => bar(page)).toEqual(CAROL);
 });
 
-// PTT moves to the next article in the thread without showing a list: the
-// first article's row is not the second one's identity.
-test('a next-in-thread move from one article without a header to another never keeps the first one\'s identity', async ({ page }) => {
-  const thread = [...HEADERLESS, { num: 610, author: 'dan', title: 'Re: ' + THREAD, date: '10/21', headerless: true }];
-  await bootThreadBoard(page, { open: 600, fromList: true, thread });
-  await expect.poll(() => bar(page)).toEqual(CAROL);
+const DAN = { title: 'Re: [Talk] Far topic', subtitle: 'Test', byline: 'dan' };
+const withDan = thread => [...thread, { num: 610, author: 'dan', title: 'Re: ' + THREAD, date: '10/21', headerless: true }];
+
+async function nextInThread(page) {
   await revealArticleDrawer(page);
   await page.locator('[data-article-shortcut="]"]').tap();
   await expect(page.locator('.main').first()).toContainText('Body of article 610 by dan');
-  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
-  await expect.poll(() => bar(page)).toEqual({ title: expect.stringMatching(DEFAULT_TITLE), subtitle: '', byline: '' });
+}
+
+const settledOn = async (page, num) => {
+  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle && !window.__app.headerlessReopen.active)).toBe(true);
+  expect(await server(page)).toMatchObject({ surface: 'article', open: num, filter: null });
+};
+
+// PTT moves to the next article in the thread without showing a list: the
+// first article's row is not the second one's identity, which comes from a
+// return to the list out of sight.
+test('a next-in-thread move from one article without a header to another shows the second one\'s row', async ({ page }) => {
+  await bootThreadBoard(page, { open: 600, fromList: true, thread: withDan(HEADERLESS) });
+  await expect.poll(() => bar(page)).toEqual(CAROL);
+  await nextInThread(page);
+  await expect.poll(() => bar(page)).toEqual(DAN);
+  await settledOn(page, 610);
+});
+
+// The reader sees the landed article throughout: never the list on the way.
+test('an article without a header reached by a key PTT answers directly takes its row out of sight', async ({ page }) => {
+  await bootThreadBoard(page, { open: 600, thread: withDan(FAR_BOARD) });
+  await watchScreen(page);
+  await nextInThread(page);
+  await expect.poll(() => bar(page)).toEqual(DAN);
+  await settledOn(page, 610);
+  const seen = await stopWatching(page);
+  for (const entry of seen) {
+    expect(entry.screen.includes('Body of article 600 by') || entry.screen.includes('Body of article 610 by'), JSON.stringify(seen)).toBe(true);
+    expect(entry.cards, JSON.stringify(seen)).toBe(false);
+  }
+  expect(await sent(page)).toEqual([']\f', '\x1b[D\f', '\r\f']);
+});
+
+test('an article without a header opened from the native list takes its row out of sight', async ({ page }) => {
+  await bootThreadBoard(page, { open: 600, nativeList: true, thread: HEADERLESS });
+  await expect.poll(() => bar(page)).toEqual(CAROL);
+  await settledOn(page, 600);
 });
 
 // A far same-thread jump lands through the full list (#65): the target's row.
@@ -82,7 +115,8 @@ test('a far same-thread jump that lands on an article without a header shows its
   await expect.poll(() => bar(page)).toEqual({ title: 'Re: [Talk] Far topic', subtitle: 'Test', byline: 'dave' });
 });
 
-test('an article without a header reached with no known source keeps the default title', async ({ page }) => {
+// Nothing before it was on a board (a notice after login, for example).
+test('an article without a header with no board before it keeps the default title', async ({ page }) => {
   await bootThreadBoard(page, { open: 600, thread: HEADERLESS });
   await expect(page.locator('.main').first()).toContainText('Body of article 600 by carol');
   await expect.poll(() => bar(page)).toEqual({ title: expect.stringMatching(DEFAULT_TITLE), subtitle: '', byline: '' });

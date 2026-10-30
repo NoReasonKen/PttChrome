@@ -38,7 +38,7 @@ function makeReader() {
     reconnectResume: { capture: vi.fn() },
     listSession: { disable: vi.fn() }, boardListSession: { disable: vi.fn() },
     aidNavigation: { active: false, reset: vi.fn() },
-    articleShortcutSearch: { reset: vi.fn() }, threadJump: { reset: vi.fn() }, helpMenu: { reset: vi.fn() },
+    articleShortcutSearch: { reset: vi.fn() }, threadJump: { reset: vi.fn() }, headerlessReopen: { reset: vi.fn() }, helpMenu: { reset: vi.fn() },
     boardNoteSkip: { noteRecv: vi.fn(), reset: vi.fn() },
     longPush: { busy: false, disarm: vi.fn() }, deepLinkController: { reset: vi.fn() },
     messageInbox: { noteData: vi.fn(), reset: vi.fn() },

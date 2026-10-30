@@ -14,6 +14,7 @@ import { CommandQueue } from './command_queue';
 import { AidNavigation } from './aid_navigation';
 import { ArticleShortcutSearch } from './article_shortcut_search';
 import { ThreadJump } from './thread_jump';
+import { HeaderlessReopen } from './headerless_reopen';
 import { needsAidBoardChoice } from './aid_board_choice';
 import { ScreenRefresh } from './screen_refresh';
 import { ReadingRecord } from './reading_record';
@@ -210,6 +211,8 @@ export const App = function() {
   this.aidNavigation = new AidNavigation(this, this.view, this.buf, this.commandQueue);
   this.articleShortcutSearch = new ArticleShortcutSearch(this);
   this.threadJump = new ThreadJump(this);
+  // After the thread jump: its landing settles first.
+  this.headerlessReopen = new HeaderlessReopen(this);
   // 長推文一鍵發送（右鍵選單）：把一大段話切成 N 則，逐則跑完 PTT 的推文互動。
   // 與 aidNavigation 共用同一條 CommandQueue（一次只有一個鍵在線上），並同樣用
   // `active` 擋住使用者輸入。
@@ -662,6 +665,7 @@ App.prototype.onClose = function() {
   this.aidNavigation.reset();
   this.articleShortcutSearch.reset();
   this.threadJump.reset();
+  this.headerlessReopen.reset();
   this.boardNoteSkip.reset();
   this.helpMenu.reset();
   // 長推文的探路成果同理：錨點是這條連線的列表游標（pttbbs getkeep），斷線就失效。

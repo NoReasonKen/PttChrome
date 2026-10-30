@@ -23,6 +23,7 @@ export function serializedOpHint(core) {
   if (core.listResize?.active) return i18n('articleResize_busy');
   if (core.articleShortcutSearch?.active) return i18n('articleShortcutSearch_busy');
   if (core.threadJump?.active) return i18n('threadJump_busy');
+  if (core.headerlessReopen?.active) return i18n('headerlessReopen_busy');
   if (core.aidNavigation && core.aidNavigation.active)
     return core.aidNavigation.opHint || 'AID 跳文中，請稍候…';
   // 提示字隨階段不同（探路／送出），由 session 自己給——active 為真時一定有值。

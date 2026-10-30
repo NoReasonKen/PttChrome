@@ -7,13 +7,11 @@
 import { articleContextFromListRow, articleContextFromScreen, pageArticleNums } from './comment_parse';
 import { searchResultIdentity } from './search_result_anchor';
 import { parseStatusRow } from './string_util';
-import { SLOW_STEP_BUDGET } from './aid_navigation';
+import { HiddenArticleRoute } from './hidden_article_route';
 import { isBoardArticleList, isSearchResultsFrame, searchResultsLanded } from './search_results_screen';
-import { StackArticleLayer } from './stack_article_layer';
 import { createUnderlay, raiseSurfaces, releaseSurfaces, paintSurfaces, slideDuration } from './stack_motion';
 import { STACK_NOTICE_MS } from './stack_layer';
 import { PAGE } from './page_stack';
-import { EMPTY_TOOLBAR_CONTEXT } from './mobile_toolbar';
 import { recordFor } from './reading_record';
 import { readEffectivePrefs } from './pref_storage';
 import { i18n } from './i18n';
@@ -74,8 +72,6 @@ const PAGE_UP = '\x1b[5~';
 
 const MODAL_SOURCE = 'threadJump';
 
-const lastRow = facts => facts.rowTexts[facts.rows - 1] || '';
-const articleShown = facts => facts.kind === 'article' || !!parseStatusRow(lastRow(facts));
 const cursorText = facts => facts.rowTexts[facts.curY] || '';
 
 // One same-thread jump typed in an easy-reading article. The key goes out with
@@ -84,11 +80,9 @@ const cursorText = facts => facts.rowTexts[facts.curY] || '';
 // article list underneath, the cursor on the target, the target open. The
 // source article stays on screen under its own App Bar, with the progress bar
 // running, until the target shows; reader input waits (serializedOpHint).
-export class ThreadJump {
+export class ThreadJump extends HiddenArticleRoute {
   constructor(core) {
-    this.core = core;
-    this.active = false;
-    this.cover = null;
+    super(core, { name: 'threadJump', kind: 'thread-jump', failed: 'threadJump_failed' });
     this.slide = null;
   }
 
@@ -101,12 +95,9 @@ export class ThreadJump {
     const source = { author: view._articleAuthor, title: view._articleTitle, time: view._articleTime, board: view._articleBoard };
     if (!k || this.active || !core.commandQueue || !core.conn?.isConnected || core.buf.pageState !== 3 ||
         !source.author || !source.title || !source.time || !source.board) return false;
-    this.active = true;
-    this.held = false;
     this.key = k;
     this.source = source;
-    this.appBar = core._screenContext?.appBar || null;
-    this._cover();
+    this._begin(core._screenContext?.appBar || null);
     this._enqueue({
       keys: k,
       kind: 'thread-jump',
@@ -124,42 +115,10 @@ export class ThreadJump {
     return true;
   }
 
-  // While the source covers the screen, the toolbar and App Bar stay its own.
-  toolbarContext() {
-    if (!this.active) return null;
-    return { ...EMPTY_TOOLBAR_CONTEXT, appBar: this.appBar || EMPTY_TOOLBAR_CONTEXT.appBar, locked: true };
-  }
-
-  // Disconnection.
-  reset() {
-    if (this.active) this._end();
-  }
-
-  _enqueue(step) {
-    this.core.commandQueue.enqueue({
-      ...SLOW_STEP_BUDGET,
-      fullRepaint: true,
-      ...step,
-      onFail: () => this._fail(),
-      onFlushed: () => this._fail()
-    });
-  }
-
   _fullList(facts) {
     const board = this.source.board;
     return isBoardArticleList(facts, board) && !isSearchResultsFrame(facts, board, false) &&
       facts.curY >= 3 && facts.curY < facts.rows - 1 && facts;
-  }
-
-  // The jump continues out of sight: the sessions that would present the
-  // screens on the way are parked, as for any external navigation.
-  _hold() {
-    const core = this.core;
-    this.held = true;
-    core.holdBusy?.(true);
-    core.easyReading?._enterFunctionMode();
-    core.listSession?.beginExternalNavigation();
-    core.boardListSession?.beginExternalNavigation();
   }
 
   // The full list, the cursor on the source article.
@@ -219,24 +178,6 @@ export class ThreadJump {
     this._enqueue({ keys: select, kind: 'thread-jump-select', expect: (snapshot, facts) => this._fullList(facts), onDone: () => this._finishAtList() });
   }
 
-  // `rowContext`: the target's list row, the identity of a target without a
-  // header (#77).
-  _open(keys, rowContext = null) {
-    this._enqueue({
-      keys,
-      kind: 'thread-jump-open',
-      expect: (snapshot, facts) => articleShown(facts),
-      onDone: () => {
-        this.core.view.adoptListRowContext(rowContext);
-        // Unlock first: easy reading's paging waits for no transaction.
-        this.active = false;
-        this.core.easyReading?.ensureEnabledOnArticle(true, 'threadJump');
-        recordFor(this.core).releaseExternal();
-        this._end();
-      }
-    });
-  }
-
   _finishAtList() {
     if (this._slideToList()) return;
     this.active = false;
@@ -289,33 +230,8 @@ export class ThreadJump {
     this.core.setModalOpen(MODAL_SOURCE, false);
   }
 
-  _fail() {
-    if (!this.active) return;
-    const held = this.held;
-    this._end();
-    if (held) recordFor(this.core).releaseExternal({ listNotice: i18n('threadJump_failed') });
-    this.core.view.flashListHint?.(i18n('threadJump_failed'), 4000);
-  }
-
-  _cover() {
-    const layer = StackArticleLayer.capture(this.core.view);
-    if (!layer) return;
-    this.cover = layer;
-    layer.show(true);
-    layer.el.style.zIndex = '150';
-    for (const type of COVER_INPUT) layer.el.addEventListener(type, event => event.stopPropagation());
-  }
-
   _end() {
-    const core = this.core;
-    this.active = false;
     this._removeSlide();
-    this.cover?.destroy();
-    this.cover = null;
-    core.holdBusy?.(false);
-    core._refreshScreenContext?.();
+    super._end();
   }
 }
-
-// Input on the cover stays on it; nothing reaches the terminal.
-const COVER_INPUT = ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'click', 'contextmenu', 'dblclick'];
