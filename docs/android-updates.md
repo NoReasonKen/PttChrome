@@ -72,3 +72,26 @@ existing offline emulator fixture disables OS networking and cannot establish
 DownloadManager transfer success unchanged. A controlled native transport can be
 compiled into debug builds with an explicit loopback origin; release builds
 always compile an empty test origin and retain the fixed production source.
+
+## Controlled Android run
+
+On a machine with the Android SDK, Java 21 and a usable emulator, run through the
+shared local test queue:
+
+```bash
+scripts/when-idle.local.sh node scripts/run-update-android-e2e.mjs
+```
+
+The opt-in runner builds two debug-signed artifacts for the disposable debug
+package, with increasing versions and a fixed loopback transport. It then runs
+the connected About/bridge/DownloadManager/verification/system-installer tests.
+The test resets only that debug package, enables OS networking for DownloadManager
+and stubs the reader's PTT socket. A corrupted digest must fail without installation;
+the valid artifact must overwrite the package with the higher version code.
+Ordinary Android suites skip this spec unless those artifacts are supplied.
+Default debug APKs keep their version suffix; only the explicit loopback fixture
+build omits it so strict release identity checks remain testable.
+
+This controlled run does not cover all physical-device acceptance above. Record
+its actual outcome separately from JVM/browser results, and report an unavailable
+emulator as unavailable rather than a pass.

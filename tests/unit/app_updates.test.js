@@ -2,6 +2,7 @@ import {
   getUpdateState,
   subscribeUpdates,
   updateAction,
+  startUpdateRuntime,
 } from "../../src/js/app_updates.js";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -11,6 +12,25 @@ test("a browser without native update capabilities remains usable", async () => 
   await expect(updateAction("state")).resolves.toMatchObject({
     supported: false,
   });
+});
+
+test("ordinary browsers do not start a native update polling timer", () => {
+  const interval = vi.spyOn(globalThis, "setInterval");
+  try {
+    const stop = startUpdateRuntime({});
+    expect(interval).not.toHaveBeenCalled();
+    stop();
+  } finally {
+    interval.mockRestore();
+  }
+});
+
+test("a recreated WebView stays blocked before its first native snapshot arrives", async () => {
+  vi.stubGlobal("window", { __PTT_ANDROID__: { updateBlocking: true } });
+  vi.resetModules();
+  const restored = await import("../../src/js/app_updates.js");
+  expect(restored.updateBlocksInteraction()).toBe(true);
+  expect(restored.getUpdateState().supported).toBe(true);
 });
 
 test("a transport failure replaces a previously successful update result with an error", async () => {

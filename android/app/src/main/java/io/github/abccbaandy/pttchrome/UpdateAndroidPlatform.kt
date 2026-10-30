@@ -278,10 +278,14 @@ internal object UpdateWire {
 
     fun saved(raw: JSONObject): UpdateSaved {
         fun candidate(key: String) = raw.optJSONObject(key)?.let(::release)
+        val file = raw.optString("file").takeIf { it.isNotEmpty() }
+        require(file == null || Regex("verified-[0-9]+\\.apk").matches(file)) {
+            "Invalid retained update reference."
+        }
         return UpdateSaved(raw.optBoolean("automatic", true), raw.optLong("lastSuccess"), raw.optLong("lastFailure"),
             raw.optString("skipped").takeIf { it.isNotEmpty() }, raw.optString("error").takeIf { it.isNotEmpty() },
             candidate("candidate"), candidate("active"), raw.optLong("downloadId"), candidate("ready"),
-            raw.optString("file").takeIf { it.isNotEmpty() })
+            file)
     }
 
     fun saved(value: UpdateSaved): JSONObject = JSONObject().put("automatic", value.automatic)

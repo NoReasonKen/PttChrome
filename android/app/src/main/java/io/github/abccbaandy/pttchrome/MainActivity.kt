@@ -227,6 +227,7 @@ class MainActivity : ComponentActivity() {
             .put("versionCode", BuildConfig.VERSION_CODE)
             .put("systemLanguage", updater.systemLanguage())
             .put("updates", true)
+            .put("updateBlocking", updater.blocking())
             .put("openUpdate", intent.getBooleanExtra("open_update", false))
             .put("site", site)
             .put("restored", restoringRenderer)

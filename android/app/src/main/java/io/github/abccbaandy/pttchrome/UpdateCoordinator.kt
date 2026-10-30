@@ -50,6 +50,10 @@ internal class UpdateCoordinator(private val installed: InstalledUpdateApp,
     private var developmentPage = false
 
     init {
+        if ((saved.ready == null) != (saved.file == null)) {
+            saved.file?.let(platform::removeFile)
+            change(saved.copy(ready = null, file = null, error = "Incomplete retained update state was cleared."))
+        }
         if (saved.ready != null && saved.ready!!.versionCode <= installed.versionCode) {
             saved.file?.let(platform::removeFile)
             change(saved.copy(ready = null, file = null))
@@ -187,23 +191,38 @@ internal class UpdateCoordinator(private val installed: InstalledUpdateApp,
         }
     }
 
-    fun install(id: String?) = synchronized(lock) {
-        check(saved.active == null && !verifying) { "Wait for the download to finish." }
-        val release = saved.ready ?: error("Download and verify the APK first.")
-        val file = saved.file ?: error("The downloaded APK is unavailable.")
-        require(id == null || id == release.id) { "The selected APK is not the retained update." }
+    fun install(id: String?) {
+        val (release, file, token) = synchronized(lock) {
+            check(saved.active == null && !verifying) { "Wait for the download to finish." }
+            val release = saved.ready ?: error("Download and verify the APK first.")
+            val file = saved.file ?: error("The downloaded APK is unavailable.")
+            require(id == null || id == release.id) { "The selected APK is not the retained update." }
+            verifying = true
+            Triple(release, file, generation)
+        }
         try {
             platform.verifyRetained(file, release)
         } catch (e: Exception) {
-            platform.removeFile(file)
-            change(saved.copy(ready = null, file = null, error = message(e)))
+            synchronized(lock) {
+                if (generation == token) {
+                    verifying = false
+                    platform.removeFile(file)
+                    change(saved.copy(ready = null, file = null, error = message(e)))
+                }
+            }
             throw e
         }
+        synchronized(lock) {
+            if (generation != token) return
+            verifying = false
+        }
+        // The Android adapter awaits a main-thread installer handoff. Never hold
+        // the state monitor here: the main thread also reads the Back-key guard.
         try {
             platform.install(file, release)
-            change(saved.copy(error = null))
+            synchronized(lock) { if (generation == token) change(saved.copy(error = null)) }
         } catch (e: Exception) {
-            change(saved.copy(error = message(e)))
+            synchronized(lock) { if (generation == token) change(saved.copy(error = message(e))) }
             throw e
         }
     }

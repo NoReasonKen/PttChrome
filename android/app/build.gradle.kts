@@ -59,7 +59,7 @@ android {
         debug {
             buildConfigField("String", "UPDATE_TEST_ORIGIN", "\"$updateTestOrigin\"")
             applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
+            versionNameSuffix = if (updateTestOrigin.isEmpty()) "-debug" else ""
         }
         release {
             buildConfigField("String", "UPDATE_TEST_ORIGIN", "\"\"")

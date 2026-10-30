@@ -6,7 +6,12 @@ const initialState = {
   lastError: null, needsNativeUpdate: false, prompt: false, release: null,
   progress: { downloaded: 0, total: 0 },
 };
-let state = Object.freeze({ ...initialState });
+// Document-start native configuration keeps a recreated WebView blocked while
+// its first asynchronous request reconciles a system-owned download.
+let state = Object.freeze({ ...initialState,
+  ...(typeof window !== "undefined" && window.__PTT_ANDROID__?.updateBlocking
+    ? { supported: true, phase: "verifying" } : {}),
+});
 const listeners = new Set();
 let readingCore;
 let mutationEpoch = 0;
@@ -61,6 +66,7 @@ export function openUpdateAbout() {
 }
 
 export function startUpdateRuntime(core) {
+  if (!androidBridgeAvailable()) return () => {};
   readingCore = core;
   let stopped = false;
   let running = false;

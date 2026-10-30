@@ -127,6 +127,34 @@ class UpdateCoordinatorTest {
         assertThrows(IllegalStateException::class.java) { updater.install(release.id) }
     }
 
+    @Test fun installerHandoffDoesNotBlockTheMainThreadStateReader() {
+        val platform = TestPlatform(release)
+        val updater = updater(platform)
+        updater.check(true, false)
+        updater.download(release.id)
+        platform.transfer = UpdateTransfer("complete", 1024, 1024)
+        updater.refresh()
+        platform.beforeInstall = {
+            val finished = java.util.concurrent.CountDownLatch(1)
+            val main = Thread { updater.blocking(); finished.countDown() }
+            main.start()
+            assertTrue("State reads must not wait for installer handoff",
+                finished.await(1, java.util.concurrent.TimeUnit.SECONDS))
+            main.join()
+        }
+        updater.install(release.id)
+        assertEquals("verified-package", platform.installedFile)
+    }
+
+    @Test fun incompleteRetainedStateCannotBeOfferedAfterRecreation() {
+        val platform = TestPlatform(release)
+        platform.save(UpdateSaved(ready = release))
+        val reopened = updater(platform)
+        assertEquals("error", reopened.snapshot().phase)
+        assertNull(reopened.snapshot().release)
+        assertFalse(reopened.blocking())
+    }
+
     private fun updater(platform: TestPlatform) = UpdateCoordinator(
         InstalledUpdateApp("0.2.0", 4, "io.github.noreasonken.pttchrome", 34), platform)
 
@@ -135,6 +163,7 @@ class UpdateCoordinatorTest {
         var installedFile: String? = null
         var invalidFile = false
         var beforeRetain: (() -> Unit)? = null
+        var beforeInstall: (() -> Unit)? = null
         private var saved = UpdateSaved()
         override fun now() = 100_000_000L
         override fun load() = saved
@@ -151,7 +180,10 @@ class UpdateCoordinatorTest {
         override fun verifyRetained(file: String, release: UpdateRelease) {
             require(!invalidFile) { "The APK integrity check failed." }
         }
-        override fun install(file: String, release: UpdateRelease) { installedFile = file }
+        override fun install(file: String, release: UpdateRelease) {
+            beforeInstall?.invoke()
+            installedFile = file
+        }
         override fun notifyReady(release: UpdateRelease) {}
     }
 }
