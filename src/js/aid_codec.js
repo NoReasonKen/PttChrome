@@ -94,6 +94,22 @@ export function aidToFn(aid) {
   return (type === 0 ? "M" : "G") + "." + v1 + ".A." + hex;
 }
 
+// An article's post time from its AID, as the header's 時間 row shows it: the
+// header is ctime() in Taipei time (edit.c write_header), written on save, the
+// moment bbs.c do_post_article stamps the file name with v1. Taipei keeps UTC+8
+// with no daylight saving. A gem file (G) or anything else ⇒ null.
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const TAIPEI_OFFSET_MS = 8 * 3600 * 1000;
+export function aidPostTime(aid) {
+  const m = /^M\.(\d+)\./.exec(aidToFn(aid) || "");
+  if (!m) return null;
+  const d = new Date(parseInt(m[1], 10) * 1000 + TAIPEI_OFFSET_MS);
+  const two = n => String(n).padStart(2, "0");
+  return WEEKDAYS[d.getUTCDay()] + " " + MONTHS[d.getUTCMonth()] + " " + String(d.getUTCDate()).padStart(2, " ") +
+    " " + two(d.getUTCHours()) + ":" + two(d.getUTCMinutes()) + ":" + two(d.getUTCSeconds()) + " " + d.getUTCFullYear();
+}
+
 // https://www.ptt.cc/bbs/<Board>/M.<v1>.A.<v2>.html → { board, aid } | null。
 // 也吃 pttbbs USE_AID_URL 那種尾段直接是 AIDc、且沒有 .html 的形式（aids/bbs.c:395-417）。
 export function parseArticleUrl(href) {

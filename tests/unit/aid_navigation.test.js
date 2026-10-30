@@ -251,8 +251,9 @@ describe("AidNavigation", () => {
     expect(hints[hints.length - 1]).toContain("已跳至");
   });
 
-  // #77: an article without a header has only the row it was opened from.
-  test("the final open hands the cursor row to the view as the article's identity", () => {
+  // #77: an article without a header has only the row it was opened from, and
+  // the time its AID carries (`TZ=Asia/Taipei date` of M.1783270974).
+  test("the final open hands the cursor row and the AID's time to the view as the article's identity", () => {
     const { nav, queue, view, termBuf } = makeHarness();
     const adopted = [];
     view.adoptListRowContext = ctx => adopted.push(ctx);
@@ -265,7 +266,7 @@ describe("AidNavigation", () => {
     settle(queue, facts("clean-list", { boardName: "android", cursorRowNum: 123, curY: 10 }));
     expect(adopted).toEqual([]);
     settle(queue, facts("article"));
-    expect(adopted).toEqual([{ author: "dave", board: "Android", title: "Re: [問題] 手機", byline: "Dave", time: null }]);
+    expect(adopted).toEqual([{ author: "dave", board: "Android", title: "Re: [問題] 手機", byline: "Dave", time: "Mon Jul  6 01:02:54 2026" }]);
   });
 
   test("no board → refuses to start, nothing sent", () => {

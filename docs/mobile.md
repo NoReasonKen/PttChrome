@@ -363,16 +363,21 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
   debug 錄製有 `article.context`／`appBar` log（起點補一筆、之後只記變動；info 字串照樣 redact）。
 - Articles without a header (#77): an author can remove the header rows, so the first page starts with the body. Its
   list row is its identity (`comment_parse.articleContextFromListRow`: title with the Re:/Fw: its mark stands for, the
-  board, the author ID as byline, no time), handed over once the article shows (`term_view.adoptListRowContext`). The
-  same first page drawn again keeps it (`_rowContextTop`, its top rows); a header or another headerless first page
-  replaces it.
+  board, the author ID as byline), handed over once the article shows (`term_view.adoptListRowContext`). Its post time
+  comes from its AID (`aid_codec.aidPostTime`): the file name's timestamp is the moment the header's 時間 would have
+  been written. The same first page drawn again keeps both (`_rowContextTop`, its top rows); a header or another
+  headerless first page replaces them.
+  - A headerless first page is noticed on any frame (`term_view._headerlessTop`), not only on a settled one: easy
+    reading already running pages on within the 50 ms settle window, so a long article opened again first settles on
+    a later page.
   - Opens that know their row pass it: the easy-reading list, AID and number opens (`aid_navigation._enqueueOpen`,
-    cursor row), and far same-thread jumps (`HiddenArticleRoute._open`).
-  - Otherwise (keys PTT answers directly, native list opens), `headerless_reopen.js` reads it out of sight: on an
-    easy-reading first page with no header and no identity, after a screen on a board, it covers the article, goes
-    back to the list (PTT keeps the cursor on the article being read), reads the cursor row and opens the article
-    again: two round trips, each first page once (`reopenStep`). With no board before it (a notice after login) the
-    App Bar keeps its default title.
+    cursor row, with the time when the open had an AID), and far same-thread jumps (`HiddenArticleRoute._open`).
+  - The article's own AID line, read by easy reading (`aid_navigation.findLocalPostAid`), gives the time at no cost.
+  - Otherwise `headerless_reopen.js` reads what is missing out of sight: on a settle of a headerless article without
+    its row or time, after a screen on a board or with the row's board, it covers the article, sends `Q` (the post
+    info box gives the AID; leaving it redraws the list with the cursor on the article), reads the cursor row and
+    opens the article again at the reader's row (reading record `headerless-reopen`): three round trips, each article
+    once (`reopenStep`). With no board before it (a notice after login) the App Bar keeps its default title.
   - Guarded by `tests/e2e/offline/mobile_headerless_article.offline.spec.js` and `tests/unit/headerless_reopen.test.js`.
 - **無返回鍵**（使用者定案）。AID 跳文的「返回原文」不屬 App Bar：是浮在 App Bar 正下方置中的 `components/AidBackButton`（桌機共用，見 `docs/easy-reading.md`「返回原文」UI）；**不可放底部**（會被工具列蓋掉，回歸守 `mobile_app_bar.offline.spec.js`）。事件規則同工具列（mousedown preventDefault＋stopPropagation）。z-index 150（低於 Mantine overlay 200）。
 - **點標題捲回頂端**（pref `mobileAppBarScrollTop`，預設開）：`app_bar_scroll_top.scrollContentToTop`，只綁在標題塊

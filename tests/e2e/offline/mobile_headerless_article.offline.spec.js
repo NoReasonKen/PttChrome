@@ -1,6 +1,8 @@
 // An article whose author removed its header rows (#77) takes its identity
-// from the list row it was opened from: the App Bar shows that row's title,
-// board and author, and the page stack treats it as any other article.
+// from the list row it was opened from and its post time from its AID: the
+// App Bar shows that row's title, board and author with the time, and the page
+// stack treats it as any other article. The controlled PTT posted article
+// `num` at 1790000000 + num hours; the times below are `TZ=Asia/Taipei date`.
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { beginArticleTouch, revealArticleDrawer } = require('../helpers/article_gestures');
@@ -12,12 +14,13 @@ const MAIN = '.main:not([data-stack-layer])';
 const bar = page => page.locator('#mobileAppBar').evaluate(el => ({
   title: el.querySelector('.mobileAppBarTitle')?.textContent || '',
   subtitle: el.querySelector('.mobileAppBarSubtitle')?.textContent || '',
-  byline: el.querySelector('.mobileAppBarByline')?.textContent || ''
+  byline: el.querySelector('.mobileAppBarByline')?.textContent || '',
+  time: el.querySelector('.mobileAppBarTime')?.textContent || ''
 }));
 // The App Bar's own title (PTT in English, 批踢踢 in Chinese).
 const DEFAULT_TITLE = /^(?:PTT|批踢踢)$/;
 
-const CAROL = { title: 'Re: [Talk] Far topic', subtitle: 'Test', byline: 'carol' };
+const CAROL = { title: 'Re: [Talk] Far topic', subtitle: 'Test', byline: 'carol', time: 'Fri Oct 16 22:13:20 2026' };
 
 async function openFromList(page, author, text) {
   await listActive(page);
@@ -30,14 +33,24 @@ async function backToList(page) {
   await listActive(page);
 }
 
-test('an article without a header opened from the easy-reading list shows its list row in the App Bar', async ({ page }) => {
+test('an article without a header opened from the easy-reading list shows its list row and post time in the App Bar', async ({ page }) => {
   await bootThreadBoard(page, { open: 600, fromList: true, thread: HEADERLESS });
   await expect.poll(() => bar(page)).toEqual(CAROL);
+  await settledOn(page, 600);});
+
+// The article's own AID line gives the time: no post info box.
+test('an article without a header that ends with its AID line takes its time from it', async ({ page }) => {
+  const thread = FAR_BOARD.map(article => article.num === 600 ? { ...article, headerless: true, url: true } : article);
+  await bootThreadBoard(page, { open: 600, fromList: true, thread });
+  await expect.poll(() => bar(page)).toEqual(CAROL);
+  await settledOn(page, 600);
+  expect((await sent(page)).filter(bytes => bytes.includes('Q'))).toEqual([]);
 });
 
 test('Back from an article without a header reveals the list it was opened from', async ({ page }) => {
   await bootThreadBoard(page, { open: 600, fromList: true, thread: HEADERLESS });
   await expect.poll(() => bar(page)).toEqual(CAROL);
+  await settledOn(page, 600);
   const main = await waitRectStable(page, '.main');
   const contact = await beginArticleTouch(page, { x: 20, y: main.top + 100 });
   await contact.move({ x: page.viewportSize().width - 20, y: main.top + 100 });
@@ -50,15 +63,16 @@ test('Back from an article without a header reveals the list it was opened from'
 test('an article without a header and the next article never show each other\'s identity', async ({ page }) => {
   await bootThreadBoard(page, { open: 600, fromList: true, thread: HEADERLESS });
   await expect.poll(() => bar(page)).toEqual(CAROL);
+  await settledOn(page, 600);
   await backToList(page);
   await openFromList(page, 'filler', 'Filler 601');
-  await expect.poll(() => bar(page)).toEqual({ title: '[Talk] Filler 601', subtitle: 'Test', byline: 'filler (filler)' });
+  await expect.poll(() => bar(page)).toEqual({ title: '[Talk] Filler 601', subtitle: 'Test', byline: 'filler (filler)', time: 'Mon Sep  1 12:00:00 2025 #601' });
   await backToList(page);
   await openFromList(page, 'carol', 'Far topic');
   await expect.poll(() => bar(page)).toEqual(CAROL);
 });
 
-const DAN = { title: 'Re: [Talk] Far topic', subtitle: 'Test', byline: 'dan' };
+const DAN = { title: 'Re: [Talk] Far topic', subtitle: 'Test', byline: 'dan', time: 'Sat Oct 17 08:13:20 2026' };
 const withDan = thread => [...thread, { num: 610, author: 'dan', title: 'Re: ' + THREAD, date: '10/21', headerless: true }];
 
 async function nextInThread(page) {
@@ -78,6 +92,7 @@ const settledOn = async (page, num) => {
 test('a next-in-thread move from one article without a header to another shows the second one\'s row', async ({ page }) => {
   await bootThreadBoard(page, { open: 600, fromList: true, thread: withDan(HEADERLESS) });
   await expect.poll(() => bar(page)).toEqual(CAROL);
+  await settledOn(page, 600);
   await nextInThread(page);
   await expect.poll(() => bar(page)).toEqual(DAN);
   await settledOn(page, 610);
@@ -95,13 +110,30 @@ test('an article without a header reached by a key PTT answers directly takes it
     expect(entry.screen.includes('Body of article 600 by') || entry.screen.includes('Body of article 610 by'), JSON.stringify(seen)).toBe(true);
     expect(entry.cards, JSON.stringify(seen)).toBe(false);
   }
-  expect(await sent(page)).toEqual([']\f', '\x1b[D\f', '\r\f']);
+  expect(await sent(page)).toEqual([']\f', 'Q', ' \f', '\r\f']);
 });
 
 test('an article without a header opened from the native list takes its row out of sight', async ({ page }) => {
   await bootThreadBoard(page, { open: 600, nativeList: true, thread: HEADERLESS });
   await expect.poll(() => bar(page)).toEqual(CAROL);
   await settledOn(page, 600);
+});
+
+// Easy reading already runs when the article opens again, and on a link that
+// answers within the settle window it reads the next pages before the first
+// one settles.
+test('a long article without a header opened again from the native list takes its row each time', async ({ page }) => {
+  const thread = FAR_BOARD.map(article => article.num === 600 ? { ...article, headerless: true, lines: 60 } : article);
+  await bootThreadBoard(page, { open: 600, nativeList: true, thread, delay: 20 });
+  await expect.poll(() => bar(page)).toEqual(CAROL);
+  await settledOn(page, 600);
+  for (let round = 0; round < 3; round++) {
+    await ptt.sendKey(page, 'ArrowLeft');
+    await expect.poll(() => page.evaluate(() => window.__app.buf.pageState === 2 && window.__app.commandQueue.idle)).toBe(true);
+    await ptt.sendKey(page, 'ArrowRight');
+    await expect.poll(() => bar(page), `round ${round}`).toEqual(CAROL);
+    await settledOn(page, 600);
+  }
 });
 
 // A far same-thread jump lands through the full list (#65): the target's row.
@@ -112,12 +144,12 @@ test('a far same-thread jump that lands on an article without a header shows its
   await page.locator('[data-article-shortcut="]"]').tap();
   await expect(page.locator('.main').first()).toContainText('Body of article 1150 by dave');
   await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle && !window.__app.threadJump.active)).toBe(true);
-  await expect.poll(() => bar(page)).toEqual({ title: 'Re: [Talk] Far topic', subtitle: 'Test', byline: 'dave' });
+  await expect.poll(() => bar(page)).toEqual({ title: 'Re: [Talk] Far topic', subtitle: 'Test', byline: 'dave', time: 'Sun Nov  8 20:13:20 2026' });
 });
 
 // Nothing before it was on a board (a notice after login, for example).
 test('an article without a header with no board before it keeps the default title', async ({ page }) => {
   await bootThreadBoard(page, { open: 600, thread: HEADERLESS });
   await expect(page.locator('.main').first()).toContainText('Body of article 600 by carol');
-  await expect.poll(() => bar(page)).toEqual({ title: expect.stringMatching(DEFAULT_TITLE), subtitle: '', byline: '' });
+  await expect.poll(() => bar(page)).toEqual({ title: expect.stringMatching(DEFAULT_TITLE), subtitle: '', byline: '', time: '' });
 });

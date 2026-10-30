@@ -430,6 +430,9 @@ export function TermView() {
   // list row it was opened from (adoptListRowContext), so that page drawn
   // again keeps it; null when the identity came from a header.
   this._rowContextTop = null;
+  // The top rows of the article's first page when it has no header, seen on
+  // any frame: easy reading can page past it before the screen settles.
+  this._headerlessTop = null;
   this.onAidClick = null;
   // 「開燈」需要切 pmore 色彩顯示模式時的入口（App 指派，見 pttchrome.jsx）。
   this.onLightsRawMode = null;
@@ -784,7 +787,18 @@ TermView.prototype = {
   // 離開文章時整組清空（App 的 screenSettled，comment_parse.shouldClearArticleContextOnSettle）。
   clearArticleContext: function() {
     this._rowContextTop = null;
+    this._headerlessTop = null;
     this._setArticleContext({ author: null, board: null, title: null, byline: null, time: null });
+  },
+
+  // A headerless article's post time, from its AID (aid_codec.aidPostTime),
+  // added to the identity its list row gave.
+  adoptArticleTime: function(time) {
+    if (!time || this._articleTitle == null) return;
+    this._setArticleContext({
+      author: this._articleAuthor, board: this._articleBoard, title: this._articleTitle,
+      byline: this._articleByline, time: time
+    });
   },
 
   // An article just opened from a list row (#77): when its first page on
@@ -840,6 +854,7 @@ TermView.prototype = {
       // 標題（第二列）是手機 App Bar 用的（mobile_app_bar.js）。沒有檔頭的文章首頁
       // （系統公告）⇒ 清空，見 comment_parse.articleContextFromScreen。
       var ctx = this._screenArticleContext();
+      if (ctx) this._headerlessTop = ctx.author ? null : this._screenTopKey();
       // The same headerless first page drawn again keeps its list-row identity
       // (adoptListRowContext); another one has none.
       if (ctx && !ctx.author && this._rowContextTop != null && this._rowContextTop === this._screenTopKey())

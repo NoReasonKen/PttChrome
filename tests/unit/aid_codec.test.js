@@ -15,6 +15,7 @@ import {
   aidToFn,
   isAidc,
   parseArticleUrl,
+  aidPostTime,
   BOARD_RE
 } from "../../src/js/aid_codec";
 
@@ -36,6 +37,22 @@ describe("fnToAid / aidToFn 定點對照", () => {
     for (const [fn] of PAIRS) expect(fnToAid(fn)).toHaveLength(8);
     // 極小值也要補滿，不能變成短字串。
     expect(fnToAid("M.1.A.001")).toHaveLength(8);
+  });
+});
+
+// The header's 時間 row is ctime() in Taipei time (pttbbs edit.c write_header),
+// written when the post is saved, the moment its file name is stamped. The
+// expected strings come from `TZ=Asia/Taipei date -d @<v1>`.
+describe("aidPostTime", () => {
+  test("the post time as the header shows it, day padded to two", () => {
+    expect(aidPostTime("1gU3wwNZ")).toBe("Sun Aug  9 16:47:54 2026");
+    expect(aidPostTime(fnToAid("M.1793359294.A.442"))).toBe("Fri Oct 30 19:21:34 2026");
+  });
+
+  test("no time for a gem file or something that is not an AID", () => {
+    expect(aidPostTime(fnToAid("G.1793359294.A.442"))).toBeNull();
+    expect(aidPostTime("not-aid")).toBeNull();
+    expect(aidPostTime(null)).toBeNull();
   });
 });
 

@@ -82,11 +82,15 @@ export class HiddenArticleRoute {
         // Unlock first: easy reading's paging waits for no transaction.
         this.active = false;
         this.core.easyReading?.ensureEnabledOnArticle(true, this.name);
+        this._landed();
         recordFor(this.core).releaseExternal();
         this._end();
       }
     });
   }
+
+  // The article has opened again; easy reading has it.
+  _landed() {}
 
   _fail() {
     if (!this.active) return;

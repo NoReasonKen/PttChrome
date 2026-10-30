@@ -64,7 +64,7 @@ import {
   parsePostInfoUrl,
   isCrossPostHeaderLine
 } from './aid_parse';
-import { isAidc } from './aid_codec';
+import { aidPostTime, isAidc } from './aid_codec';
 import { articleContextFromListRow, isPinnedListRow } from './comment_parse';
 import { parseListEntry } from './agent_parse';
 import { MAIN_MENU, boardNameFromKey, parseBoardKey, parseBoardName, rowHasTitle, sameBoard } from './screen_titles';
@@ -1852,10 +1852,11 @@ AidNavigation.prototype = {
   _enqueueOpen: function(run) {
     const self = this;
     // The list row under the cursor: the identity of an article without a
-    // header (#77).
+    // header (#77), with the post time an AID carries.
     const buf = this._termBuf;
-    const rowContext = articleContextFromListRow(
+    const row = articleContextFromListRow(
       buf.getRowText(buf.cur_y), parseBoardName(buf.getRowText(0)) || run.target.board);
+    const rowContext = row && { ...row, time: aidPostTime(run.target.aid) };
     this._queue.enqueue({
       keys: '\r',
       kind: 'aid-open',
