@@ -14,12 +14,6 @@
       "comment": "Publication sync intentionally writes validated official publication time/source/version into a tracked JSON record. Its destination is the fixed releases directory plus a strictly validated semantic version; network data cannot select an arbitrary path."
     },
     {
-      "rule": "java/android/arbitrary-apk-installation",
-      "path": "android/app/src/main/java/io/github/abccbaandy/pttchrome/UpdateAndroidPlatform.kt",
-      "reason": "false positive",
-      "comment": "User-controlled updater: only app-private APKs with matching digest, size, package, installed signer, increasing version and compatibility reach this installer. They are reverified before handoff; web callers cannot supply an APK URL/path."
-    },
-    {
       "rule": "java/android/missing-certificate-pinning",
       "path": "android/app/src/main/java/io/github/abccbaandy/pttchrome/UpdateAndroidPlatform.kt",
       "reason": "won't fix",

@@ -119,7 +119,13 @@ output directory is fixed. These paths do not transmit private source files or
 accept an arbitrary network-selected output path. GitHub authorization stays in
 request headers rather than release records or logs.
 
-The reviewed rule/path dispositions are recorded in
+Alert #17 (`java/android/arbitrary-apk-installation`) received a one-time manual
+dismissal after review of the verified installer path above. That rule is not in
+the automatic dismissal configuration: a future unverified installation path
+must produce a new visible alert and receive a fresh review.
+
+The remaining reviewed rule/path dispositions are recorded in
 [the repository's dismissal configuration](../.github/code-scanning-dismissals.json).
-Any new behavior in those paths needs renewed review; these dispositions are not
-permission to weaken APK validation or accept arbitrary endpoints.
+These lower-risk entries still match an entire file for their rule, so future
+changes need code review even if CodeQL automatically dismisses the finding.
+They are not permission to weaken APK validation or accept arbitrary endpoints.

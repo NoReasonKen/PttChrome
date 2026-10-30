@@ -18,6 +18,12 @@ test("repo 裡的清單格式正確（reason 合法、comment ≤ 280 字元）"
   expect(dismissals.length).toBeGreaterThan(0);
 });
 
+test("new APK installation alerts remain visible for individual security review", () => {
+  const futureAlert = alert(999, "java/android/arbitrary-apk-installation",
+    "android/app/src/main/java/io/github/abccbaandy/pttchrome/UpdateAndroidPlatform.kt");
+  expect(planDismissals([futureAlert], dismissals)).toEqual([]);
+});
+
 test("清單裡的 path 都存在（檔案搬家後清單要跟著改，否則靜默失效）", () => {
   const missing = dismissals.filter(d => {
     try {
