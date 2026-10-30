@@ -54,6 +54,15 @@ test('a first-in-thread jump that PTT lands on a reply goes on to the original',
   expect(await server(page)).toMatchObject({ open: 1, filter: null, cursor: 1 });
 });
 
+test('a first-in-thread jump in a thread whose original was deleted lands on its earliest reply', async ({ page }) => {
+  await bootThreadBoard(page, { open: 1150, thread: NEAR_REPLY_BOARD.filter(article => article.num !== 1) });
+  await watchScreen(page);
+  await jump(page, '=');
+  await landedOn(page, 40);
+  expectHiddenRoute(await stopWatching(page), 1150, 40);
+  expect(await server(page)).toMatchObject({ open: 40, filter: null, cursor: 40 });
+});
+
 test('a first-in-thread jump that PTT lands on the original takes one round trip', async ({ page }) => {
   await bootThreadBoard(page, { open: 40 });
   await jump(page, '=');
