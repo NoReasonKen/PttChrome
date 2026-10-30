@@ -39,6 +39,7 @@ import CommentBar from "../CommentBar";
 import AidBackButton from "../AidBackButton";
 import MessageInbox from "../MessageInbox";
 import HelpMenu from "../HelpMenu";
+import { AppUpdates } from "../AppUpdates";
 import { onPrefSaveImpl } from "./pref_save";
 import { readValuesWithDefault, writeValues } from "../../js/pref_storage";
 import * as prefSync from "../../js/pref_sync";
@@ -315,6 +316,20 @@ export const ContextMenu = ({ pttchrome }) => {
   const update = useCallback((partial) => {
     if (partial !== undefined) setState((s) => ({ ...s, ...partial }));
   }, []);
+  useEffect(() => {
+    const openUpdates = () =>
+      update({
+        showsSettings: true,
+        prefJump: {
+          tab: "about",
+          key: "section:about_update_title",
+          n: Date.now(),
+        },
+      });
+    window.addEventListener("pttchrome:open-updates", openUpdates);
+    return () =>
+      window.removeEventListener("pttchrome:open-updates", openUpdates);
+  }, [update]);
 
   // pttchrome.modalShown（終端機鍵盤／焦點的總閘門）由 render state **推導**，不由各個
   // 事件處理器手動兩邊維護：任何一條關閉路徑中途 throw／early-return，都不會留下
@@ -1520,6 +1535,7 @@ export const ContextMenu = ({ pttchrome }) => {
         />
       </Suspense>
       <DebugRecordNotice pttchrome={pttchrome} />
+      <AppUpdates pttchrome={pttchrome} />
       <HomeDashboard pttchrome={pttchrome} />
       <SplitReader pttchrome={pttchrome} />
       <ArticleTools pttchrome={pttchrome} />

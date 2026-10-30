@@ -1,0 +1,23 @@
+.AppUpdatePrompt {
+  position: fixed;
+  top: calc(56px + env(safe-area-inset-top));
+  right: 12px;
+  left: 12px;
+  margin-left: auto;
+  max-width: 480px;
+  padding: 12px;
+  border: 1px solid #555;
+  border-radius: 8px;
+  background: #202025;
+  color: #eee;
+  z-index: 2900;
+}
+.AppUpdateActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+[data-app-update-block] progress {
+  width: 100%;
+}

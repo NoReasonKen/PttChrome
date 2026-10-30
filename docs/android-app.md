@@ -26,6 +26,10 @@ register this fork's new package, signing certificate, or website.
 
 ## Install and update
 
+Updater-capable APKs expose checks, background download and explicit installation
+in Settings > About; see [APK updates](android-updates.md). Older APKs still need
+one manual installation to acquire that native capability.
+
 Install the signed APK from [this fork's releases](https://github.com/NoReasonKen/PttChrome/releases)
 directly on the phone, allowing installation from the downloading browser when
 Android asks. Keep the upstream app installed if needed. Export settings from

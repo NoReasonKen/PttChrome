@@ -1,0 +1,28 @@
+.AboutTree {
+  margin-block: 12px;
+}
+
+.AboutTree summary {
+  box-sizing: border-box;
+  cursor: pointer;
+  min-height: 44px;
+  padding-block: 8px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.AboutTree details {
+  margin-inline-start: 16px;
+}
+
+.AboutTree p,
+.AboutTree li {
+  overflow-wrap: anywhere;
+}
+
+.AboutUpdateActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 10px;
+}

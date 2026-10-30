@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "tag": "android-fork-v0.1.0",
+  "sourceCommit": "f8f104178899e7e5bae02e2d140c975f43d1b87f",
+  "publishedAt": "2026-10-24T22:11:25Z",
+  "baselineCommit": "f2896b2d2573677ab49026d17c33b57b87cdcbf5",
+  "previousRelease": null,
+  "versionCode": 3,
+  "nativeChanged": true,
+  "summary": {
+    "zhTW": [
+      "提供獨立安裝的 PttChrome Fork，與原版 App 並存。",
+      "點擊文章圖片開啟檢視器，支援雙指縮放、雙擊縮放與左右切換圖片。",
+      "圖片預覽依可用畫面高度調整，關閉檢視器後回到目前圖片的位置。",
+      "加入限授權帳戶使用的 Google 設定同步。",
+      "改善圖片展開及文章重開時的閱讀位置恢復。"
+    ],
+    "en": [
+      "Install PttChrome Fork independently alongside the upstream Android app.",
+      "Open article images in a viewer with pinch zoom, double-tap zoom, and swipe navigation.",
+      "Adapt inline previews to the available height and return to the viewed image when closing the viewer.",
+      "Support Google preference sync for approved accounts.",
+      "Improve reading-position restoration when images expand and articles reopen."
+    ]
+  },
+  "commits": [
+    {
+      "sha": "c3eb50410930cea82e6cec4e60b939b43cbf5070",
+      "subject": "chore: configure agent guidance and engineering workflows"
+    },
+    {
+      "sha": "31b65174348438828e1fc10c47686aea96f9a185",
+      "subject": "docs: establish PttChrome domain vocabulary"
+    },
+    {
+      "sha": "4cf9f1c7c0a6a4fdcf26ab0f28b923cc59369e44",
+      "subject": "docs: map core APIs and interface contracts"
+    },
+    {
+      "sha": "70aaac2b16277597d2acf6ebd2031b2d8f30019a",
+      "subject": "docs: define proactive subagent delegation policy"
+    },
+    {
+      "sha": "d339624c89a785076e90b38733335363a3260050",
+      "subject": "docs: map image preview behavior and reading context"
+    },
+    {
+      "sha": "616783399c9925ca7a9e932e2c8b1b22c97e6c9f",
+      "subject": "feat: open article images in a touch image viewer"
+    },
+    {
+      "sha": "87927c68f6efe81aaab05c35ed4dedf06511b54a",
+      "subject": "fix: initialize and verify local commit checks explicitly"
+    },
+    {
+      "sha": "d177acddedbf1af69a9db0b3ade8bf01cbac0102",
+      "subject": "fix: verify development server identity and shutdown results"
+    },
+    {
+      "sha": "76470f0288c46bec088ff4529883a39d3ce55a8e",
+      "subject": "feat: add capability-based local environment checks"
+    },
+    {
+      "sha": "cb8316975b0a097589b19601443a0523d3b88857",
+      "subject": "docs: route Android setup and testing questions to app guidance"
+    },
+    {
+      "sha": "be27eba8db7724b1e629f6d1fbc9cb7d895ae515",
+      "subject": "docs: disclose detailed agent guidance through focused navigation"
+    },
+    {
+      "sha": "a4e4562271e90ffd8ebe951c7916119856a4d54c",
+      "subject": "feat: browse article images in the touch viewer"
+    },
+    {
+      "sha": "27c2d9d541a244a78449fb25f80cecc37ee10a31",
+      "subject": "docs: assess image loading scheduling and strengthen engineering guidance"
+    },
+    {
+      "sha": "550d9088547175349ca4014f3b96bb258574bdfd",
+      "subject": "docs: define viewer preload range and scheduler scope"
+    },
+    {
+      "sha": "3d6478a3cbe544480782b2fab4a73b3987cf9ba5",
+      "subject": "docs: record simplified viewer loading priorities"
+    },
+    {
+      "sha": "fa6d92b144be7546aa65c34bbbbb0b08d2276613",
+      "subject": "docs: record viewer loading deadlines and retry policy"
+    },
+    {
+      "sha": "560573e0e03f48d1fff0b2038c6fac472ce3e9a0",
+      "subject": "docs: finalize deferred viewer loading specification"
+    },
+    {
+      "sha": "a36c78bf62d3bcada9c33b27ff31e9d53f2d81fc",
+      "subject": "docs: scope issues to development requirements"
+    },
+    {
+      "sha": "ea21bd9837ea106ce3080cf6fe0082c9b2ca021a",
+      "subject": "docs: add backlog state for deferred requirements"
+    },
+    {
+      "sha": "9d5148170880446b30ed76d0d3ca4fedf2fbf261",
+      "subject": "docs: credit fork development and retain upstream attribution"
+    },
+    {
+      "sha": "f3adfb3a37953d7d26ffd01ad8ee97f8e7c92c35",
+      "subject": "feat: prepare independent signed Android releases"
+    },
+    {
+      "sha": "1cfece0f3a21cd98454863ba71b5ce94b810c5d0",
+      "subject": "feat: restrict cloud preference sync to approved accounts"
+    },
+    {
+      "sha": "3bbb709f5535041cdd00656cc60495c91e4a6a0d",
+      "subject": "feat: configure independent Firebase services for fork releases"
+    },
+    {
+      "sha": "405f70bfd738d0f299feba844110a14d1800fd76",
+      "subject": "fix: install process inspection tooling in E2E containers"
+    },
+    {
+      "sha": "1642f59cda332e368789c9b215175602c9042e59",
+      "subject": "fix: inject restricted Firebase browser keys at build time"
+    },
+    {
+      "sha": "303f16b88171a4de7894914985eb385d9bced56e",
+      "subject": "test: respect skipped rendering in resize-loop attribution"
+    },
+    {
+      "sha": "03a39ba01644c3fa303db75849f9fbe01bebc2ac",
+      "subject": "fix: use the container account home for root Firefox tests"
+    },
+    {
+      "sha": "b061f22cac9eeb4d5c4e60f00d3ab2ca5a52b2d0",
+      "subject": "fix: preserve restored row fractions as previews expand"
+    },
+    {
+      "sha": "4a20e4c5d51afe7fca6fa315b706802a88018817",
+      "subject": "docs: hand off API key remediation and pending APK release"
+    },
+    {
+      "sha": "b087134293041310a37dc465c9de1f24de687db6",
+      "subject": "chore: drop upstream Claude config and set subagent models"
+    },
+    {
+      "sha": "e2eb2d9a178a454dfcb7b0cbfda59b100ab88cac",
+      "subject": "docs: run local test commands one at a time"
+    },
+    {
+      "sha": "f82dc21e1d2accb121231959ff285391482be5ff",
+      "subject": "Revert \"docs: hand off API key remediation and pending APK release\""
+    },
+    {
+      "sha": "4964fca77ec5bdf79fde02b87220a515e0f1a791",
+      "subject": "chore: ignore the workspace tmp directory"
+    },
+    {
+      "sha": "edb747fc8e5b659c54a5c6e95eb5063f266704f7",
+      "subject": "docs: move deferred notes out of docs/handoff and keep handoffs in tmp"
+    },
+    {
+      "sha": "84c653ee34372465b9fe625abdb7a5bd71711aff",
+      "subject": "chore: stop tracking agent instructions and domain notes"
+    },
+    {
+      "sha": "9fbc3543e19f657d12170a0b703a2b2d31950f31",
+      "subject": "chore: stop tracking agent guidance and codebase research notes"
+    },
+    {
+      "sha": "a89e1bc9781f9fdcf4ec13ba32e1998868977b53",
+      "subject": "docs: point rule references at tracked docs and drop removed hook checks"
+    },
+    {
+      "sha": "f8f104178899e7e5bae02e2d140c975f43d1b87f",
+      "subject": "ci(android): release only from android-fork-v tags"
+    }
+  ]
+}

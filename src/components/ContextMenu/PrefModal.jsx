@@ -61,6 +61,7 @@ import {
   storeCredential as storeCredentialInManager,
 } from "../../js/credential_store";
 import { isAndroidApp, openAppSettings } from "../../js/android_bridge";
+import { updateBlocksInteraction } from "../../js/app_updates";
 import { DEFAULT_IMGUR_PROXY_BASE } from "../../js/image_proxy";
 import {
   BUILTIN_QUICK_SEARCH,
@@ -79,6 +80,11 @@ import {
 import { PrefSearchBox } from "./PrefSearchBox";
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import "./PrefModal.css";
+import {
+  AboutVersionSources,
+  AboutReleaseHistory,
+  AboutUpdate,
+} from "./AboutPanels";
 
 const MOBILE_FONT_PX_CHOICES = [];
 for (
@@ -411,6 +417,14 @@ export const PrefModal = ({
         `[data-pref-anchor="${pendingJump.key}"]`,
       );
       if (node && node.scrollIntoView) {
+        // Search must reveal a matched entry inside a collapsed About tree.
+        for (
+          let parent = node.closest("details");
+          parent;
+          parent = parent.parentElement?.closest("details")
+        ) {
+          parent.open = true;
+        }
         const reduce =
           typeof window.matchMedia === "function" &&
           window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -470,6 +484,8 @@ export const PrefModal = ({
   );
 
   const onCloseClick = useCallback(() => {
+    // A window-level Escape listener may run before the download overlay's handler.
+    if (updateBlocksInteraction()) return;
     const next = pruneQuickSearchEntries(normalizeAutoLoginValues(values));
     // Untouched form → nothing to persist or upload; uploading anyway
     // would bump updatedAt and ping every other device for nothing.
@@ -2444,16 +2460,27 @@ export const PrefModal = ({
               {/* 「關於」頁沒有 fieldset（版面是 Title + 清單），所以分區錨點
                 掛在 PrefAnchor 上而不是 PrefSection。 */}
               <PrefAnchor anchorKey="section:about_version_title">
-                <Title order={5}>{i18n("about_version_title")}</Title>
-                <ul>
-                  <li>{replaceI18n("about_version_current", ABOUT_LINKS)}</li>
-                  <li>{replaceI18n("about_version_upstream", ABOUT_LINKS)}</li>
-                  <li>{replaceI18n("about_version_original", ABOUT_LINKS)}</li>
-                  <li>
-                    build: <code>{process.env.GIT_COMMIT}</code> (
-                    {process.env.BUILD_TIME})
-                  </li>
-                </ul>
+                <AboutVersionSources
+                  current={replaceI18n("about_version_current", ABOUT_LINKS)}
+                  upstream={replaceI18n("about_version_upstream", ABOUT_LINKS)}
+                  original={replaceI18n("about_version_original", ABOUT_LINKS)}
+                />
+              </PrefAnchor>
+              <PrefAnchor anchorKey="section:about_release_history">
+                <AboutReleaseHistory />
+              </PrefAnchor>
+              <PrefAnchor anchorKey="section:about_new_title">
+                <details className="AboutTree" data-about-section="technical">
+                  <summary>{i18n("about_new_title")}</summary>
+                  <ul>
+                    {i18n("about_new_content").map((text, index) => (
+                      <li key={index}>{text}</li>
+                    ))}
+                  </ul>
+                </details>
+              </PrefAnchor>
+              <PrefAnchor anchorKey="section:about_update_title">
+                <AboutUpdate />
               </PrefAnchor>
               <PrefAnchor anchorKey="section:options_debugMode_title">
                 <Title order={5}>{i18n("options_debugMode_title")}</Title>
@@ -2468,14 +2495,6 @@ export const PrefModal = ({
                   mb="xs"
                   {...anchor("ui:debugMode")}
                 />
-              </PrefAnchor>
-              <PrefAnchor anchorKey="section:about_new_title">
-                <Title order={5}>{i18n("about_new_title")}</Title>
-                <ul>
-                  {i18n("about_new_content").map((text, index) => (
-                    <li key={index}>{text}</li>
-                  ))}
-                </ul>
               </PrefAnchor>
             </Tabs.Panel>
             {/* 窄版沒有左欄的底部空間：重設放在內容最底。 */}
