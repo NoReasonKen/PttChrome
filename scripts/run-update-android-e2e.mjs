@@ -13,7 +13,11 @@ const gradle = process.platform === "win32" ? "gradlew.bat" : "./gradlew";
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { stdio: "inherit", ...options });
   if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`${command} exited ${result.status}`);
+  if (result.status !== 0) {
+    const failure = new Error(`${command} exited ${result.status}`);
+    failure.exitCode = result.status || 1;
+    throw failure;
+  }
 }
 
 try {
@@ -33,6 +37,11 @@ try {
     env: { ...process.env, ANDROID_E2E_APK: path.join(fixtures, "base.apk"),
       ANDROID_UPDATE_TEST_APK: path.join(fixtures, "target.apk") },
   });
+} catch (error) {
+  console.error(error.message);
+  // Preserve the Android runner's distinction between a failed test and an
+  // unavailable emulator (exit 2); neither outcome is a successful acceptance.
+  process.exitCode = error.exitCode || 1;
 } finally {
   fs.rmSync(fixtures, { recursive: true, force: true });
 }
