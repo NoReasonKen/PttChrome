@@ -121,7 +121,7 @@ const openTerminalContextMenu = (page) =>
     .first()
     .click({ button: 'right', position: { x: 40, y: 2 } });
 
-test('手機：設定頁全螢幕、先列分類清單；點進分類內容佔滿寬度，系統返回回清單', async ({ page }) => {
+test('手機：設定頁全螢幕、先列分類清單；點進分類內容佔滿寬度，系統返回回清單、在清單再返回關閉', async ({ page }) => {
   await bootOffline(page, ptt);
   await feedRaw(page, `${ESC}[2J${ESC}[H  MOBILE PREF TEST LINE  `);
   await waitScreenSettled(page);
@@ -164,6 +164,23 @@ test('手機：設定頁全螢幕、先列分類清單；點進分類內容佔�
   await expect(back).toBeVisible();
   await back.tap();
   await expect(page.locator('.PrefModal [data-pref-category="about"]')).toBeVisible();
+
+  // 在清單再按系統返回＝關閉設定（#63），不送 ←、也不出「再按一次可離開」。
+  await page.waitForFunction(() => !!(window.history.state && window.history.state.pttchromeBackGuard));
+  await page.evaluate(() => {
+    window.__sent = [];
+    window.__hints = [];
+    const view = window.__app.view;
+    const flash = view.flashListHint;
+    view.flashListHint = function (text) {
+      window.__hints.push(text);
+      return flash && flash.apply(this, arguments);
+    };
+  });
+  await page.goBack();
+  await expect(page.locator('.PrefModal')).toBeHidden();
+  expect(await page.evaluate(() => (window.__sent || []).join(''))).not.toContain('\x1b[D');
+  expect(await page.evaluate(() => window.__hints)).toEqual([]);
 });
 
 test('mobile cloud sync stays hidden until the private setup link is opened', async ({ page }) => {

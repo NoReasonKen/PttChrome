@@ -142,7 +142,8 @@ The enabled-by-default `articleHorizontalGestures` preference applies only to mo
 看視窗寬、不看 App 的 mobile 旗標（桌機拉窄同樣適用）。`fullScreen`＋content class `PrefModal--narrow`；標題移到 Modal header；「重設」移到右欄最底。
 **分類清單**（像 Android 系統設定）：不畫橫向分頁列（10 個分頁時後半段一開始看不到），先列 `PREF_CATEGORIES`
 （每項＝分類名＋一行說明 `optionsDesc_<分類>`，class `PrefModal--categoryList` 時右欄 `display:none`）；點進去才是該分類的設定，
-上方「‹ 分類名」與系統返回回清單（在分類裡時經 `registerBack`＝`App.registerSheetDismiss` 登記，返回不送 ←）。搜尋框留在最上面；
+上方「‹ 分類名」回清單。系統返回：在分類裡回清單，在清單（及寬版）關閉設定並照關閉鈕存檔；設定頁開著就經 `registerBack`＝`App.registerSheetDismiss`
+登記一個 handler，返回不送 ←、也不出離站提示（#63）。搜尋框留在最上面；
 設定搜尋與指令面板跳轉直接進分類。每次打開都從清單開始。桌機維持左欄分頁。
 守護 `pref_modal_narrow.test.jsx`（真版面，CSS 以 `?raw` 注入）、offline-mobile `mobile_float_tools.offline.spec.js`（真 tap＋真 popstate）。
 
@@ -280,7 +281,7 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
   header（`[0,bodyStart)`）與 footer（末列）收起（Phase 8，`render/collapsed_row.js`）。
   `listCards` 進 `annotationsKey`（同一批列物件切換卡片模式要整批重建）。
 - 版型（欄位按 **cell** 切，出處見 `list_card.js` 檔頭；`CARD_LAYOUT` 每行 lead｜main｜end 三段 flex）：
-  文章列表＝推文數 [9,11)｜標題 [29,80)／標記 [7,9)｜作者 [17,29)｜序號・日期（靠右）；看板列表＝未讀 [8,10)｜板名・類別
+  文章列表＝推文數 [9,11)｜標題 [29,80)／（左欄留空）序號・作者 [17,29)｜標記 [7,9)・日期（靠右，照 JPTT，#60）；看板列表＝未讀 [8,10)｜板名・類別
   ｜人氣／◎敘述｜板主・序號。lead 左欄兩行同寬上下對齊（推文數加粗）。顏色全照原列（使用者定案：桌機／手機同 PTT 原色）。
 - **卡片固定高 3em（`LIST_CARD_ROWS`=3 × chh）是承重條件**：`list_scroll.js` 的位置↔scrollTop 是純乘除。
   兩行內容（`LIST_CARD_LINES`=2，標題行 1.3em＋次行 1.1em）＋卡片間距＝border-box 固定高內的 `padding-block`；分隔線用 inset

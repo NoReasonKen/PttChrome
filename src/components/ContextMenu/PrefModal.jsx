@@ -383,12 +383,15 @@ export const PrefModal = ({
     if (rightColRef.current) rightColRef.current.scrollTop = 0;
   }, []);
 
-  // 窄版在分類裡：系統返回（history_back_guard → App.dismissTopSheet）＝回分類清單。
+  // 系統返回（history_back_guard → App.dismissTopSheet）：窄版在分類裡＝回分類清單，
+  // 其餘＝關閉設定（同關閉鈕，會存檔）。開著就一直登記同一個（#63），否則清單那層的
+  // 返回會落到「再按一次可離開」。handler 讀 ref 拿當下的狀態與 onCloseClick。
   const inCategory = !!(show && narrow && !categoryList);
+  const backRef = useRef(null);
   useEffect(() => {
-    if (!inCategory || typeof registerBack !== "function") return undefined;
-    return registerBack(() => setCategoryList(true));
-  }, [inCategory, registerBack]);
+    if (!show || typeof registerBack !== "function") return undefined;
+    return registerBack(() => backRef.current && backRef.current());
+  }, [show, registerBack]);
 
   const onSearchJump = useCallback((hit) => {
     setNavActiveKey(hit.tab);
@@ -507,6 +510,7 @@ export const PrefModal = ({
     );
     onSave(next);
   }, [values, onSave]);
+  backRef.current = inCategory ? () => setCategoryList(true) : onCloseClick;
 
   const onResetClick = useCallback(() => {
     prefSync.savePrefs(DEFAULT_PREFS);

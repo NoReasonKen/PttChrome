@@ -29,19 +29,23 @@ const text = (node) => (node ? node.textContent : "");
 describe("buildListCard：文章列表", () => {
   const chars = listRow("someone", "□ [心得] 手機卡片測試");
 
-  test("第一行標題、第二行作者＋靠右的序號・日期", () => {
+  // #60: the second row follows JPTT: number and author on the left, mark and
+  // date on the right.
+  test("第一行標題、第二行靠左序號・作者、靠右標記・日期", () => {
     const { node } = buildListCard({ chars, row: 5, kind: "article", forceWidth: 16 });
     expect(text(node.querySelector(".listCardTitle"))).toContain("[心得] 手機卡片測試");
     expect(text(node.querySelector(".listCardTitle"))).not.toContain("someone");
-    expect(text(node.querySelector(".listCardAuthor")).trim()).toBe("someone");
+    const main = node.querySelector(".listCardMeta > .listCardMain");
+    expect([...main.children].map((c) => c.className)).toEqual(["listCardNum", "listCardAuthor"]);
+    expect(text(main.querySelector(".listCardNum"))).toBe("350024");
+    expect(text(main.querySelector(".listCardAuthor")).trim()).toBe("someone");
     const info = node.querySelector(".listCardMeta > .listCardEnd.listCardInfo");
-    expect(text(info)).toContain("350024");
     expect(text(info)).toContain("6/14");
+    expect(text(info)).not.toContain("350024");
   });
 
-  // 推文數與已讀標記是列表最常掃的兩個欄位：各自進左欄（兩行同寬、上下對齊），
-  // 不混在序號・日期那串小字裡。
-  test("左欄：標題行放推文數 [9,11)、次行放已讀標記 [7,9)（顏色照原列）", () => {
+  // 推文數進標題行的左欄；次行左欄留空（序號・作者對齊標題），已讀標記放在日期前面。
+  test("左欄：標題行放推文數 [9,11)；已讀標記 [7,9) 在次行右側、日期之前（顏色照原列）", () => {
     const c = row(
       seg("350024 "),
       seg("+ ", color(7, 0)),
@@ -52,13 +56,14 @@ describe("buildListCard：文章列表", () => {
     );
     const { node } = buildListCard({ chars: c, row: 5, kind: "article", forceWidth: 16 });
     const push = node.querySelector(".listCardTitle > .listCardLead > .listCardPush");
-    const mark = node.querySelector(".listCardMeta > .listCardLead > .listCardMark");
+    const info = node.querySelector(".listCardMeta > .listCardInfo");
     expect(text(push)).toBe("爆");
     expect(push.querySelector(".q1")).not.toBe(null);
-    expect(text(mark)).toBe("+");
+    expect([...info.children].map((c) => c.className)).toEqual(["listCardMark", "listCardDate"]);
+    expect(text(info.querySelector(".listCardMark"))).toBe("+");
+    expect(text(node.querySelector(".listCardMeta > .listCardLead"))).toBe("");
     expect(text(node.querySelector(".listCardTitle .listCardMain"))).toBe("□ 測試");
-    expect(text(node.querySelector(".listCardInfo"))).not.toContain("爆");
-    expect(text(node.querySelector(".listCardInfo"))).not.toContain("+");
+    expect(text(info)).not.toContain("爆");
   });
 
   test("外部契約：bbsrow/srow、data-list-*、data-row（游標底色靠它）", () => {
@@ -177,7 +182,7 @@ describe("buildListCard：看板列表（board.c#brdlist_renderer 欄位）", ()
     const chars = listRow("someone", "□ 測試");
     chars[0].ch = ">";
     const { node } = buildListCard({ chars, row: 5, kind: "article", forceWidth: 16 });
-    expect(text(node.querySelector(".listCardInfo")).startsWith("350024")).toBe(true);
+    expect(text(node.querySelector(".listCardNum"))).toBe("350024");
     expect(text(node.querySelector(".listCardCursor"))).toBe(">");
   });
 
