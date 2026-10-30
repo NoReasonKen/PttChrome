@@ -95,3 +95,31 @@ build omits it so strict release identity checks remain testable.
 This controlled run does not cover all physical-device acceptance above. Record
 its actual outcome separately from JVM/browser results, and report an unavailable
 emulator as unavailable rather than a pass.
+
+## Code scanning review
+
+The updater deliberately hands a verified APK to Android's installer. CodeQL's
+APK-installation rule detects that capability without following verification
+through the coordinator/platform boundary. The web bridge cannot select a URL or
+file: discovery fixes the production source, private file tokens have a strict
+format, and the installer action rechecks digest, size, package, installed signer,
+increasing version and compatibility before exposing a read-only FileProvider URI.
+
+Production metadata requests use normal HTTPS hostname and system CA validation.
+Certificate pinning is deliberately omitted for GitHub-controlled certificates:
+[Android's security guidance](https://developer.android.com/privacy-and-security/security-ssl)
+advises against it because certificate changes can strand installed clients.
+There is no trust-all TLS implementation. Loopback HTTP is confined to the explicit
+debug fixture build; release builds do not compile that test origin.
+
+The release CLI intentionally uses tracked public versions/tags in fixed GitHub
+requests, and publication sync writes validated official metadata into the
+corresponding tracked JSON record. Versions have a strict numeric format; the
+output directory is fixed. These paths do not transmit private source files or
+accept an arbitrary network-selected output path. GitHub authorization stays in
+request headers rather than release records or logs.
+
+The reviewed rule/path dispositions are recorded in
+[the repository's dismissal configuration](../.github/code-scanning-dismissals.json).
+Any new behavior in those paths needs renewed review; these dispositions are not
+permission to weaken APK validation or accept arbitrary endpoints.

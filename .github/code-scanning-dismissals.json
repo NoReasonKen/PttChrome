@@ -2,6 +2,30 @@
   "$comment": "CodeQL 誤判／刻意設計的 dismiss 清單，由 .github/workflows/code-scanning-dismiss.yml 套用（scripts/dismiss-code-scanning.mjs）。以 rule＋path 比對（行號會隨改動位移，不比）。reason 只能是 false positive／won't fix／used in tests；comment 上限 280 字元。新增一列前先確認該檔同規則沒有別的真問題：比對到的 open alert 會整批關掉。",
   "dismissals": [
     {
+      "rule": "js/file-access-to-http",
+      "path": "scripts/release-records.mjs",
+      "reason": "false positive",
+      "comment": "Only public, validated release versions/tags form requests to fixed GitHub endpoints. Local records are tracked publication data, not credentials; GH_TOKEN is sent only as GitHub API authorization. See docs/android-updates.md."
+    },
+    {
+      "rule": "js/http-to-file-access",
+      "path": "scripts/release-records.mjs",
+      "reason": "false positive",
+      "comment": "Publication sync intentionally writes validated official publication time/source/version into a tracked JSON record. Its destination is the fixed releases directory plus a strictly validated semantic version; network data cannot select an arbitrary path."
+    },
+    {
+      "rule": "java/android/arbitrary-apk-installation",
+      "path": "android/app/src/main/java/io/github/abccbaandy/pttchrome/UpdateAndroidPlatform.kt",
+      "reason": "false positive",
+      "comment": "User-controlled updater: only app-private APKs with matching digest, size, package, installed signer, increasing version and compatibility reach this installer. They are reverified before handoff; web callers cannot supply an APK URL/path."
+    },
+    {
+      "rule": "java/android/missing-certificate-pinning",
+      "path": "android/app/src/main/java/io/github/abccbaandy/pttchrome/UpdateAndroidPlatform.kt",
+      "reason": "won't fix",
+      "comment": "Production uses fixed GitHub HTTPS endpoints with normal system CA verification, plus installed-signer APK verification. GitHub controls certificate rotation; Android advises against app certificate pinning. Only explicit debug fixtures allow loopback HTTP."
+    },
+    {
       "rule": "js/client-side-request-forgery",
       "path": "src/js/websocket.js",
       "reason": "false positive",
