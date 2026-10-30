@@ -62,6 +62,7 @@ class MainActivity : ComponentActivity() {
     private var bound = false
     private val credentials by lazy { CredentialBridge(this) }
     private val settings by lazy { AppSettings(this) }
+    private val updater by lazy { ApkUpdater.get(this) }
     /** 目前 WebView 載入的來源；注入規則跟著 WebView 建立時決定，換來源＝重建 WebView。 */
     private var pageSource = PageSource.PRODUCTION
     private var fileCallback: ValueCallback<Array<Uri>>? = null
@@ -167,6 +168,7 @@ class MainActivity : ComponentActivity() {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                if (updater.blocking()) return
                 val wv = webView
                 // 網頁自己疊了 history sentinel 把「上一頁」轉成 PTT 的左鍵（history_back_guard.js），
                 // 所以能 goBack 就交給網頁。sentinel 要等使用者第一次觸碰才疊：從外部連結開 App、
@@ -222,6 +224,11 @@ class MainActivity : ComponentActivity() {
         // reconnect_resume.js#loadRendererSnapshot）。只給這一次，之後重載（換頁面來源）不算。
         val config = JSONObject()
             .put("version", BuildConfig.VERSION_NAME)
+            .put("versionCode", BuildConfig.VERSION_CODE)
+            .put("systemLanguage", updater.systemLanguage())
+            .put("updates", true)
+            .put("updateBlocking", updater.blocking())
+            .put("openUpdate", intent.getBooleanExtra("open_update", false))
             .put("site", site)
             .put("restored", restoringRenderer)
         restoringRenderer = false
@@ -232,6 +239,10 @@ class MainActivity : ComponentActivity() {
             if (!isMainFrame || sourceOrigin.toString() != page.origin) return@addWebMessageListener
             val request = try { JSONObject(message.data ?: return@addWebMessageListener) } catch (_: Exception) { return@addWebMessageListener }
             when (request.optString("op")) {
+                "update" -> {
+                    lifecycleScope.launch { reply.postMessage(updater.handle(request).toString()) }
+                    return@addWebMessageListener
+                }
                 "openAppSettings" -> {
                     openSettings()
                     reply.postMessage(JSONObject().put("id", request.optInt("id")).put("ok", true).toString())
@@ -371,6 +382,9 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.getBooleanExtra("open_update", false)) {
+            webView?.evaluateJavascript("window.dispatchEvent(new CustomEvent('pttandroid:update-open'))", null)
+        }
         handleViewIntent(intent)
     }
 
@@ -506,6 +520,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        updater.background()
         stoppedAt = SystemClock.elapsedRealtime()
         Log.i(TAG, "onStop")
         // 背景裡 renderer 隨時可能被回收、網頁來不及收尾：先讓網頁把閱讀位置存起來
@@ -516,6 +531,7 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("RequiresFeature") // VISUAL_STATE_CALLBACK 是 androidx.webkit 內建 fallback，WebView 23+ 都有
     override fun onStart() {
         super.onStart()
+        updater.foreground(this)
         // 回到前景：背景時跳的水球通知收掉（內容在畫面／收件匣裡都看得到）。
         MessageNotifier.cancelAll(this)
         if (rendererRecreated) {

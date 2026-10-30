@@ -1,16 +1,15 @@
 name: Android APK
 
-# android/ 的建置與發佈（docs/android-app.md）。網頁本體仍由 deploy.yml 部署到 GitHub Pages，
-# APK 只是載入它的殼，所以這裡只看 android/ 的變動。
-#   push dev／PR：JVM unit test ＋ 產 APK（artifact）
-#   push tag android-fork-v*（繼承自 upstream 的 android-v* 不觸發）：同上，並建立 GitHub Release 附上簽章 APK
+# Native shell and release-record validation; reading-page deployment is separate.
+# Branches/PRs run JVM tests and build an APK artifact.
+# Fork release tags publish the signed APK, license, metadata and tracked notes.
 on:
   push:
     branches: [dev]
     tags: ['android-fork-v*']
-    paths: ['android/**', '.github/workflows/android.yml']
+    paths: ['android/**', 'releases/**', 'scripts/release*.mjs', '.github/workflows/android.yml']
   pull_request:
-    paths: ['android/**', '.github/workflows/android.yml']
+    paths: ['android/**', 'releases/**', 'scripts/release*.mjs', '.github/workflows/android.yml']
   workflow_dispatch:
 
 permissions:
@@ -24,6 +23,12 @@ jobs:
         working-directory: android
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
 
       - uses: actions/setup-java@v6
         with:
@@ -96,6 +101,24 @@ jobs:
           fi
           "$apksigner" verify --verbose --print-certs pttchrome.apk
 
+      - name: Prepare update artifacts
+        if: startsWith(github.ref, 'refs/tags/android-fork-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          aapt2="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -type f -name aapt2 | sort -V | tail -n 1)"
+          if [ -z "$aapt2" ]; then
+            echo '::error::Android build-tools aapt2 is required for release metadata.'
+            exit 1
+          fi
+          "$aapt2" dump badging pttchrome.apk > apk-badging.txt
+          node ../scripts/release-records.mjs assets \
+            --version "$ANDROID_VERSION_NAME" \
+            --version-code "$ANDROID_VERSION_CODE" \
+            --source "$GITHUB_SHA" \
+            --apk pttchrome.apk --badging apk-badging.txt --output-dir .
+
       - uses: actions/upload-artifact@v7
         with:
           name: pttchrome-apk
@@ -107,18 +130,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp ../LICENSE LICENSE
-          printf '%s\n' \
-            "PttChrome Android App $ANDROID_VERSION_NAME." \
-            '' \
-            'Download pttchrome.apk on your Android phone and open it to install. Allow installation from your browser when Android asks.' \
-            'Future updates require the same application ID and signing key; install the newer APK over this version.' \
-            '' \
-            "Installation guide: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/android-app.md" \
-            "Corresponding source: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_REF_NAME" \
-            "Source archive: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/archive/refs/tags/$GITHUB_REF_NAME.tar.gz" \
-            'License: GPL-2.0-only; the license text is attached as LICENSE.' \
-            > release-notes.md
-          gh release create "$GITHUB_REF_NAME" pttchrome.apk LICENSE \
+          gh release create "$GITHUB_REF_NAME" pttchrome.apk LICENSE update.json \
+            --draft \
             --verify-tag \
             --title "Android $ANDROID_VERSION_NAME" \
             --notes-file release-notes.md
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest

@@ -529,7 +529,8 @@ test.describe('UI 行為（offline，跨 bootstrap 版本守門）', () => {
       .locator('.PrefModal__Grid__Col--left')
       .getByText(await label(page, 'options_about'), { exact: true })
       .click();
-    await page.locator('#pref-debug-mode').check();
+    await page.locator('[data-about-section="debug"] > summary').click();
+  await page.locator('#pref-debug-mode').check();
     await page.locator('.PrefModal [aria-label="Close"]').click();
     await expect(page.locator('.PrefModal')).toBeHidden();
     const btn = page.locator('#debugRecordBtn');

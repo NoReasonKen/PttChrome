@@ -1,0 +1,589 @@
+{
+  "schemaVersion": 1,
+  "version": "0.2.0",
+  "tag": "android-fork-v0.2.0",
+  "sourceCommit": "966a57b3b5489c1ebb31a81e706a35bd2ced0914",
+  "publishedAt": "2026-10-29T13:50:08Z",
+  "previousRelease": {
+    "version": "0.1.0",
+    "sourceCommit": "f8f104178899e7e5bae02e2d140c975f43d1b87f"
+  },
+  "versionCode": 4,
+  "nativeChanged": false,
+  "summary": {
+    "zhTW": [
+      "新增文章捷徑抽屜，可搜尋同主題、同作者，並切換同主題前篇、第一篇與後篇。",
+      "支援文章、文章列表及適用看板列表的右滑返回，進出頁面時保留底層畫面與閱讀位置。",
+      "同作者／同主題搜尋可逐層返回搜尋結果及來源文章。",
+      "旋轉螢幕時保留文章與文章列表的好讀模式、搜尋條件及閱讀位置。",
+      "重開或重連時恢復搜尋結果及閱讀位置，並提早保存關閉前的位置。",
+      "修正快速切圖後，較晚載入的圖片意外放大的問題。"
+    ],
+    "en": [
+      "Add an article shortcut drawer for thread/author searches and previous, first, and next thread articles.",
+      "Support swipe-back on articles, article lists, and supported board lists, with retained pages and reading positions during transitions.",
+      "Return through nested author/thread searches one result or source article at a time.",
+      "Preserve article/list easy reading, search conditions, and reading position across rotation.",
+      "Restore search results and reading position after reopening or reconnecting, and save locations before shutdown.",
+      "Fix images appearing unexpectedly enlarged when they finish loading after a fast viewer swipe."
+    ]
+  },
+  "commits": [
+    {
+      "sha": "d0d46c166fe4a0159a6d2c74462a9a5dc84cf965",
+      "subject": "build: block credentials in staged files and CI snapshots"
+    },
+    {
+      "sha": "a4a31cda75790b1f4f0739783f14e020d5edfad2",
+      "subject": "fix: preserve redacted failure context in CI summaries"
+    },
+    {
+      "sha": "942e67bd848d82ad9f3c5f542941cf150f586d09",
+      "subject": "fix(ci-status): explain missing runs and fall back to the gh login"
+    },
+    {
+      "sha": "5bb4fc993d733b7fec1bd33869d2e30218862c4c",
+      "subject": "fix: redact complete credential values before token signatures"
+    },
+    {
+      "sha": "6620bec194f81e2839bd0d8585bd96187e09ba63",
+      "subject": "chore: ignore local cloud administration helpers"
+    },
+    {
+      "sha": "a667dc2c980bdaf368cde95b17d7465b3f57116c",
+      "subject": "test: forbid tracked links and mentions of local-only files"
+    },
+    {
+      "sha": "433ec73353bf0af48f34ac2c67f9c4ba51353c86",
+      "subject": "fix(ptt-src-screens): follow upstream fileheader_t rating rename"
+    },
+    {
+      "sha": "362bbbea546363b1f74e8b8d2042f379f520a5e8",
+      "subject": "test: cover mobile comment bar settings and folding"
+    },
+    {
+      "sha": "cfd8aac341000d1f19cd8552d146c7a91fd0e92a",
+      "subject": "fix(image-viewer): fit an image that finishes loading on the current slide"
+    },
+    {
+      "sha": "b1a6824d7d9eca74a049a568d46117fcda4b37cd",
+      "subject": "docs: assess article swipe drawer feasibility"
+    },
+    {
+      "sha": "ae378dde8ab1fec66430515f80f0379a5e934f9c",
+      "subject": "docs: record confirmed article drawer gesture decisions"
+    },
+    {
+      "sha": "82c2e3302f5afdfe7c6d7ee22ed99059c61b892d",
+      "subject": "docs: define article drawer scope and gesture ownership"
+    },
+    {
+      "sha": "3a883d68b68b26f0346dffb295ffedf0cc77ff76",
+      "subject": "docs: record drawer actions and assess right-swipe exit"
+    },
+    {
+      "sha": "be1a85cda4fbd90013c7157787d659ab8d03e2fb",
+      "subject": "docs: distinguish drawer opening and panel retraction gestures"
+    },
+    {
+      "sha": "034399e8c6992fe783852a1a9aa7bc5283b92446",
+      "subject": "docs: define drawer gesture states and article exit preview"
+    },
+    {
+      "sha": "1f444d3ee34b6f878e94d3e90a37f3e9f38af703",
+      "subject": "docs: refine drawer geometry and search return intent"
+    },
+    {
+      "sha": "4873cb069bcd094288c7fed96bb0a2a0af193c29",
+      "subject": "docs: assess bounded return history for chained article searches"
+    },
+    {
+      "sha": "ed10038ac632cf0c3d4ace7a8dc46545be7e7e5c",
+      "subject": "docs: confirm bounded search return behavior"
+    },
+    {
+      "sha": "76896f7a5fa24b5951bc5e2fd5799fe59335aa8d",
+      "subject": "docs: refine drawer resizing and persistent return history"
+    },
+    {
+      "sha": "b774aead646a5b371c37003f4d19fcb5d4cd6104",
+      "subject": "docs: consolidate article gesture and search return specification"
+    },
+    {
+      "sha": "c205af78a9ec9f4965d3647081616e418d287f21",
+      "subject": "docs: link approved article gesture specification to tracker"
+    },
+    {
+      "sha": "4b7c981059b800bab5bbf3b95efef64c71b69cf5",
+      "subject": "feat: reveal mobile article shortcuts with horizontal gestures"
+    },
+    {
+      "sha": "f77e3c550dd536dfb3ede15b78e8a3673c914905",
+      "subject": "feat: search an article author and return to the source"
+    },
+    {
+      "sha": "944cab506045ae2e0247986c90bf6a6f5502a3d6",
+      "subject": "test: correct article gesture coordinates and overlay focus"
+    },
+    {
+      "sha": "4acf955af7401f0b56d1f4fa8ec165a8eb002ecf",
+      "subject": "feat: retract mobile articles with a swipe and static list preview"
+    },
+    {
+      "sha": "476ed623e6ddaaa147a2c161756506d643a3e46e",
+      "subject": "fix: dismiss verified search messages before returning control"
+    },
+    {
+      "sha": "20b8001f030b9509dd9653a8cd9976912c86b5bd",
+      "subject": "test: specify whole-board same-thread article shortcuts"
+    },
+    {
+      "sha": "7b5ea849c9766ed3711f10226f159903bc231132",
+      "subject": "test: replay the complete list journey before article swipe exit"
+    },
+    {
+      "sha": "232fae0b0c5fe333f40d7b216da11db0639586f4",
+      "subject": "fix: distinguish search service failure from empty results"
+    },
+    {
+      "sha": "744a8f194b86fd9cbac811e0f6e1b3f12399de8a",
+      "subject": "test: reproduce full-width native list header fingerprints"
+    },
+    {
+      "sha": "ffc4715a52b9c3600838e9618c8c76d9596fe7b0",
+      "subject": "test: cover article gestures with adverse image responses"
+    },
+    {
+      "sha": "7063be4ad559c5de9cfb3acf38b96ffa191d3ab7",
+      "subject": "fix: cancel pending article swipe exits when the viewport changes"
+    },
+    {
+      "sha": "62b733051d49a62761661a8b7ecf55ba65f70830",
+      "subject": "test: remove temporary shortcut replay diagnostics"
+    },
+    {
+      "sha": "d9baeb27567ad1b6d4801a44fe7374cdd718d0bd",
+      "subject": "feat: search the whole board for an article thread"
+    },
+    {
+      "sha": "70cf98f02bbe2396e8eb40f831e42637619871e5",
+      "subject": "fix: keep article shortcut rows equal and document the implementation pause"
+    },
+    {
+      "sha": "b59a9704dc3a9b66b878d205f475b7c01a3bc518",
+      "subject": "fix: restore reading position in an already accumulated short article"
+    },
+    {
+      "sha": "559f7c3ffcfc08a970eb91108edfb562d8f123ba",
+      "subject": "fix: convert sticky Ctrl before search-return Back and search invalidation"
+    },
+    {
+      "sha": "6b6b3019a7a000e4eb4b199e060f08d8b139fef2",
+      "subject": "feat: unwind bounded nested article shortcut searches"
+    },
+    {
+      "sha": "4d9fab03d28019833e0a90702dfdf5e42a7e1078",
+      "subject": "test: cover article shortcut search return with the easy-reading list"
+    },
+    {
+      "sha": "c55b74c18eef9540b78d93a49a510bff001717f2",
+      "subject": "feat: restore same-board search return history after interruption"
+    },
+    {
+      "sha": "40e316162e64bc1ca90a1f5d8405665f81e47155",
+      "subject": "docs: capture Android easy-reading selection idea"
+    },
+    {
+      "sha": "d49232a66171fd1c8565d48e5833b2c629b6649b",
+      "subject": "fix: keep the search return route through in-article search keys"
+    },
+    {
+      "sha": "b0901ef5914a0738889d9e27ad0fb49f817bee0e",
+      "subject": "fix: compare board names case-insensitively in stored search routes"
+    },
+    {
+      "sha": "95c882e15ab3ed68250c751899fc3f82fddc2c5e",
+      "subject": "fix: rebuild author results when their source article was deleted"
+    },
+    {
+      "sha": "23cb7f511d16ee44b4dede7464c7bcbe7d307b06",
+      "subject": "fix: keep the article exit list preview across browser bar resizes"
+    },
+    {
+      "sha": "614ffb54859ebdd2ad40d28b97a47b69a789ca3d",
+      "subject": "test: scroll nested search source articles with real touch input"
+    },
+    {
+      "sha": "6ba63aae03d6734e497a1eeeca79f944649682ab",
+      "subject": "test: assert recovered search routes through Back ownership"
+    },
+    {
+      "sha": "e2a6984c74bf1c8afdc845e2f417f184ae3a4c5d",
+      "subject": "docs: capture Android read and unread contrast idea"
+    },
+    {
+      "sha": "a5cccabd80e8cfb0cc6c3de59f680038119cf9a4",
+      "subject": "refactor: share article gesture motion helpers and name drawer ratios"
+    },
+    {
+      "sha": "d0bc727ad33f3788a063ae80da2199fd8ff0ae1b",
+      "subject": "refactor: read the current article identity through one accessor"
+    },
+    {
+      "sha": "5e633fdd2e95d2a88fd0b325fc49795769f3fcb3",
+      "subject": "refactor: move search return storage into its own module"
+    },
+    {
+      "sha": "75fe5985b5e64d38d3d0ad0a3fa0d8fe2e275b74",
+      "subject": "refactor: call search return recovery hooks directly from reconnect resume"
+    },
+    {
+      "sha": "18c203d78e57ac559249f94ba294c874a57272af",
+      "subject": "fix: match stored and previewed board names case-insensitively"
+    },
+    {
+      "sha": "4f8b50eb0e25aa42147fab9a57c8c69477a751fe",
+      "subject": "docs: record search return rules in the article shortcut specification"
+    },
+    {
+      "sha": "9057ed3a419b759823a451a0873861310d155f53",
+      "subject": "test: pause the recovery spec clock through the shared helper"
+    },
+    {
+      "sha": "f46205d4520183e6399af4d8d151982cf6dccf69",
+      "subject": "docs: capture Android settings back navigation idea"
+    },
+    {
+      "sha": "1333c704b3061ffcd7b12408452fbf36fd06968c",
+      "subject": "fix: accept the first tap while article shortcuts open"
+    },
+    {
+      "sha": "5bd545144404c8d76da1de68cab181e09aa1411d",
+      "subject": "fix: cancel native scrolling during horizontal article gestures"
+    },
+    {
+      "sha": "d7a4d51de170de733abd96589e7445fee6af1854",
+      "subject": "fix: preserve system text scaling in article exit previews"
+    },
+    {
+      "sha": "f1a18ce8952fa770c48711b6a8c61c15c07c9969",
+      "subject": "docs: record article gesture acceptance and the results-resume follow-up"
+    },
+    {
+      "sha": "6feb39313eae562de16cca2639ca54c90ce8c10b",
+      "subject": "fix: reconstruct search results when resuming the last place"
+    },
+    {
+      "sha": "30ff46d23b2ba60dd8dd6074e78ab4d4a5575e2c",
+      "subject": "test: cover ordinary reading recovery without searches"
+    },
+    {
+      "sha": "4dae207a61acd44f5f4f64b43025fed4458c6b70",
+      "subject": "fix: open an article only if PTT's entry is the one tapped"
+    },
+    {
+      "sha": "3f31ec15d79f43b8e753fb8570221334ee290459",
+      "subject": "refactor: find the active screen and home dashboard through their owners"
+    },
+    {
+      "sha": "9de66230a926e2f4ef27e79bc4dbc70a94be5a59",
+      "subject": "test: add stacked-navigation scenarios to the recorder"
+    },
+    {
+      "sha": "ccd3bd22b5e4de95d648874d4082fd4ca23dec0a",
+      "subject": "test: redraw once so the home dashboard shows before recording"
+    },
+    {
+      "sha": "288bc5bc9cc3525642e4d0bfde3adf2cb06a6144",
+      "subject": "test: record the board list route without a typed jump"
+    },
+    {
+      "sha": "f779731638abb8dc24ec0d2a152f0789330cfc9c",
+      "subject": "test: replay the three stacked-page routes from real PTT recordings"
+    },
+    {
+      "sha": "eb14be9ead7a0e1a27593730cc842d054b3e1bbb",
+      "subject": "test: name the reason for the fixed wait in the open-verify spec"
+    },
+    {
+      "sha": "d79195f4107a9e6297bdf11a8e6b4de9ad7c82ee",
+      "subject": "fix: address review of the stacked-navigation prefactors"
+    },
+    {
+      "sha": "d7f2fd81203a6f55231614ca1ed46de44f94aa86",
+      "subject": "test: copy a comment with a screen copy earlier in the document"
+    },
+    {
+      "sha": "602661b9454dae610bbc54518c176a5d83cd2c5c",
+      "subject": "fix: retain startup recovery diagnostics for later debug recordings"
+    },
+    {
+      "sha": "51ff9c2212f6690b1694c8b867fdf559e94f5e30",
+      "subject": "fix: preserve recorded recovery teardown decisions across reopening"
+    },
+    {
+      "sha": "388186bdb9f131620fb6203970012592e00b64bc",
+      "subject": "fix: checkpoint reading positions before Android teardown"
+    },
+    {
+      "sha": "d1133a587f92fe4a3093781898fc3d3de8a3f454",
+      "subject": "fix: restore search result reading positions after reopening"
+    },
+    {
+      "sha": "e232b5adfc492fc0200975a8d1488b76ebf30b97",
+      "subject": "fix: keep the search recovery notice when the list resumes easy reading"
+    },
+    {
+      "sha": "5d274714e0176c5b1822a03a1b5ef51c0f5336a2",
+      "subject": "test: reopen at a scrolled position after a teardown without lifecycle events"
+    },
+    {
+      "sha": "e5dbd9a2b427dd9084ee7b64d6a73365041347ce",
+      "subject": "test: let the app skip the board entry screen in the home scenario"
+    },
+    {
+      "sha": "2627cc094fc6278b3e2aa28d38b08cce6f04171d",
+      "subject": "test: open the drawer by distance in the preview drag test"
+    },
+    {
+      "sha": "c2af8439c76fe29bb4e28ab444b269fe4ebb9e4a",
+      "subject": "fix: preserve article easy reading across mobile rotation"
+    },
+    {
+      "sha": "50351bdbd1144951e23d2c3e7c073217bb2f3cf3",
+      "subject": "fix: allow isolated easy-reading lifecycle hooks"
+    },
+    {
+      "sha": "ec078cf30fc30c24083f11531f623b80c64edc17",
+      "subject": "fix: request full terminal frames during article resizing"
+    },
+    {
+      "sha": "20b66f3247c1e01ae546648b735eca96dde50e2d",
+      "subject": "test: preserve list header styles in rotation replies"
+    },
+    {
+      "sha": "1ced562ff77c829ace90bf7c8048bf85e662dc73",
+      "subject": "feat: reveal the real article list when leaving an article"
+    },
+    {
+      "sha": "bd9ba2687e1f0785e7050a0073bfa2a3046a0080",
+      "subject": "fix: keep ordinary lists with the legacy caption as the revealed page"
+    },
+    {
+      "sha": "0642468d6ca759c051fee157b4683fc5c7a114dd",
+      "subject": "feat: open a tapped entry after the revealed list is refreshed"
+    },
+    {
+      "sha": "aeb3452caa59e480dc5af8c42df643c2ae29e0aa",
+      "subject": "fix: hold every input while the revealed list waits for PTT"
+    },
+    {
+      "sha": "02e30f9be5089f9dd1c7163f2750b0f48ec60b8c",
+      "subject": "feat: reveal the home dashboard when leaving a board entered from it"
+    },
+    {
+      "sha": "293a1c6100cb840e564e7dbd24a0825035ce96e4",
+      "subject": "feat: reveal the board list, keep the real dashboard behind its copy"
+    },
+    {
+      "sha": "e98e2c8aabac1874443e2fcdf370b08678124ee7",
+      "subject": "fix: address review of the board and dashboard reveal"
+    },
+    {
+      "sha": "353cb14ad0f72bf9f98e181d928fd5202b0a7323",
+      "subject": "test: record search results and a next article on a dashboard-entered board"
+    },
+    {
+      "sha": "b756e0f0f52ddc879bd4979abd61fa807c01828e",
+      "subject": "test: let a stacking check use elementFromPoint without the click exclusions"
+    },
+    {
+      "sha": "a2b7e2f4008cbf5fde4dec98d40764191f697c5d",
+      "subject": "test: replay search results and a next article on a dashboard-entered board"
+    },
+    {
+      "sha": "27617d2e41d9c2f61b4cb22873ffbc1b70b3c63a",
+      "subject": "fix: act on a drawer tap when the finger lifts"
+    },
+    {
+      "sha": "ec9f00a3b92b8ff5978070cd9041136a22d6eb5a",
+      "subject": "feat: stack search results like any article list"
+    },
+    {
+      "sha": "4b7a925807eb8356bdc3b3670ed6ae866e129dc6",
+      "subject": "fix: clear the page stack when the connection closes"
+    },
+    {
+      "sha": "12a4c1f3c52763e9f2e5bb16ad058d1959e8b37a",
+      "subject": "feat: slide new pages in when opening a board or article"
+    },
+    {
+      "sha": "a881dfa92fbb19a0621d9275ea12642f71bb2e70",
+      "subject": "fix: slide a page back out when its open lands on the page it came from"
+    },
+    {
+      "sha": "24024c5ced9f66bb3b8138a0d2fa74ea155031f4",
+      "subject": "fix: time list resume quiet on the monotonic clock"
+    },
+    {
+      "sha": "eb1b145ee80d59e1e160aa8dfa5fcda902317202",
+      "subject": "feat: queue Back during a handoff and bound live layers"
+    },
+    {
+      "sha": "a0ae37a8b01a73440fc7f61f42c5f407b6c6d5bf",
+      "subject": "test: record two Backs from an article entered from the dashboard"
+    },
+    {
+      "sha": "1fef7ba225a5ef17d6c35e2ded0043736bd7611c",
+      "subject": "fix: address review of the Back queue"
+    },
+    {
+      "sha": "fc7eaf78f04657a615c95b83ad07a0302ac5d2de",
+      "subject": "Measure what live layers cost"
+    },
+    {
+      "sha": "d2be5d9ad967a18c3a597871862b0fca6e556500",
+      "subject": "Measure memory per node from many layer copies"
+    },
+    {
+      "sha": "7000e55faaab521013ecc3317174366b5b7ffb08",
+      "subject": "Keep up to eight live layers"
+    },
+    {
+      "sha": "dcf54f59ea144f552f18cff08ef0826bc6e54fdc",
+      "subject": "Start a new base when the shown page is not the way back"
+    },
+    {
+      "sha": "e5de96688df4787d98b898668780c0ef70c691cf",
+      "subject": "Re-render a list layer from its frame after a width change"
+    },
+    {
+      "sha": "8c98e1e21898a1deb460fcc8f66dc5f23c425965",
+      "subject": "Check that a reload reveals no page from before it"
+    },
+    {
+      "sha": "83c68cafd7749a29f4adb4c6c2b8a792eb6e2ba9",
+      "subject": "Drop the lower page directly in the fallback test"
+    },
+    {
+      "sha": "9ad29cf279dc882cb640dab2f60ab6604e45e222",
+      "subject": "Address review of the stack invalidation"
+    },
+    {
+      "sha": "1367d60c720256ba4be20cf7c1f34405345c5c3e",
+      "subject": "Expect a refitted list layer after a width change"
+    },
+    {
+      "sha": "4bb83758a030285f8b4af294950669d4bdc4584f",
+      "subject": "test: make the stack entry spec independent of runner speed"
+    },
+    {
+      "sha": "38f951726e903134c96c219c8f3430c05517ca73",
+      "subject": "fix: write layer measurements inside the checkout, not the shared temp dir"
+    },
+    {
+      "sha": "a2f7331f599d5891dbe759814e7199fdd6dade5f",
+      "subject": "feat: swipe right on an article list to go back"
+    },
+    {
+      "sha": "fdb4709eab6a28705db6b506fde83829f23c1796",
+      "subject": "test: keep the list swipe spec on real input"
+    },
+    {
+      "sha": "9fa4db590600db98d385343e181a644d0fea9735",
+      "subject": "feat: keep the page stack through article shortcut searches"
+    },
+    {
+      "sha": "5457c82192e13a74ec19bd15b73954595751ccde",
+      "subject": "feat: record each stack handoff's timeline in debug recordings"
+    },
+    {
+      "sha": "fb91ff63692b2b37e69fc93620c27d5d399d1b1d",
+      "subject": "fix: read the layer measurements without checking for the file first"
+    },
+    {
+      "sha": "168c493ea4218db2a44a8a552f1e2b1c068eb6b2",
+      "subject": "fix: leave the board even when the cursor sync before it fails"
+    },
+    {
+      "sha": "07c10c13f9e3c34c51868b8ac92a9c29a12f30db",
+      "subject": "docs: kept layers re-render after a width change"
+    },
+    {
+      "sha": "914aea22a9106238786a298d77c8172eff1f96fb",
+      "subject": "fix: release a stack layer's renderer when the layer goes"
+    },
+    {
+      "sha": "a88aa67cd086979f2a7b13c208402ba6e9878190",
+      "subject": "fix: end a Back at once when PTT shows a different page"
+    },
+    {
+      "sha": "6761a591c8e12ca36d06fb2970f48da79630d344",
+      "subject": "fix: a Back during a handoff always replaces a remembered tap"
+    },
+    {
+      "sha": "0d7f8306c6229c69d82f3d7d0e1facb1795b1cfc",
+      "subject": "fix: leave the board list even when the cursor sync before it fails"
+    },
+    {
+      "sha": "60ed96f1247640dd9bea2626213acb6f5e5c5507",
+      "subject": "test: wait for previews to settle before measuring an article layer"
+    },
+    {
+      "sha": "c119284bc1ffb6c3eaa2bc59b1b74e68c1ac788d",
+      "subject": "test: add a recording scenario for a folder opened from a board list"
+    },
+    {
+      "sha": "f7d858122d2dbd152745e52dac074439ea435ed2",
+      "subject": "test: fix the folder scenario's list comparison and log its search"
+    },
+    {
+      "sha": "f8d0aeaf507a8098727b80f4b350ce93fc7b142f",
+      "subject": "test: tell an article list from a board list by its title column"
+    },
+    {
+      "sha": "212c9c1af2c0ece53d2ea30c4ee717748cef01ac",
+      "subject": "test: open any row that opens another board list in the folder scenario"
+    },
+    {
+      "sha": "53e14b953349cc9460c76c7ba5266f8c2039c72f",
+      "subject": "feat: stack a board list opened from a board list's row"
+    },
+    {
+      "sha": "04cdede59ec21fe7739663e63f5101c4a0244657",
+      "subject": "refactor: share what the stack's layers and captures repeat"
+    },
+    {
+      "sha": "8caf2eaef250d7b9ca22c912ffdc589e1990505a",
+      "subject": "refactor: name the stack's page kinds, and split out drawer diagnostics"
+    },
+    {
+      "sha": "13f9cc06a3980e33631a964d06cdebb68cada208",
+      "subject": "fix: present only an opened list as another board list"
+    },
+    {
+      "sha": "5f840d574ff500ff6345b1978fc0dcaa58683fc2",
+      "subject": "feat: record why a touch started no swipe in debug recordings"
+    },
+    {
+      "sha": "9cd7b030dc796215459ff39546d7fa7d5e5df597",
+      "subject": "fix: preserve article-list easy reading during mobile rotation"
+    },
+    {
+      "sha": "77ef1ae8297b0386c4c7b9690aaacd43a32045d1",
+      "subject": "test: separate resize ordering from viewport coalescing"
+    },
+    {
+      "sha": "3faa6da2b3afd461a5f46e626011131f23a23e0b",
+      "subject": "refactor: encapsulate resize lifecycles and share phase helpers"
+    },
+    {
+      "sha": "572bda7457ebdcfae442b863b4c71839cbe9069e",
+      "subject": "feat: swipe right on a board list to go back"
+    },
+    {
+      "sha": "8eccbfe1be17ca9a3807766381572f3de96312bd",
+      "subject": "fix: preserve a waiting article resize through Back handoff"
+    }
+  ]
+}

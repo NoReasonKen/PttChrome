@@ -529,6 +529,8 @@ export const PREF_SEARCH_ITEMS = [
 
   // ── 關於（沒有 fieldset，錨點掛在各區的 <div> 上）────────────────
   ...inSection("about", "about_version_title", null, []),
+  ...inSection("about", "about_release_history", null, []),
+  ...inSection("about", "about_update_title", null, []),
   ...inSection("about", "options_debugMode_title", null, [
     {
       kind: "ui",

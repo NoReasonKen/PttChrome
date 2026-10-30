@@ -1,0 +1,53 @@
+.AboutTree {
+  margin-block: 12px;
+}
+
+.AboutTree summary {
+  box-sizing: border-box;
+  cursor: pointer;
+  min-height: 44px;
+  padding-block: 8px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.AboutTree details {
+  margin-inline-start: 16px;
+}
+
+.AboutTree p,
+.AboutTree li {
+  overflow-wrap: anywhere;
+}
+
+.AboutUpdateActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 10px;
+}
+
+.AboutUpdateInfo {
+  display: grid;
+  gap: 12px;
+  padding: 4px 0 8px 16px;
+}
+
+.AboutUpdateVersion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.AboutUpdateVersionStatus {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.AboutUpdateVersionStatus--latest {
+  color: light-dark(var(--mantine-color-green-8), var(--mantine-color-green-4));
+}
