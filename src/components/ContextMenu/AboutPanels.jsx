@@ -121,6 +121,15 @@ export function AboutUpdate({ offerRequest, registerBack, onOfferChange }) {
     setAwaitingCheck(true);
     void run("check", { manual: true });
   };
+  const versionSuffix =
+    awaitingCheck || state.phase === "checking"
+      ? " (checking)"
+      : !error &&
+          !state.lastError &&
+          state.phase === "idle" &&
+          state.lastSuccessfulCheck > 0
+        ? " (latest)"
+        : "";
   const retainedOffer =
     state.phase === "ready" && state.release?.id === offeredRelease?.id;
   const download = () => {
@@ -147,9 +156,6 @@ export function AboutUpdate({ offerRequest, registerBack, onOfferChange }) {
             </>
           ) : (
             <>
-              <Text>
-                {i18n("about_update_version")}: {state.installedVersion}
-              </Text>
               <Switch
                 checked={!!state.automaticChecks}
                 disabled={busy}
@@ -160,31 +166,27 @@ export function AboutUpdate({ offerRequest, registerBack, onOfferChange }) {
                   })
                 }
               />
+              <Text role="status">
+                {i18n("about_update_version")}: {state.installedVersion}
+                {versionSuffix}
+              </Text>
               <Text size="sm">
                 {i18n("about_update_last_check")}:{" "}
                 {state.lastSuccessfulCheck > 0
                   ? new Date(state.lastSuccessfulCheck).toLocaleString()
                   : i18n("about_update_phase_idle")}
               </Text>
-              <Text role="status">
-                {i18n(
-                  error || state.lastError
-                    ? "about_update_phase_error"
-                    : state.phase === "idle" && state.lastSuccessfulCheck > 0
-                      ? "about_update_up_to_date"
-                      : "about_update_phase_" + state.phase,
-                )}
-              </Text>
               {state.phase === "ready" && (
-                <Button
-                  variant="default"
-                  disabled={busy}
-                  onClick={() =>
-                    run("install", { releaseId: state.release.id })
-                  }
-                >
-                  {i18n("about_update_install")}
-                </Button>
+                <div className="AboutUpdateActions">
+                  <Button
+                    disabled={busy}
+                    onClick={() =>
+                      run("install", { releaseId: state.release.id })
+                    }
+                  >
+                    {i18n("about_update_install")}
+                  </Button>
+                </div>
               )}
             </>
           )}

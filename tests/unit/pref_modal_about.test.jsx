@@ -114,9 +114,7 @@ test("a failed manual check does not report that the previously checked APK is u
     ),
   );
   document.querySelector('[data-about-section="update"]').open = true;
-  expect(screen.getByRole("status").textContent).toBe(
-    i18n("about_update_phase_error"),
-  );
+  expect(screen.getByRole("status").textContent).toBe("Version: 0.3.0");
 });
 
 test("a successful manual check is distinct from an update that has not been checked", async () => {
@@ -137,9 +135,20 @@ test("a successful manual check is distinct from an update that has not been che
     </MantineProvider>,
   );
   document.querySelector('[data-about-section="update"]').open = true;
-  expect(screen.getByRole("status").textContent).toBe(
-    "Updates have not been checked.",
-  );
+  expect(screen.getByRole("status").textContent).toBe("Version: 0.3.0");
+  const automatic = screen.getByRole("switch");
+  expect(
+    automatic.compareDocumentPosition(screen.getByRole("status")) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    screen.getAllByText(
+      i18n("about_update_last_check") + ": " + i18n("about_update_phase_idle"),
+    ),
+  ).toHaveLength(1);
+  expect(
+    screen.queryByText(i18n("about_update_phase_idle"), { exact: true }),
+  ).toBeNull();
   await act(async () =>
     fireEvent.click(
       screen.getByRole("button", { name: i18n("about_update_check") }),
@@ -147,7 +156,7 @@ test("a successful manual check is distinct from an update that has not been che
   );
   await vi.waitFor(() =>
     expect(screen.getByRole("status").textContent).toBe(
-      "You are using the latest APK.",
+      "Version: 0.3.0 (latest)",
     ),
   );
   expect(requests.at(-1)).toMatchObject({
@@ -222,6 +231,21 @@ test("a retained verified APK can reopen the system installer without another do
   );
   expect(screen.queryByRole("button", { name: "Download update" })).toBeNull();
   document.querySelector('[data-about-section="update"]').open = true;
+  const installStyle = getComputedStyle(
+    screen.getByRole("button", { name: "Install now" }),
+  );
+  const checkStyle = getComputedStyle(
+    screen.getByRole("button", { name: "Check for updates" }),
+  );
+  for (const property of [
+    "backgroundColor",
+    "color",
+    "borderRadius",
+    "fontWeight",
+    "paddingInlineStart",
+  ]) {
+    expect(installStyle[property]).toBe(checkStyle[property]);
+  }
   await act(async () =>
     fireEvent.click(screen.getByRole("button", { name: "Install now" })),
   );
@@ -290,6 +314,13 @@ test("a check waits for the native asynchronous result before offering an update
     screen.queryByRole("button", { name: i18n("about_update_none") }),
   ).toBeNull();
   expect(document.querySelector("[data-app-update-offer]")).toBeNull();
+  document.querySelector('[data-about-section="update"]').open = true;
+  expect(screen.getByRole("status").textContent).toBe(
+    "Version: 0.3.0 (checking)",
+  );
+  expect(
+    screen.queryByText(i18n("about_update_phase_checking"), { exact: true }),
+  ).toBeNull();
   host.phase = "available";
   host.release = {
     id: "android-fork-v0.4.0",
@@ -299,4 +330,7 @@ test("a check waits for the native asynchronous result before offering an update
   };
   await act(() => updateAction("state"));
   await vi.waitFor(() => expect(screen.getByText("New release")).toBeVisible());
+  expect(
+    screen.queryByText(i18n("about_update_phase_available"), { exact: true }),
+  ).toBeNull();
 });

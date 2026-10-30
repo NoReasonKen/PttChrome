@@ -7,9 +7,11 @@ The native App Settings page and launcher shortcut retain their existing routes.
 
 ## About controls
 
-Updates and Debug are collapsed by default. Updates contains the installed
-version, local automatic-check switch, last successful check and retained-APK
-installation retry. The Check for updates button remains directly below it.
+Updates and Debug are collapsed by default. Updates contains the local automatic-check switch, installed
+version, last successful check and retained-APK installation retry, in that order.
+The version line adds `(checking)` while a check is running or `(latest)` after
+a successful check finds no newer APK; there is no separate phase/status line.
+Installation retry uses the same primary button style as manual checking. The Check for updates button remains directly below it.
 A successful manual check with no newer APK disables the button and displays
 No updates available for three seconds. A newer version opens a separate dialog
 with the release summary, download size, Download and Cancel. Cancel, Escape or
