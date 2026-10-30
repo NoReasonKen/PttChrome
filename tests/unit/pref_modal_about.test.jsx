@@ -115,6 +115,9 @@ test("a failed manual check does not report that the previously checked APK is u
   );
   document.querySelector('[data-about-section="update"]').open = true;
   expect(screen.getByRole("status").textContent).toBe("Version: 0.3.0");
+  expect(
+    screen.queryByRole("img", { name: i18n("about_update_up_to_date") }),
+  ).toBeNull();
 });
 
 test("a successful manual check is distinct from an update that has not been checked", async () => {
@@ -155,10 +158,13 @@ test("a successful manual check is distinct from an update that has not been che
     ),
   );
   await vi.waitFor(() =>
-    expect(screen.getByRole("status").textContent).toBe(
-      "Version: 0.3.0 (latest)",
-    ),
+    expect(
+      screen.getByRole("img", {
+        name: i18n("about_update_up_to_date"),
+      }),
+    ).toBeVisible(),
   );
+  expect(screen.getByRole("status").textContent).toBe("Version: 0.3.0");
   expect(requests.at(-1)).toMatchObject({
     op: "update",
     action: "check",
@@ -315,9 +321,10 @@ test("a check waits for the native asynchronous result before offering an update
   ).toBeNull();
   expect(document.querySelector("[data-app-update-offer]")).toBeNull();
   document.querySelector('[data-about-section="update"]').open = true;
-  expect(screen.getByRole("status").textContent).toBe(
-    "Version: 0.3.0 (checking)",
-  );
+  expect(screen.getByRole("status").textContent).toBe("Version: 0.3.0");
+  expect(
+    screen.getByRole("img", { name: i18n("about_update_phase_checking") }),
+  ).toBeVisible();
   expect(
     screen.queryByText(i18n("about_update_phase_checking"), { exact: true }),
   ).toBeNull();

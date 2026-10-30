@@ -9,8 +9,9 @@ The native App Settings page and launcher shortcut retain their existing routes.
 
 Updates and Debug are collapsed by default. Updates contains the local automatic-check switch, installed
 version, last successful check and retained-APK installation retry, in that order.
-The version line adds `(checking)` while a check is running or `(latest)` after
-a successful check finds no newer APK; there is no separate phase/status line.
+The version line shows a small spinner while checking and a green circle-check
+icon after a successful check finds no newer APK. Both indicators have accessible
+labels and tooltip explanations; there is no text suffix or separate status line.
 Installation retry uses the same primary button style as manual checking. The Check for updates button remains directly below it.
 A successful manual check with no newer APK disables the button and displays
 No updates available for three seconds. A newer version opens a separate dialog

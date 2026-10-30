@@ -32,3 +32,22 @@
   gap: 12px;
   padding: 4px 0 8px 16px;
 }
+
+.AboutUpdateVersion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.AboutUpdateVersionStatus {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.AboutUpdateVersionStatus--latest {
+  color: light-dark(var(--mantine-color-green-8), var(--mantine-color-green-4));
+}

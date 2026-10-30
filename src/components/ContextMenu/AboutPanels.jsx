@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Button, Modal, Switch, Text } from "@mantine/core";
+import { Button, Loader, Modal, Switch, Text, Tooltip } from "@mantine/core";
+import { IconCircleCheck } from "@tabler/icons-react";
 import { i18n } from "../../js/i18n";
 import {
   getUpdateState,
@@ -121,14 +122,14 @@ export function AboutUpdate({ offerRequest, registerBack, onOfferChange }) {
     setAwaitingCheck(true);
     void run("check", { manual: true });
   };
-  const versionSuffix =
+  const versionStatus =
     awaitingCheck || state.phase === "checking"
-      ? " (checking)"
+      ? "checking"
       : !error &&
           !state.lastError &&
           state.phase === "idle" &&
           state.lastSuccessfulCheck > 0
-        ? " (latest)"
+        ? "latest"
         : "";
   const retainedOffer =
     state.phase === "ready" && state.release?.id === offeredRelease?.id;
@@ -166,9 +167,40 @@ export function AboutUpdate({ offerRequest, registerBack, onOfferChange }) {
                   })
                 }
               />
-              <Text role="status">
-                {i18n("about_update_version")}: {state.installedVersion}
-                {versionSuffix}
+              <Text role="status" className="AboutUpdateVersion">
+                <span>
+                  {i18n("about_update_version")}: {state.installedVersion}
+                </span>
+                {versionStatus && (
+                  <Tooltip
+                    label={i18n(
+                      versionStatus === "checking"
+                        ? "about_update_phase_checking"
+                        : "about_update_up_to_date",
+                    )}
+                    withArrow
+                  >
+                    <span
+                      className={`AboutUpdateVersionStatus AboutUpdateVersionStatus--${versionStatus}`}
+                      role="img"
+                      aria-label={i18n(
+                        versionStatus === "checking"
+                          ? "about_update_phase_checking"
+                          : "about_update_up_to_date",
+                      )}
+                    >
+                      {versionStatus === "checking" ? (
+                        <Loader size={16} aria-hidden="true" />
+                      ) : (
+                        <IconCircleCheck
+                          size={18}
+                          stroke={1.8}
+                          aria-hidden="true"
+                        />
+                      )}
+                    </span>
+                  </Tooltip>
+                )}
               </Text>
               <Text size="sm">
                 {i18n("about_update_last_check")}:{" "}
