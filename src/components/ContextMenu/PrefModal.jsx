@@ -328,6 +328,7 @@ export const PrefModal = ({
   jumpTarget,
   registerBack,
 }) => {
+  const [updateOfferOpen, setUpdateOfferOpen] = useState(false);
   const [navActiveKey, setNavActiveKey] = useState("general");
   const narrow = useNarrow();
   // 窄版：true＝分類清單，false＝某個分類的設定。每次打開都從清單開始。
@@ -744,6 +745,7 @@ export const PrefModal = ({
     <Modal
       opened={show}
       onClose={onCloseClick}
+      closeOnEscape={!updateOfferOpen}
       // marker 放在 content（可見的對話框本體）而非 mantine-Modal-root（外層 0 尺寸
       // wrapper，Playwright 會判定 hidden）。
       classNames={{
@@ -2484,21 +2486,28 @@ export const PrefModal = ({
                 </details>
               </PrefAnchor>
               <PrefAnchor anchorKey="section:about_update_title">
-                <AboutUpdate />
+                <AboutUpdate
+                  registerBack={registerBack}
+                  onOfferChange={setUpdateOfferOpen}
+                  offerRequest={
+                    jumpTarget?.showUpdateOffer ? jumpTarget.n : null
+                  }
+                />
               </PrefAnchor>
               <PrefAnchor anchorKey="section:options_debugMode_title">
-                <Title order={5}>{i18n("options_debugMode_title")}</Title>
-                {/* runtime-only：不進 values / DEFAULT_PREFS / pref_storage /
-                  pref_sync —— 不落地、不上雲，重新整理即重設為關閉。 */}
-                <Switch
-                  id="pref-debug-mode"
-                  checked={!!debugMode}
-                  onChange={(e) => onDebugModeChange(e.currentTarget.checked)}
-                  label={i18n("options_debugMode")}
-                  description={i18n("options_debugMode_desc")}
-                  mb="xs"
-                  {...anchor("ui:debugMode")}
-                />
+                <details className="AboutTree" data-about-section="debug">
+                  <summary>{i18n("options_debugMode_title")}</summary>
+                  {/* Runtime-only: never persisted or synced; disabled again on reload. */}
+                  <Switch
+                    id="pref-debug-mode"
+                    checked={!!debugMode}
+                    onChange={(e) => onDebugModeChange(e.currentTarget.checked)}
+                    label={i18n("options_debugMode")}
+                    description={i18n("options_debugMode_desc")}
+                    mb="xs"
+                    {...anchor("ui:debugMode")}
+                  />
+                </details>
               </PrefAnchor>
             </Tabs.Panel>
             {/* 窄版沒有左欄的底部空間：重設放在內容最底。 */}

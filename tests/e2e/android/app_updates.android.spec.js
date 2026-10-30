@@ -73,15 +73,16 @@ test.describe('controlled Android updater', () => {
     await tap(apk.page, apk.device, '[data-pref-category="about"]');
     const key = (name) => apk.page.evaluate((value) => window.__i18n(value), name);
     const section = apk.page.locator('[data-about-section="update"]');
-    await section.getByRole('button', { name: await key('about_update_check'), exact: true }).click();
-    await expect(section.getByText('1.0.1', { exact: false })).toBeVisible();
-    await section.getByRole('button', { name: await key('about_update_download'), exact: true }).click();
+    await apk.page.getByRole('button', { name: await key('about_update_check'), exact: true }).click();
+    const offer = apk.page.locator('[data-app-update-offer]');
+    await expect(offer.getByText('1.0.1', { exact: false })).toBeVisible();
+    await offer.getByRole('button', { name: await key('about_update_download'), exact: true }).click();
     return { section, key };
   }
 
   test('a corrupt artifact releases the block and cannot reach installation', async ({ apk }) => {
     const { section, key } = await openUpdates(apk, true);
-    await expect(section.getByRole('alert')).toContainText('integrity', { timeout: 90000 });
+    await expect(apk.page.getByRole('alert')).toContainText('integrity', { timeout: 90000 });
     await expect(apk.page.locator('[data-app-update-block]')).toHaveCount(0);
     await expect(section.getByRole('button', { name: await key('about_update_install'), exact: true })).toHaveCount(0);
   });

@@ -5,6 +5,17 @@ build. Reading-page deployment is unchanged. Older APKs and browsers show releas
 history and a manual Releases link without claiming native update capabilities.
 The native App Settings page and launcher shortcut retain their existing routes.
 
+## About controls
+
+Updates and Debug are collapsed by default. Updates contains the installed
+version, local automatic-check switch, last successful check and retained-APK
+installation retry. The Check for updates button remains directly below it.
+A successful manual check with no newer APK disables the button and displays
+No updates available for three seconds. A newer version opens a separate dialog
+with the release summary, download size, Download and Cancel. Cancel, Escape or
+Back dismisses that dialog before leaving About and does not start a download.
+Check failures remain visible and do not enter the successful no-update state.
+
 ## Ownership and policy
 
 The native updater owns device-local preferences, trusted release discovery,
@@ -49,9 +60,41 @@ verification and the existing reading-position checkpoint. The system installer
 provides the installation confirmation; no extra in-app confirmation is added
 to this completion path. Android handles source-install permission; granting it
 and returning continues installation. Existing retained-file retry controls in
-About remain available. Canceling either does not
-delete the verified APK. The updater does not preserve drafts or force-launch the
+About remain available and hand off directly to the system installer. Canceling
+either does not delete the verified APK. The updater does not preserve drafts or force-launch the
 app afterward; existing recovery preferences govern normal next startup.
+
+## APK storage and cleanup
+
+DownloadManager first writes `update-<versionCode>.apk` under
+`context.getExternalFilesDir(null)` (typically
+`/storage/emulated/0/Android/data/<package>/files/`). Verification copies it to a
+`.partial` file, then renames the verified file to
+`context.filesDir/updates/verified-<downloadId>.apk` (typically
+`/data/user/0/<package>/files/updates/`). Removing the completed DownloadManager
+request removes its original download; only the verified private file remains.
+
+Canceling installation keeps that private file for a retry. After a successful
+update, the next updater initialization sees that its version code is now
+installed and removes the retained file and state. File-manager access to app
+private storage is normally restricted. Debug APK inspection can use:
+
+```bash
+adb shell run-as io.github.noreasonken.pttchrome.debug ls -l files/updates
+adb shell ls -l /sdcard/Android/data/io.github.noreasonken.pttchrome.debug/files
+```
+
+Before installation, the first command should list the verified APK; after
+updating and reopening, that file should be absent. Production release APKs do
+not allow `run-as`. Android's own installer may keep system-managed copies;
+these commands inspect only the files owned by this app.
+
+For physical-device background acceptance with small controlled APKs, throttle
+only the local fixture server's APK response (for example, 64 KiB/s for about
+90 seconds). Metadata responses stay immediate. This changes neither the APK
+nor production networking, and gives time to test Home, completion notification,
+cancellation and returning to a retained verified APK. Temporary local fixtures
+are not official release versions or published assets.
 
 ## Release records and language
 

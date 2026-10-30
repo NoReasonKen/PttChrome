@@ -1,5 +1,5 @@
-import { useState, useSyncExternalStore } from "react";
-import { Button, Switch, Text, Title } from "@mantine/core";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Button, Modal, Switch, Text } from "@mantine/core";
 import { i18n } from "../../js/i18n";
 import {
   getUpdateState,
@@ -60,169 +60,186 @@ export function AboutReleaseHistory() {
   );
 }
 
-export function AboutUpdate() {
+export function AboutUpdate({ offerRequest, registerBack, onOfferChange }) {
   const state = useSyncExternalStore(subscribeUpdates, getUpdateState);
   const [error, setError] = useState("");
-  const [confirmInstall, setConfirmInstall] = useState(false);
   const [pending, setPending] = useState(false);
+  const [awaitingCheck, setAwaitingCheck] = useState(false);
+  const [noUpdate, setNoUpdate] = useState(false);
+  const [offerOpen, setOfferOpen] = useState(false);
+  const consumedOffer = useRef(null);
+  const offeredRelease =
+    state.latestRelease?.versionCode > state.installedVersionCode
+      ? state.latestRelease
+      : state.release;
+  useEffect(() => {
+    onOfferChange?.(offerOpen);
+    return () => onOfferChange?.(false);
+  }, [offerOpen, onOfferChange]);
+  useEffect(() => {
+    if (offerOpen) return registerBack?.(() => setOfferOpen(false));
+  }, [offerOpen, registerBack]);
+  const busy =
+    pending ||
+    ["checking", "downloading", "paused", "verifying"].includes(state.phase);
   const run = async (action, payload) => {
     setError("");
     setPending(true);
     try {
-      await updateAction(action, payload);
+      return await updateAction(action, payload);
     } catch (failure) {
       setError(failure.message || String(failure));
+      setAwaitingCheck(false);
     } finally {
       setPending(false);
     }
   };
-  const busy =
-    pending ||
-    ["checking", "downloading", "paused", "verifying"].includes(state.phase);
-  const install = async () => {
-    setConfirmInstall(false);
-    await run("install");
+  useEffect(() => {
+    if (!awaitingCheck || busy) return;
+    setAwaitingCheck(false);
+    if (error || state.lastError) return;
+    if (offeredRelease) setOfferOpen(true);
+    else setNoUpdate(true);
+  }, [awaitingCheck, busy, error, state.lastError, offeredRelease]);
+  useEffect(() => {
+    if (!noUpdate) return;
+    const timer = setTimeout(() => setNoUpdate(false), 3000);
+    return () => clearTimeout(timer);
+  }, [noUpdate]);
+  useEffect(() => {
+    if (
+      offerRequest &&
+      offeredRelease &&
+      consumedOffer.current !== offerRequest
+    ) {
+      consumedOffer.current = offerRequest;
+      setOfferOpen(true);
+    }
+  }, [offerRequest, offeredRelease]);
+  const check = () => {
+    setNoUpdate(false);
+    setAwaitingCheck(true);
+    void run("check", { manual: true });
+  };
+  const retainedOffer =
+    state.phase === "ready" && state.release?.id === offeredRelease?.id;
+  const download = () => {
+    setOfferOpen(false);
+    void run(retainedOffer ? "install" : "download", {
+      releaseId: offeredRelease.id,
+    });
   };
   return (
-    <section
-      data-about-section="update"
-      aria-label={i18n("about_update_title")}
-    >
-      <Title order={5}>{i18n("about_update_title")}</Title>
-      {!state.supported ? (
-        <>
-          <Text>{i18n("about_update_unsupported")}</Text>
-          <a
-            href="https://github.com/NoReasonKen/PttChrome/releases"
-            target="_blank"
-            rel="noreferrer"
-          >
-            {i18n("about_update_releases")}
-          </a>
-        </>
-      ) : (
-        <>
-          <Text>
-            {i18n("about_apk_version")}: {state.installedVersion}
-          </Text>
-          <Switch
-            checked={!!state.automaticChecks}
-            disabled={busy}
-            label={i18n("about_update_automatic")}
-            onChange={(event) =>
-              run("preferences", {
-                automaticChecks: event.currentTarget.checked,
-              })
-            }
-          />
-          <Text role="status">
-            {i18n(
-              error || state.lastError
-                ? "about_update_phase_error"
-                : state.phase === "idle" && state.lastSuccessfulCheck > 0
-                  ? "about_update_up_to_date"
-                  : "about_update_phase_" + state.phase,
-            )}
-          </Text>
-          {state.lastSuccessfulCheck > 0 && (
-            <Text size="sm">
-              {i18n("about_update_last_check")}:{" "}
-              {new Date(state.lastSuccessfulCheck).toLocaleString()}
-            </Text>
-          )}
-          {(error || state.lastError) && (
-            <Text role="alert">{error || state.lastError}</Text>
-          )}
-          <div className="AboutUpdateActions">
-            <Button
-              disabled={busy}
-              onClick={() => run("check", { manual: true })}
-            >
-              {i18n("about_update_check")}
-            </Button>
-          </div>
-          {state.release && (
-            <div>
+    <>
+      <details className="AboutTree" data-about-section="update">
+        <summary>{i18n("about_update_title")}</summary>
+        <div className="AboutUpdateInfo">
+          {!state.supported ? (
+            <>
+              <Text>{i18n("about_update_unsupported")}</Text>
+              <a
+                href="https://github.com/NoReasonKen/PttChrome/releases"
+                target="_blank"
+                rel="noreferrer"
+              >
+                {i18n("about_update_releases")}
+              </a>
+            </>
+          ) : (
+            <>
               <Text>
-                {i18n("about_update_available")}: {state.release.version}
+                {i18n("about_update_version")}: {state.installedVersion}
               </Text>
-              {!state.needsNativeUpdate && (
-                <Text>{i18n("about_update_web_only")}</Text>
-              )}
-              <ul>
-                {summaryForLocale(state.release, state.systemLanguage).map(
-                  (line, index) => (
-                    <li key={index}>{line}</li>
-                  ),
-                )}
-              </ul>
+              <Switch
+                checked={!!state.automaticChecks}
+                disabled={busy}
+                label={i18n("about_update_automatic")}
+                onChange={(event) =>
+                  run("preferences", {
+                    automaticChecks: event.currentTarget.checked,
+                  })
+                }
+              />
               <Text size="sm">
-                {i18n("about_update_size")}:{" "}
-                {formatDownloadSize(state.release.apk?.size)}
+                {i18n("about_update_last_check")}:{" "}
+                {state.lastSuccessfulCheck > 0
+                  ? new Date(state.lastSuccessfulCheck).toLocaleString()
+                  : i18n("about_update_phase_idle")}
               </Text>
-              <div className="AboutUpdateActions">
-                {state.phase !== "ready" && (
-                  <Button
-                    disabled={busy}
-                    onClick={() =>
-                      run("download", { releaseId: state.release.id })
-                    }
-                  >
-                    {i18n("about_update_download")}
-                  </Button>
+              <Text role="status">
+                {i18n(
+                  error || state.lastError
+                    ? "about_update_phase_error"
+                    : state.phase === "idle" && state.lastSuccessfulCheck > 0
+                      ? "about_update_up_to_date"
+                      : "about_update_phase_" + state.phase,
                 )}
-                {state.phase === "ready" && (
-                  <Button
-                    disabled={busy}
-                    onClick={() => setConfirmInstall(true)}
-                  >
-                    {i18n("about_update_install")}
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
-          {confirmInstall && state.phase === "ready" && (
-            <div role="group" aria-label={i18n("about_update_install")}>
-              <Text>{i18n("about_update_install_warning")}</Text>
-              <div className="AboutUpdateActions">
-                <Button disabled={pending} onClick={install}>
-                  {i18n("about_update_confirm_install")}
-                </Button>
+              </Text>
+              {state.phase === "ready" && (
                 <Button
                   variant="default"
-                  onClick={() => setConfirmInstall(false)}
-                >
-                  {i18n("about_update_later")}
-                </Button>
-              </div>
-            </div>
-          )}
-          {state.phase === "ready" &&
-            state.latestRelease &&
-            state.latestRelease.id !== state.release?.id && (
-              <div>
-                <Text>
-                  {i18n("about_update_available")}:{" "}
-                  {state.latestRelease.version}
-                </Text>
-                <Text size="sm">
-                  {i18n("about_update_size")}:{" "}
-                  {formatDownloadSize(state.latestRelease.apk?.size)}
-                </Text>
-                <Button
                   disabled={busy}
                   onClick={() =>
-                    run("download", { releaseId: state.latestRelease.id })
+                    run("install", { releaseId: state.release.id })
                   }
                 >
-                  {i18n("about_update_download")}
+                  {i18n("about_update_install")}
                 </Button>
-              </div>
-            )}
-        </>
+              )}
+            </>
+          )}
+        </div>
+      </details>
+      {state.supported && (
+        <div className="AboutUpdateActions">
+          <Button disabled={busy || noUpdate} onClick={check}>
+            {i18n(noUpdate ? "about_update_none" : "about_update_check")}
+          </Button>
+        </div>
       )}
-    </section>
+      {(error || state.lastError) && (
+        <Text role="alert">{error || state.lastError}</Text>
+      )}
+      <Modal
+        opened={offerOpen && !!offeredRelease}
+        onClose={() => setOfferOpen(false)}
+        title={i18n("about_update_downloadable")}
+        centered
+        zIndex={11000}
+      >
+        {offeredRelease && (
+          <section data-app-update-offer>
+            <Text fw={600}>{offeredRelease.version}</Text>
+            <ul>
+              {summaryForLocale(offeredRelease, state.systemLanguage).map(
+                (line, index) => (
+                  <li key={index}>{line}</li>
+                ),
+              )}
+            </ul>
+            {!state.needsNativeUpdate && (
+              <Text size="sm">{i18n("about_update_web_only")}</Text>
+            )}
+            <Text size="sm">
+              {i18n("about_update_size")}:{" "}
+              {formatDownloadSize(offeredRelease.apk?.size)}
+            </Text>
+            <div className="AboutUpdateActions">
+              <Button disabled={busy} onClick={download}>
+                {i18n(
+                  retainedOffer
+                    ? "about_update_install"
+                    : "about_update_download",
+                )}
+              </Button>
+              <Button variant="default" onClick={() => setOfferOpen(false)}>
+                {i18n("about_update_cancel")}
+              </Button>
+            </div>
+          </section>
+        )}
+      </Modal>
+    </>
   );
 }
 

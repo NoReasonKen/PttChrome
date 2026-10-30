@@ -218,6 +218,7 @@ test('手機：debug 錄製鈕收在「⋯」裡，不與底部工具列重疊',
   await menu.getByText(await label(page, 'cmenu_settings'), { exact: true }).click();
   await expect(page.locator('.PrefModal')).toBeVisible();
   await page.locator('.PrefModal [data-pref-category="about"]').click();
+  await page.locator('[data-about-section="debug"] > summary').click();
   await page.locator('#pref-debug-mode').check();
   await page.locator('.PrefModal [aria-label="Close"]').first().click();
   await expect(page.locator('.PrefModal')).toBeHidden();

@@ -62,7 +62,7 @@ export function AppUpdates({ pttchrome }) {
           <div className="AppUpdateActions">
             <Button
               onClick={() => {
-                openUpdateAbout();
+                openUpdateAbout({ showOffer: true });
                 void act("later");
               }}
             >

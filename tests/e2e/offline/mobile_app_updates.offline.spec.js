@@ -7,8 +7,8 @@ const text = (page, key) => page.evaluate((value) => window.__i18n(value), key);
 
 // This replaces only the external Android message endpoint. The real About UI,
 // update store, global modal ownership and browser input paths remain connected.
-async function installUpdateHost(page, { proactive = false } = {}) {
-  await page.addInitScript(({ proactive }) => {
+async function installUpdateHost(page, { proactive = false, available = true } = {}) {
+  await page.addInitScript(({ proactive, available }) => {
     const listeners = [];
     const release = {
       id: 'android-fork-v0.4.0', version: '0.4.0', versionCode: 6,
@@ -37,7 +37,7 @@ async function installUpdateHost(page, { proactive = false } = {}) {
         }
         host.requests.push(request);
         if (request.action === 'check' && (request.manual || proactive)) {
-          Object.assign(host.state, { phase: 'available', release, needsNativeUpdate: true, prompt: !request.manual, lastSuccessfulCheck: Date.now() });
+          Object.assign(host.state, { phase: available ? 'available' : 'idle', release: available ? release : null, needsNativeUpdate: available, prompt: available && !request.manual, lastSuccessfulCheck: Date.now() });
         } else if (request.action === 'download') {
           Object.assign(host.state, { phase: 'downloading', prompt: false, progress: { downloaded: 262144, total: 1048576 } });
         } else if (request.action === 'cancel') {
@@ -50,7 +50,7 @@ async function installUpdateHost(page, { proactive = false } = {}) {
         });
       },
     };
-  }, { proactive });
+  }, { proactive, available });
 }
 
 async function bootUpdateMenu(page, options) {
@@ -77,13 +77,14 @@ test('manual About update blocks reading and Back during download until explicit
   const modal = page.locator('.PrefModal');
   await expect(modal).toBeVisible();
   await modal.locator('[data-pref-category="about"]').tap();
-  const update = modal.locator('[data-about-section="update"]');
+  const update = modal;
   await expect(update.getByRole('button', { name: await text(page, 'about_update_check'), exact: true })).toBeVisible();
   await collectPttBytes(page);
   await update.getByRole('button', { name: await text(page, 'about_update_check'), exact: true }).tap();
-  await expect(update.getByText('手機版更新摘要。', { exact: true })).toBeVisible();
+  const offer = page.locator('[data-app-update-offer]');
+  await expect(offer.getByText('手機版更新摘要。', { exact: true })).toBeVisible();
   await page.screenshot({ path: test.info().outputPath('about-update-summary.png'), animations: 'disabled' });
-  await update.getByRole('button', { name: await text(page, 'about_update_download'), exact: true }).tap();
+  await offer.getByRole('button', { name: await text(page, 'about_update_download'), exact: true }).tap();
   const block = page.locator('[data-app-update-block]');
   await expect(block).toBeVisible();
   await expect(block.getByRole('button', { name: await text(page, 'about_update_cancel_download'), exact: true })).toBeVisible();
@@ -100,7 +101,8 @@ test('manual About update blocks reading and Back during download until explicit
   await expect(block).toHaveCount(0);
   expect((await requestActions(page)).filter((action) => action === 'cancel')).toHaveLength(1);
   expect(await sentPtt(page)).toBe('');
-  await expect(update.getByRole('button', { name: await text(page, 'about_update_download'), exact: true })).toBeEnabled();
+  await update.getByRole('button', { name: await text(page, 'about_update_check'), exact: true }).tap();
+  await expect(offer.getByRole('button', { name: await text(page, 'about_update_download'), exact: true })).toBeEnabled();
 });
 
 test('a proactive update prompt opens About at the update controls without sending PTT navigation', async ({ page }) => {
@@ -110,8 +112,63 @@ test('a proactive update prompt opens About at the update controls without sendi
   await collectPttBytes(page);
   await prompt.getByRole('button', { name: await text(page, 'about_update_view'), exact: true }).tap();
   await expect(page.locator('.PrefModal')).toBeVisible();
-  const update = page.locator('.PrefModal [data-about-section="update"]');
-  await expect(update.getByRole('button', { name: await text(page, 'about_update_download'), exact: true })).toBeVisible();
-  await expect(update.getByText('手機版更新摘要。', { exact: true })).toBeVisible();
+  const update = page.locator('.PrefModal');
+  const offer = page.locator('[data-app-update-offer]');
+  await expect(offer.getByText('手機版更新摘要。', { exact: true })).toBeVisible();
   expect(await sentPtt(page)).toBe('');
+});
+
+
+test('a successful check with no newer APK disables the button for three seconds', async ({ page }) => {
+  await bootUpdateMenu(page, { available: false });
+  await page.locator('[data-key="__more"]').tap();
+  await page.locator('[data-key="__settings"]').tap();
+  await page.locator('[data-pref-category="about"]').tap();
+  const modal = page.locator('.PrefModal');
+  await expect(modal.locator('[data-about-section="update"]')).not.toHaveAttribute('open', '');
+  await expect(modal.locator('[data-about-section="debug"]')).not.toHaveAttribute('open', '');
+  const checkedAt = Date.now();
+  await modal.getByRole('button', { name: await text(page, 'about_update_check'), exact: true }).tap();
+  const none = modal.getByRole('button', { name: await text(page, 'about_update_none'), exact: true });
+  await expect(none).toBeDisabled();
+  await expect(modal.getByRole('button', { name: await text(page, 'about_update_check'), exact: true })).toBeEnabled({ timeout: 5000 });
+  expect(Date.now() - checkedAt).toBeGreaterThanOrEqual(2900);
+  await expect(page.locator('[data-app-update-offer]')).toHaveCount(0);
+});
+
+test('canceling an update offer keeps About open and does not start a download', async ({ page }) => {
+  await bootUpdateMenu(page);
+  await page.locator('[data-key="__more"]').tap();
+  await page.locator('[data-key="__settings"]').tap();
+  const modal = page.locator('.PrefModal');
+  await modal.locator('[data-pref-category="about"]').tap();
+  await modal.getByRole('button', { name: await text(page, 'about_update_check'), exact: true }).tap();
+  const offer = page.locator('[data-app-update-offer]');
+  await expect(offer).toBeVisible();
+  await offer.getByRole('button', { name: await text(page, 'about_update_cancel'), exact: true }).tap();
+  await expect(offer).toHaveCount(0);
+  await expect(modal).toBeVisible();
+  expect((await requestActions(page)).filter(action => action === 'download')).toHaveLength(0);
+  await modal.getByRole('button', { name: await text(page, 'about_update_check'), exact: true }).tap();
+  await expect(offer).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(offer).toHaveCount(0);
+  await expect(modal).toBeVisible();
+});
+
+
+test('Back dismisses the available-version dialog before leaving About', async ({ page }) => {
+  await bootUpdateMenu(page);
+  await page.locator('[data-key="__more"]').tap();
+  await page.locator('[data-key="__settings"]').tap();
+  const modal = page.locator('.PrefModal');
+  await modal.locator('[data-pref-category="about"]').tap();
+  await modal.getByRole('button', { name: await text(page, 'about_update_check'), exact: true }).tap();
+  const offer = page.locator('[data-app-update-offer]');
+  await expect(offer).toBeVisible();
+  await page.waitForFunction(() => !!window.history.state?.pttchromeBackGuard);
+  await page.goBack();
+  await expect(offer).toHaveCount(0);
+  await expect(modal.locator('[data-about-section="update"]')).toBeVisible();
+  expect((await requestActions(page)).filter(action => action === 'download')).toHaveLength(0);
 });

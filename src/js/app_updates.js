@@ -61,8 +61,8 @@ function publish(change) {
   for (const listener of listeners) listener();
 }
 
-export function openUpdateAbout() {
-  window.dispatchEvent(new Event("pttchrome:open-updates"));
+export function openUpdateAbout({ showOffer = false } = {}) {
+  window.dispatchEvent(new CustomEvent("pttchrome:open-updates", { detail: { showOffer } }));
 }
 
 export function startUpdateRuntime(core) {

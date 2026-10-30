@@ -34,7 +34,8 @@ async function openAboutTab(page) {
     .locator('.PrefModal__Grid__Col--left')
     .getByText(await label(page, 'options_about'), { exact: true })
     .click();
-  await expect(page.locator('#pref-debug-mode')).toBeAttached();
+  await page.locator('[data-about-section="debug"] > summary').click();
+  await expect(page.locator('#pref-debug-mode')).toBeVisible();
 }
 
 async function boot(page) {

@@ -26,3 +26,9 @@
   gap: 8px;
   margin-block: 10px;
 }
+
+.AboutUpdateInfo {
+  display: grid;
+  gap: 12px;
+  padding: 4px 0 8px 16px;
+}

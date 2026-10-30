@@ -15,6 +15,8 @@ afterEach(() => {
 });
 
 function installHost(initial, checkError = null) {
+  initial.installedVersionCode ??= 5;
+  initial.latestRelease ??= null;
   const listeners = [];
   const requests = [];
   window.__PTT_ANDROID__ = { version: "0.3.0" };
@@ -51,7 +53,7 @@ function installHost(initial, checkError = null) {
   return requests;
 }
 
-test("About groups the current build under collapsed version sources and keeps debugging visible", () => {
+test("About groups the current build under collapsed version sources and collapses update and debug details", () => {
   render(
     <MantineProvider>
       <PrefModal
@@ -70,6 +72,12 @@ test("About groups the current build under collapsed version sources and keeps d
   fireEvent.click(sources.querySelector("summary"));
   const current = sources.querySelector('[data-about-source="current"]');
   expect(current.textContent).toContain("build:");
+  expect(document.querySelector('[data-about-section="update"]').open).toBe(
+    false,
+  );
+  expect(document.querySelector('[data-about-section="debug"]').open).toBe(
+    false,
+  );
   expect(
     document.querySelector('[data-pref-anchor="ui:debugMode"]'),
   ).not.toBeNull();
@@ -105,6 +113,7 @@ test("a failed manual check does not report that the previously checked APK is u
       "Release information is unavailable",
     ),
   );
+  document.querySelector('[data-about-section="update"]').open = true;
   expect(screen.getByRole("status").textContent).toBe(
     i18n("about_update_phase_error"),
   );
@@ -127,6 +136,7 @@ test("a successful manual check is distinct from an update that has not been che
       <AboutUpdate />
     </MantineProvider>,
   );
+  document.querySelector('[data-about-section="update"]').open = true;
   expect(screen.getByRole("status").textContent).toBe(
     "Updates have not been checked.",
   );
@@ -173,7 +183,12 @@ test("Chinese system language selects the release summary without changing Engli
       <AboutUpdate />
     </MantineProvider>,
   );
-  expect(screen.getByText("修正文章閱讀位置。")).toBeInTheDocument();
+  await act(async () =>
+    fireEvent.click(screen.getByRole("button", { name: "Check for updates" })),
+  );
+  await vi.waitFor(() =>
+    expect(screen.getByText("修正文章閱讀位置。")).toBeInTheDocument(),
+  );
   expect(screen.queryByText("Preserve article reading position.")).toBeNull();
   expect(
     screen.getByRole("button", { name: "Check for updates" }),
@@ -182,7 +197,7 @@ test("Chinese system language selects the release summary without changing Engli
   expect(screen.getByRole("button", { name: "Download update" })).toBeEnabled();
 });
 
-test("a retained verified APK requires confirmation after the unsent-input warning before installation", async () => {
+test("a retained verified APK can reopen the system installer without another download", async () => {
   const requests = installHost({
     supported: true,
     phase: "ready",
@@ -206,19 +221,82 @@ test("a retained verified APK requires confirmation after the unsent-input warni
     </MantineProvider>,
   );
   expect(screen.queryByRole("button", { name: "Download update" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Install now" }));
-  expect(
-    screen.getByText(i18n("about_update_install_warning")),
-  ).toBeInTheDocument();
-  expect(requests.some((request) => request.action === "install")).toBe(false);
-  fireEvent.click(screen.getByRole("button", { name: "Install later" }));
-  expect(screen.queryByText(i18n("about_update_install_warning"))).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Install now" }));
+  document.querySelector('[data-about-section="update"]').open = true;
   await act(async () =>
-    fireEvent.click(
-      screen.getByRole("button", { name: "Confirm and open installer" }),
-    ),
+    fireEvent.click(screen.getByRole("button", { name: "Install now" })),
   );
   expect(requests.at(-1)).toMatchObject({ op: "update", action: "install" });
   expect(requests.some((request) => request.action === "download")).toBe(false);
+});
+
+test("an already installed latest release is not offered for download", async () => {
+  installHost({
+    supported: true,
+    phase: "idle",
+    installedVersion: "0.4.0",
+    installedVersionCode: 6,
+    automaticChecks: true,
+    lastError: null,
+    release: null,
+    latestRelease: { version: "0.4.0", versionCode: 6 },
+    systemLanguage: "en-US",
+  });
+  await act(() => updateAction("state"));
+  render(
+    <MantineProvider>
+      <AboutUpdate />
+    </MantineProvider>,
+  );
+  await act(async () =>
+    fireEvent.click(
+      screen.getByRole("button", { name: i18n("about_update_check") }),
+    ),
+  );
+  await vi.waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: i18n("about_update_none") }),
+    ).toBeDisabled(),
+  );
+  expect(document.querySelector("[data-app-update-offer]")).toBeNull();
+});
+
+test("a check waits for the native asynchronous result before offering an update", async () => {
+  const host = {
+    supported: true,
+    phase: "idle",
+    installedVersion: "0.3.0",
+    automaticChecks: false,
+    lastError: null,
+    release: null,
+    systemLanguage: "en-US",
+  };
+  installHost(host);
+  await act(() => updateAction("state"));
+  render(
+    <MantineProvider>
+      <AboutUpdate />
+    </MantineProvider>,
+  );
+  host.phase = "checking";
+  await act(async () =>
+    fireEvent.click(
+      screen.getByRole("button", { name: i18n("about_update_check") }),
+    ),
+  );
+  expect(
+    screen.getByRole("button", { name: i18n("about_update_check") }),
+  ).toBeDisabled();
+  expect(
+    screen.queryByRole("button", { name: i18n("about_update_none") }),
+  ).toBeNull();
+  expect(document.querySelector("[data-app-update-offer]")).toBeNull();
+  host.phase = "available";
+  host.release = {
+    id: "android-fork-v0.4.0",
+    version: "0.4.0",
+    apk: { size: 1 },
+    summary: { en: ["New release"], zhTW: [] },
+  };
+  await act(() => updateAction("state"));
+  await vi.waitFor(() => expect(screen.getByText("New release")).toBeVisible());
 });

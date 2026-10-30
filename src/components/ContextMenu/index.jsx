@@ -317,12 +317,13 @@ export const ContextMenu = ({ pttchrome }) => {
     if (partial !== undefined) setState((s) => ({ ...s, ...partial }));
   }, []);
   useEffect(() => {
-    const openUpdates = () =>
+    const openUpdates = (event) =>
       update({
         showsSettings: true,
         prefJump: {
           tab: "about",
           key: "section:about_update_title",
+          showUpdateOffer: !!event.detail?.showOffer,
           n: Date.now(),
         },
       });
