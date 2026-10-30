@@ -130,6 +130,23 @@ export function parseApkBadging(text) {
   return result;
 }
 
+export function prepareUpdateArtifacts(record, records, { apkBytes, badging, sourceCommit, versionCode, notes, previousMetadata = null }) {
+  validateReleaseRecord(record);
+  requireValue(notes === renderReleaseNotes(record), "Tracked release detail is out of date; regenerate and review it before publication");
+  const manifest = parseApkBadging(badging);
+  requireValue(manifest.version === record.version && manifest.versionCode === versionCode, "Built APK version does not match this release");
+  return {
+    notes,
+    metadata: createUpdateMetadata(record, records, { ...manifest, previousMetadata, sourceCommit, apkBytes }),
+  };
+}
+
+export function writeUpdateArtifacts(directory, { metadata, notes }) {
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(path.join(directory, "release-notes.md"), notes);
+  fs.writeFileSync(path.join(directory, "update.json"), JSON.stringify(metadata, null, 2) + "\n");
+}
+
 export function loadReleaseRecords(directory = path.join(ROOT, "releases")) {
   const records = fs.readdirSync(directory).filter(file => /^\d+\.\d+\.\d+\.json$/.test(file)).map(file => validateReleaseRecord(JSON.parse(fs.readFileSync(path.join(directory, file), "utf8"))));
   requireValue(new Set(records.map(record => record.version)).size === records.length, "Duplicate release versions");
@@ -233,13 +250,14 @@ async function main(args) {
   requireValue(sourceCommit === tagCommit, "Release source does not match the actual tag");
   const predecessor = await officialPredecessor(record, records, ROOT);
   validateReleaseHistory(record, { cwd: ROOT, sourceCommit, previousSourceCommit: predecessor.previousSourceCommit });
-  const manifest = parseApkBadging(fs.readFileSync(options.badging, "utf8"));
-  requireValue(manifest.version === record.version && manifest.versionCode === Number(options["version-code"]), "Built APK version does not match this release");
-  const metadata = createUpdateMetadata(record, records, { ...manifest, ...predecessor, sourceCommit, apkBytes: fs.readFileSync(options.apk) });
-  const output = options["output-dir"];
-  fs.mkdirSync(output, { recursive: true });
-  fs.writeFileSync(path.join(output, "release-notes.md"), trackedNotes);
-  fs.writeFileSync(path.join(output, "update.json"), JSON.stringify(metadata, null, 2) + "\n");
+  const artifacts = prepareUpdateArtifacts(record, records, {
+    ...predecessor, sourceCommit,
+    apkBytes: fs.readFileSync(options.apk),
+    badging: fs.readFileSync(options.badging, "utf8"),
+    versionCode: Number(options["version-code"]),
+    notes: trackedNotes,
+  });
+  writeUpdateArtifacts(options["output-dir"], artifacts);
 }
 
 export function renderReleaseNotes(record) {

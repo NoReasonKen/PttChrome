@@ -1,3 +1,4 @@
 node scripts/edit-guard.mjs --staged
 node scripts/scan-credentials.mjs --staged
 yarn lint-staged
+node scripts/verify-commit.mjs --verify-only

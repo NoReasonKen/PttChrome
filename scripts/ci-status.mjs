@@ -22,6 +22,9 @@ import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 import path from "node:path";
 import { redactCredentials } from "./credential-patterns.mjs";
+import { createCiObserver } from "./ci-watch-state.mjs";
+
+let observer;
 
 const API = "https://api.github.com";
 const POLL_MS = 20000;
@@ -283,6 +286,7 @@ async function reportActionsBlockers(repo) {
 }
 
 async function main() {
+  if (arg("state-file")) observer = createCiObserver(arg("state-file"));
   const token = resolveGhToken(process.env, () => sh("gh", ["auth", "token"]));
   if (!token) {
     console.error("GH_TOKEN is unset and the gh CLI is not logged in; cannot query GitHub Actions.");
@@ -334,6 +338,7 @@ async function main() {
     // 同一個 commit 可能觸發多個 workflow（deploy + CodeQL）→ 全部都要看。
     const head = sha || (all[0] && all[0].head_sha);
     runs = all.filter((r) => r.head_sha === head && !isSideRun(r));
+    observer?.observe({ sha: head || sha, branch, runs });
     if (!runs.length) {
       // 剛 push 完 run 還沒建立 → 寬限期內繼續等，別把「還沒出現」當成「查不到」。
       // 看過 run 之後的空回應是 API 暫時性的 → 照 CI 逾時繼續等（noRunAction）。
@@ -440,6 +445,12 @@ async function main() {
 // 都變成同一個看不懂的碼（實際踩過）。改設 process.exitCode 並主動收掉連線池，
 // 讓 event loop 自然排空後以正確的碼退出。
 async function finish(code) {
+  try {
+    observer?.finish(code, { snapshotOnly: flag("no-wait") });
+  } catch (error) {
+    console.error(`Cannot persist CI state: ${error.message}`);
+    code = 2;
+  }
   process.exitCode = code;
   try {
     // Node 內部 symbol；版本改名時 optional chaining 讓它變 no-op，最多多等

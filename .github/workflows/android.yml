@@ -119,6 +119,24 @@ jobs:
             --source "$GITHUB_SHA" \
             --apk pttchrome.apk --badging apk-badging.txt --output-dir .
 
+      - name: Dry-run publication assets
+        if: ${{ !startsWith(github.ref, 'refs/tags/android-fork-v') }}
+        run: |
+          node ../scripts/release-records.mjs verify --source "$GITHUB_SHA"
+          # Keep the normal development APK unchanged; the fixture is never uploaded.
+          env -u ANDROID_KEYSTORE_FILE ANDROID_VERSION_NAME=0.0.0 ./gradlew --no-daemon assembleRelease
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          aapt2="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -type f -name aapt2 | sort -V | tail -n 1)"
+          if [ -z "$aapt2" ]; then
+            echo '::error::Android build-tools aapt2 is required for the publication dry run.'
+            exit 1
+          fi
+          "$aapt2" dump badging app/build/outputs/apk/release/app-release-unsigned.apk > dry-run-badging.txt
+          node ../scripts/release-dry-run.mjs \
+            --source "$GITHUB_SHA" --version-code "$ANDROID_VERSION_CODE" \
+            --apk app/build/outputs/apk/release/app-release-unsigned.apk \
+            --badging dry-run-badging.txt --output-dir "$RUNNER_TEMP/apk-publication-dry-run"
+
       - uses: actions/upload-artifact@v7
         with:
           name: pttchrome-apk

@@ -54,6 +54,28 @@ actual APK's digest and size. It publishes the APK, license and metadata togethe
 through a draft release before exposing the stable release to update checks.
 Missing/mismatched records or metadata prevent publication.
 
+Non-tag Android CI also verifies tracked records/detail against source history
+and exercises asset preparation before a release is needed. It preserves the
+ordinary development APK, then builds a separate unsigned
+release-package fixture with stable version `0.0.0`. Actual `aapt2 dump badging`
+output and APK bytes pass through the same manifest, notes and metadata preparation
+used by publication. Generated fixture files stay in the runner's temporary
+directory and are never uploaded or published. This catches tool-output and
+artifact-preparation failures that mocked manifest tests alone cannot establish.
+It does not replace release signing, official-predecessor verification or final
+public-asset checks.
+
+The offline runner can also check a locally built stable-version release APK:
+
+```bash
+node scripts/release-dry-run.mjs --apk <apk> --badging <aapt2-output> \
+  --source <source-sha> --version-code <actual-apk-code> --output-dir <scratch-directory>
+```
+
+Development APK identities are deliberately not accepted by the stable release
+parser. The CI fixture has the production package and a stable version, so dry-run
+coverage does not weaken the published APK contract or need a real release tag.
+
 The workflow's Android version code remains its run number. A web-only release
 inherits its native version baseline from the preceding official release's
 verified metadata. Legacy 0.1.0/0.2.0 baselines are reproducible from their tracked
