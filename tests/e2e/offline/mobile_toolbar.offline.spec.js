@@ -201,17 +201,19 @@ test.describe('手機底部工具列（離線重放）', () => {
       await expect(byKey(page, '__post')).toHaveCount(0);
 
       await collectSent(page);
+      await byKey(page, '__reply').tap();
+      await expect.poll(() => sentText(page)).toContain('y');
+      expect(await focusedIsT(page)).toBe(true);
+
+      // Last: the recording has no answer to the jump, which holds input
+      // until it gives up (#65).
+      await collectSent(page);
       await byKey(page, '__more').tap();
       await expect(byKey(page, '__share')).toBeVisible();
       await byKey(page, ']').tap();
       await expect.poll(() => sentText(page)).toContain(']');
       // 點了導覽項面板自動收起
       await expect(byKey(page, '__threadNav')).toHaveCount(0);
-
-      await collectSent(page);
-      await byKey(page, '__reply').tap();
-      await expect.poll(() => sentText(page)).toContain('y');
-      expect(await focusedIsT(page)).toBe(true);
     });
   });
 });

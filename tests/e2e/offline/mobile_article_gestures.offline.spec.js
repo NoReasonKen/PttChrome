@@ -104,7 +104,8 @@ for (const target of ['backdrop', '[']) {
       await page.touchscreen.tap(button.left + button.width / 2, button.top + button.height / 2);
     }
     await expect(page.locator(DRAWER)).toHaveCount(0);
-    await expect.poll(() => gestureSent(page)).toBe(target === 'backdrop' ? '' : target);
+    // A same-thread key goes out with a redraw that answers it (#65).
+    await expect.poll(() => gestureSent(page)).toBe(target === 'backdrop' ? '' : target + '\f');
   });
 }
 
@@ -121,7 +122,8 @@ for (const target of ['backdrop', '[']) {
     }
     await page.touchscreen.tap(point.x, point.y);
     await expect(page.locator(DRAWER)).toHaveCount(0);
-    await expect.poll(() => gestureSent(page)).toBe(target === 'backdrop' ? '' : target);
+    // A same-thread key goes out with a redraw that answers it (#65).
+    await expect.poll(() => gestureSent(page)).toBe(target === 'backdrop' ? '' : target + '\f');
   });
 }
 
@@ -140,7 +142,7 @@ for (const key of ['thread', '[', '=', ']', 'author']) {
     await tapDuringOpening(page, `[data-article-shortcut="${key}"]`);
     await expect(page.locator(DRAWER)).toHaveCount(0);
     // This article fixture has no URL, so either search first resolves its AID.
-    await expect.poll(() => gestureSent(page)).toBe(key === 'thread' || key === 'author' ? 'Q' : key);
+    await expect.poll(() => gestureSent(page)).toBe(key === 'thread' || key === 'author' ? 'Q' : key + '\f');
   });
 }
 
@@ -262,7 +264,7 @@ test('a debug recording traces each contact, click and settle of the drawer', as
     window.__app.debugRecorder = { isRecording: true, log: (tag, info) => window.__diag.push({ tag, ...info }) };
   });
   await tapDuringOpening(page, '[data-article-shortcut="["]');
-  await expect.poll(() => gestureSent(page)).toBe('[');
+  await expect.poll(() => gestureSent(page)).toBe('[\f');
   const trace = await page.evaluate(() => window.__diag.filter(e => e.tag.startsWith('articleGestures.')));
   const names = trace.map(e => e.tag.slice('articleGestures.'.length));
   expect(names).toEqual(expect.arrayContaining(['pointerdown', 'settle', 'tapUp']));

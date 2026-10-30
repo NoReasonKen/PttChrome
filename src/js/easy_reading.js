@@ -2510,6 +2510,8 @@ EasyReading.prototype._onKeyDownProcessUI = function(e) {
       default:
         if ("abf=+-[]ABF".indexOf(e.key) >= 0) {
           this.leaveCurrentPost();
+          // Same-thread keys land however far their target is (#65).
+          stop = !!this._core.threadJump?.start(e.key);
           break;
         }
         // Any other key falls through to native PTT and may open an in-post prompt /

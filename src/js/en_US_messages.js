@@ -1428,6 +1428,8 @@ export const en_US = {
   "articleShortcutSearch_thread": { "message": "Search this board for the same thread" },
   "articleShortcutSearch_threadResults": { "message": "Same-thread search results. Back returns to the source article." },
   "articleShortcutSearch_busy": { "message": "Searching or returning to the source article…" },
+  "threadJump_busy": { "message": "Going to the same-thread article…" },
+  "threadJump_failed": { "message": "Could not go to the same-thread article; the native PTT screen remains usable." },
   "articleResize_busy": { "message": "Adjusting the reading layout…" },
   "articleResize_failed": { "message": "The article could not adapt to the new screen size. Native PTT view is available." },
   "listResize_failed": { "message": "The article list could not adapt to the new screen size. Native PTT view is available." },
