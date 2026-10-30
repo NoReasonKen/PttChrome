@@ -30,15 +30,28 @@ describe("parseHeaderTitle", () => {
 });
 
 describe("appBarFromFacts", () => {
-  test("文章（pageState 3）：標題＝檔頭標題，副標＝看板", () => {
+  test("文章（pageState 3）：標題＝檔頭標題，副標＝看板，另帶時間與作者（#66）", () => {
     expect(
-      appBarFromFacts(frame({ 23: READ_ROW }), { pageState: 3, articleTitle: "[問卦] 有沒有", articleBoard: "Gossiping" })
-    ).toEqual({ kind: "article", title: "[問卦] 有沒有", subtitle: "Gossiping", newMail: false });
+      appBarFromFacts(frame({ 23: READ_ROW }), {
+        pageState: 3,
+        articleTitle: "[問卦] 有沒有",
+        articleBoard: "Gossiping",
+        articleTime: "Thu Oct 29 23:10:05 2026",
+        articleByline: "someone (暱稱)"
+      })
+    ).toEqual({
+      kind: "article",
+      title: "[問卦] 有沒有",
+      subtitle: "Gossiping",
+      time: "Thu Oct 29 23:10:05 2026",
+      byline: "someone (暱稱)",
+      newMail: false
+    });
   });
 
   test("文章列表：標題＝看板名（【板主:x】必須先被當成列表，不是選單）", () => {
     expect(appBarFromFacts(frame({ 0: LIST_ROW0, 23: LIST_FOOT }), { pageState: 2 })).toEqual({
-      kind: "list", title: "Test", subtitle: "", newMail: false,
+      kind: "list", title: "Test", subtitle: "", time: "", byline: "", newMail: false,
     });
   });
 

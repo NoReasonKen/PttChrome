@@ -206,6 +206,8 @@ export class DebugRecorder {
       author: view._articleAuthor || null,
       board: view._articleBoard || null,
       title: view._articleTitle || null,
+      byline: view._articleByline || null,
+      time: view._articleTime || null,
     });
     if (app._screenContext && app._screenContext.appBar) this.log('appBar', app._screenContext.appBar);
     // 黑名單設定（作者／標題關鍵字）：「這篇為什麼沒出現／為什麼出現了」只看 bytes 判斷不了。

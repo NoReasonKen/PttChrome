@@ -89,6 +89,10 @@ test.describe('手機 Phase 4：列表卡片（離線重放）', () => {
         })),
         viewTop: document.querySelector('#mainContainer .listBodyView').getBoundingClientRect().top,
         mainTop: main.getBoundingClientRect().top,
+        viewBottom: document.querySelector('#mainContainer .listBodyView').getBoundingClientRect().bottom,
+        mainOverflow: main.scrollHeight - main.clientHeight,
+        barBottom: document.getElementById('mobileAppBar').getBoundingClientRect().bottom,
+        toolbarTop: document.querySelector('.mobileToolbarBar').getBoundingClientRect().top,
         appBarTitle: document.querySelector('#mobileAppBar [data-key="__title"]').textContent,
         // 看板名的真相：server 畫面 row 0 的《板名》（list_session.parseBoardName 同規則）。
         boardName: (/《([^《》]+)》/.exec(window.__app.buf.getRowText(0, 0, 80)) || [])[1] || null,
@@ -113,7 +117,12 @@ test.describe('手機 Phase 4：列表卡片（離線重放）', () => {
       expect(r.h).toBe(0);
     }
     expect(Math.abs(g.viewTop - g.mainTop)).toBeLessThan(1);
-    expect(Math.abs(s.viewportPx - s.rows * s.chh)).toBeLessThan(1);
+    // The viewport spans the App Bar to the toolbar: the rows' leftover height is not a
+    // strip under the App Bar (mobile_layout.mobileFillLayout), and `.main` does not scroll.
+    expect(Math.abs(g.viewTop - g.barBottom)).toBeLessThan(1);
+    expect(Math.abs(g.viewBottom - g.toolbarTop)).toBeLessThan(1);
+    expect(s.viewportPx).toBeGreaterThanOrEqual(s.rows * s.chh - 1);
+    expect(g.mainOverflow).toBeLessThanOrEqual(0);
     expect(g.boardName).toBeTruthy();
     expect(g.appBarTitle).toBe(g.boardName);
   });

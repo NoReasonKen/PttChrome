@@ -305,40 +305,6 @@ body.mobile-layout:not(.mobileSelectMode) #mainContainer {
   outline: none;
 }
 
-/* 手機好讀文章的檔頭卡片（render/article_meta_card.js）：作者／完整標題／時間，取代
-   80 欄反白的檔頭列；分隔線收起（.mobileCollapsedRow）。只在換行版面出現。
-   不宣告 user-select（css_user_select.test.js）；不用 margin-bottom（會推開
-   #easyReadingLastRow，同推文卡片的理由）。 */
-.main.mobileReflow #mainContainer span[type="bbsrow"].articleMeta {
-  display: block;
-  padding-inline: 0.25em;
-}
-.articleMeta .articleMetaLabel {
-  margin-right: 0.5em;
-  opacity: 0.55;
-  font-size: 0.8em;
-}
-.articleMeta--author {
-  padding-top: 0.5em;
-  color: #9ecbff;
-}
-.articleMeta--title {
-  padding-block: 0.25em;
-  color: #f0f0f0;
-  font-size: 1.15em;
-  font-weight: 600;
-  line-height: 1.35;
-}
-.articleMeta--time {
-  padding-bottom: 0.5em;
-  font-size: 0.8em;
-  color: #9a9aa0;
-  box-shadow: inset 0 -1px 0 #333;
-}
-.articleMeta--time .articleMetaLabel {
-  font-size: 1em;
-}
-
 /* 手機推文卡片（render/comment_card.js，docs/mobile.md「推文卡片」）：只在換行版面。
    兩段：標頭一行（推/噓/→・id・樓號 …… IP 時間靠右）＋內容滿寬自然換行；合併塊
    一個標頭、每則內容各一行。全字級不淡化，顏色沿用原列。
@@ -424,6 +390,17 @@ body.mobile-layout:not(.mobileSelectMode) #mainContainer {
    box-shadow（不佔版面）。間距落在 .listCardBody 之外 ⇒ 點到間距不開文
    （App.mouse_click 的 listCards 分支，防誤點）。守護 tests/unit/list_card_css.test.js。
    每行單行＋省略號；游標底色的 class 下在 .listCardBody（整張卡片上色）。 */
+/* The card viewport takes the whole height between the two bars
+   (term_view.listCardViewportPx), which is not a whole number of cards. A short list
+   would end above the viewport's bottom, and a scrollTop write past the reserve would
+   be clamped, leaving the list lower than its reading position (#66). --list-tail
+   (screen.js, from listScroll.tailPx) pads the content to the viewport height; it is
+   0 once the cards fill it, so the scroll maths (list_scroll.contentPx) is unchanged. */
+.main.mobileListCards .listBodyView::after {
+  content: "";
+  display: block;
+  height: var(--list-tail, 0px);
+}
 .main.mobileListCards .listBodyView > span.listCard {
   display: block;
   box-sizing: border-box;

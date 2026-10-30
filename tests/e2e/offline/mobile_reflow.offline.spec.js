@@ -476,33 +476,39 @@ test.describe('手機推文卡片', () => {
     }
   });
 
-  // 檔頭與 80 欄狀態列（docs/mobile.md「收起終端機標頭／狀態列」）：標題在 App Bar、
-  // 按鍵在底部導覽；檔頭換成卡片，分隔線與 footer overlay 收起。
-  test('檔頭變卡片（作者／完整標題／時間）、分隔線與 80 欄狀態列收起、不橫向溢出', async ({ page }) => {
+  // 檔頭與 80 欄狀態列（docs/mobile.md「收起終端機標頭／狀態列」）：標題、看板、時間、
+  // 作者在三行的 App Bar（#66），按鍵在底部導覽；檔頭每一列與 footer overlay 收起。
+  test('檔頭整個收起（資訊在三行 App Bar）、80 欄狀態列收起、不橫向溢出', async ({ page }) => {
     test.setTimeout(90000);
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, { enableEasyReading: true });
     await replayCassette(page, article, { easyReading: true });
     await expect.poll(() => page.evaluate(() => window.__app.view.reflow)).toBe(true);
+    await expect.poll(() => page.evaluate(() => window.__app.view._articleTime)).toBeTruthy();
     const m = await page.evaluate(() => {
-      const q = (s) => document.querySelector('#mainContainer ' + s);
+      const meta = [...document.querySelectorAll('#mainContainer [class*="articleMeta--"]')];
+      const bar = (k) => {
+        const el = document.querySelector(`#mobileAppBar [data-key="${k}"]`);
+        return el ? el.textContent : null;
+      };
       const footer = document.getElementById('easyReadingLastRow');
-      const rule = document.querySelector('#mainContainer .articleMetaRule');
+      const view = window.__app.view;
       return {
-        author: q('.articleMeta--author') ? q('.articleMeta--author').textContent : null,
-        title: q('.articleMeta--title') ? q('.articleMeta--title').textContent : null,
-        time: !!q('.articleMeta--time'),
-        ruleH: rule ? rule.getBoundingClientRect().height : null,
+        kinds: meta.map((e) => [...e.classList].find((c) => c.startsWith('articleMeta--'))),
+        heights: meta.map((e) => e.getBoundingClientRect().height),
+        bar: { title: bar('__title'), board: bar('__subtitle'), time: bar('__time'), byline: bar('__byline') },
+        view: { title: view._articleTitle, board: view._articleBoard, time: view._articleTime, author: view._articleAuthor },
         footerShown: getComputedStyle(footer).display !== 'none',
-        appTitle: window.__app.view._articleTitle,
         docScrollWidth: document.documentElement.scrollWidth,
         innerWidth: window.innerWidth,
       };
     });
-    expect(m.author).toContain(await page.evaluate(() => window.__app.view._articleAuthor));
-    expect(m.title).toBe(m.appTitle);
-    expect(m.time).toBe(true);
-    expect(m.ruleH).toBe(0);
+    expect(m.kinds).toEqual(expect.arrayContaining(['articleMeta--author', 'articleMeta--title', 'articleMeta--time']));
+    expect(m.heights.every((h) => h === 0)).toBe(true);
+    expect(m.bar.title).toBe(m.view.title);
+    expect(m.bar.board).toBe(m.view.board);
+    expect(m.bar.time).toBe(m.view.time);
+    expect(m.bar.byline.toLowerCase()).toContain(m.view.author);
     expect(m.footerShown).toBe(false);
     expect(m.docScrollWidth).toBeLessThanOrEqual(m.innerWidth);
   });

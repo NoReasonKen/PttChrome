@@ -43,23 +43,35 @@ test.describe('手機頂部 App Bar', () => {
     expect(c.mainBottom).toBeLessThanOrEqual(c.toolbarTop + 0.5);
   });
 
-  test('好讀文章：標題＝文章標題、副標＝看板；第一列不被 App Bar 蓋住', async ({ page }) => {
+  test('好讀文章：標題＝文章標題、副標＝看板與時間、第三行＝作者；第一列不被 App Bar 蓋住', async ({ page }) => {
     await bootOffline(page, ptt);
     await replayCassette(page, article, { easyReading: true });
     await page.waitForFunction(() => window.__app.view.reflow === true);
+    await page.waitForFunction(() => !!window.__app.view._articleTime);
     const want = await page.evaluate(() => ({
       title: window.__app.view._articleTitle,
       board: window.__app.view._articleBoard,
+      time: window.__app.view._articleTime,
+      byline: window.__app.view._articleByline,
     }));
     expect(want.title).toBeTruthy();
     await expect(title(page)).toHaveText(want.title);
     if (want.board) await expect(subtitle(page)).toHaveText(want.board);
+    // #66: the time sits on the board's line, the author with nickname on a third line.
+    await expect(page.locator('#mobileAppBar [data-key="__time"]')).toHaveText(want.time);
+    await expect(page.locator('#mobileAppBar [data-key="__byline"]')).toHaveText(want.byline);
     const c = await chrome(page);
     expect(c.mainTop).toBeGreaterThanOrEqual(c.barBottom - 0.5);
-    const firstRowTop = await page.evaluate(
-      () => document.querySelector('#mainContainer [data-type="bbsline"]').getBoundingClientRect().top
+    // The header rows are collapsed (display:none, #66): measure the first row that shows.
+    const firstRowTop = await page.evaluate(() =>
+      [...document.querySelectorAll('#mainContainer [data-type="bbsline"]')]
+        .find((el) => el.offsetParent !== null)
+        .getBoundingClientRect().top
     );
     expect(firstRowTop).toBeGreaterThanOrEqual(c.barBottom - 0.5);
+    // Flush under the App Bar and down to the toolbar: no centring strip (mobileFillLayout).
+    expect(firstRowTop).toBeLessThan(c.barBottom + 1);
+    expect(Math.abs(c.mainBottom - c.toolbarTop)).toBeLessThan(1);
   });
 
   test('tap App Bar 不送任何鍵（不會被當成點終端機）', async ({ page }) => {

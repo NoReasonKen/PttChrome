@@ -57,5 +57,5 @@
 
 /* 手機：App Bar 正下方（高度同 MobileAppBar.css）。 */
 body.mobile-layout .aidBackButton {
-  top: calc(48px + var(--safe-top, 0px) + 8px);
+  top: calc(64px + var(--safe-top, 0px) + 8px);
 }

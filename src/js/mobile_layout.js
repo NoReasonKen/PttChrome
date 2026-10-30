@@ -69,7 +69,7 @@ export const MOBILE_TOOLBAR_PX = 48;
 // 頂部 App Bar（components/MobileAppBar）的高度（px）。同樣**常駐**（手機模式下每個畫面
 // 都有）⇒ 列數從兩條 bar 中間的高度算，畫面切換不重送 NAWS。必須與 MobileAppBar.css 的
 // .mobileAppBar height 一致（守護 tests/unit/mobile_app_bar.test.jsx）。
-export const MOBILE_APPBAR_PX = 48;
+export const MOBILE_APPBAR_PX = 64;
 
 // 手機模式下終端機可用的高度（決定列數）：視窗高扣掉兩條常駐 bar。軟鍵盤／按鍵面板
 // 是暫態，不在這裡扣（它們只改位置，見 term_size.termLayoutOffsets 的 inset）。
@@ -302,6 +302,21 @@ export function mobileMenuLayout({ innerHeight, bottomInset, topInset, chh, rows
       innerHeight, chh, rows, margin: margin || 0, bottomInset: inset, topInset: top
     }).marginTop
   };
+}
+
+// `.main` height and top offset for the article and list-card surfaces. termLayoutOffsets
+// centres chh*rows, so the rows' leftover height showed as a black strip under the App Bar.
+// Both surfaces scroll inside their own viewport, so `.main` starts at the App Bar and
+// fills down to the bottom inset. contentPx is the height the content needs (list cards:
+// their viewport; article: 0, its scroller takes whatever is visible). Content that does
+// not fit (keys panel open) is bottom-aligned, like termLayoutOffsets.
+export function mobileFillLayout({ innerHeight, bottomInset, topInset, contentPx }) {
+  const inset = bottomInset > 0 ? bottomInset : 0;
+  const top = topInset > 0 ? topInset : 0;
+  const avail = Math.max(0, (Number(innerHeight) || 0) - inset - top);
+  const content = contentPx > 0 ? contentPx : 0;
+  if (content <= avail) return { marginTop: top, height: avail };
+  return { marginTop: top + avail - content, height: content };
 }
 
 // 手機主功能表（Phase 5）：點到的是哪一顆選單按鈕（render/menu_card.js 的

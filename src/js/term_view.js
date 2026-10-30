@@ -30,7 +30,7 @@ import { hintColors, shouldShowHint } from './status_hint';
 import { isPushKey, pushGateFacts, shouldInterceptPushKey } from './long_push_gate';
 import { tryOpenSearchModal } from './article_search';
 import { isRefreshKeyEvent } from './screen_refresh';
-import { mobileCtrlKey, mobileMenuLayout, listViewportGeometry, listFillRows } from './mobile_layout';
+import { mobileCtrlKey, mobileMenuLayout, mobileFillLayout, listViewportGeometry, listFillRows, listRowSpan } from './mobile_layout';
 
 // 單獨按下修飾鍵本身（實體鍵盤按 Shift 準備打大寫）不算「下一個按鍵」，黏滯 Ctrl 不解除。
 var MODIFIER_KEY_NAMES = ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'AltGraph'];
@@ -272,6 +272,8 @@ export function TermView() {
   this.reflow = false;
   this.listCards = false;
   this.reflowWidth = null;
+  // Mobile: height between the App Bar and the toolbar (mobile_layout.mobileRowsHeight).
+  this.mobileRowsPx = 0;
   //new pref - end
 
   this.bbsViewMargin = 0;
@@ -420,6 +422,10 @@ export function TermView() {
   this._articleBoard = null;
   // 文章檔頭「標題」列（同一個 header 事件），手機 App Bar 的標題。
   this._articleTitle = null;
+  // Same header event: the 作者 field with nickname and the 時間 row, the App Bar's
+  // third and second lines (#66).
+  this._articleByline = null;
+  this._articleTime = null;
   this.onAidClick = null;
   // 「開燈」需要切 pmore 色彩顯示模式時的入口（App 指派，見 pttchrome.jsx）。
   this.onLightsRawMode = null;
@@ -758,18 +764,22 @@ TermView.prototype = {
 
   // 「目前這篇」的作者／看板／標題只准成組寫入（作者與看板同一列檔頭，見 redraw）。
   _setArticleContext: function(ctx) {
+    var byline = ctx.byline || null, time = ctx.time || null;
     if (ctx.author === this._articleAuthor && ctx.board === this._articleBoard &&
-        ctx.title === this._articleTitle) return;
+        ctx.title === this._articleTitle && byline === this._articleByline &&
+        time === this._articleTime) return;
     var rec = this.bbscore && this.bbscore.debugRecorder;
-    if (rec) rec.log('article.context', { author: ctx.author, board: ctx.board, title: ctx.title });
+    if (rec) rec.log('article.context', { author: ctx.author, board: ctx.board, title: ctx.title, byline: byline, time: time });
     this._articleAuthor = ctx.author;
     this._articleBoard = ctx.board;
     this._articleTitle = ctx.title;
+    this._articleByline = byline;
+    this._articleTime = time;
   },
 
   // 離開文章時整組清空（App 的 screenSettled，comment_parse.shouldClearArticleContextOnSettle）。
   clearArticleContext: function() {
-    this._setArticleContext({ author: null, board: null, title: null });
+    this._setArticleContext({ author: null, board: null, title: null, byline: null, time: null });
   },
 
   redraw: function(force) {
@@ -798,7 +808,8 @@ TermView.prototype = {
       var ctx = articleContextFromScreen(
         rowToText(lines[0]),
         lines[1] ? rowToText(lines[1]) : '',
-        parseStatusRow(rowToText(lines[rows - 1])));
+        parseStatusRow(rowToText(lines[rows - 1])),
+        [lines[2] ? rowToText(lines[2]) : '', lines[3] ? rowToText(lines[3]) : '']);
       if (ctx) this._setArticleContext(ctx);
     } else if (!this.buf.easyReadingResizeInFlight && !this.bbscore?.listResize?.active) {
       // Leaving the article clears any pusher highlight selection. 只設欄位就好：
@@ -1079,7 +1090,13 @@ TermView.prototype = {
       lsOv.viewportRows = listViewportGeometry({
         rows: this.buf.rows, headerRows: lsOv.bodyStart, cards: this.listCards
       }).viewportRows;
-      lsOv.viewportPx = (lsOv.viewportRows || 0) * this.chh;
+      lsOv.viewportPx = this.listCards ? this.listCardViewportPx() : (lsOv.viewportRows || 0) * this.chh;
+      // Cards: pad a short list to the viewport height, which is not a whole number of
+      // cards (main.css `.listBodyView::after`). Body rows sit between the header and the footer.
+      var bodyCount = Math.max(0, lines.length - (lsOv.bodyStart || 0) - 1);
+      lsOv.tailPx = this.listCards
+        ? Math.max(0, lsOv.viewportPx - bodyCount * listRowSpan(true) * this.chh)
+        : 0;
       enhanceOverrides.listCards = this.listCards ? lsOv.kind : undefined;
     }
     // 這一幀實際畫出去的那一份 lines。`data-row` 的定義就是「傳給 <Screen> 的
@@ -1672,6 +1689,13 @@ TermView.prototype = {
       return;
   },
 
+  // List-card viewport (px): the whole height between the two bars (mobileRowsPx, written
+  // by App._applyMobileGeometry), so the rows' leftover is not a strip under the App Bar.
+  // Steady while the keyboard or keys panel opens, like the row count.
+  listCardViewportPx: function() {
+    return this.mobileRowsPx > 0 ? this.mobileRowsPx : this.buf.rows * this.chh;
+  },
+
   setTermFontSize: function(cw, ch) {
     var innerBounds = this.innerBounds;
     // Preview measurements depend on width and, in mobile reflow, the 50dvh cap.
@@ -1747,6 +1771,16 @@ TermView.prototype = {
       var menuLayout = mobileMenuLayout(layoutInput);
       this.mainDisplay.style.height = menuLayout.height + 'px';
       this.mainDisplay.style.marginTop = menuLayout.marginTop + 'px';
+    } else if (this.reflow || this.listCards) {
+      // Flush under the App Bar, no centring strip (mobile_layout.mobileFillLayout).
+      var fill = mobileFillLayout({
+        innerHeight: innerBounds.height,
+        bottomInset: this.keyboardInset,
+        topInset: this.topInset,
+        contentPx: this.listCards ? this.listCardViewportPx() : 0
+      });
+      this.mainDisplay.style.height = fill.height + 'px';
+      this.mainDisplay.style.marginTop = fill.marginTop + 'px';
     } else {
       this.mainDisplay.style.marginTop =
         termLayoutOffsets(layoutInput).marginTop + 'px';

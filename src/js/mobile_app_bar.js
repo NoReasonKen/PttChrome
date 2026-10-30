@@ -3,7 +3,8 @@
 // docs/mobile.md「App Bar」。
 //
 // kind（判斷順序就是優先序）：
-//   article  pageState 3：標題＝文章（或信件）檔頭的「標題」列，副標＝看板。
+//   article  pageState 3：標題＝文章（或信件）檔頭的「標題」列，副標＝看板，同一行靠右＝
+//            檔頭的時間，第三行＝作者 ID（暱稱）（#66）。
 //            檔頭只在第一頁 ⇒ 由 term_view 跟著 _articleAuthor 一起記（_articleTitle）。
 //   list     文章列表（《看板》＋文章列表 footer，或列表好讀 session 持有）：標題＝看板名。
 //            row 0 也是 `【板主:xxx】` 形狀 ⇒ 必須先於 menu 判。
@@ -20,15 +21,19 @@ import { parseBoardName, parseHeaderTitle } from './screen_titles';
 export const NEW_MAIL_MARK = '你有新信件';
 
 export const EMPTY_APP_BAR = Object.freeze({
-  kind: 'other', title: '', subtitle: '', newMail: false
+  kind: 'other', title: '', subtitle: '', time: '', byline: '', newMail: false
 });
 
-function bar(kind, title, subtitle, newMail) {
-  return { kind: kind, title: title || '', subtitle: subtitle || '', newMail: !!newMail };
+// time／byline：只有文章有（#66：看板同一行靠右的時間、第三行的作者＋暱稱）。
+function bar(kind, title, subtitle, newMail, time, byline) {
+  return {
+    kind: kind, title: title || '', subtitle: subtitle || '',
+    time: time || '', byline: byline || '', newMail: !!newMail
+  };
 }
 
 // facts：article_search.searchGateFacts 的形狀（rowTexts/rows/listOwner…）。
-// opts：{ pageState, articleTitle, articleBoard, prev }。
+// opts：{ pageState, articleTitle, articleBoard, articleTime, articleByline, prev }。
 export function appBarFromFacts(facts, opts) {
   const o = opts || {};
   const prev = o.prev || EMPTY_APP_BAR;
@@ -38,7 +43,7 @@ export function appBarFromFacts(facts, opts) {
   const newMail = row0.indexOf(NEW_MAIL_MARK) >= 0;
 
   if (o.pageState === 3) {
-    return bar('article', o.articleTitle, o.articleBoard, false);
+    return bar('article', o.articleTitle, o.articleBoard, false, o.articleTime, o.articleByline);
   }
   const ctx = boardListContextKind(facts);
   if (facts.listOwner === OWNER_ARTICLE_LIST || ctx === 'article-list') {
@@ -56,5 +61,6 @@ export function appBarFromFacts(facts, opts) {
 export function sameAppBar(a, b) {
   if (!a || !b) return a === b;
   return a.kind === b.kind && a.title === b.title &&
-    a.subtitle === b.subtitle && a.newMail === b.newMail;
+    a.subtitle === b.subtitle && a.time === b.time && a.byline === b.byline &&
+    a.newMail === b.newMail;
 }

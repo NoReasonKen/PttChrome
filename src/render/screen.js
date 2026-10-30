@@ -1062,8 +1062,8 @@ export class ScreenController {
     // 手機列表卡片（term_view.listCards，docs/mobile.md「Phase 4」）：只換 body 列，
     // header／footer（容器直系子層）照舊。body 範圍與 _patchRows 同一個定義。
     const enhance = this.props.enhance;
-    // 手機好讀文章的檔頭（render/article_meta_card.js）：作者／標題／時間改成卡片、分隔線
-    // 收起。只看該列自己（列號＋文字形狀），認不出就照舊。
+    // 手機好讀文章的檔頭（render/article_meta_card.js）：每一列都收起，資訊在 App Bar
+    // （#66）。只看該列自己（列號＋文字形狀），認不出就照舊。
     // 手機好讀文章的文末補白（computeAnnotations 的 trailingBlank）：收起、契約保留。
     if (enhance && enhance.commentCards && ann && ann.trailingBlank)
       return buildCollapsedRow(row, "articleTrailingBlankRow");
@@ -1297,6 +1297,13 @@ export class ScreenController {
     }
     const h = (ls.viewportPx || 0) + "px";
     if (this._bodyView.style.height !== h) this._bodyView.style.height = h;
+    // Short card list padded to the viewport (main.css `.listBodyView::after`); 0 drops
+    // the variable, as for the reserve.
+    const tail = ls.tailPx > 0 ? ls.tailPx + "px" : "";
+    if (this._bodyView.style.getPropertyValue("--list-tail") !== tail) {
+      if (tail) this._bodyView.style.setProperty("--list-tail", tail);
+      else this._bodyView.style.removeProperty("--list-tail");
+    }
     const ov = ls.scrollable ? "auto" : "hidden";
     if (this._bodyView.style.overflowY !== ov) {
       diag("listView.overflow", {

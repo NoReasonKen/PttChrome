@@ -390,12 +390,34 @@ export function parseArticleTitle(text) {
 // string_util.parseStatusRow 結果。回 {author, board, title} ⇒ 整組覆寫；null ⇒ 沿用。
 // 檔頭只在文章首頁 row 0（pmore 從第 1 行畫起）⇒ 首頁卻沒有檔頭＝沒有檔頭的特殊
 // 文章（進站系統公告、動畫…），必須清空，否則 App Bar 會顯示上一篇的標題。
-const NO_ARTICLE_CONTEXT = Object.freeze({ author: null, board: null, title: null });
+const NO_ARTICLE_CONTEXT = Object.freeze({ author: null, board: null, title: null, byline: null, time: null });
 
-export function articleContextFromScreen(row0, row1, status) {
+// The App Bar's author line (#66): the 作者 field as shown, ID in its own case plus
+// the nickname, without the trailing 看板 field.
+const ARTICLE_BYLINE_RE = /^\s*作者[:：]?\s+(.*?)\s*(?:看板[:：]?\s+\S+\s*)?$/;
+// The 時間 row, kept exactly as the header shows it.
+const ARTICLE_TIME_RE = /^\s*時間[:：]?\s+(\S.*?)\s*$/;
+
+// laterRows: the header rows after the title (時間, and 轉信 when present).
+export function articleContextFromScreen(row0, row1, status, laterRows) {
   const header = parseArticleHeader(row0);
   if (header) {
-    return { author: header.author, board: header.board, title: parseArticleTitle(row1) };
+    const by = ARTICLE_BYLINE_RE.exec(row0);
+    let time = null;
+    for (const text of laterRows || []) {
+      const m = ARTICLE_TIME_RE.exec(text || '');
+      if (m) {
+        time = m[1];
+        break;
+      }
+    }
+    return {
+      author: header.author,
+      board: header.board,
+      title: parseArticleTitle(row1),
+      byline: (by && by[1]) || null,
+      time: time
+    };
   }
   if (!status) return null;
   const atTop = status.rowIndexStart != null ? status.rowIndexStart === 1 : status.pageIndex === 1;

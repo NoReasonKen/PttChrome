@@ -85,9 +85,22 @@ export const MobileAppBar = ({ pttchrome }) => {
             ? i18n("home_title")
             : appBar.title || i18n("mobileAppBar_defaultTitle")}
         </div>
-        {!homeVisible && appBar.subtitle ? (
-          <div className="mobileAppBarSubtitle" data-key="__subtitle">
-            {appBar.subtitle}
+        {!homeVisible && (appBar.subtitle || appBar.time) ? (
+          <div className="mobileAppBarSubline">
+            <span className="mobileAppBarSubtitle" data-key="__subtitle">
+              {appBar.subtitle}
+            </span>
+            {appBar.time ? (
+              <span className="mobileAppBarTime" data-key="__time">
+                {appBar.time}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+        {/* 文章的第三行：作者 ID（暱稱）（#66）。 */}
+        {!homeVisible && appBar.byline ? (
+          <div className="mobileAppBarByline" data-key="__byline">
+            {appBar.byline}
           </div>
         ) : null}
       </div>

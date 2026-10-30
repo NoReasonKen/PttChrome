@@ -134,6 +134,8 @@ export function mobileToolbarContext(core) {
   return toolbarContextFromFacts(facts, core && core.buf ? core.buf.pageState : null, {
     articleTitle: view._articleTitle,
     articleBoard: view._articleBoard,
+    articleTime: view._articleTime,
+    articleByline: view._articleByline,
     prev: prev,
     connected: !!(core && core.conn && core.conn.isConnected),
     listOpened: !!(ls && ls.currentAnchor && ls.currentAnchor()),

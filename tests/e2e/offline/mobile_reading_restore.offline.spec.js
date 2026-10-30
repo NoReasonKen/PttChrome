@@ -103,6 +103,14 @@ for (const frac of [0.25, 0.5, 0.8]) {
     await page.evaluate((f) => {
       const d = window.__app.view.mainDisplay;
       d.scrollTop = Math.round((d.scrollHeight - d.clientHeight) * f);
+      // A top that falls in the spacing between two rows is recorded as the next row
+      // (fraction 0) and restored flush to it: start inside a row so the 2px check holds.
+      const top = d.getBoundingClientRect().top;
+      const row = [...document.querySelectorAll('#mainContainer [type="bbsrow"][srow]')].find(
+        (el) => el.offsetParent !== null && el.getBoundingClientRect().bottom > top + 1
+      );
+      const gap = row ? row.getBoundingClientRect().top - top : 0;
+      if (gap > 0) d.scrollTop += Math.ceil(gap) + 1;
     }, frac);
     await waitPreviewsSettled(page);
     const before = await topOfView(page);
