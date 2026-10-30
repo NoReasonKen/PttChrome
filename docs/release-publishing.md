@@ -7,6 +7,12 @@ new capabilities and user-visible fixes; commit detail also includes tests, CI,
 and refactoring. Do not copy an existing release-page body into a historical
 record.
 
+Each version also has a tracked `releases/<version>.md` containing the complete
+English GitHub Release text. The JSON remains the structured source; generate,
+review and commit its Markdown detail alongside it. Publication reads the tracked
+Markdown and rejects missing or outdated detail instead of silently regenerating
+different text during release.
+
 ## Historical records
 
 The first fork release, 0.1.0, starts at the verified fork baseline
@@ -31,9 +37,11 @@ version code; do not change the existing tags or APK assets when adding notes.
 4. Mark `nativeChanged` true when the APK includes a native improvement absent
    from the previous release. A web-only release inherits the last native update
    baseline, including when users skip releases.
-5. Render and review the notes before tagging. Keep the summaries concise and
-   verify both languages. Review the complete commit list against source history.
-6. Commit the record, then create the normal `android-fork-v<version>` tag on the
+5. Run `node scripts/release-records.mjs notes --version <version>` to generate
+   `releases/<version>.md`, then review it before tagging. Keep the summaries
+   concise and verify both languages. Review the complete commit list against
+   source history. Regenerate the Markdown after editing its JSON record.
+6. Commit both files, then create the normal `android-fork-v<version>` tag on the
    intended source. Do not publish a release directly with a different commit.
 7. After publication succeeds, synchronize the confirmed publication metadata,
    then commit and deploy the updated record. This does not rewrite the release
@@ -72,10 +80,11 @@ deploy normally; the release workflow never pushes changes back to the branch.
 Render a tracked record without publishing or changing assets:
 
 ```bash
-node scripts/release-records.mjs notes --version 0.2.0 --output release-notes.md
+node scripts/release-records.mjs notes --version 0.2.0
 ```
 
-Review that file before using it to replace a release-page body. Rendering does
+This updates `releases/0.2.0.md`; `--output <path>` can instead write a temporary
+preview. Review the tracked file before using it to replace a release-page body. Rendering does
 not mutate GitHub, historical tags, or signed artifacts. About uses only the
 summaries; the release page includes the English summary, linked commit detail,
 installation guidance, corresponding source and GPL license links.

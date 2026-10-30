@@ -1,8 +1,28 @@
 import fs from "node:fs";
 import path from "node:path";
-import { loadReleaseRecords } from "../../scripts/release-records.mjs";
+import os from "node:os";
+import { loadReleaseRecords, loadReleaseNotes, renderReleaseNotes } from "../../scripts/release-records.mjs";
 
 const root = path.resolve(__dirname, "../..");
+
+test("published detail is tracked beside each release record", () => {
+  for (const record of loadReleaseRecords()) {
+    expect(loadReleaseNotes(record)).toContain("## Changes");
+    expect(loadReleaseNotes(record)).toContain(record.commits[0].sha);
+  }
+});
+
+test("publication refuses missing or outdated detail instead of silently replacing reviewed text", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "release-detail-"));
+  const record = loadReleaseRecords()[0];
+  try {
+    expect(() => loadReleaseNotes(record, directory)).toThrow();
+    fs.writeFileSync(path.join(directory, `${record.version}.md`), renderReleaseNotes(record));
+    expect(() => loadReleaseNotes({ ...record, summary: { ...record.summary, en: ["New user-visible improvement"] } }, directory)).toThrow("out of date");
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test("historical records identify the first fork baseline and the actual previous release", () => {
   const records = loadReleaseRecords();

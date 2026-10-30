@@ -106,7 +106,7 @@ export function collectReleaseCommits(record, { cwd = ROOT, sourceCommit, previo
     return { sha, subject };
   }).filter(({ sha }) => {
     const changed = git(cwd, "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", sha).split("\n").filter(Boolean);
-    const notesOnly = changed.length > 0 && changed.every(file => /^releases\/[^/]+\.json$/.test(file) || /^docs\/release[^/]*\.md$/.test(file));
+    const notesOnly = changed.length > 0 && changed.every(file => /^releases\/[^/]+\.(?:json|md)$/.test(file) || /^docs\/release[^/]*\.md$/.test(file));
     return !notesOnly;
   });
 }
@@ -210,6 +210,7 @@ async function main(args) {
       if (options.version && item.version !== options.version) continue;
       const sourceCommit = item.sourceCommit ?? (options.source && git(ROOT, "rev-parse", "--verify", `${options.source}^{commit}`));
       validateReleaseHistory(item, { cwd: ROOT, sourceCommit });
+      loadReleaseNotes(item);
     }
     console.log("Release records match their source history.");
     return;
@@ -222,10 +223,10 @@ async function main(args) {
   }
   const notes = renderReleaseNotes(record);
   if (command === "notes") {
-    requireValue(options.output, "The notes output path is required");
-    fs.writeFileSync(options.output, notes);
+    fs.writeFileSync(options.output ?? path.join(ROOT, "releases", `${record.version}.md`), notes);
     return;
   }
+  const trackedNotes = loadReleaseNotes(record);
   requireValue(options.source && options.apk && options.badging && options["output-dir"] && options["version-code"], "Assets require source, apk, badging, output-dir and version-code");
   const sourceCommit = git(ROOT, "rev-parse", "--verify", `${options.source}^{commit}`);
   const tagCommit = git(ROOT, "rev-parse", "--verify", `${record.tag}^{commit}`);
@@ -237,7 +238,7 @@ async function main(args) {
   const metadata = createUpdateMetadata(record, records, { ...manifest, ...predecessor, sourceCommit, apkBytes: fs.readFileSync(options.apk) });
   const output = options["output-dir"];
   fs.mkdirSync(output, { recursive: true });
-  fs.writeFileSync(path.join(output, "release-notes.md"), notes);
+  fs.writeFileSync(path.join(output, "release-notes.md"), trackedNotes);
   fs.writeFileSync(path.join(output, "update.json"), JSON.stringify(metadata, null, 2) + "\n");
 }
 
@@ -248,12 +249,15 @@ export function renderReleaseNotes(record) {
     `PttChrome Fork Android ${record.version}`,
     "",
     "## Highlights",
+    "",
     ...record.summary.en.map((item) => `- ${item}`),
     "",
     "## Changes",
+    "",
     ...record.commits.map(({ sha, subject }) => `- [${sha.slice(0, 8)}](${REPOSITORY}/commit/${sha}) ${subject}`),
     "",
     "## Installation and source",
+    "",
     "Download **pttchrome.apk** and install it over the existing PttChrome Fork app without uninstalling first. Reading-page improvements also reach existing installations using the production page.",
     "",
     `- [Installation guide](${REPOSITORY}/blob/${record.tag}/docs/android-app.md)`,
@@ -262,6 +266,13 @@ export function renderReleaseNotes(record) {
     "- License: GPL-2.0-only. The license text is attached as **LICENSE**.",
     "",
   ].join("\n");
+}
+
+export function loadReleaseNotes(record, directory = path.join(ROOT, "releases")) {
+  validateReleaseRecord(record);
+  const notes = fs.readFileSync(path.join(directory, `${record.version}.md`), "utf8");
+  requireValue(notes === renderReleaseNotes(record), "Tracked release detail is out of date; regenerate and review it before publication");
+  return notes;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

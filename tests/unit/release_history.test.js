@@ -28,9 +28,10 @@ test("official release boundaries ignore intermediate tags and note-only prepara
     const first = commit("app.js", "first", "fix: preserve search results");
     git("tag", "intermediate-build");
     const second = commit("app.js", "second", "fix: preserve article rotation");
+    commit("releases/0.2.0.json", "{}", "docs: prepare structured release notes");
     const source = commit(
-      "releases/0.2.0.json",
-      "{}",
+      "releases/0.2.0.md",
+      "Release detail",
       "docs: prepare release notes",
     );
     const commits = collectReleaseCommits(
