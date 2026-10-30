@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "version": "0.2.1",
   "tag": "android-fork-v0.2.1",
-  "publishedAt": null,
+  "publishedAt": "2026-10-30T19:37:20Z",
   "previousRelease": {
     "version": "0.2.0",
     "sourceCommit": "966a57b3b5489c1ebb31a81e706a35bd2ced0914"
@@ -129,5 +129,7 @@
       "sha": "084f309a77627982cf2b6aa0e71f2df6764cb351",
       "subject": "fix(releases): read minimum SDK from current aapt2 badging"
     }
-  ]
+  ],
+  "sourceCommit": "4075709e8697732ebb466da282a8563afa9c8a7b",
+  "versionCode": 17
 }
