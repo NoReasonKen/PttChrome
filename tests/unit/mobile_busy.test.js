@@ -63,3 +63,14 @@ test("PTT 不回應（不認得的鍵）⇒ 逾時自己收", () => {
   s = busyNext(s, { type: "tick", t: BUSY_TIMEOUT_MS });
   expect(s.phase).toBe("idle");
 });
+
+test("a hold keeps the bar shown past settles and the timeout until it is released", () => {
+  let s = run([{ type: "action", t: 0 }, { type: "sent", t: 10 }, { type: "hold", t: 20 }]);
+  expect(isBusyShown(s)).toBe(true);
+  s = busyNext(s, { type: "settled", t: 100 });
+  s = busyNext(s, { type: "tick", t: 10 + BUSY_TIMEOUT_MS + 1000 });
+  expect(isBusyShown(s)).toBe(true);
+  s = busyNext(s, { type: "release", t: 6000 });
+  expect(isBusyShown(s)).toBe(false);
+  expect(s.phase).toBe("idle");
+});
