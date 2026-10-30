@@ -124,6 +124,10 @@
     {
       "sha": "65dc48014ecb9d4cab1edc357913bb2085bbe2a6",
       "subject": "test(releases): allow additional official release records"
+    },
+    {
+      "sha": "084f309a77627982cf2b6aa0e71f2df6764cb351",
+      "subject": "fix(releases): read minimum SDK from current aapt2 badging"
     }
   ]
 }
