@@ -184,11 +184,11 @@ describe('a page shown without an open', () => {
     expect(revealTarget(rebuilt.stack)).toBeNull();
   });
 
-  test('another article in place of the current one keeps the pages below its list', () => {
+  test('another article in place of the current one keeps its list and the pages below it', () => {
     const { stack, kept } = pageShown(route(), opened('C_Chat', 'B'));
-    expect(kept).toBe(1);
-    expect(stack.pages.map(page => page.kind)).toEqual(['home', 'articleList', 'article']);
-    expect(revealTarget(stack)).toBeNull();
+    expect(kept).toBe(2);
+    expect(stack.pages).toEqual([...route().pages.slice(0, 2), opened('C_Chat', 'B')]);
+    expect(revealTarget(stack)).toMatchObject({ kind: 'articleList', board: 'C_Chat' });
     expect(revealTarget(popPage(stack).stack)).toMatchObject({ kind: 'home' });
   });
 

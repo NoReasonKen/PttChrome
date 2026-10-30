@@ -186,9 +186,9 @@ export class ThreadJump extends HiddenArticleRoute {
   }
 
   // Under article-list easy reading, the source slides away as on Back, over
-  // the list it was opened from or the dark fallback when that list keeps no
-  // live layer (after a jump in place), and the list takes over once its
-  // session presents it again.
+  // the list it was opened from, selected at the source, or the dark fallback
+  // when that list has no live layer with the source's row, and the list takes
+  // over once its session presents it again.
   _slideToList() {
     const core = this.core;
     const stack = core.articleGestures?.stack;

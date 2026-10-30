@@ -29,8 +29,9 @@ const NEAR_REPLY_BOARD = [...FAR_BOARD, { num: 1120, author: 'erin', title: 'Re:
 // `fromList`: start on the article list, the cursor on `open`, and open it
 // from there with article-list easy reading, so the list is its lower page.
 // `nativeList`: the same from the native list, article-list easy reading off.
-async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, fromList = false, nativeList = false, thread = FAR_BOARD } = {}) {
-  await bootOffline(page, ptt, {});
+// `nextArticle`: the next-article card at the end of each article.
+async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, fromList = false, nativeList = false, nextArticle = false, thread = FAR_BOARD } = {}) {
+  await bootOffline(page, ptt, { nextArticle });
   await ptt.applyPrefs(page, {
     enableEasyReading: true, enableEasyReadingList: fromList, articleHorizontalGestures: true
   });
@@ -135,12 +136,19 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
       }
       return data + `\x1b[${cursor[0]};${cursor[1]}H`;
     };
-    const TOKEN = /\x1b\[[0-9;]*[A-Za-z~]|\d+\r|[\s\S]/g;
+    const TOKEN = /\x1b\[[0-9;]*[A-Za-z~]|\d+\r|s\w+\r|[\s\S]/g;
     const apply = token => {
       const list = view();
       // Leaving the box redraws the list (FULLUPDATE), the cursor on the article.
       if (state.surface === 'info') {
         state.surface = 'list';
+        return;
+      }
+      // `s<board>⏎` (the next-article card's route): this board's full list,
+      // the cursor where it was.
+      if (/^s\w+\r$/.test(token)) {
+        state.surface = 'list';
+        state.filter = null;
         return;
       }
       if (state.surface === 'article') {

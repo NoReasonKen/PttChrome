@@ -3,7 +3,9 @@
 // its own scroll viewport, so revealing it shows the real list, scrollable at
 // once, instead of a static copy.
 import { ScreenCopyLayer, setUsable, STACK_NOTICE_MS } from './stack_layer';
-import { LIST_TITLE_COL_START } from './comment_parse';
+import { LIST_TITLE_COL_START, hasServerCursorMark, rowToText } from './comment_parse';
+import { labelListCursor } from './list_window';
+import { listEntryOf, findCurrentNum } from './split_reader';
 import { i18n } from './i18n';
 import { PAGE } from './page_stack';
 
@@ -41,6 +43,31 @@ function anchorShift(root, anchor) {
   return card ? card.getBoundingClientRect().top - root.getBoundingClientRect().top - anchor.offset : null;
 }
 
+// The row of an article list frame's `lines` that lists `article` ({ author,
+// title }), or -1 when none does or several might. Entries run from
+// `bodyStart` to the footer.
+export function articleRow(lines, bodyStart, article) {
+  const entries = [];
+  for (let row = bodyStart; row < lines.length - 1; row++) {
+    const entry = listEntryOf(rowToText(lines[row]));
+    if (entry) entries.push({ ...entry, row });
+  }
+  const num = findCurrentNum(entries, article);
+  return num == null ? -1 : entries.find(entry => entry.num === num).row;
+}
+
+// The frame's lines with the selection mark on `row` alone. A changed row is a
+// copy: the rows are shared with the list's own buffer.
+function withSelection(lines, bodyStart, row) {
+  return lines.map((line, r) => {
+    if (r < bodyStart || r === lines.length - 1 || (r === row) === hasServerCursorMark(line, 0)) return line;
+    const copy = line.map(ch => Object.assign(Object.create(Object.getPrototypeOf(ch)), ch));
+    if (r === row) labelListCursor(copy);
+    else Object.assign(copy[0], { ch: ' ', isLeadByte: false });
+    return copy;
+  });
+}
+
 export class StackListLayer extends ScreenCopyLayer {
   // Render `view`'s current list frame of `kind` ('article' or 'board') as a
   // live copy over the list's box. Returns null when the view is not showing
@@ -67,10 +94,44 @@ export class StackListLayer extends ScreenCopyLayer {
   }
 
   _render(rect, forceWidth) {
+    this.rect = rect;
+    this.forceWidth = forceWidth;
     const enhance = Object.assign({}, this.frame.enhance, {
       listScroll: Object.assign({}, this.frame.enhance.listScroll, { scrollable: true })
     });
     this._renderOver(rect, forceWidth, false, enhance);
+  }
+
+  // The card of frame row `row`, or null when the list does not show it.
+  _card(row) {
+    return this.el.querySelector(`.listCardBody[data-row="${row}"]`)?.closest('.listCard') || null;
+  }
+
+  // Show `article` ({ author, title }) selected, as PTT's selection is once
+  // another article replaced the one opened from this list in place (#74).
+  // Returns whether the list shows it.
+  select(article) {
+    const bodyStart = this.frame.enhance.listScroll.bodyStart;
+    const row = articleRow(this.frame.lines, bodyStart, article);
+    if (row < 0 || !this._card(row)) return false;
+    this.frame = { ...this.frame, lines: withSelection(this.frame.lines, bodyStart, row) };
+    this._render(this.rect, this.forceWidth);
+    this.selection = row;
+    if (this.el.isConnected) this._revealSelection();
+    return true;
+  }
+
+  // Scroll the selection chosen by `select` into view, the least distance.
+  _revealSelection() {
+    const card = this.selection != null && this._card(this.selection);
+    const view = card && this.el.querySelector('.listBodyView');
+    if (!view) return;
+    const box = card.getBoundingClientRect();
+    const port = view.getBoundingClientRect();
+    const shift = box.top < port.top ? box.top - port.top : box.bottom > port.bottom ? box.bottom - port.bottom : 0;
+    if (!shift) return;
+    this.screen.setListScrollTop(this.screen.getListScrollTop() + shift);
+    this.scrollTop = this.screen.getListScrollTop();
   }
 
   // Ready to be revealed at the current width. A width change, such as a
@@ -91,6 +152,7 @@ export class StackListLayer extends ScreenCopyLayer {
       this.parent.appendChild(this.el);
       if (this.scrollTop != null) this.screen.setListScrollTop(this.scrollTop);
       else this._restoreAnchor();
+      this._revealSelection();
     }
     setUsable(this.el, usable);
   }

@@ -182,6 +182,8 @@ export class NavigationStack {
     const depth = this.stack.pages.length - 1;
     this.stack = withLayer(this.stack);
     this.captured[depth]?.layer?.destroy();
+    // An article list shows the article opened from it selected.
+    pending.selected = page.id;
     this.captured[depth] = pending;
     this.stack = pushPage(this.stack, page, { fromBelow: true });
     const bounded = boundLayers(this.stack);
@@ -250,6 +252,9 @@ export class NavigationStack {
     const page = this._articlePage();
     if (this.core.buf.pageState !== 3 || !page.id) return;
     this._shown(page);
+    // Its row, for the list below to select once PTT has left it (#74).
+    const view = this.core.view;
+    if (view._articleAuthor) this.article = { id: page.id, author: view._articleAuthor, title: view._articleTitle };
   }
 
   // The connection closed: PTT's route behind every stacked page is gone, and
@@ -285,7 +290,19 @@ export class NavigationStack {
     const target = revealTarget(this.stack);
     const lower = target && this.captured[this.stack.pages.length - 2];
     // Fitting a list layer to a changed width renders it again.
-    return lower?.layer.fitViewport() ? { page: target, ...lower } : null;
+    return lower?.layer.fitViewport() && this._selects(lower) ? { page: target, ...lower } : null;
+  }
+
+  // Whether a lower article list shows the article now open selected, where
+  // PTT's selection is: another article may have replaced the one opened from
+  // it in place (#74). One whose row the layer lacks reveals nothing.
+  _selects(lower) {
+    const top = this._top();
+    if (lower.kind !== PAGE.ARTICLE_LIST || lower.selected === top.id) return lower.shows !== false;
+    if (this.article?.id !== top.id) return false;
+    lower.selected = top.id;
+    lower.shows = lower.layer.select(this.article);
+    return lower.shows;
   }
 
   // The live page that Back from the current page may reveal, or null.

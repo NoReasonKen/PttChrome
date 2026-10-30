@@ -47,11 +47,11 @@ export function pageShown(stack, shown) {
   const fromList = top?.kind === PAGE.ARTICLE && below?.kind === PAGE.ARTICLE_LIST &&
     sameBoard(top.board, shown.board) && sameBoard(below.board, shown.board);
   // Another article in place of the current one (the next one, a thread
-  // move): the list's layer showed where the first one was opened, but the
-  // pages below the list still hold.
+  // move): PTT's selection in the list moved to it, and the list keeps its
+  // layer, to be revealed at that article (#74).
   if (fromList && shown.kind === PAGE.ARTICLE) {
-    const pages = [...stack.pages.slice(0, n - 2), { ...below, layer: false }, shown];
-    return { stack: { ...stack, pages }, kept: n - 2 };
+    const pages = [...stack.pages.slice(0, n - 1), shown];
+    return { stack: { ...stack, pages }, kept: n - 1 };
   }
   return { stack: pushPage(createPageStack(), shown), kept: 0 };
 }
