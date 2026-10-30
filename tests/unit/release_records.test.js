@@ -140,6 +140,17 @@ test("release metadata uses the built APK's manifest identity and compatibility"
   ).toThrow("compatibility");
 });
 
+test("release metadata reads current aapt2 badging from a production APK", () => {
+  const badging = "package: name='io.github.noreasonken.pttchrome' versionCode='4' versionName='0.2.0' platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' compileSdkVersionCodename='17'\nminSdkVersion:'26'\ntargetSdkVersion:'37'\n";
+  expect(parseApkBadging(badging)).toEqual({
+    packageName: "io.github.noreasonken.pttchrome",
+    versionCode: 4,
+    version: "0.2.0",
+    minSdk: 26,
+  });
+  expect(() => parseApkBadging(badging.replace("minSdkVersion:'26'", "minSdkVersion:'25'"))).toThrow("compatibility");
+});
+
 test("incomplete or ambiguous notes fail before publication", () => {
   expect(() =>
     validateReleaseRecord({ ...record, summary: { en: ["An update"] } }),

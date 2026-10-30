@@ -124,7 +124,7 @@ export function parseApkBadging(text) {
     packageName: field("name"),
     versionCode: Number(field("versionCode")),
     version: field("versionName"),
-    minSdk: Number(/^sdkVersion:'(\d+)'$/m.exec(text)?.[1]),
+    minSdk: Number(/^(?:minSdkVersion|sdkVersion):'(\d+)'$/m.exec(text)?.[1]),
   };
   requireValue(result.packageName === PACKAGE_NAME && VERSION.test(result.version) && Number.isSafeInteger(result.versionCode) && result.versionCode > 0 && Number.isSafeInteger(result.minSdk) && result.minSdk >= 26, "APK manifest identity or compatibility is invalid");
   return result;
