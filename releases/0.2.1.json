@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "version": "0.2.1",
+  "tag": "android-fork-v0.2.1",
+  "publishedAt": null,
+  "previousRelease": {
+    "version": "0.2.0",
+    "sourceCommit": "966a57b3b5489c1ebb31a81e706a35bd2ced0914"
+  },
+  "nativeChanged": true,
+  "summary": {
+    "zhTW": [
+      "新增 APK 更新功能，可在「關於」檢查新版、背景下載，並開啟系統安裝程式完成更新。",
+      "重新整理「關於」頁面，顯示版本來源、雙語更新摘要及清楚的更新狀態。",
+      "提高未讀文章辨識度，並新增 JPTT 風格的文章列表左側色條。",
+      "文章頂部工具列顯示看板、發文時間與作者，移除下方重複資訊。",
+      "修正設定分類清單無法使用返回鍵關閉的問題。"
+    ],
+    "en": [
+      "Add APK updates from About, with version checks, background downloads and handoff to the system installer.",
+      "Organize About with version sources, bilingual release summaries and clear update status indicators.",
+      "Make unread articles easier to identify and add JPTT-style left bars to article lists.",
+      "Show the board, posting time and author in the article app bar, removing the duplicate information below it.",
+      "Fix Back failing to close settings from the category list."
+    ]
+  },
+  "commits": [
+    {
+      "sha": "026fe0afed602f503a0848dfadd7c8ffaf754864",
+      "subject": "test: wait for the list open to hand off before the next gesture"
+    },
+    {
+      "sha": "18a5d4c310d911ae91c6f64817de80497b54107d",
+      "subject": "fix: time easy reading's in-flight key on the monotonic clock"
+    },
+    {
+      "sha": "2255b804881e3db1ab27ce0e004e266a9656b358",
+      "subject": "fix: seed board moderators the way upstream now stores them"
+    },
+    {
+      "sha": "253c51c77f26d4797d1546d5536cb68e057a0470",
+      "subject": "test(ptt-src-screens): refresh board list fixtures for the reserved quit key"
+    },
+    {
+      "sha": "19f438ff8fc4402ac4469655af0e4e9ca4e5cdf4",
+      "subject": "tools: warn when a debug capture comes from another build"
+    },
+    {
+      "sha": "87d861bda8ba83cbb10c3c5ae22ef8cf7f52719a",
+      "subject": "docs: map each stacked page's swipes, reveal and slide-in"
+    },
+    {
+      "sha": "df16e9af24206046f77cbf40833e48809fb0c300",
+      "subject": "docs: capture article list order, next-article swipe and header ideas"
+    },
+    {
+      "sha": "0430085e97d8bf8841f29da32cff181d4318d721",
+      "subject": "Brighten unread cards and add JPTT's left bars (#61)"
+    },
+    {
+      "sha": "0a5c91bd7af9cd4d241144e6f097f50cf80dd82d",
+      "subject": "fix: close settings with Back from the category list"
+    },
+    {
+      "sha": "c51e2254b17231ca063efcba72a20ef246b1f0c9",
+      "subject": "docs: record idea research and drop the finished contrast idea"
+    },
+    {
+      "sha": "a1f6f85a4685451c1d76587b0b452095e48db47a",
+      "subject": "docs: drop the settings Back idea, done in #63"
+    },
+    {
+      "sha": "2c7bddff2d0aa554cc9f9fd24a24e032a181b93f",
+      "subject": "feat: article App Bar shows board, time and author; drop the strip under the App Bar (#68)"
+    },
+    {
+      "sha": "d00c9af4ae9c8348b63ce566e6b1eb459ba06e94",
+      "subject": "test: wait for the wheel scroll before taking the rotation anchor"
+    },
+    {
+      "sha": "2a6d553b8e80e238b8b510eb5bcc93841bfbb53a",
+      "subject": "feat(android): add user-controlled APK updates and release history (#62)"
+    },
+    {
+      "sha": "4fff726844f584e5fea19900c73979bee1b29ef6",
+      "subject": "fix(android): reconcile restored updates and avoid installer lock inversion"
+    },
+    {
+      "sha": "9c6ead000ffe00d8dfafd1994ae96d02a54ac565",
+      "subject": "test(android): preserve unavailable emulator exit status"
+    },
+    {
+      "sha": "24175fc385b7b03ea05bee2bf980767bf61a80ae",
+      "subject": "docs(security): record reviewed updater CodeQL dispositions"
+    },
+    {
+      "sha": "333fcd05898c478daebc3b9f106aa84ea3d0b4e5",
+      "subject": "docs(releases): track reviewed detail beside release summaries"
+    },
+    {
+      "sha": "eafb39ccb2cf67cf239fbde8ef262ae2e1f5cee6",
+      "subject": "fix(security): require individual review of APK installation alerts"
+    },
+    {
+      "sha": "ba56846da94c6db7cd64e017f7aa75ff7ba500f2",
+      "subject": "fix(android): open system installer after verified foreground download"
+    },
+    {
+      "sha": "b63399c12d271c983f5d50d0b7a069c096eaabb1",
+      "subject": "feat(updates): simplify About controls and show download offers in a dialog"
+    },
+    {
+      "sha": "f625abbec6d2a5e52d871e4248c5d04375b0f6d2",
+      "subject": "refactor(updates): show check status beside the installed version"
+    },
+    {
+      "sha": "6a8b9d7a3b7c77bc1dd0a8545881dfcfbefb7cbb",
+      "subject": "feat(updates): replace version status suffixes with compact icons"
+    },
+    {
+      "sha": "6a817e7fa2d22e0d828b64e1c99bf63a856cffbd",
+      "subject": "fix(styles): include Tooltip CSS in the Mantine subset"
+    },
+    {
+      "sha": "65dc48014ecb9d4cab1edc357913bb2085bbe2a6",
+      "subject": "test(releases): allow additional official release records"
+    }
+  ]
+}
