@@ -144,11 +144,12 @@ async function openSearchResult(page, { thread = false } = {}) {
 // the full list only, author search is case-insensitive substring matching,
 // native S is case-insensitive equality of the reply-stripped subject, and a
 // new result list selects its newest entry.
+// `fn`: the file name in each article's URL line (aid_codec.aidToFn).
 const NESTED_ARTICLES = [
-  { aid: '1gIeu-3A', author: 'alice', title: '[Talk] Alpha topic', body: 'Alpha', push: 10 },
-  { aid: '1gIeu-3B', author: 'alice', title: '[Talk] Beta topic', body: 'Beta', push: 20 },
-  { aid: '1gIeu-3C', author: 'bob', title: 'Re: [Talk] Beta topic', body: 'Charlie', push: 30 },
-  { aid: '1gIeu-3D', author: 'bob', title: '[Talk] Delta topic', body: 'Delta', push: 40 }
+  { aid: '1gIeu-3A', fn: 'M.1783270974.A.0CA', author: 'alice', title: '[Talk] Alpha topic', body: 'Alpha', push: 10 },
+  { aid: '1gIeu-3B', fn: 'M.1783270974.A.0CB', author: 'alice', title: '[Talk] Beta topic', body: 'Beta', push: 20 },
+  { aid: '1gIeu-3C', fn: 'M.1783270974.A.0CC', author: 'bob', title: 'Re: [Talk] Beta topic', body: 'Charlie', push: 30 },
+  { aid: '1gIeu-3D', fn: 'M.1783270974.A.0CD', author: 'bob', title: '[Talk] Delta topic', body: 'Delta', push: 40 }
 ];
 
 // options.easyList: the reader's default list owner (cards).
@@ -158,12 +159,14 @@ const NESTED_ARTICLES = [
 // `homeMenu`: the main menu has My Favorites, so the home dashboard shows on it.
 // `dynamicRows`: model negotiated terminal rows separately from application layout.
 // `alphaLines`: Alpha runs that many lines, over several PTT pages.
-async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false, legacyCaptions = false, extraArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0 } = {}) {
+// `urls`: articles end with their URL line, so the app knows an article's
+//   AID without asking PTT.
+async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false, legacyCaptions = false, extraArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false } = {}) {
   await bootGestureArticle(page, { resumeLastPlace });
   // The image-article boot disables the easy-reading list; the reader's
   // default enables it before any list from this server is seen.
   if (easyList) await ptt.applyPrefs(page, { enableEasyReadingList: true });
-  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article', legacyCaptions, extraArticles, homeMenu, dynamicRows, pinned, alphaLines });
+  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article', legacyCaptions, extraArticles, homeMenu, dynamicRows, pinned, alphaLines, urls });
   if (loggedIn) {
     await waitScreenSettled(page, { 0: '主功能表' });
     await page.evaluate(() => {
@@ -198,9 +201,12 @@ async function installNestedServer(page, session) {
     }).join('');
     const subject = title => title.replace(/^(?:(?:Re|Fw):\s*)+/i, '').toLowerCase();
     // surface: article | list | info | prompt | empty | missing | main
+    // `promptless`: `a` shows no prompt, as on a screen where it is no command.
+    // `squeezedFooter`: the pager footer has room only for its short hints,
+    //   as a very long article's (more.c#common_pmore_footer_handler).
     const state = {
       surface: session.surface, board: 'Test', filter: null, cursor: 0, open: articles[0], line: 1,
-      deleted: new Set(session.deleted || []), prompt: null,
+      deleted: new Set(session.deleted || []), prompt: null, promptless: false, squeezedFooter: false,
       terminalRows: session.dynamicRows ? app.buf.rows : 24,
       applicationRows: session.dynamicRows ? app.buf.rows : 24, sizeChanges: [],
       replyDelayMs: 90, holdResponses: false, queuedResponses: 0
@@ -236,9 +242,11 @@ async function installNestedServer(page, session) {
         0: `作者  ${article.author} (${article.author}) 看板 Test`,
         1: '標題  ' + article.title,
         2: '時間  Mon Sep  1 12:00:00 2025',
-        [termRows - 1]: `  瀏覽 第 1/1 頁 (100%)  目前顯示: 第 01~${termRows - 1} 行  (y)回應(X%)推文(h)說明(←)離開 `
+        [termRows - 1]: `  瀏覽 第 1/1 頁 (100%)  目前顯示: 第 01~${termRows - 1} 行  ` +
+          (state.squeezedFooter ? '(h)說明 (←/q)離開 ' : '(y)回應(X%)推文(h)說明(←)離開 ')
       };
       for (let row = 4; row < Math.min(22, termRows - 1); row++) rows[row] = bodyLine(article, row);
+      if (session.urls && article.fn) rows[Math.min(21, termRows - 2)] = `※ 文章網址: https://www.ptt.cc/bbs/Test/${article.fn}.html`;
       return rows;
     };
     // `lines`: an article that long, its header on the first page, paged a
@@ -351,6 +359,11 @@ async function installNestedServer(page, session) {
         const text = rest.slice(0, end);
         const prompt = state.prompt;
         state.prompt = null;
+        // An empty answer cancels the search (read.c#ask_filter_predicate).
+        if (!text.trim()) {
+          state.surface = 'list';
+          return rest.slice(end + 1);
+        }
         search(prompt.kind === 'author'
           ? article => article.author.toLowerCase().includes(text.toLowerCase())
           : prompt.kind === 'push'
@@ -400,7 +413,7 @@ async function installNestedServer(page, session) {
         state.open = selected();
         state.surface = 'article';
         state.line = 1;
-      } else if (head === 'a' && state.surface === 'list') {
+      } else if (head === 'a' && state.surface === 'list' && !state.promptless) {
         state.surface = 'prompt';
         state.prompt = { kind: 'author', label: state.filter ? '增加條件 作者: ' : '搜尋作者: ' };
       } else if (head === '/' && state.surface === 'list') {

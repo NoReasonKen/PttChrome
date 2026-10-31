@@ -21,6 +21,13 @@ export function isSearchResultsFrame(facts, board, allowLegacy = true) {
     (allowLegacy && caption === '文章選讀');
 }
 
+// The board's full article list, as its caption proves (#86). The legacy
+// caption every list shares proves nothing.
+export function isFullBoardListFrame(facts, board) {
+  return isBoardArticleList(facts, board) && footerCaption(facts.rowTexts[facts.rows - 1]) === '文章列表' &&
+    !isSubListTitle(facts.rowTexts[0]);
+}
+
 // Completion is stricter than list identity. Background fill may temporarily
 // move the cursor while the existing search results remain the visible list.
 export function searchResultsLanded(facts, board) {
