@@ -1581,6 +1581,14 @@ EasyReading.prototype._enterFunctionMode = function() {
   this._termBuf.notify();
 };
 
+// Decide functionMode's exit on the screen as it is now, for a route that
+// entered functionMode on a screen that already settled: no settle follows to
+// decide it (#74, a same-thread jump PTT answers with the list).
+EasyReading.prototype.settleFunctionMode = function() {
+  if (this._enabled && this._functionMode)
+    this._evalFunctionModeExit();
+};
+
 // 使用者「送了一段文字給 PTT」——不是按鍵，所以繞過了 _onKeyDown 那條進 functionMode
 // 的路。三個實例，同一個缺口：
 //   a) 中文 IME 開著時按 X 推文：keydown 的 e.key 是 'Process'（keyCode 229），

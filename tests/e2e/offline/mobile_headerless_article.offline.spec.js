@@ -66,7 +66,7 @@ test('an article without a header and the next article never show each other\'s 
   await settledOn(page, 600);
   await backToList(page);
   await openFromList(page, 'filler', 'Filler 601');
-  await expect.poll(() => bar(page)).toEqual({ title: '[Talk] Filler 601', subtitle: 'Test', byline: 'filler (filler)', time: 'Mon Sep  1 12:00:00 2025 #601' });
+  await expect.poll(() => bar(page)).toEqual({ title: '[Talk] Filler 601', subtitle: 'Test', byline: 'filler (filler)', time: 'Fri Oct 16 23:13:20 2026 #601' });
   await backToList(page);
   await openFromList(page, 'carol', 'Far topic');
   await expect.poll(() => bar(page)).toEqual(CAROL);

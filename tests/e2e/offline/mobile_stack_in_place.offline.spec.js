@@ -27,7 +27,7 @@ const selected = (page, root) => page.locator(root).evaluate(el => {
   if (!card) return null;
   const box = card.getBoundingClientRect();
   return {
-    author: card.dataset.listAuthor, title: card.dataset.listTitle,
+    author: card.dataset.listAuthor, title: card.dataset.listTitle, text: card.textContent,
     top: Math.round(box.top - view.top), visible: box.top >= view.top - 1 && box.bottom <= view.bottom + 1
   };
 });
@@ -98,3 +98,102 @@ test('a swipe back after a jump to an article outside the layer reveals the dark
   await expect.poll(() => page.evaluate(() => window.__app.listSession._selectedNum)).toBe(40);
   expect(await selected(page, MAIN)).toMatchObject({ author: 'bob', visible: true });
 });
+
+// A thread whose replies by dave also show in his author search results,
+// with another subject of his after them. The results show under the legacy
+// caption, as an ordinary list can: only the verified search tells them apart.
+const SEARCH_THREAD = [
+  { num: 1, author: 'alice', title: THREAD, date: '9/01' },
+  { num: 600, author: 'carol', title: 'Re: ' + THREAD, date: '10/20' },
+  { num: 1100, author: 'dave', title: 'Re: ' + THREAD, date: '11/28' },
+  { num: 1120, author: 'dave', title: 'Re: ' + THREAD, date: '11/29' },
+  { num: 1150, author: 'dave', title: 'Re: ' + THREAD, date: '11/30' },
+  { num: 1160, author: 'dave', title: '[Talk] Other topic', date: '12/01' }
+];
+const DAVE = page => page.locator(`${MAIN} .listCard[data-list-author="dave"]`);
+
+async function search(page, shortcut, field) {
+  await revealArticleDrawer(page);
+  await page.locator(`[data-article-shortcut="${shortcut}"]`).tap();
+  await expect.poll(async () => (await page.evaluate(() => window.__threadServer.state))[field]).not.toBeNull();
+  await listActive(page);
+}
+
+async function openResult(page, card, num) {
+  await card.tap();
+  await expect.poll(() => page.locator(MAIN).innerText()).toContain(`Body of article ${num} by`);
+  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
+}
+
+// Carol's reply, the thread's results, dave's last reply, his author results,
+// and his reply `num` (1100 or 1150) from them.
+async function daveFromAuthorResults(page, num) {
+  await bootThreadBoard(page, { open: 600, fromList: true, legacy: true, thread: SEARCH_THREAD });
+  await search(page, 'thread', 'filter');
+  await openResult(page, DAVE(page).last(), 1150);
+  await search(page, 'author', 'byAuthor');
+  const replies = DAVE(page).filter({ hasText: 'Far topic' });
+  await openResult(page, num === 1100 ? replies.first() : replies.last(), num);
+}
+
+const inAuthorResults = async (page, open) =>
+  expect(await page.evaluate(() => window.__threadServer.state)).toMatchObject({ byAuthor: 'dave', open: { num: open } });
+
+// From the author results, Back to the article the author search started from
+// and on to the thread's results: each reveals a live layer, never the dark
+// fallback. (This fake PTT rebuilds the thread's results under the author
+// search too, so the walk stops there.)
+async function backToThreadResults(page) {
+  for (let i = 0; i < 2; i++) {
+    await page.evaluate(() => {
+      window.__reveals = { layer: false, fallback: false };
+      window.__revealWatch?.disconnect();
+      const has = (node, selector) => node.nodeType === 1 && (node.matches(selector) || !!node.querySelector(selector));
+      window.__revealWatch = new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => {
+        if (has(node, '[data-stack-layer]')) window.__reveals.layer = true;
+        if (has(node, '[data-article-exit-underlay][data-preview="fallback"]')) window.__reveals.fallback = true;
+      })));
+      window.__revealWatch.observe(document.body, { childList: true, subtree: true });
+    });
+    await page.goBack();
+    await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle && !window.__app.articleGestures.stack.handingOff &&
+      !document.querySelector('[data-stack-layer], [data-article-exit-underlay]'))).toBe(true);
+    expect(await page.evaluate(() => window.__reveals), `Back ${i + 1}`).toEqual({ layer: true, fallback: false });
+  }
+  expect(await page.evaluate(() => window.__threadServer.state)).toMatchObject({ filter: '[Talk] Far topic', surface: 'list' });
+}
+
+test('a next-in-thread jump past the last article of author results slides back to those results', async ({ page }) => {
+  await daveFromAuthorResults(page, 1150);
+  await revealArticleDrawer(page);
+  await page.locator('[data-article-shortcut="]"]').tap();
+  await listActive(page);
+  await expect.poll(() => page.evaluate(() => !window.__app.threadJump.active && !window.__app.articleGestures.stack.handingOff)).toBe(true);
+  await inAuthorResults(page, 1150);
+  expect(await page.evaluate(() => window.__threadServer.state.surface)).toBe('list');
+  expect(await selected(page, MAIN)).toMatchObject({ text: expect.stringContaining('11/30'), visible: true });
+  // The article the author search started from stays below its results.
+  await backToThreadResults(page);
+});
+
+test('a previous-in-thread jump with no earlier article in author results stays on the article', async ({ page }) => {
+  await daveFromAuthorResults(page, 1100);
+  await revealArticleDrawer(page);
+  await page.locator('[data-article-shortcut="["]').tap();
+  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle && !window.__app.threadJump.active)).toBe(true);
+  await inAuthorResults(page, 1100);
+  expect(await page.evaluate(() => window.__threadServer.state.surface)).toBe('article');
+  await backOverList(page, { text: expect.stringContaining('11/28') });
+  await backToThreadResults(page);
+});
+
+// dave's replies share author and subject: the selection moves as PTT's does.
+for (const [key, num, date] of [['[', 1120, '11/29'], ['=', 1100, '11/28']]) {
+  test(`Back after a ${key === '[' ? 'previous' : 'first'}-in-thread jump in author results reveals them at the article now open`, async ({ page }) => {
+    await daveFromAuthorResults(page, 1150);
+    await jump(page, key, num);
+    await inAuthorResults(page, num);
+    await backOverList(page, { text: expect.stringContaining(date) });
+    await backToThreadResults(page);
+  });
+}

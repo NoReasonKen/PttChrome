@@ -5,7 +5,8 @@
 import { ScreenCopyLayer, setUsable, STACK_NOTICE_MS } from './stack_layer';
 import { LIST_TITLE_COL_START, hasServerCursorMark, rowToText } from './comment_parse';
 import { labelListCursor } from './list_window';
-import { listEntryOf, findCurrentNum } from './split_reader';
+import { listEntryOf } from './split_reader';
+import { subjectKey, subjectMatches } from './long_push_anchor';
 import { i18n } from './i18n';
 import { PAGE } from './page_stack';
 
@@ -44,16 +45,29 @@ function anchorShift(root, anchor) {
 }
 
 // The row of an article list frame's `lines` that lists `article` ({ author,
-// title }), or -1 when none does or several might. Entries run from
-// `bodyStart` to the footer.
-export function articleRow(lines, bodyStart, article) {
-  const entries = [];
+// title }; the list may cut the title short), or -1. Several rows can list the
+// same author and subject, as in that author's search results; PTT then moved
+// its selection from the row `from` to the nearest of them above it (`up`) or
+// below it, or to the topmost one above it for the first article of the
+// thread (`first`). Without a direction, only a single row other than `from`
+// names it. Entries run from `bodyStart` to the footer.
+export function articleRow(lines, bodyStart, article, { from = -1, up = null, first = false } = {}) {
+  const author = String(article.author || '').toLowerCase();
+  const subject = subjectKey(article.title);
+  if (!author || !subject) return -1;
+  const hits = [];
   for (let row = bodyStart; row < lines.length - 1; row++) {
     const entry = listEntryOf(rowToText(lines[row]));
-    if (entry) entries.push({ ...entry, row });
+    if (entry && !entry.deleted && entry.subject && String(entry.author).toLowerCase() === author &&
+        subjectMatches(entry.subject, subject)) hits.push(row);
   }
-  const num = findCurrentNum(entries, article);
-  return num == null ? -1 : entries.find(entry => entry.num === num).row;
+  if (up != null) {
+    const side = hits.filter(row => (up ? row < from : row > from));
+    return side.length ? side[up && !first ? side.length - 1 : 0] : -1;
+  }
+  const others = hits.filter(row => row !== from);
+  if (others.length === 1) return others[0];
+  return hits.length === 1 ? hits[0] : -1;
 }
 
 // The frame's lines with the selection mark on `row` alone. A changed row is a
@@ -108,11 +122,14 @@ export class StackListLayer extends ScreenCopyLayer {
   }
 
   // Show `article` ({ author, title }) selected, as PTT's selection is once
-  // another article replaced the one opened from this list in place (#74).
-  // Returns whether the list shows it.
-  select(article) {
+  // another article replaced the selected one in place (#74). `up`: whether it
+  // was posted before that one, null when unknown; `first`: it is the first
+  // article of the thread. Returns whether the list shows it.
+  select(article, up, first = false) {
+    const lines = this.frame.lines;
     const bodyStart = this.frame.enhance.listScroll.bodyStart;
-    const row = articleRow(this.frame.lines, bodyStart, article);
+    const from = lines.findIndex((line, r) => r >= bodyStart && r < lines.length - 1 && hasServerCursorMark(line, 0));
+    const row = articleRow(lines, bodyStart, article, { from, up, first });
     if (row < 0 || !this._card(row)) return false;
     this.frame = { ...this.frame, lines: withSelection(this.frame.lines, bodyStart, row) };
     this._render(this.rect, this.forceWidth);

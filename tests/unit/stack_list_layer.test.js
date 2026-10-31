@@ -24,3 +24,24 @@ test('no row when the list lacks the article, or when two rows might be it', () 
   expect(articleRow(lines, BODY, { author: 'erin', title: 'Re: [Talk] Far topic' })).toBe(-1);
   expect(articleRow(lines, BODY, { author: 'dave', title: 'Re: [Talk] Far topic' })).toBe(-1);
 });
+
+// An author's search results: three replies of his to one thread.
+const DAVE = { author: 'dave', title: 'Re: [Talk] Far topic' };
+const replies = frame([entry(1, 'dave', 'Re: [Talk] Far topic'), entry(2, 'dave', 'Re: [Talk] Far topic'),
+  entry(3, 'dave', 'Re: [Talk] Far topic'), entry(4, 'dave', '[Talk] Other topic')]);
+
+test('of two rows naming the article, the one the selection moved to', () => {
+  const pair = frame([entry(1, 'dave', 'Re: [Talk] Far topic'), entry(2, 'dave', 'Re: [Talk] Far topic')]);
+  expect(articleRow(pair, BODY, DAVE, { from: BODY + 1 })).toBe(BODY);
+  expect(articleRow(pair, BODY, DAVE, { from: BODY })).toBe(BODY + 1);
+});
+
+test('among rows naming the article, the nearest in the direction the selection moved', () => {
+  expect(articleRow(replies, BODY, DAVE, { from: BODY + 2, up: true })).toBe(BODY + 1);
+  expect(articleRow(replies, BODY, DAVE, { from: BODY, up: false })).toBe(BODY + 1);
+  expect(articleRow(replies, BODY, DAVE, { from: BODY, up: true })).toBe(-1);
+});
+
+test('the topmost row above for the first article of the thread', () => {
+  expect(articleRow(replies, BODY, DAVE, { from: BODY + 2, up: true, first: true })).toBe(BODY);
+});
