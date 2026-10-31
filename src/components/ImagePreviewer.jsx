@@ -50,7 +50,9 @@ export const requestPreview = (href) => {
 
 // resolveSrcToImageUrl turns a link into a *media descriptor*:
 //   { type: "image", src, srcset? } | { type: "video", src }
-//   | { type: "iframe", src }       | { type: "album", images: [descriptor] }
+//   | { type: "iframe", src, poster?, label? } | { type: "album", images: [descriptor] }
+// An iframe shows an embed cover until tapped; `poster` and `label` only
+// decorate that cover (see EmbedCover).
 // `type` defaults to "image" when omitted (back-compat with bare { src }).
 export const resolveSrcToImageUrl = ({ src }) =>
   imageUrlResolvers.find((r) => r.test(src)).request(src);
@@ -375,19 +377,77 @@ const InlineVideo = React.memo(function InlineVideo({ src, gif }) {
   );
 });
 
-const InlineIframe = React.memo(function InlineIframe({ src }) {
+const hostLabel = (src) => {
+  try {
+    return new URL(src).hostname.replace(/^www\./, "");
+  } catch (e) {
+    return "";
+  }
+};
+
+// Embed cover: a cross-origin player swallows every touch, so the article's
+// swipes could never start on it. Until the reader taps, the embed is this
+// cover instead; any source works, and `poster`/`label` only decorate it.
+// It is a div, not a <button>: article gestures ignore buttons.
+const EmbedCover = ({ src, poster, label, onPlay }) => {
+  const name = label || hostLabel(src);
+  return (
+    <div
+      className="embedCover"
+      role="button"
+      tabIndex={0}
+      aria-label={name ? `Play ${name} video` : "Play video"}
+      onClick={onPlay}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onPlay();
+        }
+      }}
+    >
+      {poster && (
+        <img
+          className="embedCoverPoster"
+          src={poster}
+          alt=""
+          draggable={false}
+          referrerPolicy="no-referrer"
+        />
+      )}
+      <span className="embedCoverPlay" aria-hidden="true" />
+      {name && <span className="embedCoverLabel">{name}</span>}
+    </div>
+  );
+};
+
+// The player exists only after the tap, so the resolver's src starts playback
+// on load where the source supports it.
+const InlineIframe = React.memo(function InlineIframe({ src, poster, label }) {
+  const [playing, setPlaying] = React.useState(false);
   const [loaded, setLoaded] = React.useState(false);
   return (
     <div style={{ margin: "0.5em auto", maxWidth: "800px", height: "450px" }}>
-      {!loaded && <LoadingOverlay />}
-      <iframe
-        type="text/html"
-        src={src}
-        allowFullScreen
-        referrerPolicy="origin-when-cross-origin"
-        onLoad={() => setLoaded(true)}
-        style={{ border: "none", width: "100%", height: "100%" }}
-      />
+      {!playing ? (
+        <EmbedCover
+          src={src}
+          poster={poster}
+          label={label}
+          onPlay={() => setPlaying(true)}
+        />
+      ) : (
+        <React.Fragment>
+          {!loaded && <LoadingOverlay />}
+          <iframe
+            type="text/html"
+            src={src}
+            allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+            allowFullScreen
+            referrerPolicy="origin-when-cross-origin"
+            onLoad={() => setLoaded(true)}
+            style={{ border: "none", width: "100%", height: "100%" }}
+          />
+        </React.Fragment>
+      )}
     </div>
   );
 });
@@ -407,7 +467,14 @@ const inlineVideo = (descriptor, key) => (
   <InlineVideo key={key} src={descriptor.src} gif={descriptor.gif} />
 );
 
-const inlineIframe = (src, key) => <InlineIframe key={key} src={src} />;
+const inlineIframe = (descriptor, key) => (
+  <InlineIframe
+    key={key}
+    src={descriptor.src}
+    poster={descriptor.poster}
+    label={descriptor.label}
+  />
+);
 
 // 單一 descriptor → 元素。相簿展開的每一項也走這裡，所以相簿內的圖自動吃到
 // srcset 候選鏈（如 imgur 的 webp 優先），不必在 album 分支複製一份判斷。
@@ -416,7 +483,7 @@ const renderMedia = (descriptor, key) => {
     case "video":
       return inlineVideo(descriptor, key);
     case "iframe":
-      return inlineIframe(descriptor.src, key);
+      return inlineIframe(descriptor, key);
     default:
       return inlineImage(descriptor, key);
   }
@@ -627,14 +694,21 @@ const imageUrlResolvers = [
     },
     request(src) {
       const id = src.match(this.regex)[1];
-      let embed = `https://www.youtube.com/embed/${id}`;
+      const embed = new URL(`https://www.youtube.com/embed/${id}`);
       try {
         const t = new URL(src, location.href).searchParams.get("t");
-        if (t) embed += `?start=${parseInt(t, 10) || t}`;
+        if (t) embed.searchParams.set("start", parseInt(t, 10) || t);
       } catch (e) {
         // ignore malformed url
       }
-      return Promise.resolve({ type: "iframe", src: embed });
+      // The player is created only by a tap on the embed cover, so it plays on load.
+      embed.searchParams.set("autoplay", "1");
+      return Promise.resolve({
+        type: "iframe",
+        src: embed.href,
+        poster: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+        label: "YouTube",
+      });
     },
   },
   {
@@ -648,6 +722,7 @@ const imageUrlResolvers = [
       return Promise.resolve({
         type: "iframe",
         src: `https://clips.twitch.tv/embed?clip=${id}&parent=${location.hostname}`,
+        label: "Twitch",
       });
     },
   },

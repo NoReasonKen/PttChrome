@@ -106,7 +106,7 @@ test.describe('好读模式翻页（离线重放）', () => {
     test(`好读自动行内开图 [${cassette.__file}]`, async ({ page }) => {
       test.setTimeout(90000);
       const PREVIEW_SEL =
-        '#mainContainer img.hyperLinkPreview, #mainContainer video.easyReadingVideo, #mainContainer iframe';
+        '#mainContainer img.hyperLinkPreview, #mainContainer video.easyReadingVideo, #mainContainer iframe, #mainContainer .embedCover';
       const re =
         /(\.(?:jpe?g|png|gif|webp|bmp|apng|avif|mp4|webm|ogg)(?:$|[?#]))|imgur\.com|pbs\.twimg\.com|youtu\.?be|youtube\.com|meee\.com\.tw|clips\.twitch\.tv|flic\.kr|flickr\.com/i;
 
@@ -157,7 +157,7 @@ test.describe('好读模式翻页（离线重放）', () => {
     // 素材 test-xmen 即单页(第 1/1 页 100%)+youtu.be 行内媒体+1 推文，正中此 case。
     test(`末行不被底部状态列 overlay 遮住（单页 paddingBottom）[${cassette.__file}]`, async ({ page }) => {
       test.setTimeout(90000);
-      const MEDIA_SEL = '#mainContainer img.hyperLinkPreview, #mainContainer video.easyReadingVideo, #mainContainer iframe';
+      const MEDIA_SEL = '#mainContainer img.hyperLinkPreview, #mainContainer video.easyReadingVideo, #mainContainer iframe, #mainContainer .embedCover';
       await bootOffline(page, ptt);
       await ptt.applyPrefs(page, { enableEasyReading: true });
       await replayCassette(page, cassette, { easyReading: true });
@@ -680,7 +680,7 @@ test.describe('长文连续累积（离线重放）', () => {
       // 请求），卸载则等它真的发生 —— 旧版整段在 page.evaluate 里靠 sleep(200~1500)
       // 推进，机器一忙「还没挂上／还没卸掉」就会被读成结论。
       const MEDIA =
-        '#mainContainer img.hyperLinkPreview, #mainContainer video.easyReadingVideo, #mainContainer iframe';
+        '#mainContainer img.hyperLinkPreview, #mainContainer video.easyReadingVideo, #mainContainer iframe, #mainContainer .embedCover';
       const setScroll = (y) =>
         page.evaluate((top) => {
           document.querySelector('.main').scrollTop = top;
@@ -727,7 +727,7 @@ test.describe('长文连续累积（离线重放）', () => {
           () =>
             page.evaluate(() => {
               const t = document.querySelector('[data-e2e-lazy]');
-              return t ? t.querySelectorAll('img, video, iframe').length : -1;
+              return t ? t.querySelectorAll('img, video, iframe, .embedCover').length : -1;
             }),
           { timeout: 15000 }
         )

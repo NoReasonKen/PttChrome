@@ -36,7 +36,7 @@ With nothing alive below, Back and the right swipe show the dark fallback until 
 | Drawer closed | Browse the article | Reveal the drawer | Retract and exit the article |
 | Drawer open | No action | No action | Retract the drawer |
 
-Start from any eligible article-content position, including text, blank space, inline preview images, and links. System edge gestures, an open image viewer, editable fields, video controls, text selection, and another active modal retain their input ownership. Do not intercept desktop trackpad/browser navigation.
+Start from any eligible article-content position, including text, blank space, inline preview images, links, and the embed cover of a video not yet started. System edge gestures, an open image viewer, editable fields, video controls, a started embedded player, text selection, and another active modal retain their input ownership. Do not intercept desktop trackpad/browser navigation.
 
 Wait for intentional movement before choosing direction. Horizontal displacement must exceed vertical displacement; exact diagonal ties count as vertical. Once an axis or a long press owns the contact, do not transfer it to another axis. Allow reversals within the horizontal axis.
 
