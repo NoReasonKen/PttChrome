@@ -115,6 +115,12 @@ export class StackArticleLayer extends ScreenCopyLayer {
     return scrollToRow(core.view.mainDisplay, topRow(this.el));
   }
 
+  // The real article has that row: easy reading has paged that far.
+  reaches(core) {
+    const anchor = topRow(this.el);
+    return !anchor || !!core.view.mainDisplay.querySelector(`[type="bbsrow"][srow="${anchor.srow}"]`);
+  }
+
   // An article layer remembers no tap: nothing on it opens a page.
   tapOf() {
     return null;

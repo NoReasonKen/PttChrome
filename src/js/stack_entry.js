@@ -21,7 +21,7 @@ export class StackEntry {
     this.arrived = false;
     this.dropped = null;
     this.timer = this.frame = null;
-    this.underlay = createUnderlay(core, from.layer, from.title);
+    this.underlay = createUnderlay(core, from.layer, from.title, from.appBar);
     this.underlay.setAttribute('data-stack-entry-underlay', '');
     this.surfaces = holdSurfaces(core);
     for (const { node } of this.surfaces) node.classList.add('stackEntryLoading');

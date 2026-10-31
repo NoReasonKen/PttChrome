@@ -34,9 +34,11 @@ for (const filtered of [false, true]) {
 test('an empty author search restores the source and explains the result', async ({ page }) => {
   await bootShortcutSearch(page, { empty: true });
   await searchAuthor(page);
-  await expect.poll(() => visibleText(page)).toContain('Original reading position.');
-  await expect(page.locator('#mainContainer')).toContainText('Source article');
+  // The source covers the screen until it is open again, in easy reading
+  // throughout (#83).
   await expect.poll(() => page.locator('body').innerText()).toContain('No matching articles. Returned to the source article.');
+  await expect.poll(() => visibleText(page)).toContain('Original reading position.');
+  await expect(page.locator('#mobileAppBar .mobileAppBarTitle')).toContainText('Source article');
 });
 
 test('a deleted origin never opens a replacement article', async ({ page }) => {

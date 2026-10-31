@@ -1166,12 +1166,14 @@ ListSession.prototype = {
 
   // 探針到點：**不看事件，直接量當下畫面**（形狀同 evaluateNow）。只讀不寫
   // （不變量 N2：不送 byte、不排命令、不改錨），唯一的輸出是一個合成事件。
-  _tryResumeProbe: function() {
+  // landed：外部序列的擁有者已驗證最後一步落地（見 endExternalNavigation），
+  // 不必等靜置；它自己會說做了什麼，這裡不閃通用提示。
+  _tryResumeProbe: function(landed) {
     if (this._holdReason !== 'passthrough' || !this._autoResumeEnabled()) return;
     // 洞 3：畫面與使用者都要靜止。還沒靜置滿就補排剩下的時間（不是輪詢）。
     const quietSince = Math.max(this._lastServerActivityAt, this._lastUserByteAt);
     const waited = performance.now() - quietSince;
-    if (waited < RESUME_QUIET_MS) return this._scheduleResumeProbe(RESUME_QUIET_MS - waited);
+    if (!landed && waited < RESUME_QUIET_MS) return this._scheduleResumeProbe(RESUME_QUIET_MS - waited);
     // 洞 2：命令還在線上。它自己的回應會帶來 settle → 由那裡重排；但「PTT 完全
     // 忽略這個鍵」的情形是零 byte 零 settle，只能等命令自己 timeout ⇒ 這裡補排
     // 一次，讓 timeout 之後仍然有人來看一眼。
@@ -1181,9 +1183,15 @@ ListSession.prototype = {
     event.type = 'resume-probe';
     // 內容不合格（洞 1：PTT 還在等輸入 ⇒ classifyListScreen 的 curX<=1 判掉；
     // 子畫面／編輯器根本不是 clean-list）：不再排，等下一個 settle 重新排。
-    if (facts.kind !== 'clean-list') return;
+    // 落地幀不合格 ⇒ 照一般收尾交給靜置探針。
+    if (facts.kind !== 'clean-list') return landed ? this._scheduleResumeProbe() : undefined;
     const before = this.state;
     this._dispatch(event, facts);
+    if (landed) {
+      if (this.state === 'active') this._externalResumeNotice = null;
+      else this._scheduleResumeProbe();
+      return;
+    }
     // 換畫面永不靜默（不變量 N7）：使用者沒按任何鍵，畫面卻從原生換回好讀，
     // 一定要說一聲。
     if (before !== this.state && this.state === 'active' && this._view.flashListHint) {
@@ -1250,9 +1258,12 @@ ListSession.prototype = {
   },
 
   // A landing action has rebuilt, scrolled and positioned the list. A leave
-  // waiting to hand over to it may do so now (#28).
+  // waiting to hand over to it may do so now (#28), and so may a shortcut
+  // search's source article covering its results (#83).
   _presented: function() {
-    if (this.state === 'active' && this._renderMode === 'buffer') this._core.articleGestures?.pagePresented(PAGE.ARTICLE_LIST);
+    if (this.state !== 'active' || this._renderMode !== 'buffer') return;
+    this._core.articleGestures?.pagePresented(PAGE.ARTICLE_LIST);
+    this._core.articleShortcutSearch?.listPresented();
   },
 
   // ---- external entry points ------------------------------------------------
@@ -1302,13 +1313,19 @@ ListSession.prototype = {
   // 換成 'passthrough'，交回靜置探針自動回好讀（不變量 N1 不變：探針仍然不碰
   // external，只有序列的擁有者自己說「我做完了」才放開）。落在文章時 handoff
   // 已經解除 hold ⇒ 這裡什麼都不做。
-  endExternalNavigation: function(notice) {
+  // landed：擁有者驗證過最後一步的落地幀（文章捷徑搜尋的結果列表，#86），回應的
+  // 結尾已知 ⇒ 當場量這一幀，不等 RESUME_QUIET_MS。
+  endExternalNavigation: function(notice, landed) {
     if (this.state !== 'functionMode' || this._holdReason !== 'external') return;
     // A failed external transaction must remain explained after the native
     // mirror changes back to easy reading; the generic resume hint would hide it.
     this._externalResumeNotice = notice || null;
     this._holdReason = 'passthrough';
     this._diag('listSession.externalEnd', {});
+    if (landed) {
+      this._cancelResumeProbe();
+      return this._tryResumeProbe(true);
+    }
     this._scheduleResumeProbe();
   },
 

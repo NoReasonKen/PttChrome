@@ -47,11 +47,11 @@ export function pageShown(stack, shown) {
   const fromList = top?.kind === PAGE.ARTICLE && below?.kind === PAGE.ARTICLE_LIST &&
     sameBoard(top.board, shown.board) && sameBoard(below.board, shown.board);
   // Another article in place of the current one (the next one, a thread
-  // move): the list's layer showed where the first one was opened, but the
-  // pages below the list still hold.
+  // move): PTT's selection in the list moved to it, and the list keeps its
+  // layer, to be revealed at that article (#74).
   if (fromList && shown.kind === PAGE.ARTICLE) {
-    const pages = [...stack.pages.slice(0, n - 2), { ...below, layer: false }, shown];
-    return { stack: { ...stack, pages }, kept: n - 2 };
+    const pages = [...stack.pages.slice(0, n - 1), shown];
+    return { stack: { ...stack, pages }, kept: n - 1 };
   }
   return { stack: pushPage(createPageStack(), shown), kept: 0 };
 }
@@ -129,15 +129,22 @@ export const HANDOFF_IDLE_MS = 150;
 // A reply that never arrives ends the handoff after this long. The timeout
 // stops counting once the real page is presented.
 export const HANDOFF_TIMEOUT_MS = 5000;
+// How often a presented page that has not reached the revealed position yet
+// is checked again.
+export const HANDOFF_REACH_POLL_MS = 50;
 
 // What a handoff does next: 'wait' (and recheck after `ms`), 'swap' the real
-// page in, or 'timeout'. Times are performance.now() values.
-export function handoffStep({ sentAt, presentedAt, touches, lastScrollAt, now }) {
+// page in, or 'timeout'. Times are performance.now() values. `reached`: the
+// real page holds the revealed reading position, as a reopened article does
+// once easy reading has paged that far (#83); it swaps without, after the
+// timeout.
+export function handoffStep({ sentAt, presentedAt, touches, lastScrollAt, reached = true, now }) {
   if (presentedAt == null) {
     const left = sentAt + HANDOFF_TIMEOUT_MS - now;
     return left > 0 ? { action: 'wait', ms: left } : { action: 'timeout' };
   }
   if (touches > 0) return { action: 'wait', ms: HANDOFF_IDLE_MS };
+  if (!reached && now - presentedAt < HANDOFF_TIMEOUT_MS) return { action: 'wait', ms: HANDOFF_REACH_POLL_MS };
   const quiet = now - lastScrollAt;
   return quiet >= HANDOFF_IDLE_MS ? { action: 'swap' } : { action: 'wait', ms: HANDOFF_IDLE_MS - quiet };
 }

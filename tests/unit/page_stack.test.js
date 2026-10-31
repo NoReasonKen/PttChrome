@@ -1,5 +1,5 @@
 import {
-  createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, HANDOFF_IDLE_MS, HANDOFF_TIMEOUT_MS,
+  createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, HANDOFF_IDLE_MS, HANDOFF_TIMEOUT_MS, HANDOFF_REACH_POLL_MS,
   queueBack, takeQueuedBack, dropQueuedBacks, boundLayers, LIVE_LAYER_BOUND, pageShown
 } from '../../src/js/page_stack';
 
@@ -184,11 +184,11 @@ describe('a page shown without an open', () => {
     expect(revealTarget(rebuilt.stack)).toBeNull();
   });
 
-  test('another article in place of the current one keeps the pages below its list', () => {
+  test('another article in place of the current one keeps its list and the pages below it', () => {
     const { stack, kept } = pageShown(route(), opened('C_Chat', 'B'));
-    expect(kept).toBe(1);
-    expect(stack.pages.map(page => page.kind)).toEqual(['home', 'articleList', 'article']);
-    expect(revealTarget(stack)).toBeNull();
+    expect(kept).toBe(2);
+    expect(stack.pages).toEqual([...route().pages.slice(0, 2), opened('C_Chat', 'B')]);
+    expect(revealTarget(stack)).toMatchObject({ kind: 'articleList', board: 'C_Chat' });
     expect(revealTarget(popPage(stack).stack)).toMatchObject({ kind: 'home' });
   });
 
@@ -222,5 +222,11 @@ describe('handoff readiness', () => {
     expect(at({ presentedAt: 200, touches: 1, now: late })).toEqual({ action: 'wait', ms: HANDOFF_IDLE_MS });
     expect(at({ presentedAt: 200, lastScrollAt: late - 40, now: late })).toEqual({ action: 'wait', ms: HANDOFF_IDLE_MS - 40 });
     expect(at({ presentedAt: 200, lastScrollAt: late - HANDOFF_IDLE_MS, now: late })).toEqual({ action: 'swap' });
+  });
+
+  test('a real page that has not reached the revealed position yet keeps the layer, for at most the timeout', () => {
+    expect(at({ presentedAt: 200, reached: false, now: 300 })).toEqual({ action: 'wait', ms: HANDOFF_REACH_POLL_MS });
+    expect(at({ presentedAt: 200, reached: false, now: 200 + HANDOFF_TIMEOUT_MS })).toEqual({ action: 'swap' });
+    expect(at({ presentedAt: 200, reached: true, now: 300 })).toEqual({ action: 'swap' });
   });
 });
