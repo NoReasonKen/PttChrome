@@ -1,6 +1,7 @@
 // @unit-env browser
 // 文章列表的「+N」（new_comments.listNewPush）在兩種列上的畫法：原生／桌機列疊在列尾的留白上
-// （放不下就不畫、不撐寬格線）；手機卡片放在標題前面。字都在 ::after（不會被複製）。
+// Native rows overlay spare trailing cells; mobile cards place the badge before
+// the read mark on the second line. Generated text stays out of copied content.
 import "../../src/css/main.css";
 import { buildRow } from "../../src/render/row";
 import { buildListCard } from "../../src/render/list_card";
@@ -57,14 +58,36 @@ describe("原生列", () => {
 });
 
 describe("手機卡片", () => {
-  test("標題行最前面一個徽章，標題文字不變", () => {
+  test("the badge precedes the read mark and date without changing title alignment or copied text", () => {
     const chars = listRow("someone", "□ [心得] 手機卡片測試");
     const plain = buildListCard({ chars, row: 5, kind: "article", forceWidth: 16 }).node;
     const node = buildListCard({ chars, row: 5, kind: "article", forceWidth: 16, listNewPush: 12 }).node;
-    const main = node.querySelector(".listCardTitle .listCardMain");
-    expect(main.firstChild.className).toBe("listNewPush");
-    expect(main.firstChild.getAttribute("data-new-push")).toBe("+12");
+    const info = node.querySelector(".listCardMeta .listCardInfo");
+    expect([...info.children].map((child) => child.className)).toEqual([
+      "listNewPush", "listCardMark", "listCardDate",
+    ]);
+    expect(info.firstChild.getAttribute("data-new-push")).toBe("+12");
+    expect(node.querySelector(".listCardTitle").outerHTML).toBe(plain.querySelector(".listCardTitle").outerHTML);
     expect(node.textContent).toBe(plain.textContent);
+  });
+
+  test.each([240, 320, 412])("a %ipx card truncates the author before its badge, mark and date", (width) => {
+    const chars = listRow("LongAuthorID", "□ [心得] A long article title");
+    const node = mount(buildListCard({ chars, row: 5, kind: "article", forceWidth: 16, listNewPush: 98 }).node);
+    node.style.cssText = `display: block; width: ${width}px; white-space: pre;`;
+    const main = node.querySelector(".listCardMeta .listCardMain");
+    const info = node.querySelector(".listCardMeta .listCardInfo");
+    const parts = [...info.children].map((el) => el.getBoundingClientRect());
+    expect(info.firstChild.className).toBe("listNewPush");
+    expect(main.getBoundingClientRect().right).toBeLessThan(parts[0].left);
+    for (let i = 1; i < parts.length; i++) {
+      expect(parts[i].left).toBeGreaterThanOrEqual(parts[i - 1].right);
+      expect(Math.abs(parts[i].top - parts[0].top)).toBeLessThan(4);
+    }
+    expect(parts.at(-1).right).toBeLessThanOrEqual(node.getBoundingClientRect().right);
+    expect(getComputedStyle(info.firstChild, "::after").content).toBe('"+98"');
+    expect(parseFloat(getComputedStyle(info.firstChild, "::after").fontSize)).toBeCloseTo(12);
+    if (width === 240) expect(main.scrollWidth).toBeGreaterThan(main.clientWidth);
   });
 
   test("看板列表的卡片不畫", () => {

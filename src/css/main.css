@@ -1156,7 +1156,8 @@ span {
 /* 文章列表的「+N」（js/new_comments.js#listNewPush）：讀完之後推文數多了幾分。字在
    data-new-push，::after 畫（不會被選取／複製）。中性灰小框，不搶 PTT 推文數的顏色。
    原生／桌機列：疊在列尾的留白上（render/row.js 只在最後幾格是空白時才放），static
-   position 落在第 80 格之後、往左平移自己的寬，不佔格線、不撐寬。手機卡片：標題前面。 */
+   position 落在第 80 格之後、往左平移自己的寬，不佔格線、不撐寬。
+   Mobile cards place it before the read mark on the second line. */
 #mainContainer .listNewPush::after {
   content: attr(data-new-push);
   display: inline-block;
@@ -1174,6 +1175,10 @@ span {
   position: absolute;
   transform: translateX(calc(-100% - 0.5em));
   pointer-events: none;
+}
+/* Compensate for the metadata line's 0.8em font, retaining the badge's size. */
+.listCard .listCardInfo > .listNewPush {
+  font-size: 1.25em;
 }
 
 /* 開站回到上次的地方的倒數提示（js/reconnect_resume.js）：底部置中，跟狀態提示同一個

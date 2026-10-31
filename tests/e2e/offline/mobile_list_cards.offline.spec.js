@@ -67,6 +67,66 @@ async function engage(page) {
 test.describe('手機 Phase 4：列表卡片（離線重放）', () => {
   test.skip(!nav, '缺 cchat-list-nav cassette');
 
+  for (const width of [320, 412]) {
+    test(`new-recommendation badge stays before the read mark at ${width}px`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 390 });
+      await engage(page);
+      const target = await page.evaluate(async () => {
+        const { saveSeen } = await import('/src/js/new_comments.js');
+        const { listRowIdentity } = await import('/src/js/long_push_anchor.js');
+        const { parseListEntry } = await import('/src/js/agent_parse.js');
+        const app = window.__app;
+        const viewport = document.querySelector('#mainContainer .listBodyView');
+        const box = viewport.getBoundingClientRect();
+        for (const card of viewport.querySelectorAll('.listCard')) {
+          const rect = card.getBoundingClientRect();
+          if (rect.top < box.top || rect.bottom > box.bottom) continue;
+          const index = app.listSession._sequence()[Number(card.getAttribute('srow')) - app.listSession.headerRows()];
+          const text = app.buf.getRowText(index, 0, app.buf.cols, app.buf.listLines);
+          const entry = parseListEntry(text);
+          const identity = listRowIdentity(text);
+          if (!identity || !/^\d{1,2}$/.test(entry?.recommend?.trim() || '')) continue;
+          saveSeen(localStorage, 'c_chat/test-badge', 0, Date.now(), null, {
+            ...identity, score: Number(entry.recommend) - 12,
+          });
+          // Storage is fixture setup; force the next render without a server edit.
+          app.view.redraw(true);
+          return { title: card.querySelector('.listCardTitle').textContent };
+        }
+        throw new Error('No visible article with an exact recommendation score');
+      });
+      const badge = page.locator('#mainContainer .listCardMeta .listNewPush').first();
+      await expect(badge).toHaveAttribute('data-new-push', '+12');
+      const geometry = await badge.evaluate((badge) => {
+        const card = badge.closest('.listCard');
+        const info = badge.parentElement;
+        const children = [...info.children];
+        const boxes = children.map((el) => el.getBoundingClientRect());
+        const title = card.querySelector('.listCardTitle');
+        const neighbor = [...card.parentElement.querySelectorAll('.listCard')].find((el) => !el.querySelector('.listNewPush'));
+        getSelection().selectAllChildren(card);
+        const copied = String(getSelection());
+        getSelection().removeAllRanges();
+        return {
+          order: children.map((el) => el.className),
+          noOverlap: boxes.every((r, i) => !i || r.left >= boxes[i - 1].right),
+          inside: boxes.at(-1).right <= card.getBoundingClientRect().right,
+          title: title.textContent,
+          titleLeft: title.querySelector('.listCardTitleText').getBoundingClientRect().left,
+          neighborLeft: neighbor.querySelector('.listCardTitleText').getBoundingClientRect().left,
+          copied,
+        };
+      });
+      expect(geometry.order).toEqual(['listNewPush', 'listCardMark', 'listCardDate']);
+      expect(geometry.noOverlap).toBe(true);
+      expect(geometry.inside).toBe(true);
+      expect(geometry.titleLeft).toBeCloseTo(geometry.neighborLeft, 1);
+      expect(geometry.title).toBe(target.title);
+      expect(geometry.copied).not.toContain('+12');
+      await page.screenshot({ path: testInfo.outputPath('badge-layout.png') });
+    });
+  }
+
   test('進板：body 變卡片、正常字級、寬＝視窗寬、卡片固定高、列數不變', async ({ page }) => {
     test.setTimeout(90000);
     const before = await engage(page);

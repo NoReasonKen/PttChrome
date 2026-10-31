@@ -25,7 +25,7 @@
 - **紀錄共用**：`markNewComments` 或 `listNewPushCount` 任一個開著就在讀完時記。
 - **已知誤差**：板主刪推文、作者編輯掉推文時，文章裡數到的分數比 `.DIR` 少，那篇會一直多出幾分。只會多標、不會送鍵。
 - **標註層**：term_view 在文章列表（pageState 2）問 `newComments.listBadge(看板)`，得到 `{ key, fn }`：`listNewPushKey` 進 `annotationsKey`（紀錄原文或看板一變就換，列表好讀走 `rowIdentityStable`，不進 key 的話讀完回列表節點會被原封沿用），`listNewPushFor` 逐列查表放進 `listNewPush`（只看該列自己的文字 ⇒ 逐列獨立）。
-- **渲染**：原生／桌機列（`row.js`）80 欄格線沒有空位 ⇒ 只在最後 5 格是空白時，把徽章掛在 bbsline 的最後、`position: absolute` 用 static position（第 80 格之後）再往左平移自己的寬，不佔格線、不撐寬；標題寫到最後幾格就不畫。手機卡片（`list_card.js`）放在標題行最前面。字一律在 `data-new-push`＋`::after`，不會被選取／複製；沒有 +N 的列輸出不變（golden 不受影響）。
+- **Rendering**: native/desktop rows (`row.js`) overlay the badge on the last five cells only when blank, without extending the 80-column grid. Easy-reading article cards (`list_card.js`) place it on the second line, before the read mark and date. The right-hand group keeps its width; the number and author truncate first. The badge retains its original size despite the smaller metadata font. Text comes from `data-new-push` through `::after`, staying out of selection/copy. Cards without a badge retain their existing output.
 
 ## 測試
 
