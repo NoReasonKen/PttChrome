@@ -337,7 +337,7 @@ export class ArticleGestures {
   _ensureExit() {
     if (this.exitUnderlay) return;
     const layer = this.stack.revealable();
-    this.exitUnderlay = createUnderlay(this.core, layer, this.stack.title);
+    this.exitUnderlay = createUnderlay(this.core, layer, this.stack.title, this.stack.appBar);
     this.exitUnderlay.setAttribute('data-article-exit-underlay', '');
     this.exitUnderlay.dataset.preview = layer ? 'layer' : 'fallback';
     this.exitSurfaces = holdSurfaces(this.core);

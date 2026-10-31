@@ -1614,6 +1614,21 @@ describe("findLocalPostAid（免費取得本篇 AID）", () => {
       termBuf.pageLines = ["作者 bbb (乙) 看板 Browsers", "內文……", "更多內文"];
       expect(nav.findLocalPostAid()).toBeNull();
     });
+
+    // 同作者同板的另一篇（作者搜尋結果裡開的那篇，#74）：首列一字不差，篇幅又更長。
+    test("同作者同板的下一篇（首列相同、累積頁更長）→ 也要歸零", () => {
+      const first = ["作者 aaa (甲) 看板 Browsers", "標題 [問題] 第一篇", "時間 Sat Oct 31 07:03:15 2026",
+        URL_ROW("Browsers", BROWSERS_FN)];
+      const { nav, termBuf } = makeHarness({
+        pageState: 3,
+        articleBoard: "Browsers",
+        pageLines: first
+      });
+      expect(nav.findLocalPostAid().aid).toBe(BROWSERS_AID);
+      termBuf.pageLines = ["作者 aaa (甲) 看板 Browsers", "標題 [問題] 第二篇", "時間 Thu Aug  7 20:57:23 2025",
+        "內文……", "更多內文", "還有內文"];
+      expect(nav.findLocalPostAid()).toBeNull();
+    });
   });
 });
 

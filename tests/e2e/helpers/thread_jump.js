@@ -29,13 +29,16 @@ const NEAR_REPLY_BOARD = [...FAR_BOARD, { num: 1120, author: 'erin', title: 'Re:
 // `fromList`: start on the article list, the cursor on `open`, and open it
 // from there with article-list easy reading, so the list is its lower page.
 // `nativeList`: the same from the native list, article-list easy reading off.
-async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, fromList = false, nativeList = false, thread = FAR_BOARD } = {}) {
-  await bootOffline(page, ptt, {});
+// `nextArticle`: the next-article card at the end of each article.
+// `legacy`: every list under the legacy caption 文章選讀, as PTT shows them
+// (cassette cchat-list-search); only the title row tells results apart.
+async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, fromList = false, nativeList = false, nextArticle = false, legacy = false, thread = FAR_BOARD } = {}) {
+  await bootOffline(page, ptt, { nextArticle });
   await ptt.applyPrefs(page, {
     enableEasyReading: true, enableEasyReadingList: fromList, articleHorizontalGestures: true
   });
   const onList = fromList || nativeList;
-  await page.evaluate(({ thread, size, open, delay, fromList }) => {
+  await page.evaluate(({ thread, size, open, delay, fromList, legacy }) => {
     const app = window.__app;
     const encode = text => [...text].map(ch => {
       const c = ch.charCodeAt(0);
@@ -48,12 +51,23 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
     }
     const subject = title => title.replace(/^(?:Re: )+/, '');
     const PAGE = 20;
-    // surface: article | list; `filter`: the subject the results show.
+    // surface: article | info | list | authorPrompt; `filter`: the subject the
+    // results show, `byAuthor`: the author they show (`a`).
     const state = {
-      surface: fromList ? 'list' : 'article', filter: null, cursor: open, open: articles[open - 1], line: 1,
-      currtitle: articles[open - 1].title
+      surface: fromList ? 'list' : 'article', filter: null, byAuthor: null, typed: '', cursor: open,
+      open: articles[open - 1], line: 1, currtitle: articles[open - 1].title
     };
-    const view = () => state.filter == null ? articles : articles.filter(a => subject(a.title) === state.filter);
+    const filtered = () => state.filter != null || state.byAuthor != null;
+    // A search within results narrows them further (read.c keeps its filters).
+    const view = () => articles.filter(a => (state.filter == null || subject(a.title) === state.filter) &&
+      (state.byAuthor == null || a.author === state.byAuthor));
+    // The article's AID, from its file name (aids.c fn2aidu, aidu2aidc).
+    const AIDC = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_';
+    const aidOf = a => {
+      let aidu = (1790000000 + a.num * 3600) * 4096 + a.num, out = '';
+      for (let i = 0; i < 8; i++, aidu = Math.floor(aidu / 64)) out = AIDC[aidu % 64] + out;
+      return out;
+    };
     const threadMove = (key) => {
       const list = view();
       const pos = state.cursor;
@@ -78,13 +92,19 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
     };
     // `lines`: a headerless article that long, over pages of 23 lines.
     const BODY = 23;
-    // Article `num` was posted at 1790000000 + num hours (its file name).
+    // Article `num` was posted at 1790000000 + num hours (its file name); its
+    // header shows that time as ctime in Taipei time.
+    const postTime = a => {
+      const utc = new Date((1790000000 + a.num * 3600 + 8 * 3600) * 1000).toUTCString();
+      const [weekday, day, month, year, time] = utc.replace(',', '').split(' ');
+      return `${weekday} ${month} ${String(+day).padStart(2)} ${time} ${year}`;
+    };
     const urlLine = a => `※ 文章網址: https://www.ptt.cc/bbs/Test/M.${1790000000 + a.num * 3600}.A.${a.num.toString(16).toUpperCase().padStart(3, '0')}.html`;
     // `url`: the article ends with its AID line, as ptt.cc's do.
     const bodyLine = (a, n) => a.url && n === a.lines ? urlLine(a)
       : n === 1 ? `Body of article ${a.num} by ${a.author}.` : `Line ${n} of article ${a.num}.`;
     const listRow = (article, index, cursor) => {
-      const num = String(state.filter == null ? article.num : index).padStart(7);
+      const num = String(filtered() ? index : article.num).padStart(7);
       const glyph = article.title.startsWith('Re: ') ? 'R: ' + subject(article.title) : '□ ' + article.title;
       const text = `${num} +  ${article.date.padStart(5)} ${article.author.padEnd(13)}${glyph}`;
       return cursor ? '>' + text.slice(1) : text;
@@ -104,8 +124,9 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
         } else rows = a.headerless ? { 0: `Body of article ${a.num} by ${a.author}.`, ...(a.url && { 2: urlLine(a) }), 23: status } : {
           0: `作者  ${a.author} (${a.author}) 看板 Test`,
           1: `標題  ${a.title}`,
-          2: `時間  Mon Sep  1 12:00:00 2025 #${a.num}`,
+          2: `時間  ${postTime(a)} #${a.num}`,
           4: `Body of article ${a.num} by ${a.author}.`,
+          ...(a.url && { 6: urlLine(a) }),
           23: status
         };
         // Q: the post info box over the page (bbs.c view_postinfo).
@@ -117,30 +138,50 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
         const list = view();
         const top = Math.floor((state.cursor - 1) / PAGE) * PAGE + 1;
         rows = {
-          0: '【板主：test】' + (state.filter == null ? '看板《Test》' : '系列《Test》'),
+          0: '【板主：test】' + (filtered() ? '系列《Test》' : '看板《Test》'),
           1: '[←]離開 [→]閱讀 [^P]發表文章 [b]備忘錄',
           2: '  編號    日 期 作  者       文  章  標  題',
-          23: (state.filter == null ? ' 文章列表 ' : ' 系列文章 ') + ' (y)回應 (X)推文 (←)離開 '
+          23: (legacy ? ' 文章選讀 ' : filtered() ? ' 系列文章 ' : ' 文章列表 ') + ' (y)回應 (X)推文 (←)離開 '
         };
         for (let i = 0; i < PAGE && top + i <= list.length; i++) {
           rows[3 + i] = listRow(list[top + i - 1], top + i, top + i === state.cursor);
         }
         cursor = [4 + state.cursor - top, 1];
+        if (state.surface === 'authorPrompt') {
+          rows[23] = '搜尋作者: ' + state.typed;
+          cursor = [24, 11 + state.typed.length];
+        }
       }
       let data = '\x1b[2J';
       for (const [index, text] of Object.entries(rows)) {
-        const inverse = state.surface === 'list' && [0, 2].includes(Number(index));
+        const inverse = ['list', 'authorPrompt'].includes(state.surface) && [0, 2].includes(Number(index));
         const encoded = encode(text);
         data += `\x1b[${Number(index) + 1};1H${inverse ? '\x1b[7m' + encoded.padEnd(80) : encoded}\x1b[0m`;
       }
       return data + `\x1b[${cursor[0]};${cursor[1]}H`;
     };
-    const TOKEN = /\x1b\[[0-9;]*[A-Za-z~]|\d+\r|[\s\S]/g;
+    const TOKEN = /\x1b\[[0-9;]*[A-Za-z~]|\d+\r|s\w+\r|#[\w-]{8}\r|[\s\S]/g;
     const apply = token => {
       const list = view();
       // Leaving the box redraws the list (FULLUPDATE), the cursor on the article.
       if (state.surface === 'info') {
         state.surface = 'list';
+        return;
+      }
+      // The author search lists the author's articles, the cursor on the last.
+      if (state.surface === 'authorPrompt') {
+        if (token !== '\r') return void (state.typed += token);
+        state.byAuthor = state.typed;
+        state.typed = '';
+        state.surface = 'list';
+        state.cursor = view().length;
+        return;
+      }
+      // `s<board>⏎` (the next-article card's route): this board's full list,
+      // the cursor where it was.
+      if (/^s\w+\r$/.test(token)) {
+        state.surface = 'list';
+        state.filter = null;
         return;
       }
       if (state.surface === 'article') {
@@ -161,10 +202,15 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
         return;
       }
       if (token === '\x1b[D') {
-        if (state.filter == null) return;
+        if (!filtered()) return;
         const article = list[state.cursor - 1];
-        state.filter = null;
+        state.filter = state.byAuthor = null;
         state.cursor = article.num;
+      } else if (token === 'a') {
+        state.surface = 'authorPrompt';
+      } else if (/^#[\w-]{8}\r$/.test(token)) {
+        const at = list.findIndex(a => aidOf(a) === token.slice(1, 9));
+        if (at >= 0) state.cursor = at + 1;
       } else if (token === 'S') {
         state.filter = subject(list[state.cursor - 1].title);
         state.cursor = view().length;
@@ -185,7 +231,7 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
     };
     window.__threadServer = { state, frame };
     app.onData(frame());
-  }, { thread, size, open, delay, fromList: onList });
+  }, { thread, size, open, delay, fromList: onList, legacy });
   if (onList) {
     if (fromList) await listActive(page);
     else await waitScreenSettled(page, { 0: '看板《Test》' });

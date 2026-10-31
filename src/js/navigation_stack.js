@@ -43,6 +43,24 @@ function openArticleKey(core) {
   return key && board ? board + '\n' + key : null;
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// A header's post time ("Mon Sep  1 12:00:00 2025") as a comparable number,
+// or null.
+function postedAt(time) {
+  const m = /([A-Z][a-z]{2}) +(\d{1,2}) (\d\d):(\d\d):(\d\d) (\d{4})/.exec(time || '');
+  const month = m ? MONTHS.indexOf(m[1]) : -1;
+  return month < 0 ? null : Date.UTC(+m[6], month, +m[2], +m[3], +m[4], +m[5]);
+}
+
+// Whether the article posted at `time` was posted before the one posted at
+// `than`, or null when that is unknown. A list lists articles as posted.
+export function postedBefore(time, than) {
+  const a = postedAt(time);
+  const b = postedAt(than);
+  return a == null || b == null || a === b ? null : a < b;
+}
+
 export class NavigationStack {
   constructor(core) {
     this.core = core;
@@ -52,6 +70,9 @@ export class NavigationStack {
     this.captured = [];
     this.pending = null;
     this.handoff = null;
+    // Set by the same-thread jump that sends `=`: the next move in place lands
+    // on the first article of the thread, not on the nearest one.
+    this.firstInThread = false;
   }
 
   _top() {
@@ -182,6 +203,9 @@ export class NavigationStack {
     const depth = this.stack.pages.length - 1;
     this.stack = withLayer(this.stack);
     this.captured[depth]?.layer?.destroy();
+    // An article list shows the article opened from it selected.
+    pending.selected = page.id;
+    pending.time = null;
     this.captured[depth] = pending;
     this.stack = pushPage(this.stack, page, { fromBelow: true });
     const bounded = boundLayers(this.stack);
@@ -250,6 +274,30 @@ export class NavigationStack {
     const page = this._articlePage();
     if (this.core.buf.pageState !== 3 || !page.id) return;
     this._shown(page);
+    const view = this.core.view;
+    if (view._articleAuthor) {
+      this.article = { id: page.id, author: view._articleAuthor, title: view._articleTitle, time: view._articleTime };
+      this._follow();
+    }
+  }
+
+  // The article list below follows each article that replaces the open one in
+  // place (#74): its selection moves to it, as PTT's does, one move at a time.
+  // Once it loses PTT's selection it reveals nothing.
+  _follow() {
+    // A same-thread jump has moved PTT's selection once it is over.
+    if (this.core.threadJump?.active) return;
+    const first = this.firstInThread;
+    this.firstInThread = false;
+    const top = this._top();
+    const lower = this.captured[this.stack.pages.length - 2];
+    if (!lower || lower.kind !== PAGE.ARTICLE_LIST || top?.kind !== PAGE.ARTICLE || this.article.id !== top.id) return;
+    const { time } = this.article;
+    if (lower.selected !== top.id) {
+      lower.shows = lower.shows !== false && lower.layer.select(this.article, postedBefore(time, lower.time), first);
+      lower.selected = top.id;
+    }
+    lower.time = time;
   }
 
   // The connection closed: PTT's route behind every stacked page is gone, and
@@ -285,7 +333,13 @@ export class NavigationStack {
     const target = revealTarget(this.stack);
     const lower = target && this.captured[this.stack.pages.length - 2];
     // Fitting a list layer to a changed width renders it again.
-    return lower?.layer.fitViewport() ? { page: target, ...lower } : null;
+    return lower?.layer.fitViewport() && this._selects(lower) ? { page: target, ...lower } : null;
+  }
+
+  // Whether a lower article list shows PTT's selection: the article now open,
+  // followed through every replacement in place (#74).
+  _selects(lower) {
+    return lower.kind !== PAGE.ARTICLE_LIST || (lower.selected === this._top().id && lower.shows !== false);
   }
 
   // The live page that Back from the current page may reveal, or null.
@@ -296,6 +350,11 @@ export class NavigationStack {
   // The revealed page's title, shown while the current page slides away.
   get title() {
     return this._revealed()?.title || '';
+  }
+
+  // The rest of the revealed page's App Bar, shown under its title.
+  get appBar() {
+    return this._revealed()?.appBar || null;
   }
 
   // While a layer is only revealed, the toolbar shows that page without its

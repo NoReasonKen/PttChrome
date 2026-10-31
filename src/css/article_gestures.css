@@ -68,6 +68,7 @@
   overflow: hidden;
 }
 
+/* The lower page's App Bar, laid out by MobileAppBar.css's classes. */
 .stackUnderlayTitle {
   box-sizing: border-box;
   display: flex;
@@ -76,7 +77,8 @@
   background: #141418;
   border-bottom: 1px solid #333;
   color: #eee;
-  font: 600 17px/22px system-ui, sans-serif;
+  font-family: system-ui, sans-serif;
+  text-align: left;
 }
 
 .stackMoving {

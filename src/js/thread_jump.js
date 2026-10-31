@@ -9,6 +9,7 @@ import { searchResultIdentity } from './search_result_anchor';
 import { parseStatusRow } from './string_util';
 import { HiddenArticleRoute } from './hidden_article_route';
 import { isBoardArticleList, isSearchResultsFrame, searchResultsLanded } from './search_results_screen';
+import { readSearchResultsContext } from './search_results_context';
 import { createUnderlay, raiseSurfaces, releaseSurfaces, paintSurfaces, slideDuration } from './stack_motion';
 import { STACK_NOTICE_MS } from './stack_layer';
 import { PAGE } from './page_stack';
@@ -97,6 +98,12 @@ export class ThreadJump extends HiddenArticleRoute {
         !source.author || !source.title || !source.time || !source.board) return false;
     this.key = k;
     this.source = source;
+    // Opened from verified search results, whose caption can be an ordinary
+    // list's: the jump searched the list it was opened from.
+    this.inResults = !!readSearchResultsContext(core, source.board);
+    // The list below follows the landing to the thread's first article.
+    const stack = core.articleGestures?.stack;
+    if (stack) stack.firstInThread = k === '=';
     this._begin(core._screenContext?.appBar || null);
     this._enqueue({
       keys: k,
@@ -106,7 +113,8 @@ export class ThreadJump extends HiddenArticleRoute {
         return answer && { answer, facts };
       },
       onDone: ({ answer, facts }) => {
-        if (answer === 'landed') return this._end();
+        // Within search results PTT's answer stands: nothing lies out of range.
+        if (answer === 'landed' || (this.inResults && answer !== 'list')) return this._end();
         this._hold();
         if (answer === 'list') this._fromList(facts);
         else this._enqueue({ keys: LIST_BACK, kind: 'thread-jump-list', expect: (snapshot, facts) => this._fullList(facts), onDone: facts => this._fromList(facts) });
@@ -126,7 +134,7 @@ export class ThreadJump extends HiddenArticleRoute {
     const board = this.source.board;
     const key = searchResultIdentity(cursorText(facts));
     // Opened from search results, the jump already searched the thread.
-    if (isSearchResultsFrame(facts, board, false) || !key) return this._native(false);
+    if (this.inResults || isSearchResultsFrame(facts, board, false) || !key) return this._native(false);
     this.sourceNum = facts.cursorRowNum ?? pageArticleNums(facts.rowTexts, facts.curY)[facts.curY];
     this.sourceKey = key;
     this._enqueue({
@@ -178,7 +186,10 @@ export class ThreadJump extends HiddenArticleRoute {
     this._enqueue({ keys: select, kind: 'thread-jump-select', expect: (snapshot, facts) => this._fullList(facts), onDone: () => this._finishAtList() });
   }
 
+  // The list is on screen; when PTT answered with it, no settle follows the
+  // hold to take the article's easy reading off it.
   _finishAtList() {
+    this.core.easyReading?.settleFunctionMode();
     if (this._slideToList()) return;
     this.active = false;
     recordFor(this.core).releaseExternal();
@@ -186,15 +197,15 @@ export class ThreadJump extends HiddenArticleRoute {
   }
 
   // Under article-list easy reading, the source slides away as on Back, over
-  // the list it was opened from or the dark fallback when that list keeps no
-  // live layer (after a jump in place), and the list takes over once its
-  // session presents it again.
+  // the list it was opened from, selected at the source, or the dark fallback
+  // when that list has no live layer with the source's row, and the list takes
+  // over once its session presents it again.
   _slideToList() {
     const core = this.core;
     const stack = core.articleGestures?.stack;
     if (!this.cover || !stack || !readEffectivePrefs().enableEasyReadingList) return false;
     const layer = stack.revealable();
-    const underlay = createUnderlay(core, layer, stack.title);
+    const underlay = createUnderlay(core, layer, stack.title, stack.appBar);
     const surfaces = raiseSurfaces([this.cover.el, document.getElementById('mobileAppBar')]);
     const duration = slideDuration();
     this.slide = { underlay, surfaces, timer: null };
