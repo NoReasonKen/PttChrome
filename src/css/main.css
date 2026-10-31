@@ -85,6 +85,9 @@
    宣告 none，不需要在最外層再蓋一次。回歸守護：tests/e2e/offline/selection.offline.spec.js
    （offline-firefox project）。 */
 #BBSWindow {
+  /* Chromium can highlight this cursor-defining ancestor instead of a card.
+     Keep feedback transparent across list/article and retained-layer changes. */
+  -webkit-tap-highlight-color: transparent;
   position:fixed;
   width:100%;
   height:100%;
