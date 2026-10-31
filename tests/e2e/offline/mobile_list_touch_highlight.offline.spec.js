@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { MAIN, ARTICLE_CARD, bootArticleListAtCard, listActive } = require('../helpers/stack_routes');
+const { ARTICLE_CARD, bootArticleListAtCard, listActive, waitArticleOpened } = require('../helpers/stack_routes');
 const { beginArticleTouch } = require('../helpers/article_gestures');
 const { waitRectStable } = require('../helpers/layout');
 const ptt = require('../helpers/ptt');
@@ -25,8 +25,7 @@ for (const edgePaging of [true, false]) {
     await contact.release({ cancel: true });
 
     await page.locator(ARTICLE_CARD).first().tap();
-    await page.waitForFunction(() => window.__app.buf.pageState === 3);
-    await waitRectStable(page, MAIN);
+    await waitArticleOpened(page);
     await expect(surface).toHaveCSS('-webkit-tap-highlight-color', 'rgba(0, 0, 0, 0)');
     await page.keyboard.press('ArrowLeft');
     await listActive(page);

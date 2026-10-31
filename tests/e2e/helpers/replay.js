@@ -270,11 +270,22 @@ async function aiTaskStats(page) {
 // 錄製當下的終端機大小（cassette.rows／cols；舊卷沒寫＝80×24）。畫面 bytes 是按那個大小
 // 畫的（狀態列在最後一列、游標定址到第 rows 列），用別的列數重放＝超出範圍的列被夾到
 // 最後一列、整頁錯亂。所以餵資料前先把終端機設成同一個大小 —— 走 pref 的整組套用路徑
-// （onValuesPrefChange，同 term_size.offline.spec.js），不另開後門。80×24 時什麼都不做。
-async function applyCassetteTermSize(page, cassette) {
+// （onValuesPrefChange，同 term_size.offline.spec.js），不另開後門。
+async function applyCassetteTermSize(page, cassette, { allowLargerTerminal = false } = {}) {
   const rows = (cassette && cassette.rows) || 24;
   const cols = (cassette && cassette.cols) || 80;
-  if (rows === 24 && cols === 80) return;
+  if (rows === 24 && cols === 80) {
+    const actual = await page.evaluate(() => ({
+      cols: window.__app.buf.cols, rows: window.__app.buf.rows,
+      width: window.innerWidth, height: window.innerHeight,
+    }));
+    const matches = actual.cols === cols && actual.rows === rows;
+    const fits = allowLargerTerminal && actual.cols >= cols && actual.rows >= rows;
+    if (!matches && !fits) {
+      throw new Error(`Replay terminal size mismatch: cassette ${cols}x${rows}, terminal ${actual.cols}x${actual.rows}, viewport ${actual.width}x${actual.height}. Use a compatible initial viewport or terminal size; resize after initial replay in resize tests.`);
+    }
+    return;
+  }
   await page.evaluate(
     ({ rows, cols }) => {
       window.__app.onValuesPrefChange(
@@ -293,8 +304,8 @@ async function applyCassetteTermSize(page, cassette) {
 }
 
 async function replayCassette(page, cassette, opts = {}) {
-  await applyCassetteTermSize(page, cassette);
   const easyReading = opts.easyReading !== false;
+  await applyCassetteTermSize(page, cassette, { allowLargerTerminal: !easyReading && opts.allowLargerTerminal === true });
   const splitFrames = opts.splitFrames === true ? true : (opts.splitFrames || false);
   const dropSteps = opts.dropSteps || [];
   const answerHome = !!opts.answerHome;

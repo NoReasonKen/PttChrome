@@ -38,6 +38,19 @@ fixture（`tests/unit/fixtures/replay/<name>.page.json`）：
 { meta, pageScreens:[[24列settled文字],...], golden:{comments[], commentCount, firstCommentAuthor} }
 ```
 
+### Replay readiness
+
+Replay checks the recorded terminal dimensions before feeding bytes. Default
+80x24 recordings require a matching initial terminal; errors include the actual
+terminal and viewport dimensions. Resize tests should establish their recorded
+baseline before resizing. Non-default recordings retain preference-based sizing.
+Native static replay may explicitly use `{ easyReading: false, allowLargerTerminal: true }`
+to leave unused space; this never permits clipping into a smaller terminal.
+After opening an article from a stacked list, use `stack_routes.waitArticleOpened`:
+it waits for article state, idle navigation, buffer updates and stable viewport geometry.
+It does not wait for the whole article or all images to load; `articleRead` and
+the existing image-settling helpers cover those stronger requirements.
+
 ## 錄製（一次性，連真實 PTT）
 環境變數：`RECORD_MODE`(article|list)、`RECORD_BOARD`、`RECORD_NAME`、`RECORD_MAX_PAGES`(預設 12，0=不限)、
 `RECORD_SEARCH`(article：'/' 標題搜尋指定文章，過期則拋錯)、`RECORD_END`(article：加錄 End→原生的 'end' step)、

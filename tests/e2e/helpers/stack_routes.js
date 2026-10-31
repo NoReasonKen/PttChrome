@@ -177,6 +177,18 @@ const articleRead = page => page.waitForFunction(() => {
   return app.buf.pageState === 3 && app.easyReading.easyReadingReachedPageEnd && app.commandQueue.idle && !app.buf._settleTimer;
 });
 
+// The list also has articleHorizontalGestures. Wait for actual article entry
+// and settled rendering before returning; loading the entire article is separate.
+async function waitArticleOpened(page, { timeout = 15000 } = {}) {
+  const deadline = performance.now() + timeout;
+  await page.waitForFunction(() => {
+    const app = window.__app;
+    return app.buf.pageState === 3 && app.view.useEasyReadingMode &&
+      app.commandQueue.idle && !app.buf.timerUpdate && !app.buf._settleTimer;
+  }, null, { timeout });
+  return waitRectStable(page, MAIN, { fullRect: true, timeout: Math.max(1, deadline - performance.now()) });
+}
+
 // Every painted frame from now on: is the old article on screen? Sampled just
 // before paint (helpers/layout.js#installPaintedFrameProbe).
 async function sampleFrames(page) {
@@ -211,6 +223,6 @@ const revealedSinceWatch = page => page.evaluate(() => window.__revealed);
 
 module.exports = {
   MAIN, ARTICLE_CARD, homeBoard, boardList, bootArticleList, bootArticleListAtCard, holdRepliesUntilEntryRests, dropReplies, recordHints, recordedHints, listActive, dashboardVisible, bootDashboard, boardOpened, boardListEngaged, bootBoardList,
-  fedBefore, openNextArticle, holdBackReply, heldBack, holdLeaves, heldLeaves, releaseLeave, sentLeaves, articleRead,
+  fedBefore, openNextArticle, holdBackReply, heldBack, holdLeaves, heldLeaves, releaseLeave, sentLeaves, articleRead, waitArticleOpened,
   sampleFrames, framesBringingBackArticle, watchReveals, revealedSinceWatch
 };

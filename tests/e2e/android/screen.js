@@ -50,7 +50,10 @@ async function openScreen(page, prefs = {}, opts = {}) {
   if (!(await page.evaluate(() => window.__app.mobile))) {
     throw envError('沒有進手機版面（mobileLayout pref 沒套上）');
   }
-  await replayCassette(page, article, { easyReading: !!prefs.enableEasyReading });
+  await replayCassette(page, article, {
+    easyReading: !!prefs.enableEasyReading,
+    allowLargerTerminal: !prefs.enableEasyReading,
+  });
   await expect.poll(() => page.evaluate(() => window.__app.buf.getRowText(0).trim().length)).toBeGreaterThan(0);
 }
 

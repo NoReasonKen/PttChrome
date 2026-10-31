@@ -83,12 +83,13 @@ async function waitPreviewsSettled(
 async function waitRectStable(
   page,
   selector,
-  { samples = 3, interval = 100, timeout = 20000, tolerance = 0.5 } = {}
+  { samples = 3, interval = 100, timeout = 20000, tolerance = 0.5, fullRect = false } = {}
 ) {
   const deadline = Date.now() + timeout;
   let last = null;
   let stable = 0;
-  const tops = [];
+  const measurements = [];
+  const properties = fullRect ? ['top', 'left', 'width', 'height'] : ['top'];
   while (Date.now() < deadline) {
     const r = await page.evaluate((sel) => {
       const el = document.querySelector(sel);
@@ -97,8 +98,8 @@ async function waitRectStable(
       return { top: b.top, left: b.left, width: b.width, height: b.height };
     }, selector);
     if (!r) throw new Error('waitRectStable：找不到元素 ' + selector);
-    tops.push(Math.round(r.top * 10) / 10);
-    if (last !== null && Math.abs(r.top - last.top) < tolerance) {
+    measurements.push(fullRect ? JSON.stringify(r) : Math.round(r.top * 10) / 10);
+    if (last !== null && properties.every(property => Math.abs(r[property] - last[property]) < tolerance)) {
       if (++stable >= samples - 1) return r;
     } else {
       stable = 0;
@@ -107,11 +108,11 @@ async function waitRectStable(
     await sleep(interval);
   }
   throw new Error(
-    'waitRectStable 逾時：' +
+    (fullRect ? 'waitRectStable timed out: ' : 'waitRectStable 逾時：') +
       selector +
-      ' 的 top 一直在動（最後取樣 ' +
-      tops.slice(-6).join(' → ') +
-      '）'
+      (fullRect ? ' rectangle is still changing (last samples ' : ' 的 top 一直在動（最後取樣 ') +
+      measurements.slice(-6).join(' → ') +
+      (fullRect ? ')' : '）')
   );
 }
 
