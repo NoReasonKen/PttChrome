@@ -1176,8 +1176,17 @@ span {
   transform: translateX(calc(-100% - 0.5em));
   pointer-events: none;
 }
-/* Compensate for the metadata line's 0.8em font, retaining the badge's size. */
+/* Center the metadata group independently of text baselines. Inline middle
+   alignment can otherwise put the badge border below the clipped line. */
+.listCard .listCardMeta > .listCardInfo {
+  display: flex;
+  align-items: center;
+  align-self: center;
+}
+/* Compensate for the metadata line's 0.8em font, retaining the badge's size.
+   Flex removes the extra inline text strut around the generated badge. */
 .listCard .listCardInfo > .listNewPush {
+  display: flex;
   font-size: 1.25em;
 }
 

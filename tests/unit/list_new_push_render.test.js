@@ -82,7 +82,8 @@ describe("手機卡片", () => {
     expect(main.getBoundingClientRect().right).toBeLessThan(parts[0].left);
     for (let i = 1; i < parts.length; i++) {
       expect(parts[i].left).toBeGreaterThanOrEqual(parts[i - 1].right);
-      expect(Math.abs(parts[i].top - parts[0].top)).toBeLessThan(4);
+      // The enlarged unread mark has a taller visual box; centers still align.
+      expect(Math.abs((parts[i].top + parts[i].bottom - parts[0].top - parts[0].bottom) / 2)).toBeLessThan(0.5);
     }
     expect(parts.at(-1).right).toBeLessThanOrEqual(node.getBoundingClientRect().right);
     expect(getComputedStyle(info.firstChild, "::after").content).toBe('"+98"');
@@ -94,5 +95,19 @@ describe("手機卡片", () => {
     const chars = listRow("someone", "□ [心得] 手機卡片測試");
     const node = buildListCard({ chars, row: 5, kind: "board", forceWidth: 16, listNewPush: 2 }).node;
     expect(node.querySelector(".listNewPush")).toBeNull();
+  });
+
+  test.each([16, 20, 24])("the complete badge fits vertically inside a %ipx card's metadata line", (fontSize) => {
+    const node = mount(buildListCard({
+      chars: listRow("someone", "□ [Test] Badge alignment"),
+      row: 5, kind: "article", forceWidth: fontSize, listNewPush: 12,
+    }).node);
+    host.style.fontSize = `${fontSize}px`;
+    node.style.cssText = "display: block; width: 320px; white-space: pre;";
+    const meta = node.querySelector(".listCardMeta").getBoundingClientRect();
+    const badge = node.querySelector(".listNewPush").getBoundingClientRect();
+    expect(badge.top).toBeGreaterThanOrEqual(meta.top - 0.1);
+    expect(badge.bottom).toBeLessThanOrEqual(meta.bottom + 0.1);
+    expect(Math.abs((badge.top + badge.bottom) / 2 - (meta.top + meta.bottom) / 2)).toBeLessThan(0.5);
   });
 });

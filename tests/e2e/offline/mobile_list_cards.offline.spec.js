@@ -103,6 +103,8 @@ test.describe('手機 Phase 4：列表卡片（離線重放）', () => {
         const children = [...info.children];
         const boxes = children.map((el) => el.getBoundingClientRect());
         const title = card.querySelector('.listCardTitle');
+        const meta = card.querySelector('.listCardMeta').getBoundingClientRect();
+        const badgeBox = badge.getBoundingClientRect();
         const neighbor = [...card.parentElement.querySelectorAll('.listCard')].find((el) => !el.querySelector('.listNewPush'));
         getSelection().selectAllChildren(card);
         const copied = String(getSelection());
@@ -115,6 +117,8 @@ test.describe('手機 Phase 4：列表卡片（離線重放）', () => {
           titleLeft: title.querySelector('.listCardTitleText').getBoundingClientRect().left,
           neighborLeft: neighbor.querySelector('.listCardTitleText').getBoundingClientRect().left,
           copied,
+          badgeFits: badgeBox.top >= meta.top && badgeBox.bottom <= meta.bottom,
+          badgeCenterOffset: Math.abs((badgeBox.top + badgeBox.bottom - meta.top - meta.bottom) / 2),
         };
       });
       expect(geometry.order).toEqual(['listNewPush', 'listCardMark', 'listCardDate']);
@@ -123,6 +127,8 @@ test.describe('手機 Phase 4：列表卡片（離線重放）', () => {
       expect(geometry.titleLeft).toBeCloseTo(geometry.neighborLeft, 1);
       expect(geometry.title).toBe(target.title);
       expect(geometry.copied).not.toContain('+12');
+      expect(geometry.badgeFits).toBe(true);
+      expect(geometry.badgeCenterOffset).toBeLessThan(0.5);
       await page.screenshot({ path: testInfo.outputPath('badge-layout.png') });
     });
   }
