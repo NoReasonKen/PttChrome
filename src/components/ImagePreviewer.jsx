@@ -50,7 +50,11 @@ export const requestPreview = (href) => {
 
 // resolveSrcToImageUrl turns a link into a *media descriptor*:
 //   { type: "image", src, srcset? } | { type: "video", src }
-//   | { type: "iframe", src }       | { type: "album", images: [descriptor] }
+//   | { type: "iframe", src, poster?, oembed?, label? }
+//   | { type: "album", images: [descriptor] }
+// An iframe shows an embed card until tapped; `poster` (candidate URLs),
+// `oembed` (an oEmbed JSON endpoint for title and author) and `label` only
+// decorate that card (see InlineIframe).
 // `type` defaults to "image" when omitted (back-compat with bare { src }).
 export const resolveSrcToImageUrl = ({ src }) =>
   imageUrlResolvers.find((r) => r.test(src)).request(src);
@@ -375,19 +379,137 @@ const InlineVideo = React.memo(function InlineVideo({ src, gif }) {
   );
 });
 
-const InlineIframe = React.memo(function InlineIframe({ src }) {
-  const [loaded, setLoaded] = React.useState(false);
+const hostLabel = (src) => {
+  try {
+    return new URL(src).hostname.replace(/^www\./, "");
+  } catch (e) {
+    return "";
+  }
+};
+
+// A missing YouTube thumbnail still loads: a 120px placeholder served with a
+// 404. A poster this narrow cannot fill the card, so try the next candidate.
+const MIN_POSTER_WIDTH = 200;
+
+const EmbedPoster = ({ candidates }) => {
+  const [index, setIndex] = React.useState(0);
+  const [shown, setShown] = React.useState(false);
+  if (index >= candidates.length) return null;
+  const next = () => setIndex(index + 1);
   return (
-    <div style={{ margin: "0.5em auto", maxWidth: "800px", height: "450px" }}>
-      {!loaded && <LoadingOverlay />}
-      <iframe
-        type="text/html"
-        src={src}
-        allowFullScreen
-        referrerPolicy="origin-when-cross-origin"
-        onLoad={() => setLoaded(true)}
-        style={{ border: "none", width: "100%", height: "100%" }}
-      />
+    <img
+      key={index}
+      className="embedCoverPoster"
+      src={candidates[index]}
+      alt=""
+      draggable={false}
+      referrerPolicy="no-referrer"
+      style={shown ? null : { visibility: "hidden" }}
+      onLoad={(e) =>
+        e.currentTarget.naturalWidth < MIN_POSTER_WIDTH
+          ? next()
+          : setShown(true)
+      }
+      onError={next}
+    />
+  );
+};
+
+// oEmbed title and author, fetched once per endpoint; null when unavailable.
+const embedDetailsCache = new Map();
+const fetchEmbedDetails = (url) => {
+  let details = embedDetailsCache.get(url);
+  if (!details) {
+    details = fetch(url)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) =>
+        json && (json.title || json.author_name)
+          ? { title: json.title || "", author: json.author_name || "" }
+          : null,
+      )
+      .catch(() => null);
+    embedDetailsCache.set(url, details);
+  }
+  return details;
+};
+
+const useEmbedDetails = (url) => {
+  const [details, setDetails] = React.useState(null);
+  React.useEffect(() => {
+    if (!url) return undefined;
+    let active = true;
+    fetchEmbedDetails(url).then((d) => active && setDetails(d));
+    return () => {
+      active = false;
+    };
+  }, [url]);
+  return details;
+};
+
+// Embed card: a cross-origin player swallows every touch, so the article's
+// swipes could never start on it. Until the reader taps, the card's 16:9
+// media area holds the embed cover (poster and play button) instead; the tap
+// swaps in the player there, and the details below stay, so the article does
+// not move. Any source works: `poster`, `oembed` and `label` only decorate it.
+// Only the cover takes taps; the details are article text. The cover is a div,
+// not a <button>: article gestures ignore buttons.
+const InlineIframe = React.memo(function InlineIframe({
+  src,
+  poster,
+  oembed,
+  label,
+}) {
+  const [playing, setPlaying] = React.useState(false);
+  const [loaded, setLoaded] = React.useState(false);
+  const details = useEmbedDetails(oembed);
+  const name = label || hostLabel(src);
+  const title = details && details.title;
+  const author = details && details.author;
+  const play = () => setPlaying(true);
+  return (
+    <div className="embedCard">
+      <div className="embedCardMedia">
+        {playing ? (
+          <React.Fragment>
+            <iframe
+              type="text/html"
+              src={src}
+              allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+              allowFullScreen
+              referrerPolicy="origin-when-cross-origin"
+              onLoad={() => setLoaded(true)}
+            />
+            {!loaded && (
+              <div className="embedCardLoading">
+                <LoadingOverlay />
+              </div>
+            )}
+          </React.Fragment>
+        ) : (
+          <div
+            className="embedCover"
+            role="button"
+            tabIndex={0}
+            aria-label={`Play ${title || (name ? `${name} video` : "video")}`}
+            onClick={play}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                play();
+              }
+            }}
+          >
+            {poster && <EmbedPoster candidates={poster} />}
+            <span className="embedCoverPlay" aria-hidden="true" />
+          </div>
+        )}
+      </div>
+      {(title || author) && (
+        <div className="embedCardDetails">
+          {title && <span className="embedCardTitle">{title}</span>}
+          {author && <span className="embedCardAuthor">{author}</span>}
+        </div>
+      )}
     </div>
   );
 });
@@ -407,7 +529,15 @@ const inlineVideo = (descriptor, key) => (
   <InlineVideo key={key} src={descriptor.src} gif={descriptor.gif} />
 );
 
-const inlineIframe = (src, key) => <InlineIframe key={key} src={src} />;
+const inlineIframe = (descriptor, key) => (
+  <InlineIframe
+    key={key}
+    src={descriptor.src}
+    poster={descriptor.poster}
+    oembed={descriptor.oembed}
+    label={descriptor.label}
+  />
+);
 
 // 單一 descriptor → 元素。相簿展開的每一項也走這裡，所以相簿內的圖自動吃到
 // srcset 候選鏈（如 imgur 的 webp 優先），不必在 album 分支複製一份判斷。
@@ -416,7 +546,7 @@ const renderMedia = (descriptor, key) => {
     case "video":
       return inlineVideo(descriptor, key);
     case "iframe":
-      return inlineIframe(descriptor.src, key);
+      return inlineIframe(descriptor, key);
     default:
       return inlineImage(descriptor, key);
   }
@@ -627,14 +757,27 @@ const imageUrlResolvers = [
     },
     request(src) {
       const id = src.match(this.regex)[1];
-      let embed = `https://www.youtube.com/embed/${id}`;
+      const embed = new URL(`https://www.youtube.com/embed/${id}`);
       try {
         const t = new URL(src, location.href).searchParams.get("t");
-        if (t) embed += `?start=${parseInt(t, 10) || t}`;
+        if (t) embed.searchParams.set("start", parseInt(t, 10) || t);
       } catch (e) {
         // ignore malformed url
       }
-      return Promise.resolve({ type: "iframe", src: embed });
+      // The player is created only by a tap on the embed cover, so it plays on load.
+      embed.searchParams.set("autoplay", "1");
+      const watch = `https://www.youtube.com/watch?v=${id}`;
+      return Promise.resolve({
+        type: "iframe",
+        src: embed.href,
+        // hq720 is 16:9 without letterboxing but missing for old videos.
+        poster: [
+          `https://i.ytimg.com/vi/${id}/hq720.jpg`,
+          `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+        ],
+        oembed: `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(watch)}`,
+        label: "YouTube",
+      });
     },
   },
   {
@@ -648,6 +791,7 @@ const imageUrlResolvers = [
       return Promise.resolve({
         type: "iframe",
         src: `https://clips.twitch.tv/embed?clip=${id}&parent=${location.hostname}`,
+        label: "Twitch",
       });
     },
   },

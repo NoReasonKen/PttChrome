@@ -63,6 +63,8 @@ describe("main.css：內嵌預覽的命中範圍", () => {
       "img.easyReadingImg",
       "video.easyReadingVideo",
       "iframe",
+      // 封面要接得到點擊才換得成播放器；卡片的文字區照文章處理（#89）。
+      ".embedCover",
       ".previewLoading",
       ".previewError",
       ".previewGrayBtn",

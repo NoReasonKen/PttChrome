@@ -203,6 +203,9 @@ class MainActivity : ComponentActivity() {
             setSupportZoom(true)
             builtInZoomControls = true
             displayZoomControls = false
+            // 預設 true：內嵌影片的播放器載入後還要再點一次才播（Chrome 不用）。文章裡的播放器
+            // 只在讀者點了 embed card 的封面後才建立，所以一點就播；GIF 影片本來就靜音自動播放。
+            mediaPlaybackRequiresUserGesture = false
             // target=_blank／window.open 要走 onCreateWindow 才接得住（見下方 openInExternalBrowser）。
             // 關掉多視窗時它們會改成「在本頁導航」：網頁的 beforeunload 先跑、跳出「離開這個網站？」，
             // 選離開就把 BBS 畫面換掉。

@@ -698,8 +698,8 @@ localStorage 裡已經有舊 key 的舊值，翻預設對他們**完全無效**�
 留白若算預覽，提示帶照亮、指標照樣是 back，點下去卻 0 byte —— **affordance 在說謊**。
 
 規則在 CSS 而不是這張表：`.inlinePreviewSlot { pointer-events: none }` ＋ 可互動的
-子孫（`img.easyReadingImg` / `video.easyReadingVideo` / `iframe` / `.previewLoading` /
-`.previewError` / `.previewGrayBtn`）各自取回 `auto`。`pointer-events` **是繼承屬性**，
+子孫（`img.easyReadingImg` / `video.easyReadingVideo` / `iframe` / `.embedCover` /
+`.previewLoading` / `.previewError` / `.previewGrayBtn`）各自取回 `auto`。`pointer-events` **是繼承屬性**，
 少取回任何一項那種媒體就連自己都點不到。順帶把 `.previewLoading`／`.previewError`
 從 `inline-flex` 改成 `flex; width: fit-content`——inline-level 的 `margin: auto` 解析成
 0，它們其實整片貼在第 0 欄。`pointer-events` 不影響 layout ⇒ 版面、佔位高度、
