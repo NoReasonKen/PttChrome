@@ -352,6 +352,11 @@ export class NavigationStack {
     return this._revealed()?.title || '';
   }
 
+  // The rest of the revealed page's App Bar, shown under its title.
+  get appBar() {
+    return this._revealed()?.appBar || null;
+  }
+
   // While a layer is only revealed, the toolbar shows that page without its
   // actions; they return once the real page is usable.
   toolbarContext() {

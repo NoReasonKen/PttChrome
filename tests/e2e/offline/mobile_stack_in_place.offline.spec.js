@@ -167,6 +167,47 @@ async function backToThreadResults(page) {
   expect(await page.evaluate(() => window.__threadServer.state)).toMatchObject({ filter: '[Talk] Far topic', surface: 'list' });
 }
 
+// Back from search results reopens their source out of sight, through the
+// native mirror's smaller font: the revealed article keeps its own layout, and
+// its App Bar shows in full until the article takes over.
+test('Back from author results reveals the source article at its own layout under its whole App Bar', async ({ page }) => {
+  const thread = SEARCH_THREAD.map(article => ({ ...article, url: true }));
+  await bootThreadBoard(page, { open: 1100, fromList: true, legacy: true, thread });
+  await search(page, 'author', 'byAuthor');
+  await page.evaluate(() => {
+    const frames = window.__frames = [];
+    const gapIn = root => {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let mark = null;
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!mark && node.data.includes('※')) mark = [node, node.data.indexOf('※')];
+        const at = node.data.indexOf('文章網址');
+        if (mark && at >= 0) {
+          const box = (n, i) => { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 1); return r.getBoundingClientRect(); };
+          return Math.round((box(node, at).left - box(...mark).right) * 10) / 10;
+        }
+      }
+      return null;
+    };
+    const sample = () => {
+      const layer = document.querySelector('[data-stack-layer="article"]');
+      const heading = document.querySelector('.stackUnderlayTitle');
+      if (layer && heading) frames.push({ gap: gapIn(layer), heading: heading.textContent });
+      if (!document.querySelector('.main:not([data-stack-layer]).mobileReflow') || layer) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  await page.goBack();
+  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle && !window.__app.articleGestures.stack.handingOff &&
+    !document.querySelector('[data-stack-layer]'))).toBe(true);
+  expect(await page.evaluate(() => window.__threadServer.state)).toMatchObject({ surface: 'article', open: { num: 1100 } });
+  const frames = await page.evaluate(() => window.__frames);
+  expect(frames.length).toBeGreaterThan(5);
+  expect(new Set(frames.map(f => f.gap)).size).toBe(1);
+  expect(frames[0].gap).not.toBeNull();
+  for (const { heading } of frames) expect(heading).toContain('dave (dave)');
+});
+
 // Two articles by one author share their first header row, and ptt.cc articles
 // end with their AID line: each search starts from the article on screen.
 test('Back from thread results searched from an article of author results returns to that article', async ({ page }) => {

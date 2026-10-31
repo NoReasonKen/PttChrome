@@ -205,7 +205,7 @@ export class ThreadJump extends HiddenArticleRoute {
     const stack = core.articleGestures?.stack;
     if (!this.cover || !stack || !readEffectivePrefs().enableEasyReadingList) return false;
     const layer = stack.revealable();
-    const underlay = createUnderlay(core, layer, stack.title);
+    const underlay = createUnderlay(core, layer, stack.title, stack.appBar);
     const surfaces = raiseSurfaces([this.cover.el, document.getElementById('mobileAppBar')]);
     const duration = slideDuration();
     this.slide = { underlay, surfaces, timer: null };

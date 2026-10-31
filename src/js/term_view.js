@@ -2704,14 +2704,19 @@ TermView.prototype = {
 
     this.setTermFontSize(chw, chh);
 
+    // The stack's layers keep the font of the page they copy: a page shown in
+    // their place, such as the native mirror while a route runs, must not
+    // re-lay them out.
     var forceWidthElems = document.querySelectorAll('.wpadding');
     for (var i = 0; i < forceWidthElems.length; ++i) {
       var forceWidthElem = forceWidthElems[i];
+      if (forceWidthElem.closest('[data-stack-layer]')) continue;
       forceWidthElem.style.width = chh + 'px';
     }
     // UTF-8 線路的半形 Unicode 格（render/word_segment.js#appendHalfWidthWord）。
     var halfWidthElems = document.querySelectorAll('.hpadding');
     for (var i = 0; i < halfWidthElems.length; ++i) {
+      if (halfWidthElems[i].closest('[data-stack-layer]')) continue;
       halfWidthElems[i].style.width = (chh / 2) + 'px';
     }
   },
