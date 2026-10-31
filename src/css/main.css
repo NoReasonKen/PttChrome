@@ -1377,7 +1377,7 @@ span {
 .inlinePreviewSlot img.easyReadingImg,
 .inlinePreviewSlot video.easyReadingVideo,
 .inlinePreviewSlot iframe,
-.inlinePreviewSlot .embedCover,
+.inlinePreviewSlot .embedCard,
 .inlinePreviewSlot .previewLoading,
 .inlinePreviewSlot .previewError,
 .inlinePreviewSlot > .previewGrayBtn {
@@ -1525,16 +1525,69 @@ span {
   text-decoration: underline;
 }
 
-/* Embed cover (ImagePreviewer.jsx#EmbedCover): fills the player's box, so
-   tapping it swaps in the player without moving the article. */
-.embedCover {
+/* Embed card (ImagePreviewer.jsx#InlineIframe): the cover and then the player
+   fill the same 16:9 media area, and the details below stay, so starting the
+   video does not move the article. */
+.embedCard {
+  max-width: 800px;
+  margin: 0.5em auto;
+  overflow: hidden;
+  border: 1px solid #3a3a3a;
+  border-radius: 0.4em;
+  background-color: #222;
+  color: #fff;
+  font-family: system-ui, sans-serif;
+  user-select: none;
+}
+.embedCard[role="button"] {
+  cursor: pointer;
+}
+.embedCardMedia {
   position: relative;
+  aspect-ratio: 16 / 9;
+  background-color: #000;
+}
+.embedCardMedia > iframe,
+.embedCover {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
+  border: none;
+}
+.embedCardLoading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+.embedCardDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+  padding: 0.6em 0.8em 0.7em;
+}
+.embedCardTitle {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  background-color: #000;
-  cursor: pointer;
-  user-select: none;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.embedCardAuthor,
+.embedCardSource {
+  overflow: hidden;
+  font-size: 0.85em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.embedCardAuthor {
+  color: rgba(255, 255, 255, 0.8);
+}
+.embedCardSource {
+  color: #999;
 }
 .embedCoverPoster {
   display: block;
@@ -1547,12 +1600,11 @@ span {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 4em;
-  height: 4em;
+  width: 4.25em;
+  height: 3em;
   translate: -50% -50%;
-  border-radius: 50%;
-  background-color: rgba(0, 0, 0, 0.6);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+  border-radius: 0.8em;
+  background-color: rgba(33, 33, 33, 0.8);
 }
 .embedCoverPlay::after {
   content: "";
@@ -1561,22 +1613,12 @@ span {
   left: 54%;
   translate: -50% -50%;
   border-style: solid;
-  border-width: 0.9em 0 0.9em 1.5em;
+  border-width: 0.7em 0 0.7em 1.2em;
   border-color: transparent transparent transparent #fff;
 }
-.embedCover:hover .embedCoverPlay,
-.embedCover:focus-visible .embedCoverPlay {
+.embedCard:hover .embedCoverPlay,
+.embedCard:focus-visible .embedCoverPlay {
   background-color: rgba(204, 0, 0, 0.9);
-}
-.embedCoverLabel {
-  position: absolute;
-  left: 0.6em;
-  bottom: 0.5em;
-  padding: 0.1em 0.5em;
-  border-radius: 0.25em;
-  background-color: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  font-size: 0.9em;
 }
 
 /* 浮動工具（render/merge_buttons.js#createFloatingTools）：開燈／圖文並排／AI

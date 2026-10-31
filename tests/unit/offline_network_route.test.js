@@ -74,6 +74,15 @@ describe("離線重放：外部請求分類", () => {
     expect(classifyOfflineRequest("https://i.imgur.com/L976tXr.mp4")).toBe("blocked");
   });
 
+  // 內嵌卡片的標題／頻道（#89）走 YouTube 的 oEmbed；embed 本身仍是 blocked。
+  test("YouTube oEmbed 走自己的假 JSON", () => {
+    expect(
+      classifyOfflineRequest(
+        "https://www.youtube.com/oembed?format=json&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3Dx",
+      ),
+    ).toBe("oembed");
+  });
+
   test("iframe embed 與未知 host → blocked（404 空身，不留 hang）", () => {
     for (const u of [
       "https://www.youtube.com/embed/1m2KVNX4DhI",

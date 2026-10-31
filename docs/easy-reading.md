@@ -173,7 +173,7 @@
     - 量測兩個陷阱：載入完成前 `<img>` 已在 DOM 但 `display:none`，量到的是「讀取中…」指示器高度（要用 `offsetHeight > 0` 判斷是否真的佔到版面）；相簿一個 slot 多張圖，單一比例代表不了整盒 ⇒ 不記 aspect，退回分模式高度。
     - **量測結果存在 module 級 memo（`inline_preview_slot.js` 的 `sizeMemo`，鍵＝`href`，LRU `SIZE_MEMO_MAX`=500，跨文章保留）**。理由：`pinned`/`aspect` 原本只活在 slot 閉包裡，**任何會改動 `annotationsKey` 的操作都全量重建每一列**（AI 校正逐筆回填最頻繁，一篇數十次；還有圖文並排、黑名單、樓號、字級…）⇒ 新 slot 從 `null` 開始 ⇒ 整份長頁佔位盒同時塌陷再非同步撐回來（閃爍＋跳頁）。命中 memo 的 slot 在 `createInlinePreviewSlot` 內就 `applyMinHeight()`+`syncGhost()`，**第一幀**即有高度，不等 observer。
       - 兩種量測的**有效範圍不同**：`aspect`（原尺寸）與版面寬度**無關**（替身盒交給 CSS 算）⇒ 無條件重用；`pinned`（分模式實測高度）只在**寬度不變**時成立。寬度改變的入口只有兩個，都收斂到 `render/screen.js#notifyLayoutChanged`：`term_view.setTermFontSize`（`chw` 變＝字級 pref／視窗 resize）與 `ScreenController._toggleMergeCaption`（`.mergedImageCol` 左欄比全寬窄）。它會 `invalidateInlinePreviewHeights()`＋對 `_liveSlots` 逐一 `invalidatePinned()`。**`_setImagesEnlarged` 不算**（那是 sizeMode，本來就分模式各記一筆）。
-      - 作廢規則是**有 `aspect` 才丟 `pinned`**：替身盒能在新寬度下算出正確高度；沒有 `aspect` 的（iframe、相簿）留著舊值當最佳猜測 —— iframe 是固定 `height:450px`，本來就與寬度無關，丟掉只換來一次無謂的塌陷。
+      - 作廢規則是**有 `aspect` 才丟 `pinned`**：替身盒能在新寬度下算出正確高度；沒有 `aspect` 的（內嵌影片卡片、相簿）留著舊值當最佳猜測 —— 卡片的 16:9 媒體區會隨寬度變，舊值只差到重新掛上為止，丟掉卻換來一次無謂的塌陷。
       - **量的是內容層 `.inlinePreviewContent`（它永遠沒有 inline style）**，所以「過期偏大的高度自我增強成永久假空白」那條路徑在疊層結構下不存在。
     - 守護：`tests/unit/lazy_inline_preview.test.js`（含 memo／作廢規則／疊層不變量）、`tests/unit/render_dispose.test.js`（症狀級：pref 切換全量重建後新節點第一幀就有佔位高度）、`tests/e2e/offline/lazy_preview_enlarge_blank.offline.spec.js`（同時鎖空白量、替身盒高度＝縮小態真圖高度、往上捲不得跳過任何圖佔位盒）。
   - **測試要驗預覽一律先捲到**（`tests/e2e/helpers/replay.js` 的 `mountLazyPreviewsAt` / `seekInlineMedia`）：replay 完就 `querySelector('img')` 永遠只量到空的佔位盒。同理，捲到目標後**要等版面靜下來再量座標**——先掛上的圖載入後會長高把目標推走（`blacklist_quick_add` 的右鍵座標就踩過）。

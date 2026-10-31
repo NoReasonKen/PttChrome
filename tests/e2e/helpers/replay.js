@@ -632,6 +632,7 @@ async function replayListCassette(page, cassette) {
 // → previewError，正是本来要修的症状换个方式重现。
 const IMAGE_EXT_RE = /\.(?:jpe?g|png|gif|webp|bmp|apng|avif)(?:$|[?#:])/i;
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+const OFFLINE_OEMBED = { title: 'Offline video title', author: 'Offline channel' };
 // 「這筆請求是不是本機的」——與 classifyOfflineRequest 共用 LOCAL_HOSTS，避免兩套規則漂移。
 // 非 http(s)（data:／blob:）一律不算外部。
 function isLocalRequestUrl(raw) {
@@ -649,7 +650,7 @@ function isLocalRequestUrl(raw) {
 //（tests/unit/offline_network_route.test.js），e2e 只负责把它接到 page.route。
 //   'passthrough' 本机 dev server / 非 http(s) → 照常走
 //   'image'       图片副档名 → fixture PNG
-//   'imgur-album' / 'flickr' → 各自的假 JSON
+//   'imgur-album' / 'flickr' / 'oembed' → 各自的假 JSON
 //   'blocked'     其余（iframe embed、未知 host）→ 404 空身
 function classifyOfflineRequest(raw) {
   let url;
@@ -663,6 +664,7 @@ function classifyOfflineRequest(raw) {
   if (LOCAL_HOSTS.has(url.hostname)) return 'passthrough';
   if (url.hostname === 'api.imgur.com') return 'imgur-album';
   if (url.hostname === 'api.flickr.com') return 'flickr';
+  if (url.hostname === 'www.youtube.com' && url.pathname === '/oembed') return 'oembed';
   if (IMAGE_EXT_RE.test(url.pathname + url.search)) return 'image';
   return 'blocked';
 }
@@ -734,6 +736,12 @@ async function installOfflineNetwork(page, opts = {}) {
             body: JSON.stringify({
               photo: { farm: 1, server: '1', id: '1', secret: 'offline' },
             }),
+          });
+        // 內嵌卡片的標題／頻道（ImagePreviewer.jsx#useEmbedDetails）。
+        case 'oembed':
+          return route.fulfill({
+            contentType: 'application/json',
+            body: JSON.stringify({ title: OFFLINE_OEMBED.title, author_name: OFFLINE_OEMBED.author }),
           });
         // 图片：依情境回应。'cache'（预设）＝立即回 fixture PNG，与本层引入前逐字相同
         //（content-type 报 image/png，浏览器以内容 sniff 解码，所以 .jpg/.gif/.webp
@@ -842,7 +850,7 @@ async function waitFed(page, n, timeout = 20000) {
 // 判定穩定 —— seekInlineMedia 甚至會一路捲到底都找不到任何媒體而回 found:0，測試以
 // 「no inline image rendered」假紅。見 helpers/layout.js。
 const PREVIEW_SEL =
-  '.previewLoading, .previewError, .easyReadingImg, .easyReadingVideo, img.hyperLinkPreview, video.easyReadingVideo, iframe, .embedCover';
+  '.previewLoading, .previewError, .easyReadingImg, .easyReadingVideo, img.hyperLinkPreview, video.easyReadingVideo, iframe, .embedCard';
 
 // 把 selector 指到的元素捲到視窗中央，等到它裡面的預覽全部到終局（載到／失敗）。
 // 回傳實際掛出來的預覽數。
@@ -917,6 +925,7 @@ module.exports = {
   FIXTURE_DIR,
   installOfflineNetwork,
   classifyOfflineRequest,
+  OFFLINE_OEMBED,
   isBbsSocketUrl,
   offlineServedUrls,
   offlineExternalUrls,

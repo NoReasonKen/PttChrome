@@ -50,9 +50,11 @@ export const requestPreview = (href) => {
 
 // resolveSrcToImageUrl turns a link into a *media descriptor*:
 //   { type: "image", src, srcset? } | { type: "video", src }
-//   | { type: "iframe", src, poster?, label? } | { type: "album", images: [descriptor] }
-// An iframe shows an embed cover until tapped; `poster` and `label` only
-// decorate that cover (see EmbedCover).
+//   | { type: "iframe", src, poster?, oembed?, label? }
+//   | { type: "album", images: [descriptor] }
+// An iframe shows an embed card until tapped; `poster` (candidate URLs),
+// `oembed` (an oEmbed JSON endpoint for title and author) and `label` only
+// decorate that card (see InlineIframe).
 // `type` defaults to "image" when omitted (back-compat with bare { src }).
 export const resolveSrcToImageUrl = ({ src }) =>
   imageUrlResolvers.find((r) => r.test(src)).request(src);
@@ -385,69 +387,130 @@ const hostLabel = (src) => {
   }
 };
 
-// Embed cover: a cross-origin player swallows every touch, so the article's
-// swipes could never start on it. Until the reader taps, the embed is this
-// cover instead; any source works, and `poster`/`label` only decorate it.
-// It is a div, not a <button>: article gestures ignore buttons.
-const EmbedCover = ({ src, poster, label, onPlay }) => {
-  const name = label || hostLabel(src);
+// A missing YouTube thumbnail still loads: a 120px placeholder served with a
+// 404. A poster this narrow cannot fill the card, so try the next candidate.
+const MIN_POSTER_WIDTH = 200;
+
+const EmbedPoster = ({ candidates }) => {
+  const [index, setIndex] = React.useState(0);
+  const [shown, setShown] = React.useState(false);
+  if (index >= candidates.length) return null;
+  const next = () => setIndex(index + 1);
   return (
-    <div
-      className="embedCover"
-      role="button"
-      tabIndex={0}
-      aria-label={name ? `Play ${name} video` : "Play video"}
-      onClick={onPlay}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onPlay();
-        }
-      }}
-    >
-      {poster && (
-        <img
-          className="embedCoverPoster"
-          src={poster}
-          alt=""
-          draggable={false}
-          referrerPolicy="no-referrer"
-        />
-      )}
-      <span className="embedCoverPlay" aria-hidden="true" />
-      {name && <span className="embedCoverLabel">{name}</span>}
-    </div>
+    <img
+      key={index}
+      className="embedCoverPoster"
+      src={candidates[index]}
+      alt=""
+      draggable={false}
+      referrerPolicy="no-referrer"
+      style={shown ? null : { visibility: "hidden" }}
+      onLoad={(e) =>
+        e.currentTarget.naturalWidth < MIN_POSTER_WIDTH
+          ? next()
+          : setShown(true)
+      }
+      onError={next}
+    />
   );
 };
 
-// The player exists only after the tap, so the resolver's src starts playback
-// on load where the source supports it.
-const InlineIframe = React.memo(function InlineIframe({ src, poster, label }) {
+// oEmbed title and author, fetched once per endpoint; null when unavailable.
+const embedDetailsCache = new Map();
+const fetchEmbedDetails = (url) => {
+  let details = embedDetailsCache.get(url);
+  if (!details) {
+    details = fetch(url)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) =>
+        json && (json.title || json.author_name)
+          ? { title: json.title || "", author: json.author_name || "" }
+          : null,
+      )
+      .catch(() => null);
+    embedDetailsCache.set(url, details);
+  }
+  return details;
+};
+
+const useEmbedDetails = (url) => {
+  const [details, setDetails] = React.useState(null);
+  React.useEffect(() => {
+    if (!url) return undefined;
+    let active = true;
+    fetchEmbedDetails(url).then((d) => active && setDetails(d));
+    return () => {
+      active = false;
+    };
+  }, [url]);
+  return details;
+};
+
+// Embed card: a cross-origin player swallows every touch, so the article's
+// swipes could never start on it. Until the reader taps, the card's 16:9
+// media area holds the embed cover (poster and play button) instead; the tap
+// swaps in the player there, and the details below stay, so the article does
+// not move. Any source works: `poster`, `oembed` and `label` only decorate it.
+// The card is a div, not a <button>: article gestures ignore buttons.
+const InlineIframe = React.memo(function InlineIframe({
+  src,
+  poster,
+  oembed,
+  label,
+}) {
   const [playing, setPlaying] = React.useState(false);
   const [loaded, setLoaded] = React.useState(false);
+  const details = useEmbedDetails(oembed);
+  const name = label || hostLabel(src);
+  const title = details && details.title;
+  const play = () => setPlaying(true);
+  const cover = playing
+    ? {}
+    : {
+        role: "button",
+        tabIndex: 0,
+        "aria-label": `Play ${title || (name ? `${name} video` : "video")}`,
+        onClick: play,
+        onKeyDown: (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            play();
+          }
+        },
+      };
   return (
-    <div style={{ margin: "0.5em auto", maxWidth: "800px", height: "450px" }}>
-      {!playing ? (
-        <EmbedCover
-          src={src}
-          poster={poster}
-          label={label}
-          onPlay={() => setPlaying(true)}
-        />
-      ) : (
-        <React.Fragment>
-          {!loaded && <LoadingOverlay />}
-          <iframe
-            type="text/html"
-            src={src}
-            allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-            allowFullScreen
-            referrerPolicy="origin-when-cross-origin"
-            onLoad={() => setLoaded(true)}
-            style={{ border: "none", width: "100%", height: "100%" }}
-          />
-        </React.Fragment>
-      )}
+    <div className="embedCard" {...cover}>
+      <div className="embedCardMedia">
+        {playing ? (
+          <React.Fragment>
+            <iframe
+              type="text/html"
+              src={src}
+              allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+              allowFullScreen
+              referrerPolicy="origin-when-cross-origin"
+              onLoad={() => setLoaded(true)}
+            />
+            {!loaded && (
+              <div className="embedCardLoading">
+                <LoadingOverlay />
+              </div>
+            )}
+          </React.Fragment>
+        ) : (
+          <div className="embedCover">
+            {poster && <EmbedPoster candidates={poster} />}
+            <span className="embedCoverPlay" aria-hidden="true" />
+          </div>
+        )}
+      </div>
+      <div className="embedCardDetails">
+        {title && <span className="embedCardTitle">{title}</span>}
+        {details && details.author && (
+          <span className="embedCardAuthor">{details.author}</span>
+        )}
+        {name && <span className="embedCardSource">{name}</span>}
+      </div>
     </div>
   );
 });
@@ -472,6 +535,7 @@ const inlineIframe = (descriptor, key) => (
     key={key}
     src={descriptor.src}
     poster={descriptor.poster}
+    oembed={descriptor.oembed}
     label={descriptor.label}
   />
 );
@@ -703,10 +767,16 @@ const imageUrlResolvers = [
       }
       // The player is created only by a tap on the embed cover, so it plays on load.
       embed.searchParams.set("autoplay", "1");
+      const watch = `https://www.youtube.com/watch?v=${id}`;
       return Promise.resolve({
         type: "iframe",
         src: embed.href,
-        poster: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+        // hq720 is 16:9 without letterboxing but missing for old videos.
+        poster: [
+          `https://i.ytimg.com/vi/${id}/hq720.jpg`,
+          `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+        ],
+        oembed: `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(watch)}`,
         label: "YouTube",
       });
     },
