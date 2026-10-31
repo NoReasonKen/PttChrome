@@ -264,6 +264,11 @@ export class ArticleGestures {
     this.stack.captureArticle();
   }
 
+  // Whether the shown article was opened from its board's full list (#86).
+  fullListBelow() {
+    return this.stack.fullListBelow();
+  }
+
   // The toolbar of a page only revealed so far, or null.
   toolbarContext() {
     return this.stack.toolbarContext();

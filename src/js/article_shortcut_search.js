@@ -1,4 +1,5 @@
-import { searchGateFacts, buildSearchSteps, searchKindOfKey } from './article_search';
+import { searchGateFacts, buildSearchSteps, searchKindOfKey, isSearchPromptFrame } from './article_search';
+import { parsePagerFooterContext } from './string_util';
 import { SLOW_STEP_BUDGET, AID_NOT_FOUND_RE } from './aid_navigation';
 import { parseBoardName, boardNameFromKey, sameBoard } from './screen_titles';
 import { serializedOpHint } from './serialized_op_gate';
@@ -21,6 +22,9 @@ import { readEffectivePrefs } from './pref_storage';
 const PRESS_ANY_KEY = /(?:請)?按任意鍵繼續|請按 空白鍵 繼續/;
 // Results the easy-reading list has not presented by then show as they are.
 const COVER_BOUND_MS = 5000;
+const KEY_LEFT = '\x1b[D';
+// A new author search, not a condition added to results (read.c#ask_filter_predicate).
+const FRESH_AUTHOR_PROMPT = /^搜尋作者: /;
 const LIST_BACK_KEYS = ['ArrowLeft', 'q', 'e'];
 const ARTICLE_BACK_KEYS = ['ArrowLeft', 'q'];
 const keep = route => route;
@@ -93,6 +97,7 @@ export class ArticleShortcutSearch {
       position: recordFor(core).begin('article-shortcut-search')
     };
     this.pending = origin;
+    const fast = this._fastRoute(origin);
     core.articleGestures?.captureArticleLayer();
     this._cover();
     // A failed forward search adds no origin; its source stays where it was.
@@ -109,10 +114,23 @@ export class ArticleShortcutSearch {
           return;
         }
         origin.aid = info.aid;
-        this._selectThenQuery(origin, meta.boxOpen, 'forward');
+        if (fast && !meta.boxOpen) this._fastQuery(origin);
+        else this._selectThenQuery(origin, meta.boxOpen, 'forward');
       }
     });
     return true;
+  }
+
+  // The fast route (#86) is taken only where the app knows PTT's state: a
+  // plain article, not one of pmore's movies that take Left themselves,
+  // opened from its board's full list. Same-thread search also needs PTT's
+  // selection there on this article.
+  _fastRoute(origin) {
+    const below = this.core.articleGestures?.fullListBelow();
+    const kind = origin.query.kind;
+    if (!below || (kind === 'thread' && !below.selected)) return false;
+    const buf = this.core.buf;
+    return parsePagerFooterContext(buf.getRowText(buf.rows - 1, 0, buf.cols)) === 'reading';
   }
 
   _selectThenQuery(origin, dismissFirst, mode) {
@@ -156,8 +174,60 @@ export class ArticleShortcutSearch {
     const kind = origin.query.kind;
     const steps = kind === 'author' ? buildSearchSteps('author', origin.query.value) : null;
     if (kind === 'author' && !steps) return this._reopen(origin, 'articleShortcutSearch_failed', this.op.emptied);
-    const submit = () => this._enqueue({
-      ...(steps ? steps[1] : { keys: 'S', fullRepaint: true }),
+    // Native S is sent from the list, where PTT's cursor already sits on an entry.
+    const submit = () => this._submit(origin, mode, steps ? steps[1] : { keys: 'S', fullRepaint: true }, { offEntries: !!steps });
+    // Native S uses subject(selectedHeader.title), without a prompt. It is
+    // different from slash keyword search and must follow verified selection.
+    if (steps) this._enqueue({ ...steps[0], kind: 'shortcut-author-open', fullRepaint: true, onDone: submit });
+    else submit();
+  }
+
+  // From an article opened from its board's full list, the keys that do no
+  // harm wherever they land go together (#86): Left leaves the article, `a`
+  // asks for an author, and `S` searches the thread of the article Left
+  // leaves selected. The author id waits for PTT's fresh-search prompt: its
+  // letters are list commands anywhere else.
+  _fastQuery(origin) {
+    const thread = origin.query.kind === 'thread';
+    const steps = thread ? null : buildSearchSteps('author', origin.query.value);
+    // An author the prompt cannot take is the verified route's to report.
+    if (!thread && !steps) return this._selectThenQuery(origin, false, 'forward');
+    this.core.listSession?.beginExternalNavigation({ fromIdle: true });
+    // The pager parks PTT's cursor on its footer row, off every entry.
+    if (thread) return this._submit(origin, 'forward', { keys: KEY_LEFT + 'S', fullRepaint: true }, { offEntries: true });
+    this._enqueue({
+      keys: KEY_LEFT + steps[0].keys,
+      kind: 'shortcut-author-fast-open',
+      fullRepaint: true,
+      expect: (snapshot, facts) => isSearchPromptFrame('author', facts) && {
+        fresh: FRESH_AUTHOR_PROMPT.test(facts.rowTexts[facts.rows - 1]) && sameBoard(parseBoardName(facts.rowTexts[0]), origin.board)
+      },
+      onDone: prompt => prompt.fresh ? this._submit(origin, 'forward', steps[1], { offEntries: true }) : this._leavePrompt(origin)
+    });
+  }
+
+  // PTT asked something else than expected, such as adding a condition to
+  // results: an empty answer cancels it, and the verified route runs from
+  // the list.
+  _leavePrompt(origin) {
+    this._enqueue({
+      keys: '\r',
+      kind: 'shortcut-prompt-cancel',
+      fullRepaint: true,
+      expect: (snapshot, facts) => !isSearchPromptFrame('author', facts),
+      onDone: () => this._selectThenQuery(origin, false, 'forward')
+    });
+  }
+
+  // `offEntries`: the step is sent while PTT's cursor is off every list entry
+  // (a prompt, the pager), so a results frame with the cursor on an entry was
+  // parked there by the results themselves. From the list, the first settle
+  // of the results can still show the old cursor (ListSession's
+  // RESUME_QUIET_MS).
+  _submit(origin, mode, step, { offEntries }) {
+    const kind = origin.query.kind;
+    this._enqueue({
+      ...step,
       kind: `shortcut-${kind}-submit`,
       expect: (snapshot, facts) => {
         const last = facts.rowTexts[facts.rows - 1] || '';
@@ -166,7 +236,9 @@ export class ArticleShortcutSearch {
         if (facts.curY === facts.rows - 1 && MESSAGE.test(last)) {
           return { notice: /找不到符合條件的文章/.test(last) ? 'articleShortcutSearch_empty' : 'articleShortcutSearch_failed' };
         }
-        return searchResultsLanded(facts, origin.board) ? { results: true } : false;
+        // `proven`: the caption names results; the legacy caption every list
+        // shares does not.
+        return searchResultsLanded(facts, origin.board) ? { results: true, proven: resultList(facts, origin.board, false) } : false;
       },
       onDone: result => {
         if (result.notice) {
@@ -182,15 +254,14 @@ export class ArticleShortcutSearch {
         recordSearchResults(this.core, { board: origin.board, filters: [kind === 'thread'
           ? { kind, aid: origin.aid, title: origin.title }
           : { kind, value: origin.query.value }] });
-        this._finish();
+        // Results proven by their caption and cursor are taken over at once
+        // (#86). Under the legacy caption the list cannot tell them from the
+        // full list, and takes them over after its quiet wait as before.
+        this._finish({ landed: result.proven && offEntries });
         this._uncoverOnResults();
         this._resultsHint(kind);
       }
     });
-    // Native S uses subject(selectedHeader.title), without a prompt. It is
-    // different from slash keyword search and must follow verified selection.
-    if (steps) this._enqueue({ ...steps[0], kind: 'shortcut-author-open', fullRepaint: true, onDone: submit });
-    else submit();
   }
 
   handleBack(event) {
@@ -291,11 +362,11 @@ export class ArticleShortcutSearch {
     else query();
   }
 
-  _finish() {
+  _finish(release) {
     this.active = false;
     this.pending = null;
     this.op = null;
-    recordFor(this.core).releaseExternal();
+    recordFor(this.core).releaseExternal(release);
   }
 
   _cover() {

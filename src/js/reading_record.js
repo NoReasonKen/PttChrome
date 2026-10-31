@@ -474,10 +474,11 @@ ReadingRecord.prototype = {
 
   // 外部導覽（AID 跳轉／長推文／重新整理）收尾：把列表 session 的外部 hold 放開，
   // 交回靜置探針（停在列表時才有作用；落在文章時 handoff 早就解除了）。
+  // options.landed：呼叫端驗證過最後一步落在列表上，列表不必等靜置就接手。
   releaseExternal: function(options) {
     const core = this._core || {};
     if (core.listSession && core.listSession.endExternalNavigation)
-      core.listSession.endExternalNavigation(options?.listNotice);
+      core.listSession.endExternalNavigation(options?.listNotice, !!options?.landed);
     if (core.boardListSession && core.boardListSession.endExternalNavigation)
       core.boardListSession.endExternalNavigation();
   }

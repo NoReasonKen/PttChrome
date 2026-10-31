@@ -21,7 +21,7 @@ import { StackHomeLayer } from './stack_home_layer';
 import { StackArticleLayer } from './stack_article_layer';
 import { EMPTY_TOOLBAR_CONTEXT } from './mobile_toolbar';
 import { searchGateFacts } from './article_search';
-import { isSearchResultsFrame } from './search_results_screen';
+import { isSearchResultsFrame, isFullBoardListFrame } from './search_results_screen';
 import { readSearchResultsContext } from './search_results_context';
 
 // Input on a usable layer stays on the layer; nothing reaches the terminal.
@@ -134,12 +134,16 @@ export class NavigationStack {
   }
 
   // An article is about to be opened from the shown article list, search
-  // results included (#33).
+  // results included (#33). `fullList`: PTT's caption proves it the board's
+  // full list (#86); a list that cannot prove it, such as one with the legacy
+  // caption every list shares, is not.
   captureList() {
     const core = this.core;
     const board = listBoard(core);
     if (!core.mobile || !board) return this.dropPending();
+    const fullList = isFullBoardListFrame(searchGateFacts(core), board);
     this._capture(PAGE.ARTICLE_LIST, board, () => StackListLayer.capture(core.view, 'article'));
+    if (this.pending) this.pending.fullList = fullList;
   }
 
   // An article shortcut search is about to start from the shown article
@@ -340,6 +344,21 @@ export class NavigationStack {
   // followed through every replacement in place (#74).
   _selects(lower) {
     return lower.kind !== PAGE.ARTICLE_LIST || (lower.selected === this._top().id && lower.shows !== false);
+  }
+
+  // What PTT's Back from the shown article returns to, when the stack knows
+  // it is its board's full list (#86): { selected } tells whether PTT's
+  // selection there is still this article. Null when that is not known.
+  fullListBelow() {
+    const n = this.stack.pages.length;
+    const top = this._top();
+    const below = this.stack.pages[n - 2];
+    const lower = this.captured[n - 2];
+    const page = this._articlePage();
+    if (this.handoff || this.core.buf.pageState !== 3 || top?.kind !== PAGE.ARTICLE || !page.id || top.id !== page.id) return null;
+    if (below?.kind !== PAGE.ARTICLE_LIST || below.results || !lower?.fullList ||
+        !sameBoard(below.board, top.board)) return null;
+    return { selected: this._selects(lower) };
   }
 
   // The live page that Back from the current page may reveal, or null.
