@@ -106,7 +106,7 @@ describe('Mobile article-list rotation', () => {
     app.easyReading.resizeContext = vi.fn(() => ({ board: 'Test', line: 23, ready: false }));
     app.articleResize = new ArticleResize(app);
     const stack = new NavigationStack(app);
-    app.articleGestures = { stack };
+    app.articleGestures = { stack, update: vi.fn() };
     stack.stack.pages = [
       { kind: 'articleList', board: 'Test' },
       { kind: 'article', board: 'Test', id: 'source' },
@@ -139,7 +139,7 @@ describe('Mobile article-list rotation', () => {
   test('a completed stacked Back starts the deferred list resize', () => {
     const { app, list } = makeReader(PORTRAIT, 'plain');
     const stack = new NavigationStack(app);
-    app.articleGestures = { stack };
+    app.articleGestures = { stack, update: vi.fn() };
     stack.stack.pages = [
       { kind: 'articleList', board: 'Test' },
       { kind: 'article', board: 'Test', id: 'source' },

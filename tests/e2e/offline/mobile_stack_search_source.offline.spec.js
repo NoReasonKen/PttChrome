@@ -11,6 +11,7 @@ const {
 const ptt = require('../helpers/ptt');
 const { MAIN, holdBackReply, heldBack, recordHints, recordedHints } = require('../helpers/stack_routes');
 const { installPaintedFrameProbe } = require('../helpers/layout');
+const { beginArticleTouch, revealArticleDrawer } = require('../helpers/article_gestures');
 
 const ARTICLE_LAYER = '[data-stack-layer="article"]';
 const LIST_LAYER = '[data-stack-layer="articleList"]';
@@ -196,6 +197,29 @@ test('Back from the results shows a source read past its first page at its readi
   const shown = frames.findIndex(f => f.srow != null);
   expect(shown).toBeGreaterThanOrEqual(0);
   expect([...new Set(frames.slice(shown).map(f => f.srow))]).toEqual([reading]);
+});
+
+test('a source touched while it is revealed swipes again once it takes over', async ({ page }) => {
+  await longSourceFromList(page);
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+  await nativeBack(page);
+  await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
+  // A finger on the layer holds the swap until after the last screen settles.
+  const box = await page.locator(ARTICLE_LAYER).boundingBox();
+  const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await page.waitForFunction(at => !!document.elementFromPoint(at.x, at.y)?.closest('[data-stack-layer]'), at);
+  const contact = await beginArticleTouch(page, at);
+  await page.waitForFunction(() => {
+    const app = window.__app;
+    return app.buf.pageState === 3 && app.commandQueue.idle && !app.buf._settleTimer && app.easyReading.easyReadingReachedPageEnd;
+  });
+  await page.waitForTimeout(300); // sleep-ok: holds the finger past any settle after the last page; nothing to wait for
+  await contact.release();
+  await expect(page.locator(ARTICLE_LAYER)).toHaveCount(0);
+  await expect(page.locator(MAIN)).toHaveClass(/articleHorizontalGestures/);
+  await revealArticleDrawer(page);
 });
 
 test('a deleted source stops on its board list with today\'s notice, leaving no layer', async ({ page }) => {

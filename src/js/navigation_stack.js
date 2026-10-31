@@ -579,5 +579,8 @@ export class NavigationStack {
     // A size change made during Back waits until the revealed page has
     // handed over its reading position. A queued Back keeps priority.
     if (!queued.back) core.listResize?.pump();
+    // The swipes follow the page now shown: a swap held by the reader's finger
+    // can come after the last screen settles (#83).
+    core.articleGestures?.update();
   }
 }
