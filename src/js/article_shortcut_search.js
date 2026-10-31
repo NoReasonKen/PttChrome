@@ -14,8 +14,13 @@ import { isBoardArticleList as boardList, isSearchResultsFrame as resultList, se
 import { recordSearchResults, readSearchResultsContext, clearSearchResultsContext } from './search_results_context';
 import { footerCaption } from './screen_captions';
 import { PAGE } from './page_stack';
+import { coverWithArticle } from './hidden_article_route';
+import { EMPTY_TOOLBAR_CONTEXT } from './mobile_toolbar';
+import { readEffectivePrefs } from './pref_storage';
 
 const PRESS_ANY_KEY = /(?:請)?按任意鍵繼續|請按 空白鍵 繼續/;
+// Results the easy-reading list has not presented by then show as they are.
+const COVER_BOUND_MS = 5000;
 const LIST_BACK_KEYS = ['ArrowLeft', 'q', 'e'];
 const ARTICLE_BACK_KEYS = ['ArrowLeft', 'q'];
 const keep = route => route;
@@ -43,6 +48,11 @@ export class ArticleShortcutSearch {
     // inactive (Back and settles ignore it) until that plan's own transaction
     // lands on exactly its target (search_return_history.recovered).
     this.suspended = null;
+    // The source article over the screen while its search runs, under the
+    // App Bar it had (#83).
+    this.cover = null;
+    this.coverAppBar = null;
+    this._uncoverTimer = null;
     this._explainLater = false;
     this._stored = takeStoredRecovery();
     this._settled = () => this.noteSettle();
@@ -84,6 +94,7 @@ export class ArticleShortcutSearch {
     };
     this.pending = origin;
     core.articleGestures?.captureArticleLayer();
+    this._cover();
     // A failed forward search adds no origin; its source stays where it was.
     this._begin({ missing: stoppedAtBoardList, emptied: route => reopenedAfterEmptySearch(route, origin) });
     const fail = () => this._fail();
@@ -172,6 +183,7 @@ export class ArticleShortcutSearch {
           ? { kind, aid: origin.aid, title: origin.title }
           : { kind, value: origin.query.value }] });
         this._finish();
+        this._uncoverOnResults();
         this._resultsHint(kind);
       }
     });
@@ -245,6 +257,7 @@ export class ArticleShortcutSearch {
       this.route = transition(this.route);
       this.pending = null;
       this._finish();
+      this._uncover();
       this.core.articleGestures?.pagePresented(PAGE.ARTICLE);
       this._hint(notice);
     })) this._fail();
@@ -285,10 +298,47 @@ export class ArticleShortcutSearch {
     recordFor(this.core).releaseExternal();
   }
 
+  _cover() {
+    this._uncover();
+    this.coverAppBar = this.core._screenContext?.appBar || null;
+    this.cover = coverWithArticle(this.core.view);
+    this.core._refreshScreenContext?.();
+  }
+
+  _uncover() {
+    clearTimeout(this._uncoverTimer);
+    this._uncoverTimer = null;
+    if (!this.cover) return;
+    this.cover.destroy();
+    this.cover = null;
+    this.core._refreshScreenContext?.();
+  }
+
+  // The results have landed: the easy-reading list takes over once it
+  // presents them, PTT's own list at once.
+  _uncoverOnResults() {
+    if (!this.cover) return;
+    if (!readEffectivePrefs().enableEasyReadingList) return this._uncover();
+    this._uncoverTimer = setTimeout(() => this._uncover(), COVER_BOUND_MS);
+  }
+
+  // The easy-reading list presented a page.
+  listPresented() {
+    if (!this.active) this._uncover();
+  }
+
+  // While the cover is up, the toolbar and App Bar stay those of the article
+  // it shows.
+  toolbarContext() {
+    if (!this.cover) return null;
+    return { ...EMPTY_TOOLBAR_CONTEXT, appBar: this.coverAppBar || EMPTY_TOOLBAR_CONTEXT.appBar, locked: true };
+  }
+
   // Origins survive only where the route can still be verified: the article
   // that never left, or the full board list standing in for a route article.
   _fail(notice = 'articleShortcutSearch_failed', transition = stoppedAtBoardList) {
     if (!this.active) return;
+    this._uncover();
     // A search that found nothing keeps no layer of its source.
     this.core.articleGestures?.dropPendingLayer();
     if (this.pending?.position) recordFor(this.core).end(this.pending.position, 'fail');
@@ -357,6 +407,7 @@ export class ArticleShortcutSearch {
     this.route = null;
     clearSearchResultsContext(this.core);
     if (this.active) this._fail();
+    this._uncover();
   }
 
   // Recovery hooks, called by reconnect_resume.js with the plan it will

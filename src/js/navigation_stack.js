@@ -530,7 +530,7 @@ export class NavigationStack {
     const h = this.handoff;
     if (!h) return;
     clearTimeout(h.timer);
-    const next = handoffStep({ ...h, now: performance.now() });
+    const next = handoffStep({ ...h, reached: h.layer?.reaches?.(this.core) ?? true, now: performance.now() });
     if (next.action === 'swap') return this._end('presented');
     if (next.action === 'timeout') return this._end('timeout');
     h.timer = setTimeout(() => this._step(), next.ms);
