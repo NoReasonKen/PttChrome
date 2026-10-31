@@ -35,8 +35,7 @@ describe("embed cover poster", () => {
       expect(container.querySelector(".embedCover img")).toBeNull(),
     );
     expect(container.querySelector(".embedCoverPlay")).not.toBeNull();
-    expect(container.querySelector(".embedCard").textContent).toBe(
-      "example.com",
-    );
+    // 沒有標題與頻道就不留空的文字區。
+    expect(container.querySelector(".embedCardDetails")).toBeNull();
   });
 });

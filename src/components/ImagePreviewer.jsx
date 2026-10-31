@@ -451,7 +451,8 @@ const useEmbedDetails = (url) => {
 // media area holds the embed cover (poster and play button) instead; the tap
 // swaps in the player there, and the details below stay, so the article does
 // not move. Any source works: `poster`, `oembed` and `label` only decorate it.
-// The card is a div, not a <button>: article gestures ignore buttons.
+// Only the cover takes taps; the details are article text. The cover is a div,
+// not a <button>: article gestures ignore buttons.
 const InlineIframe = React.memo(function InlineIframe({
   src,
   poster,
@@ -463,23 +464,10 @@ const InlineIframe = React.memo(function InlineIframe({
   const details = useEmbedDetails(oembed);
   const name = label || hostLabel(src);
   const title = details && details.title;
+  const author = details && details.author;
   const play = () => setPlaying(true);
-  const cover = playing
-    ? {}
-    : {
-        role: "button",
-        tabIndex: 0,
-        "aria-label": `Play ${title || (name ? `${name} video` : "video")}`,
-        onClick: play,
-        onKeyDown: (e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            play();
-          }
-        },
-      };
   return (
-    <div className="embedCard" {...cover}>
+    <div className="embedCard">
       <div className="embedCardMedia">
         {playing ? (
           <React.Fragment>
@@ -498,19 +486,30 @@ const InlineIframe = React.memo(function InlineIframe({
             )}
           </React.Fragment>
         ) : (
-          <div className="embedCover">
+          <div
+            className="embedCover"
+            role="button"
+            tabIndex={0}
+            aria-label={`Play ${title || (name ? `${name} video` : "video")}`}
+            onClick={play}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                play();
+              }
+            }}
+          >
             {poster && <EmbedPoster candidates={poster} />}
             <span className="embedCoverPlay" aria-hidden="true" />
           </div>
         )}
       </div>
-      <div className="embedCardDetails">
-        {title && <span className="embedCardTitle">{title}</span>}
-        {details && details.author && (
-          <span className="embedCardAuthor">{details.author}</span>
-        )}
-        {name && <span className="embedCardSource">{name}</span>}
-      </div>
+      {(title || author) && (
+        <div className="embedCardDetails">
+          {title && <span className="embedCardTitle">{title}</span>}
+          {author && <span className="embedCardAuthor">{author}</span>}
+        </div>
+      )}
     </div>
   );
 });

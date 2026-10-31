@@ -1377,7 +1377,7 @@ span {
 .inlinePreviewSlot img.easyReadingImg,
 .inlinePreviewSlot video.easyReadingVideo,
 .inlinePreviewSlot iframe,
-.inlinePreviewSlot .embedCard,
+.inlinePreviewSlot .embedCover,
 .inlinePreviewSlot .previewLoading,
 .inlinePreviewSlot .previewError,
 .inlinePreviewSlot > .previewGrayBtn {
@@ -1527,10 +1527,11 @@ span {
 
 /* Embed card (ImagePreviewer.jsx#InlineIframe): the cover and then the player
    fill the same 16:9 media area, and the details below stay, so starting the
-   video does not move the article. */
+   video does not move the article. Only the cover takes pointer events; the
+   details pass taps and swipes to the article like its text. */
 .embedCard {
   max-width: 800px;
-  margin: 0.5em auto;
+  margin: 0.25em auto;
   overflow: hidden;
   border: 1px solid #3a3a3a;
   border-radius: 0.4em;
@@ -1539,7 +1540,7 @@ span {
   font-family: system-ui, sans-serif;
   user-select: none;
 }
-.embedCard[role="button"] {
+.embedCover {
   cursor: pointer;
 }
 .embedCardMedia {
@@ -1562,11 +1563,12 @@ span {
   align-items: center;
   pointer-events: none;
 }
+/* The title is the size of the article text, the channel half of it. */
 .embedCardDetails {
   display: flex;
   flex-direction: column;
-  gap: 0.25em;
-  padding: 0.6em 0.8em 0.7em;
+  gap: 0.1em;
+  padding: 0.3em 0.5em 0.35em;
 }
 .embedCardTitle {
   display: -webkit-box;
@@ -1574,20 +1576,14 @@ span {
   -webkit-line-clamp: 2;
   overflow: hidden;
   font-weight: 600;
-  line-height: 1.35;
-}
-.embedCardAuthor,
-.embedCardSource {
-  overflow: hidden;
-  font-size: 0.85em;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  line-height: 1.3;
 }
 .embedCardAuthor {
+  overflow: hidden;
+  font-size: 0.5em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: rgba(255, 255, 255, 0.8);
-}
-.embedCardSource {
-  color: #999;
 }
 .embedCoverPoster {
   display: block;
@@ -1616,8 +1612,8 @@ span {
   border-width: 0.7em 0 0.7em 1.2em;
   border-color: transparent transparent transparent #fff;
 }
-.embedCard:hover .embedCoverPlay,
-.embedCard:focus-visible .embedCoverPlay {
+.embedCover:hover .embedCoverPlay,
+.embedCover:focus-visible .embedCoverPlay {
   background-color: rgba(204, 0, 0, 0.9);
 }
 

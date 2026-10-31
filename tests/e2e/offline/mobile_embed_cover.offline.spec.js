@@ -25,8 +25,23 @@ test('an unplayed YouTube embed shows only its card, and a left swipe on it open
   await expect(page.locator(PLAYER)).toHaveCount(0);
   await expect(page.locator(`${COVER} img`)).toHaveAttribute('src', 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hq720.jpg');
   await expect(page.locator(CARD)).toContainText(OFFLINE_OEMBED.author);
-  await expect(page.locator(CARD)).toContainText('YouTube');
+  await expect(page.locator(CARD)).not.toContainText('YouTube');
   expect(cover.width / cover.height).toBeCloseTo(16 / 9, 1);
+  // The title reads like the article text; the channel is half its size.
+  const sizes = await page.evaluate(card => {
+    const px = el => parseFloat(getComputedStyle(el).fontSize);
+    const walker = document.createTreeWalker(document.querySelector('#mainContainer'), NodeFilter.SHOW_TEXT, {
+      acceptNode: n => /\S/.test(n.data) && !n.parentElement.closest('.inlinePreviewSlot')
+        ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP,
+    });
+    return {
+      text: px(walker.nextNode().parentElement),
+      title: px(document.querySelector(`${card} .embedCardTitle`)),
+      author: px(document.querySelector(`${card} .embedCardAuthor`)),
+    };
+  }, CARD);
+  expect(sizes.title).toBeCloseTo(sizes.text, 1);
+  expect(sizes.author).toBeCloseTo(sizes.title / 2, 1);
   await page.screenshot({ path: testInfo.outputPath('embed-card.png') });
   const width = page.viewportSize().width;
   const from = { x: Math.min(cover.left + cover.width - 4, width - 24), y: cover.top + cover.height / 2 };
@@ -49,7 +64,7 @@ test('a right swipe starting on the cover leaves the article', async ({ page }) 
 test('a tap on the cover swaps in the autoplaying player without moving the card or an article tap action', async ({ page }) => {
   const cover = await bootCoverArticle(page);
   const card = await waitRectStable(page, CARD);
-  // Near the cover's left edge, where an article tap would otherwise leave the article.
+  // Near the cover's left edge, inside the desktop exit band: the cover owns the tap.
   await page.touchscreen.tap(cover.left + 6, cover.top + cover.height / 2);
   await expect(page.locator(COVER)).toHaveCount(0);
   await expect(page.locator(PLAYER)).toHaveAttribute('src', 'https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1');
@@ -59,5 +74,14 @@ test('a tap on the cover swaps in the autoplaying player without moving the card
   expect((await waitRectStable(page, CARD)).height).toBeCloseTo(card.height, 0);
   await expect(page.locator(CARD)).toContainText(OFFLINE_OEMBED.title);
   await expect(page.locator(VIEWER)).toHaveCount(0);
+  expect(await gestureSent(page)).toBe('');
+});
+
+test('the card details are article text: a tap there keeps the cover', async ({ page }) => {
+  await bootCoverArticle(page);
+  const title = await waitRectStable(page, `${CARD} .embedCardTitle`);
+  await page.touchscreen.tap(title.left + title.width / 2, title.top + title.height / 2);
+  await expect(page.locator(COVER)).toHaveCount(1);
+  await expect(page.locator(PLAYER)).toHaveCount(0);
   expect(await gestureSent(page)).toBe('');
 });

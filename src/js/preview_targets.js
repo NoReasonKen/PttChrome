@@ -18,10 +18,11 @@
 //   .previewError        載入失敗提示（本身可點＝重試）
 //   img.easyReadingImg   內嵌圖（含 .hyperLinkPreview 放大切換）
 //   video.easyReadingVideo / iframe  自動開的影片
-//   .embedCard           iframe 內嵌的卡片（點封面才換成播放器，見 ImagePreviewer.jsx）
+//   .embedCover          iframe 內嵌卡片的封面（點了換成播放器，見 ImagePreviewer.jsx；
+//                        卡片的文字區照文章處理，不在列上）
 export const PREVIEW_CLICK_SELECTOR =
   '.inlinePreviewSlot, .previewLoading, .previewError, ' +
-  'img.easyReadingImg, video.easyReadingVideo, iframe, .embedCard';
+  'img.easyReadingImg, video.easyReadingVideo, iframe, .embedCover';
 
 // e.target 是否落在預覽媒體上（含其後代）。
 export function isPreviewTarget(el) {
