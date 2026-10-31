@@ -139,12 +139,9 @@ async function daveFromAuthorResults(page, num) {
 const inAuthorResults = async (page, open) =>
   expect(await page.evaluate(() => window.__threadServer.state)).toMatchObject({ byAuthor: 'dave', open: { num: open } });
 
-// From the author results, Back to the article the author search started from
-// and on to the thread's results: each reveals a live layer, never the dark
-// fallback. (This fake PTT rebuilds the thread's results under the author
-// search too, so the walk stops there.)
-async function backToThreadResults(page) {
-  for (let i = 0; i < 2; i++) {
+// Back `count` times: each reveals a live layer, never the dark fallback.
+async function backWalk(page, count) {
+  for (let i = 0; i < count; i++) {
     await page.evaluate(() => {
       window.__reveals = { layer: false, fallback: false };
       window.__revealWatch?.disconnect();
@@ -160,8 +157,29 @@ async function backToThreadResults(page) {
       !document.querySelector('[data-stack-layer], [data-article-exit-underlay]'))).toBe(true);
     expect(await page.evaluate(() => window.__reveals), `Back ${i + 1}`).toEqual({ layer: true, fallback: false });
   }
+}
+
+// From the author results, Back to the article the author search started from
+// and on to the thread's results. (This fake PTT rebuilds the thread's results
+// under the author search too, so the walk stops there.)
+async function backToThreadResults(page) {
+  await backWalk(page, 2);
   expect(await page.evaluate(() => window.__threadServer.state)).toMatchObject({ filter: '[Talk] Far topic', surface: 'list' });
 }
+
+// Two articles by one author share their first header row, and ptt.cc articles
+// end with their AID line: each search starts from the article on screen.
+test('Back from thread results searched from an article of author results returns to that article', async ({ page }) => {
+  const thread = SEARCH_THREAD.map(article => ({ ...article, url: true }));
+  await bootThreadBoard(page, { open: 1100, fromList: true, legacy: true, thread });
+  await search(page, 'author', 'byAuthor');
+  await openResult(page, DAVE(page).filter({ hasText: 'Far topic' }).last(), 1150);
+  await search(page, 'thread', 'filter');
+  await backWalk(page, 1);
+  expect(await page.evaluate(() => window.__threadServer.state)).toMatchObject({ surface: 'article', open: { num: 1150 } });
+  await backWalk(page, 2);
+  expect(await page.evaluate(() => window.__threadServer.state)).toMatchObject({ surface: 'article', open: { num: 1100 } });
+});
 
 test('a next-in-thread jump past the last article of author results slides back to those results', async ({ page }) => {
   await daveFromAuthorResults(page, 1150);

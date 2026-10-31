@@ -1160,8 +1160,9 @@ AidNavigation.prototype = {
     if (acc && acc.length) {
       // 好讀累積長頁可以長到數千列，但它只會往後 concat（screen_annotate_cache.js
       // 的不變量），所以只掃「這次新增的那幾列」。換文章／_healFromTop 會把
-      // pageLines 清掉重建 ⇒ 長度變短或首列變了就把游標與命中一起歸零。
-      const head = acc.length ? buf.getRowText(0, 0, buf.cols, acc) : '';
+      // pageLines 清掉重建 ⇒ 長度變短或開頭變了就把游標與命中一起歸零。開頭取前三列
+      // （作者、標題、時間）：同作者同板的另一篇首列一字不差（作者搜尋結果，#74）。
+      const head = acc.slice(0, 3).map((line, r) => buf.getRowText(r, 0, buf.cols, acc)).join('\n');
       if (acc.length < this._urlScanLen || head !== this._urlScanHead)
         this.resetLocalPostAidScan();
       this._urlScanHead = head;

@@ -126,6 +126,7 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
           1: `標題  ${a.title}`,
           2: `時間  ${postTime(a)} #${a.num}`,
           4: `Body of article ${a.num} by ${a.author}.`,
+          ...(a.url && { 6: urlLine(a) }),
           23: status
         };
         // Q: the post info box over the page (bbs.c view_postinfo).
