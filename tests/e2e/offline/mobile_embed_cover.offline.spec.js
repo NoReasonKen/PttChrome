@@ -27,7 +27,7 @@ test('an unplayed YouTube embed shows only its card, and a left swipe on it open
   await expect(page.locator(CARD)).toContainText(OFFLINE_OEMBED.author);
   await expect(page.locator(CARD)).not.toContainText('YouTube');
   expect(cover.width / cover.height).toBeCloseTo(16 / 9, 1);
-  // The title reads like the article text; the channel is half its size.
+  // The title reads like the article text; the channel is 70% of its size.
   const sizes = await page.evaluate(card => {
     const px = el => parseFloat(getComputedStyle(el).fontSize);
     const walker = document.createTreeWalker(document.querySelector('#mainContainer'), NodeFilter.SHOW_TEXT, {
@@ -41,7 +41,7 @@ test('an unplayed YouTube embed shows only its card, and a left swipe on it open
     };
   }, CARD);
   expect(sizes.title).toBeCloseTo(sizes.text, 1);
-  expect(sizes.author).toBeCloseTo(sizes.title / 2, 1);
+  expect(sizes.author).toBeCloseTo(sizes.title * 0.7, 1);
   await page.screenshot({ path: testInfo.outputPath('embed-card.png') });
   const width = page.viewportSize().width;
   const from = { x: Math.min(cover.left + cover.width - 4, width - 24), y: cover.top + cover.height / 2 };
