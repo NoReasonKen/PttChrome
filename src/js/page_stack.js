@@ -129,15 +129,22 @@ export const HANDOFF_IDLE_MS = 150;
 // A reply that never arrives ends the handoff after this long. The timeout
 // stops counting once the real page is presented.
 export const HANDOFF_TIMEOUT_MS = 5000;
+// How often a presented page that has not reached the revealed position yet
+// is checked again.
+export const HANDOFF_REACH_POLL_MS = 50;
 
 // What a handoff does next: 'wait' (and recheck after `ms`), 'swap' the real
-// page in, or 'timeout'. Times are performance.now() values.
-export function handoffStep({ sentAt, presentedAt, touches, lastScrollAt, now }) {
+// page in, or 'timeout'. Times are performance.now() values. `reached`: the
+// real page holds the revealed reading position, as a reopened article does
+// once easy reading has paged that far (#83); it swaps without, after the
+// timeout.
+export function handoffStep({ sentAt, presentedAt, touches, lastScrollAt, reached = true, now }) {
   if (presentedAt == null) {
     const left = sentAt + HANDOFF_TIMEOUT_MS - now;
     return left > 0 ? { action: 'wait', ms: left } : { action: 'timeout' };
   }
   if (touches > 0) return { action: 'wait', ms: HANDOFF_IDLE_MS };
+  if (!reached && now - presentedAt < HANDOFF_TIMEOUT_MS) return { action: 'wait', ms: HANDOFF_REACH_POLL_MS };
   const quiet = now - lastScrollAt;
   return quiet >= HANDOFF_IDLE_MS ? { action: 'swap' } : { action: 'wait', ms: HANDOFF_IDLE_MS - quiet };
 }

@@ -530,7 +530,7 @@ export class NavigationStack {
     const h = this.handoff;
     if (!h) return;
     clearTimeout(h.timer);
-    const next = handoffStep({ ...h, now: performance.now() });
+    const next = handoffStep({ ...h, reached: h.layer?.reaches?.(this.core) ?? true, now: performance.now() });
     if (next.action === 'swap') return this._end('presented');
     if (next.action === 'timeout') return this._end('timeout');
     h.timer = setTimeout(() => this._step(), next.ms);
@@ -579,5 +579,8 @@ export class NavigationStack {
     // A size change made during Back waits until the revealed page has
     // handed over its reading position. A queued Back keeps priority.
     if (!queued.back) core.listResize?.pump();
+    // The swipes follow the page now shown: a swap held by the reader's finger
+    // can come after the last screen settles (#83).
+    core.articleGestures?.update();
   }
 }

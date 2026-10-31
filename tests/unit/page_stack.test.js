@@ -1,5 +1,5 @@
 import {
-  createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, HANDOFF_IDLE_MS, HANDOFF_TIMEOUT_MS,
+  createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, HANDOFF_IDLE_MS, HANDOFF_TIMEOUT_MS, HANDOFF_REACH_POLL_MS,
   queueBack, takeQueuedBack, dropQueuedBacks, boundLayers, LIVE_LAYER_BOUND, pageShown
 } from '../../src/js/page_stack';
 
@@ -222,5 +222,11 @@ describe('handoff readiness', () => {
     expect(at({ presentedAt: 200, touches: 1, now: late })).toEqual({ action: 'wait', ms: HANDOFF_IDLE_MS });
     expect(at({ presentedAt: 200, lastScrollAt: late - 40, now: late })).toEqual({ action: 'wait', ms: HANDOFF_IDLE_MS - 40 });
     expect(at({ presentedAt: 200, lastScrollAt: late - HANDOFF_IDLE_MS, now: late })).toEqual({ action: 'swap' });
+  });
+
+  test('a real page that has not reached the revealed position yet keeps the layer, for at most the timeout', () => {
+    expect(at({ presentedAt: 200, reached: false, now: 300 })).toEqual({ action: 'wait', ms: HANDOFF_REACH_POLL_MS });
+    expect(at({ presentedAt: 200, reached: false, now: 200 + HANDOFF_TIMEOUT_MS })).toEqual({ action: 'swap' });
+    expect(at({ presentedAt: 200, reached: true, now: 300 })).toEqual({ action: 'swap' });
   });
 });

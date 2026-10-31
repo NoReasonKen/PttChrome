@@ -1250,9 +1250,12 @@ ListSession.prototype = {
   },
 
   // A landing action has rebuilt, scrolled and positioned the list. A leave
-  // waiting to hand over to it may do so now (#28).
+  // waiting to hand over to it may do so now (#28), and so may a shortcut
+  // search's source article covering its results (#83).
   _presented: function() {
-    if (this.state === 'active' && this._renderMode === 'buffer') this._core.articleGestures?.pagePresented(PAGE.ARTICLE_LIST);
+    if (this.state !== 'active' || this._renderMode !== 'buffer') return;
+    this._core.articleGestures?.pagePresented(PAGE.ARTICLE_LIST);
+    this._core.articleShortcutSearch?.listPresented();
   },
 
   // ---- external entry points ------------------------------------------------

@@ -15,6 +15,17 @@ const articleShown = facts => facts.kind === 'article' || !!parseStatusRow(facts
 // Input on the cover stays on it; nothing reaches the terminal.
 const COVER_INPUT = ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'click', 'contextmenu', 'dblclick'];
 
+// A copy of the easy-reading article on screen over the reading area, or null
+// when none shows.
+export function coverWithArticle(view) {
+  const layer = StackArticleLayer.capture(view);
+  if (!layer) return null;
+  layer.show(true);
+  layer.el.style.zIndex = '150';
+  for (const type of COVER_INPUT) layer.el.addEventListener(type, event => event.stopPropagation());
+  return layer;
+}
+
 export class HiddenArticleRoute {
   // `name`: the route, for easy reading's landing; `kind`: its command kind
   // prefix; `failed`: the message key shown when the route gives up.
@@ -101,12 +112,7 @@ export class HiddenArticleRoute {
   }
 
   _cover() {
-    const layer = StackArticleLayer.capture(this.core.view);
-    if (!layer) return;
-    this.cover = layer;
-    layer.show(true);
-    layer.el.style.zIndex = '150';
-    for (const type of COVER_INPUT) layer.el.addEventListener(type, event => event.stopPropagation());
+    this.cover = coverWithArticle(this.core.view);
   }
 
   _end() {
