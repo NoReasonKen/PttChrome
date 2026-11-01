@@ -2678,8 +2678,8 @@ export const PrefModal = ({
                 </details>
               </PrefAnchor>
             </Tabs.Panel>
-            {/* 窄版沒有左欄的底部空間：重設放在內容最底。 */}
-            {narrow && (
+            {/* 窄版沒有左欄的底部空間：重設放在內容最底。它是整個設定的，管理搜尋紀錄那一頁不放。 */}
+            {narrow && !searchHistoryOpen && (
               <Button
                 variant="default"
                 className="PrefModal__Grid__Col--right__Reset"

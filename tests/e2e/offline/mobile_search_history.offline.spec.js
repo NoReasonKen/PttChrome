@@ -99,6 +99,9 @@ test.describe('手機：搜尋紀錄', () => {
     await expect(manager).toBeVisible();
     // 頂端的返回換成這一頁的名字（同分類頁的「< 本機設定」）。
     await expect(settings.locator('[data-pref-subpage-back]')).toBeVisible();
+    // 「設回預設值」是整個設定的，不放在這一頁底下。
+    const reset = settings.locator('.PrefModal__Grid__Col--right__Reset');
+    await expect(reset).toHaveCount(0);
     const boardId = await manager.locator('input[value="board"]').getAttribute('id');
     await manager.locator(`label[for="${boardId}"]`).tap();
     // 長關鍵字在自己的框裡左右捲：頁面不變寬，右邊的次數不被蓋住。
@@ -112,6 +115,12 @@ test.describe('手機：搜尋紀錄', () => {
     await expect(longRow.locator('.mantine-ScrollArea-scrollbar[data-orientation="horizontal"]')).toBeVisible();
 
     await manager.locator('[data-manager-entry="Gossiping"] [data-manager-text]').tap();
+    // 工具列五顆按鈕排在同一行（中文、英文都塞得下）。
+    const actionTops = await manager
+      .locator('[data-manager-action]')
+      .evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
+    expect(actionTops).toHaveLength(5);
+    expect(new Set(actionTops).size).toBe(1);
     await manager.locator('[data-manager-action="pin"]').tap();
     await expect(
       manager.locator('[data-manager-section="pinned"] [data-manager-entry]'),
@@ -122,6 +131,7 @@ test.describe('手機：搜尋紀錄', () => {
     await page.goBack();
     await expect(manager).toHaveCount(0);
     await expect(settings.locator('[data-pref-subpage="searchHistory"]')).toBeVisible();
+    await expect(reset).toHaveCount(1);
     await collectSent(page);
     await settings.getByRole('button', { name: 'Close', exact: true }).tap();
     await expect(settings).toBeHidden();

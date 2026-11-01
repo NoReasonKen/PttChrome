@@ -187,10 +187,11 @@ export const SearchHistoryManager = () => {
           ),
         )}
       </div>
-      {/* 操作列貼在設定捲動區的底部：清單再長也按得到。 */}
+      {/* 操作列貼在設定捲動區的底部：清單再長也按得到。按鈕用 compact，五顆在手機上排得進一行。 */}
       <div className="searchHistoryManagerActions">
         <Group gap={8}>
           <Button
+            size="compact-sm"
             variant="default"
             disabled={!selectedPinned.length || !canMove(-1)}
             onClick={() =>
@@ -201,6 +202,7 @@ export const SearchHistoryManager = () => {
             {i18n("searchHistoryManager_moveUp")}
           </Button>
           <Button
+            size="compact-sm"
             variant="default"
             disabled={!selectedPinned.length || !canMove(1)}
             onClick={() =>
@@ -211,6 +213,7 @@ export const SearchHistoryManager = () => {
             {i18n("searchHistoryManager_moveDown")}
           </Button>
           <Button
+            size="compact-sm"
             variant="default"
             disabled={!selectedRecent.length || pinFull}
             onClick={() =>
@@ -221,6 +224,7 @@ export const SearchHistoryManager = () => {
             {i18n("searchHistoryManager_pin")}
           </Button>
           <Button
+            size="compact-sm"
             variant="default"
             disabled={!selectedPinned.length}
             onClick={() =>
@@ -231,6 +235,7 @@ export const SearchHistoryManager = () => {
             {i18n("searchHistoryManager_unpin")}
           </Button>
           <Button
+            size="compact-sm"
             color="red"
             disabled={!selected.length}
             onClick={onDelete}

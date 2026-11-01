@@ -380,10 +380,10 @@ export const en_US = {
     "message": "Unpin"
   },
   "searchHistoryManager_moveUp": {
-    "message": "Move up"
+    "message": "Up"
   },
   "searchHistoryManager_moveDown": {
-    "message": "Move down"
+    "message": "Down"
   },
   "searchHistoryManager_delete": {
     "message": "Delete {0}"
