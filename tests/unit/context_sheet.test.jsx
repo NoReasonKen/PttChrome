@@ -43,7 +43,7 @@ function setup(over = {}) {
     onInputHelperClick: vi.fn(),
     onLiveArticleHelperClick: vi.fn(),
     onSettingsClick: vi.fn(),
-    onQuickSearchSelect: vi.fn(),
+    onExternalSearchSelect: vi.fn(),
   };
   const props = { ...PROPS, ...handlers, ...over, pttchrome };
   const r = render(

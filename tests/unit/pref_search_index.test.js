@@ -40,7 +40,7 @@ const SRC = stripComments(fs.readFileSync(SRC_PATH, "utf8"));
 
 const matchAll = (re) => [...SRC.matchAll(re)].map((m) => m[1]);
 
-// name="foo" 與 name={`quickSearchBuiltin-${b.id}`} 兩種寫法。
+// name="foo" 與 name={`externalSearchBuiltin-${b.id}`} 兩種寫法。
 const staticNames = matchAll(/\bname="([^"]+)"/g);
 const templateNames = matchAll(/\bname=\{`([^`$]*)\$\{/g);
 // 分區一律走 <PrefSection legendKey="…">（adapter 負責 fieldset/legend 與錨點）。

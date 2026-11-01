@@ -8,8 +8,8 @@ import {
   searchedFrom, backStep, returned, returnMissing, rebuilt,
   stoppedAtBoardList, reopenedAfterEmptySearch, observe,
   recoveryTarget, recoveryRecord, recovered, followsPlan
-} from './search_return_history';
-import { takeStoredRecovery, storeRecovery } from './search_return_storage';
+} from './search_trail';
+import { takeStoredRecovery, storeRecovery } from './search_trail_storage';
 import { i18n } from './i18n';
 import { isBoardArticleList as boardList, isSearchResultsFrame as resultList, searchResultsLanded, SEARCH_RESULT_NOTICE as MESSAGE } from './search_results_screen';
 import { recordSearchResults, readSearchResultsContext, clearSearchResultsContext } from './search_results_context';
@@ -27,7 +27,7 @@ const KEY_LEFT = '\x1b[D';
 const FRESH_AUTHOR_PROMPT = /^搜尋作者: /;
 const LIST_BACK_KEYS = ['ArrowLeft', 'q', 'e'];
 const ARTICLE_BACK_KEYS = ['ArrowLeft', 'q'];
-const keep = route => route;
+const keep = trail => trail;
 
 // The parsed identity of the article header on screen: { board, author, title }.
 export function articleIdentity(core) {
@@ -38,19 +38,19 @@ export function articleIdentity(core) {
 const fullBoardList = (facts, board) => boardList(facts, board) && !resultList(facts, board);
 
 // Own article -> whole-board query -> source return transactions and their
-// bounded search return history (search_return_history.js). Native Back from
-// a result article remains native; the route owner replaces only the exits
-// whose native destination would leave the route: a result list returns to
+// bounded search trail (search_trail.js). Native Back from
+// a result article remains native; search backtracking replaces only the exits
+// whose native destination would leave the trail: a result list returns to
 // its source by verified AID, and a reopened source (or its board-list
 // fallback) rebuilds the results it belonged to.
 export class ArticleShortcutSearch {
   constructor(core) {
     this.core = core;
     this.active = false;
-    this.route = null;
-    // A route waiting for its reconnect-resume plan: { route, target }. It is
+    this.trail = null;
+    // A trail waiting for its reconnect-resume plan: { trail, target }. It is
     // inactive (Back and settles ignore it) until that plan's own transaction
-    // lands on exactly its target (search_return_history.recovered).
+    // lands on exactly its target (search_trail.recovered).
     this.suspended = null;
     // The source article over the screen while its search runs, under the
     // App Bar it had (#83).
@@ -89,19 +89,19 @@ export class ArticleShortcutSearch {
     if (!['author', 'thread'].includes(kind) || serializedOpHint(core) || core.modalShown ||
         !core.conn?.isConnected || core.buf.pageState !== 3 ||
         !article.board || (kind === 'author' ? !article.author : !article.title)) return false;
-    // The route is board-scoped; an article elsewhere starts a new one.
-    if (this.route && !sameBoard(this.route.board, article.board)) this.route = null;
+    // The trail is board-scoped; an article elsewhere starts a new one.
+    if (this.trail && !sameBoard(this.trail.board, article.board)) this.trail = null;
     const origin = {
       ...article,
       query: { kind, value: kind === 'author' ? article.author : article.title },
       position: recordFor(core).begin('article-shortcut-search')
     };
     this.pending = origin;
-    const fast = this._fastRoute(origin);
+    const fast = this._fastKeystrokeRoute(origin);
     core.articleGestures?.captureArticleLayer();
     this._cover();
     // A failed forward search adds no origin; its source stays where it was.
-    this._begin({ missing: stoppedAtBoardList, emptied: route => reopenedAfterEmptySearch(route, origin) });
+    this._begin({ missing: stoppedAtBoardList, emptied: trail => reopenedAfterEmptySearch(trail, origin) });
     const fail = () => this._fail();
     core.aidNavigation.resolvePostAid({
       kind: 'shortcut-origin-info',
@@ -121,11 +121,11 @@ export class ArticleShortcutSearch {
     return true;
   }
 
-  // The fast route (#86) is taken only where the app knows PTT's state: a
-  // plain article, not one of pmore's movies that take Left themselves,
-  // opened from its board's full list. Same-thread search also needs PTT's
+  // The fast keystroke route (#86) is taken only where the app knows PTT's
+  // state: a plain article, not one of pmore's movies that take Left
+  // themselves, opened from its board's full list. Same-thread search also needs PTT's
   // selection there on this article.
-  _fastRoute(origin) {
+  _fastKeystrokeRoute(origin) {
     const below = this.core.articleGestures?.fullListBelow();
     const kind = origin.query.kind;
     if (!below || (kind === 'thread' && !below.selected)) return false;
@@ -190,7 +190,8 @@ export class ArticleShortcutSearch {
   _fastQuery(origin) {
     const thread = origin.query.kind === 'thread';
     const steps = thread ? null : buildSearchSteps('author', origin.query.value);
-    // An author the prompt cannot take is the verified route's to report.
+    // An author the prompt cannot take is for the verified keystroke route to
+    // report.
     if (!thread && !steps) return this._selectThenQuery(origin, false, 'forward');
     this.core.listSession?.beginExternalNavigation({ fromIdle: true });
     // The pager parks PTT's cursor on its footer row, off every entry.
@@ -207,8 +208,8 @@ export class ArticleShortcutSearch {
   }
 
   // PTT asked something else than expected, such as adding a condition to
-  // results: an empty answer cancels it, and the verified route runs from
-  // the list.
+  // results: an empty answer cancels it, and the verified keystroke route runs
+  // from the list.
   _leavePrompt(origin) {
     this._enqueue({
       keys: '\r',
@@ -246,10 +247,10 @@ export class ArticleShortcutSearch {
           return;
         }
         if (mode === 'forward') {
-          this.route = searchedFrom(this.route, origin);
+          this.trail = searchedFrom(this.trail, origin);
           recordFor(this.core).end(origin.position, 'done');
         } else {
-          this.route = rebuilt(this.route);
+          this.trail = rebuilt(this.trail);
         }
         recordSearchResults(this.core, { board: origin.board, filters: [kind === 'thread'
           ? { kind, aid: origin.aid, title: origin.title }
@@ -266,10 +267,10 @@ export class ArticleShortcutSearch {
 
   handleBack(event) {
     if (this.active || event.ctrlKey || event.altKey || event.metaKey) return false;
-    const step = backStep(this.route);
+    const step = backStep(this.trail);
     if (!step) return false;
     const core = this.core;
-    const board = this.route.board;
+    const board = this.trail.board;
     if (step.kind === 'restore') {
       if (!LIST_BACK_KEYS.includes(event.key) || this._listShown(board) !== 'results') return false;
       if (this._revealBelow(event)) return true;
@@ -279,9 +280,9 @@ export class ArticleShortcutSearch {
       this._reopen(step.origin, 'articleShortcutSearch_returned', returned);
       return true;
     }
-    const at = this.route.at;
+    const at = this.trail.at;
     const article = this._currentArticle();
-    const here = this.route.phase === 'reopened'
+    const here = this.trail.phase === 'reopened'
       ? !!article && ARTICLE_BACK_KEYS.includes(event.key) && sameBoard(article.board, board) &&
         !!at && article.author === at.author && article.title === at.title
       : this._listShown(board) === 'full' && LIST_BACK_KEYS.includes(event.key);
@@ -325,7 +326,7 @@ export class ArticleShortcutSearch {
       kind: 'article', board: origin.board, aid: origin.aid, bookmark
     }, result => {
       if (!result.ok) return this._stopMissing(origin);
-      this.route = transition(this.route);
+      this.trail = transition(this.trail);
       this.pending = null;
       this._finish();
       this._uncover();
@@ -405,16 +406,16 @@ export class ArticleShortcutSearch {
     return { ...EMPTY_TOOLBAR_CONTEXT, appBar: this.coverAppBar || EMPTY_TOOLBAR_CONTEXT.appBar, locked: true };
   }
 
-  // Origins survive only where the route can still be verified: the article
-  // that never left, or the full board list standing in for a route article.
+  // Origins survive only where the trail can still be verified: the article
+  // that never left, or the full board list standing in for a trail article.
   _fail(notice = 'articleShortcutSearch_failed', transition = stoppedAtBoardList) {
     if (!this.active) return;
     this._uncover();
     // A search that found nothing keeps no layer of its source.
     this.core.articleGestures?.dropPendingLayer();
     if (this.pending?.position) recordFor(this.core).end(this.pending.position, 'fail');
-    if (this.route && transition !== keep) {
-      this.route = fullBoardList(searchGateFacts(this.core), this.route.board) ? transition(this.route) : null;
+    if (this.trail && transition !== keep) {
+      this.trail = fullBoardList(searchGateFacts(this.core), this.trail.board) ? transition(this.trail) : null;
     }
     this._finish();
     this._hint(notice);
@@ -425,13 +426,13 @@ export class ArticleShortcutSearch {
     const article = this._currentArticle();
     if (article) return { kind: 'article', ...article };
     if (core.buf.pageState === 1) return { kind: 'menu' };
-    const shown = this._listShown(this.route.board);
-    if (shown) return { kind: shown === 'results' ? 'results' : 'boardList', board: this.route.board };
+    const shown = this._listShown(this.trail.board);
+    if (shown) return { kind: shown === 'results' ? 'results' : 'boardList', board: this.trail.board };
     const facts = searchGateFacts(core);
     const board = parseBoardName(facts?.rowTexts[0]);
     if (!board) return { kind: 'other' };
     if (resultList(facts, board)) return { kind: 'results', board };
-    if (boardList(facts, board) || !sameBoard(board, this.route.board)) return { kind: 'boardList', board };
+    if (boardList(facts, board) || !sameBoard(board, this.trail.board)) return { kind: 'boardList', board };
     return { kind: 'other' };
   }
 
@@ -441,8 +442,8 @@ export class ArticleShortcutSearch {
       this._explainLater = false;
       this._hint('articleShortcutSearch_recoveryInactive');
     }
-    // Query metadata belongs to the current results even without a shortcut
-    // return route. Automatic navigation and background paging own transients.
+    // Query metadata belongs to the current results even without a search
+    // trail. Automatic navigation and background paging own transients.
     if (!this.active && !this.core.searchInFlight && !this.core.aidNavigation?.active) {
       const context = readSearchResultsContext(this.core);
       const facts = context && searchGateFacts(this.core);
@@ -455,11 +456,11 @@ export class ArticleShortcutSearch {
         clearSearchResultsContext(this.core);
       }
     }
-    if (this.active || !this.route) return;
-    this.route = observe(this.route, this._screen());
+    if (this.active || !this.trail) return;
+    this.trail = observe(this.trail, this._screen());
   }
 
-  // A search key pressed by the reader. Only list searches replace the route:
+  // A search key pressed by the reader. Only list searches replace the trail:
   // inside an article the same keys are PTT's in-article text search and
   // reading commands. `S` is the native same-thread search of the list.
   noteSearchKey(event) {
@@ -470,12 +471,12 @@ export class ArticleShortcutSearch {
   }
 
   noteOtherSearch() {
-    if (!this.active) this.route = null;
+    if (!this.active) this.trail = null;
   }
 
-  // Disconnection. A route captured by suspendForRecovery stays suspended.
+  // Disconnection. A trail captured by suspendForRecovery stays suspended.
   reset() {
-    this.route = null;
+    this.trail = null;
     clearSearchResultsContext(this.core);
     if (this.active) this._fail();
     this._uncover();
@@ -483,7 +484,7 @@ export class ArticleShortcutSearch {
 
   // Recovery hooks, called by reconnect_resume.js with the plan it will
   // resume. Automatic recovery's intermediate screens (login, main menu, board
-  // entry) never reach the suspended route; only the plan's outcome does.
+  // entry) never reach the suspended trail; only the plan's outcome does.
 
   _currentArticle() {
     return this.core.buf.pageState === 3 ? articleIdentity(this.core) : null;
@@ -491,21 +492,21 @@ export class ArticleShortcutSearch {
 
   // The connection closed after login; `plan` is where reconnection returns.
   suspendForRecovery(plan) {
-    const route = this.route;
-    this.route = null;
-    const target = route && recoveryTarget(plan, this._currentArticle());
+    const trail = this.trail;
+    this.trail = null;
+    const target = trail && recoveryTarget(plan, this._currentArticle());
     const had = !!this.suspended;
-    this.suspended = target && sameBoard(route.board, target.board) ? { route, target } : null;
-    if (!this.suspended && (route || had)) this._explain();
+    this.suspended = target && sameBoard(trail.board, target.board) ? { trail, target } : null;
+    if (!this.suspended && (trail || had)) this._explain();
   }
 
   // The page may be closed or discarded: store the live (or still suspended)
-  // route beside the reconnect-resume snapshot taken for the same `plan`.
+  // trail beside the reconnect-resume snapshot taken for the same `plan`.
   persistForRecovery(plan) {
     let record = null;
-    if (this.route) record = recoveryRecord(this.route, recoveryTarget(plan, this._currentArticle()), Date.now());
+    if (this.trail) record = recoveryRecord(this.trail, recoveryTarget(plan, this._currentArticle()), Date.now());
     else if (this.suspended && plan && sameBoard(plan.board, this.suspended.target.board)) {
-      record = recoveryRecord(this.suspended.route, this.suspended.target, Date.now());
+      record = recoveryRecord(this.suspended.trail, this.suspended.target, Date.now());
     }
     storeRecovery(record);
   }
@@ -526,9 +527,9 @@ export class ArticleShortcutSearch {
     const suspended = this.suspended;
     this.suspended = null;
     if (!suspended) return;
-    const route = result?.ok ? recovered(suspended.route, suspended.target, plan, this._landed(suspended.target.board)) : null;
-    if (!route) return this._explain();
-    this.route = route;
+    const trail = result?.ok ? recovered(suspended.trail, suspended.target, plan, this._landed(suspended.target.board)) : null;
+    if (!trail) return this._explain();
+    this.trail = trail;
     return this._hint('articleShortcutSearch_recovered');
   }
 

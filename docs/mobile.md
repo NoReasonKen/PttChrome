@@ -75,7 +75,7 @@ The enabled-by-default `articleHorizontalGestures` preference applies only to mo
     （`commentBar.expand()`；收回規則見 `docs/long-push.md`「底部常駐推文列」）；其他情況照送 X。
 
     搜尋**直接開搜尋彈窗**（預設第一個可用種類，無子選單；見 `docs/article-search.md`）。分享＝`deep_link_controller.shareCurrentPostLink(title)`（與複製本篇連結同一條 AID 解析；`navigator.share`，AbortError＝完成，其他拒絕／無 API 退回複製；**click 內同步呼叫**）。
-    更多＝bottom sheet（見「Bottom sheet」）：快速搜尋（**選取模式開＋有選取**才列；選取模式下長按走原生選單，
+    更多＝bottom sheet（見「Bottom sheet」）：外部搜尋（**選取模式開＋有選取**才列；選取模式下長按走原生選單，
     我們的長按選單出不來。選取在工具列 `pointerdown` 當下記住——tap 收尾時瀏覽器可能先清選取才發 click）／
     跳到第一篇未讀／設為全部已讀（文章列表才有）／操作說明（底列有 `(h)說明` 才有、主功能表不給（同 `contentTools`），送 h；底列在卡片／好讀文章
     畫面被收起、點不到原生提示，見 `docs/help-menu.md`）／分享／文章導覽／選取模式／全選／
@@ -211,8 +211,8 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
 唯一寫入點 `setMobileSelectMode`，body class `mobileSelectMode`，非手機恆關）。
 - 關：開我們的選單，並 `removeAllRanges()`（`shouldClearTouchSelection`）⇒ 不留原生選取把手，複製類項目不出現。
   對象（黑名單／前已讀後未讀）仍是長按位置，與桌機右鍵同一條路徑。CSS 另加 `-webkit-touch-callout: none`。
-  - **清之前先記下長按選到的詞**（`longPressWord`）當快速搜尋的關鍵字（`quick_search.quickSearchQueryFor`）：
-    不記的話快速搜尋只看「現在有沒有選取」⇒ 手機永遠叫不出來。長按選詞是瀏覽器斷詞（中文 ICU 字典、數字整串）。
+  - **清之前先記下長按選到的詞**（`longPressWord`）當外部搜尋的關鍵字（`external_search.externalSearchQueryFor`）：
+    不記的話外部搜尋只看「現在有沒有選取」⇒ 手機永遠叫不出來。長按選詞是瀏覽器斷詞（中文 ICU 字典、數字整串）。
   - **複製推文**：長按推文卡片給「複製這則推文」（合併塊另給「複製整段推文」），文字由
     `render/comment_card.commentCardCopyText` 直接讀卡片（每則一個 bbsline）。理由：內容從卡片左緣起、第一個字貼著
     螢幕邊，選取把手拉不過去（還跟系統邊緣返回手勢搶）；推文右移會讓一行放不下，不採用。出現條件＝預覽算得出來，

@@ -319,9 +319,9 @@ test.describe('長按選單（觸控 contextmenu）', () => {
     expect(await page.evaluate(() => (window.__sent || []).join(''))).toBe('');
   });
 
-  // 症狀（使用者回報）：手機叫不出快速搜尋。選取模式關時長按選到的字在開選單前就被清掉，
-  // 舊邏輯只看「現在有沒有選取」⇒ 快速搜尋永遠不出現。改用長按自動選起來的那個詞。
-  test('REGRESSION：長按（選取模式關）⇒ 快速搜尋以長按選到的詞出現', async ({ page }) => {
+  // 症狀（使用者回報）：手機叫不出外部搜尋。選取模式關時長按選到的字在開選單前就被清掉，
+  // 舊邏輯只看「現在有沒有選取」⇒ 外部搜尋永遠不出現。改用長按自動選起來的那個詞。
+  test('REGRESSION：長按（選取模式關）⇒ 外部搜尋以長按選到的詞出現', async ({ page }) => {
     test.setTimeout(90000);
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, { enableEasyReading: true });
@@ -334,9 +334,9 @@ test.describe('長按選單（觸控 contextmenu）', () => {
     const word = r.text.replace(/\s+/g, ' ').trim();
     expect(word.length).toBeGreaterThan(0); // 前提：長按真的選到了字
     expect(r.collapsedAfter).toBe(true); // 選取照舊清掉（不留把手）
-    const qs = menu(page).locator('[data-cmenu="qs-google"]');
-    await expect(qs).toBeVisible();
-    await expect(qs).toContainText(word);
+    const es = menu(page).locator('[data-cmenu="es-google"]');
+    await expect(es).toBeVisible();
+    await expect(es).toContainText(word);
   });
 
   test('選取模式開：長按＝一般網頁操作（不 preventDefault、不開我們的選單、選取留著）', async ({ page }) => {

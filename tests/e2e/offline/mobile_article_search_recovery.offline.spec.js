@@ -10,12 +10,12 @@ const { pauseClockNow } = require('../helpers/clock');
 const { watchReveals, revealedSinceWatch } = require('../helpers/stack_routes');
 const ptt = require('../helpers/ptt');
 
-// Search return history through interruption (docs/article-swipe-drawer-spec.md): the
+// Search trail through interruption (docs/article-swipe-drawer-spec.md): the
 // complete app with real touch, a controlled PTT board, a real socket close
 // and reconnect, and a real page reload with the state the app stored.
 
-const RESTORED = 'Search return history restored';
-const INACTIVE = 'Search return history was not restored';
+const RESTORED = 'Search trail restored';
+const INACTIVE = 'The search trail was not restored';
 const RESUME_FAILED = 'The previous search results could not be restored';
 const bodyText = page => page.locator('body').innerText();
 
@@ -64,7 +64,7 @@ const easyReadingList = page => expect.poll(() => page.evaluate(() => window.__a
 test('ordinary article recovery without searches restores a known article and reading position', async ({ page }) => {
   await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true });
   // Set up a verified article identity through the actual navigation owner;
-  // unlike shortcut tests, no search or search-return route is involved.
+  // unlike shortcut tests, no search or search trail is involved.
   await page.evaluate(() => window.__app.aidNavigation.startResume({
     kind: 'article', board: 'Test', aid: '1gIeu-3A'
   }));
@@ -309,7 +309,7 @@ async function reopenNestedSource(page) {
   await waitArticle(page, 'Beta');
 }
 
-test('disconnection in a result article keeps the route through login and returns to the source position', async ({ page }) => {
+test('disconnection in a result article keeps the trail through login and returns to the source position', async ({ page }) => {
   await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true });
   const position = await readToMiddle(page);
   await tapShortcut(page, 'author');
@@ -318,7 +318,7 @@ test('disconnection in a result article keeps the route through login and return
   await waitArticle(page, 'Beta');
 
   // The result article has no free identity, so recovery returns to the full
-  // board list; passing the main menu and board entry does not clear the route.
+  // board list; passing the main menu and board entry does not clear the trail.
   await disconnectAndReconnect(page);
   await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
   await expect.poll(() => bodyText(page)).toContain(RESTORED);
@@ -351,7 +351,7 @@ test('a reload in a reopened nested source restores it by AID and keeps unwindin
   expect(await revealedSinceWatch(page)).toBe(false);
 });
 
-test('a source deleted while disconnected stops on its board list and leaves the route inactive', async ({ page }) => {
+test('a source deleted while disconnected stops on its board list and leaves the trail inactive', async ({ page }) => {
   await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true });
   await reopenNestedSource(page);
 
@@ -359,7 +359,7 @@ test('a source deleted while disconnected stops on its board list and leaves the
   await expect.poll(() => bodyText(page), { timeout: 15000 }).toContain(INACTIVE);
   await waitList(page, { has: ['Alpha topic', 'Re: [Talk] Beta topic'] });
 
-  // No retry and no route: Back is the ordinary list exit.
+  // No retry and no trail: Back is the ordinary list exit.
   const sent = (await gestureSent(page)).length;
   await nativeBack(page);
   await expect.poll(async () => (await gestureSent(page)).slice(sent)).toBe('\x1b[D');
@@ -367,7 +367,7 @@ test('a source deleted while disconnected stops on its board list and leaves the
   expect((await gestureSent(page)).slice(sent)).toBe('\x1b[D');
 });
 
-test('canceling the resume after a reload explains that the route stays inactive', async ({ page }) => {
+test('canceling the resume after a reload explains that the trail stays inactive', async ({ page }) => {
   await bootNestedShortcutSearch(page, { loggedIn: true, resumeLastPlace: true });
   await tapShortcut(page, 'author');
   await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
@@ -385,7 +385,7 @@ test('canceling the resume after a reload explains that the route stays inactive
   expect(await gestureSent(page)).not.toContain('sTest');
 });
 
-test('a user board switch clears the stored route before a reload', async ({ page }) => {
+test('a user board switch clears the stored trail before a reload', async ({ page }) => {
   await bootNestedShortcutSearch(page, { loggedIn: true, resumeLastPlace: true });
   await tapShortcut(page, 'author');
   await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });

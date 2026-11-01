@@ -1,6 +1,6 @@
 // @unit-env browser
-// 設定面板「快速搜尋」分頁的 UI 契約。
-// 內建項目只能停用（pref 只存被停用的 id，見 pref_storage.js#quickSearchDisabled），
+// 設定面板「外部搜尋」分頁的 UI 契約。
+// 內建項目只能停用（pref 只存被停用的 id，見 pref_storage.js#externalSearchDisabled），
 // 自訂項目可新增／編輯／刪除；全部走既有的「關閉時才寫入 localStorage」路徑。
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
@@ -30,7 +30,7 @@ const openTab = (prefs = {}) => {
     </MantineProvider>,
   );
   fireEvent.click(
-    screen.getByRole("tab", { name: i18n("options_quickSearch") }),
+    screen.getByRole("tab", { name: i18n("options_externalSearch") }),
   );
 };
 
@@ -39,13 +39,13 @@ const closeModal = () =>
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
 
 const builtinCheckbox = (id) =>
-  document.querySelector(`[name="quickSearchBuiltin-${id}"]`);
-const rows = () => document.querySelectorAll(".PrefModal__QuickSearchRow");
+  document.querySelector(`[name="externalSearchBuiltin-${id}"]`);
+const rows = () => document.querySelectorAll(".PrefModal__ExternalSearchRow");
 
 beforeAll(() => setupI18n());
 beforeEach(() => window.localStorage.clear());
 
-describe("快速搜尋分頁：內建項目", () => {
+describe("外部搜尋分頁：內建項目", () => {
   test("三個內建項目都畫出來且預設全啟用", () => {
     openTab();
     for (const id of ["google", "pixiv-user", "pixiv-artwork"]) {
@@ -57,38 +57,38 @@ describe("快速搜尋分頁：內建項目", () => {
     openTab();
     fireEvent.click(builtinCheckbox("google"));
     closeModal();
-    expect(readValuesWithDefault().quickSearchDisabled).toEqual(["google"]);
+    expect(readValuesWithDefault().externalSearchDisabled).toEqual(["google"]);
   });
 
   test("重新勾回 → 該 id 從停用清單移除（不會重複塞）", () => {
-    openTab({ quickSearchDisabled: ["google"] });
+    openTab({ externalSearchDisabled: ["google"] });
     expect(builtinCheckbox("google")).not.toBeChecked();
     fireEvent.click(builtinCheckbox("google"));
     closeModal();
-    expect(readValuesWithDefault().quickSearchDisabled).toEqual([]);
+    expect(readValuesWithDefault().externalSearchDisabled).toEqual([]);
   });
 });
 
-describe("快速搜尋分頁：自訂項目", () => {
-  test("新增 → 填名稱與網址 → 關閉後寫進 quickSearchCustom", () => {
+describe("外部搜尋分頁：自訂項目", () => {
+  test("新增 → 填名稱與網址 → 關閉後寫進 externalSearchCustom", () => {
     openTab();
     expect(rows()).toHaveLength(0);
 
     fireEvent.click(
-      screen.getByRole("button", { name: i18n("options_quickSearchAdd") }),
+      screen.getByRole("button", { name: i18n("options_externalSearchAdd") }),
     );
     expect(rows()).toHaveLength(1);
 
     const row = rows()[0];
-    fireEvent.change(row.querySelector(".PrefModal__QuickSearchRow__Name input"), {
+    fireEvent.change(row.querySelector(".PrefModal__ExternalSearchRow__Name input"), {
       target: { value: "巴哈" },
     });
-    fireEvent.change(row.querySelector(".PrefModal__QuickSearchRow__Url input"), {
+    fireEvent.change(row.querySelector(".PrefModal__ExternalSearchRow__Url input"), {
       target: { value: "https://acg.gamer.com.tw/search.php?kw=%s" },
     });
     closeModal();
 
-    expect(readValuesWithDefault().quickSearchCustom).toMatchObject([
+    expect(readValuesWithDefault().externalSearchCustom).toMatchObject([
       {
         name: "巴哈",
         urlTemplate: "https://acg.gamer.com.tw/search.php?kw=%s",
@@ -101,15 +101,15 @@ describe("快速搜尋分頁：自訂項目", () => {
   test("按了新增卻沒填 → 關閉時整列被丟掉，不留半成品在偏好裡", () => {
     openTab();
     fireEvent.click(
-      screen.getByRole("button", { name: i18n("options_quickSearchAdd") }),
+      screen.getByRole("button", { name: i18n("options_externalSearchAdd") }),
     );
     closeModal();
-    expect(readValuesWithDefault().quickSearchCustom).toEqual([]);
+    expect(readValuesWithDefault().externalSearchCustom).toEqual([]);
   });
 
   test("刪除鈕移除該列", () => {
     openTab({
-      quickSearchCustom: [
+      externalSearchCustom: [
         {
           id: "c1",
           name: "甲",
@@ -129,18 +129,18 @@ describe("快速搜尋分頁：自訂項目", () => {
     expect(rows()).toHaveLength(2);
     fireEvent.click(
       rows()[0].querySelector(
-        `[aria-label="${i18n("options_quickSearchDelete")}"]`,
+        `[aria-label="${i18n("options_externalSearchDelete")}"]`,
       ),
     );
     closeModal();
     expect(
-      readValuesWithDefault().quickSearchCustom.map((c) => c.id),
+      readValuesWithDefault().externalSearchCustom.map((c) => c.id),
     ).toEqual(["c2"]);
   });
 
   test("網址缺 %s → 該欄顯示錯誤訊息", () => {
     openTab({
-      quickSearchCustom: [
+      externalSearchCustom: [
         {
           id: "c1",
           name: "壞的",
@@ -150,15 +150,15 @@ describe("快速搜尋分頁：自訂項目", () => {
         },
       ],
     });
-    expect(screen.getByText(i18n("quicksearch_err_url"))).toBeInTheDocument();
+    expect(screen.getByText(i18n("externalsearch_err_url"))).toBeInTheDocument();
   });
 
   test("剛新增的空白列不噴紅字（還沒開始填就罵人很煩）", () => {
     openTab();
     fireEvent.click(
-      screen.getByRole("button", { name: i18n("options_quickSearchAdd") }),
+      screen.getByRole("button", { name: i18n("options_externalSearchAdd") }),
     );
-    expect(screen.queryByText(i18n("quicksearch_err_name"))).toBeNull();
-    expect(screen.queryByText(i18n("quicksearch_err_url"))).toBeNull();
+    expect(screen.queryByText(i18n("externalsearch_err_name"))).toBeNull();
+    expect(screen.queryByText(i18n("externalsearch_err_url"))).toBeNull();
   });
 });

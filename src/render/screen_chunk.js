@@ -109,7 +109,7 @@ export function renderChunksAround(el) {
 // 存活中的 ChunkLayer（實務上只有一個）。readSelectionText 要在讀之前同步展開。
 const liveLayers = new Set();
 
-// 讀「目前選取的文字」的唯一入口（app 的複製／右鍵快速搜尋都走這裡）。
+// 讀「目前選取的文字」的唯一入口（app 的複製／右鍵外部搜尋都走這裡）。
 // 為什麼不能直接 getSelection().toString()：Firefox 對跨閉塊的選取會漏字。
 // selectionchange 驅動的展開（不變量 5）是**非同步**的，而 copyOnSelect 在 mouseup
 // 當下就讀 ⇒ 讀之前先同步展開＋強制排版。Firefox 實測（3000 行、11 塊）：選取當下

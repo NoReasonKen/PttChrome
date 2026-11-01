@@ -1,6 +1,6 @@
 // 設定頁搜尋（設定 → 左欄搜尋框）的索引與比對邏輯。純邏輯、無 DOM。
 //
-// **命名**：與右鍵選單的既有功能「快速搜尋」（quick_search.js，選字跳 Google）
+// **命名**：與右鍵選單的既有功能「外部搜尋」（external_search.js，選字跳 Google）
 // 完全無關，勿混用命名。這裡一律 settingsSearch / prefSearch。
 //
 // **索引是手動維護的第二份事實**：PrefModal.jsx 是純 hardcode JSX、沒有 schema
@@ -31,7 +31,7 @@ export const PREF_SEARCH_TABS = {
   mouse: "options_mouse",
   connection: "options_connection",
   enhance: "options_enhance",
-  quicksearch: "options_quickSearch",
+  externalsearch: "options_externalSearch",
   autologin: "options_autoLoginTab",
   ai: "options_ai",
   local: "options_local",
@@ -44,8 +44,8 @@ export const PREF_SEARCH_TABS = {
 export const PREF_SEARCH_EXEMPT_NAMES = {
   backupImportFile:
     "隱藏的 <input type=file>，不是設定項；入口是它前面那顆匯入按鈕（已由 section:options_backupImport 代表）",
-  "quickSearchBuiltin-":
-    "動態產生，內容取自 quick_search.js#BUILTIN_QUICK_SEARCH，會隨清單變動；由 section:options_quickSearchBuiltin 代表",
+  "externalSearchBuiltin-":
+    "動態產生，內容取自 external_search.js#BUILTIN_EXTERNAL_SEARCH，會隨清單變動；由 section:options_externalSearchBuiltin 代表",
 };
 
 // sectionTooltipKey === false ⇒ 這個分區不另外產生 section 項。用在兩種情形：
@@ -466,14 +466,14 @@ export const PREF_SEARCH_ITEMS = [
     },
   ]),
 
-  // ── 快速搜尋（右鍵選單的那個功能，非本搜尋框）────────────────────
+  // ── 外部搜尋（右鍵選單的那個功能，非本搜尋框）────────────────────
   ...inSection(
-    "quicksearch",
-    "options_quickSearchBuiltin",
-    "tooltip_quickSearch",
+    "externalsearch",
+    "options_externalSearchBuiltin",
+    "tooltip_externalSearch",
     [],
   ),
-  ...inSection("quicksearch", "options_quickSearchCustom", null, []),
+  ...inSection("externalsearch", "options_externalSearchCustom", null, []),
 
   // ── 自動登入 ────────────────────────────────────────────────────
   ...inSection("autologin", "options_autoLogin", "tooltip_autoLoginSynced", [

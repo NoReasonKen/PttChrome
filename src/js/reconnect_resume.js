@@ -212,7 +212,7 @@ export function ReconnectResume(core, view, termBuf) {
       this._pending = plan && mode === 'open' ? Object.assign({}, plan, { fromOpen: true }) : plan;
       this._diag('restoreSnapshot', { mode: mode, kind: this._pending ? this._pending.kind : null });
     }
-    // Search return history stored beside the snapshot follows only this plan.
+    // The search trail stored beside the snapshot follows only this plan.
     this._core?.articleShortcutSearch?.restoreForRecovery(this._pending);
     const save = () => this.saveSnapshot({ lifecycle: true });
     if (typeof window.addEventListener === 'function') {

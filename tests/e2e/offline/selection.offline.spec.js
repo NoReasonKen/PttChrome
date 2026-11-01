@@ -1,6 +1,6 @@
 // 選取文字的兩條下游（issue #22，Firefox 上壞、Chrome 正常）：
 //   1) copyOnSelect：放開滑鼠自動把選取寫進剪貼簿
-//   2) 右鍵選單的快速搜尋：關鍵字要帶入選取內容
+//   2) 右鍵選單的外部搜尋：關鍵字要帶入選取內容
 //
 // **一定要用真滑鼠拖曳**選字（page.mouse.down/move/up）。程式化 addRange +
 // dispatchEvent('contextmenu') 會繞過瀏覽器自己的選取機制與 app 的焦點竊取（#t），
@@ -223,7 +223,7 @@ test.describe('選取文字（offline）', () => {
     ).not.toContain('\x1b[<');
   });
 
-  test('拖曳選取後右鍵：快速搜尋帶入選取內容', async ({ page }) => {
+  test('拖曳選取後右鍵：外部搜尋帶入選取內容', async ({ page }) => {
     await boot(page);
     await feedLine(page, WORD);
     const rect = await wordRect(page, WORD);
@@ -234,7 +234,7 @@ test.describe('選取文字（offline）', () => {
       button: 'right',
     });
 
-    const items = page.locator('.DropdownMenu__QuickSearch');
+    const items = page.locator('.DropdownMenu__ExternalSearch');
     await expect(items.first()).toBeVisible();
     await expect(items.filter({ hasText: WORD })).not.toHaveCount(0);
   });

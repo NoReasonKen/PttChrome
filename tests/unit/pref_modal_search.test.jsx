@@ -245,7 +245,7 @@ describe("錨點覆蓋度（索引裡每一項都跳得到）", () => {
     mouse: "options_mouse",
     connection: "options_connection",
     enhance: "options_enhance",
-    quicksearch: "options_quickSearch",
+    externalsearch: "options_externalSearch",
     autologin: "options_autoLoginTab",
     ai: "options_ai",
     local: "options_local",

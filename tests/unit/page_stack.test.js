@@ -160,7 +160,7 @@ describe('a page shown without an open', () => {
   });
 
   test('an article reopened over a list it was not opened from starts a new base', () => {
-    // Search return history reopens the source article by its code while the
+    // Search backtracking reopens the source article by its code while the
     // stack is on the search results.
     const onResults = pageShown(route(), results('C_Chat')).stack;
     const { stack, kept } = pageShown(onResults, opened('C_Chat', 'A'));
@@ -170,7 +170,7 @@ describe('a page shown without an open', () => {
   });
 
   test('a lower page without a live layer, reached without a handoff, is where Back went', () => {
-    // Search return history reopened the source article by its code, or
+    // Search backtracking reopened the source article by its code, or
     // rebuilt the results under an article, after their layers were released.
     const source = pushPage(withLayer(route()), results('C_Chat'), { fromBelow: true });
     const reopened = pageShown(boundLayers(source, 1).stack, opened('C_Chat', 'A'));

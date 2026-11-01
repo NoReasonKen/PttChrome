@@ -9,7 +9,7 @@ import { restoreSearchResultPosition } from './search_result_position';
 
 // Continue the existing resume transaction after it reaches the verified full
 // board list. All filters use the same queue and prompt proof as normal search;
-// this never submits through the UI or adds a shortcut return-history origin.
+// this never submits through the UI or adds a search trail origin.
 export function resumeSearchResults(core, context, done, position) {
   const search = validateSearchResultsContext(context);
   if (!search || !isBoardArticleList(searchGateFacts(core), search.board)) {

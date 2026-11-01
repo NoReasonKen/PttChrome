@@ -464,9 +464,9 @@ describe("更多（bottom sheet）", () => {
     }
   });
 
-  // 症狀（使用者回報）：手機叫不出快速搜尋。選取模式下長按走 Chrome 原生選單，我們的長按
-  // 選單（快速搜尋原本唯一的入口）出不來 ⇒ 選好字後從「更多」查。
-  describe("快速搜尋（選取模式下的選取）", () => {
+  // 症狀（使用者回報）：手機叫不出外部搜尋。選取模式下長按走 Chrome 原生選單，我們的長按
+  // 選單（外部搜尋原本唯一的入口）出不來 ⇒ 選好字後從「更多」查。
+  describe("外部搜尋（選取模式下的選取）", () => {
     let textEl;
     const selectText = () => {
       const range = document.createRange();
@@ -485,7 +485,7 @@ describe("更多（bottom sheet）", () => {
       textEl.remove();
     });
 
-    test("REGRESSION：選取模式＋有選取 ⇒ 列出快速搜尋，按下開新分頁並收起", async () => {
+    test("REGRESSION：選取模式＋有選取 ⇒ 列出外部搜尋，按下開新分頁並收起", async () => {
       const open = vi.spyOn(window, "open").mockImplementation(() => null);
       try {
         const core = makeCore();
@@ -494,9 +494,9 @@ describe("更多（bottom sheet）", () => {
         selectText();
         await openMore();
         // 純數字 ⇒ 內建三項（Google＋pixiv 兩項）都出現，關鍵字畫在第二行。
-        const google = byKey("__qs-google");
+        const google = byKey("__es-google");
         expect(google).not.toBeNull();
-        expect(byKey("__qs-pixiv-user")).not.toBeNull();
+        expect(byKey("__es-pixiv-user")).not.toBeNull();
         expect(google.textContent).toContain("12345678");
         fireEvent.click(google);
         expect(open).toHaveBeenCalledWith(
@@ -518,22 +518,22 @@ describe("更多（bottom sheet）", () => {
       fireEvent.pointerDown(byKey("__more"));
       window.getSelection().removeAllRanges();
       await openMore();
-      expect(byKey("__qs-google")).not.toBeNull();
+      expect(byKey("__es-google")).not.toBeNull();
     });
 
-    test("選取模式關（長按選單本身就有快速搜尋）／沒有選取 ⇒ 不列", async () => {
+    test("選取模式關（長按選單本身就有外部搜尋）／沒有選取 ⇒ 不列", async () => {
       const core = makeCore();
       const r = renderBar(core);
       selectText();
       await openMore();
-      expect(byKey("__qs-google")).toBeNull();
+      expect(byKey("__es-google")).toBeNull();
       r.unmount();
 
       core.mobileSelectMode = true;
       window.getSelection().removeAllRanges();
       renderBar(core);
       await openMore();
-      expect(byKey("__qs-google")).toBeNull();
+      expect(byKey("__es-google")).toBeNull();
     });
   });
 

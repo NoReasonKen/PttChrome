@@ -368,17 +368,17 @@ export const DEFAULT_PREFS = {
   blacklist: "", // newline-separated user ids
   titleBlacklist: "", // newline-separated title keywords (board-list only)
 
-  // 快速搜尋（右鍵選單）。內建項目定義在 quick_search.js#BUILTIN_QUICK_SEARCH，
+  // 外部搜尋（右鍵選單）。內建項目定義在 external_search.js#BUILTIN_EXTERNAL_SEARCH，
   // 這裡只存「被停用的內建 id」而不是整份清單：陣列 pref 走 readValuesWithDefault
   // 的淺層合併＝整包覆蓋，一旦把內建塞進來就凍結在第一次寫入的狀態，日後新增內建
   // 項目時既有使用者永遠看不到。
   // Object.freeze 是刻意的：readValuesWithDefault 與 PrefModal 的 onResetClick 都是
   // { ...DEFAULT_PREFS } 淺層複製、陣列共用同一個 reference，in-place push/splice
   // 會污染整個 session 的預設值 → 一律 [...arr] / filter / map。
-  quickSearchDisabled: Object.freeze([]), // 內建 id，出現在裡面 = 停用
+  externalSearchDisabled: Object.freeze([]), // 內建 id，出現在裡面 = 停用
   // [{ id, name, urlTemplate, match: 'any'|'digits', enabled }]
   // 欄位不可為 undefined：Firestore SDK 遇到會 throw（見 pref_sync.js#savePrefs）。
-  quickSearchCustom: Object.freeze([]),
+  externalSearchCustom: Object.freeze([]),
   // 開站自動登入（src/js/auto_login.js）。**預設開**：沒有憑證時
   // `_resolveCredential` 只會 console.info 後 return —— `navigator.credentials.get`
   // 用的是 `mediation: 'optional'`，沒存過本站密碼的人不會看到任何 UI，所以對新

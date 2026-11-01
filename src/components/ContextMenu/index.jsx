@@ -55,10 +55,10 @@ import {
   isBlacklistableUserId,
 } from "../../js/comment_parse";
 import {
-  quickSearchQueryFor,
-  visibleQuickSearchItems,
-  buildQuickSearchUrl,
-} from "../../js/quick_search";
+  externalSearchQueryFor,
+  visibleExternalSearchItems,
+  buildExternalSearchUrl,
+} from "../../js/external_search";
 import {
   isAidLinkAnchor,
   articleTargetFromAnchor,
@@ -236,10 +236,10 @@ const initialState = {
   menuAnchor: null,
   // 右鍵當下是不是在文章畫面（決定「複製本篇連結」出不出現）。
   articleLinkEnabled: false,
-  // Quick search items shown for the current selection (already filtered by the
+  // External search items shown for the current selection (already filtered by the
   // enabled flag + each item's match rule), and the normalized query they use.
-  quickSearchItems: [],
-  quickSearchQuery: "",
+  externalSearchItems: [],
+  externalSearchQuery: "",
   // 圖片上傳總開關（enableImageUpload），開選單當下現讀。
   imageUploadEnabled: false,
   // 兩個小幫手的顯示開關（預設關），同樣開選單當下現讀。
@@ -446,8 +446,8 @@ export const ContextMenu = ({ pttchrome }) => {
       event.stopPropagation();
       event.preventDefault();
       pttchrome.contextMenuShown = true;
-      // 清掉之前先記下長按自動選起來的那個詞：快速搜尋要拿它當關鍵字
-      // （quick_search.quickSearchQueryFor）。
+      // 清掉之前先記下長按自動選起來的那個詞：外部搜尋要拿它當關鍵字
+      // （external_search.externalSearchQueryFor）。
       let longPressWord = "";
       if (
         shouldClearTouchSelection({
@@ -496,7 +496,7 @@ export const ContextMenu = ({ pttchrome }) => {
         selectionCollapsed: window.getSelection().isCollapsed,
         touchLongPress: touch,
       });
-      // 偏好一次讀完給下面幾個判定共用（快速搜尋／黑名單／選單開關）。
+      // 偏好一次讀完給下面幾個判定共用（外部搜尋／黑名單／選單開關）。
       const prefs = readValuesWithDefault();
       // 底列（pmore 的 footer / prompt）——長推文的 gating 要靠它分辨站內信。
       // 讀 buf 不讀 DOM（DOM 慢一幀，見 docs/enhanced-addon.md 踩坑 A）。
@@ -522,16 +522,16 @@ export const ContextMenu = ({ pttchrome }) => {
         commentCopy,
       });
 
-      // 快速搜尋：每次開選單「現讀」偏好（同下面黑名單判定的手法）→ 設定改完立刻
+      // 外部搜尋：每次開選單「現讀」偏好（同下面黑名單判定的手法）→ 設定改完立刻
       // 生效，不必在 pttchrome.jsx#onPrefChange 掛 case。適用條件（純數字）不符的
       // 項目在這裡就被濾掉，DropdownMenu 只負責畫。
-      const quickSearchQuery = quickSearchQueryFor({
+      const externalSearchQuery = externalSearchQueryFor({
         selEnabled,
         selectedText,
         longPressWord,
       });
-      const quickSearchItems = quickSearchQuery
-        ? visibleQuickSearchItems(prefs, quickSearchQuery)
+      const externalSearchItems = externalSearchQuery
+        ? visibleExternalSearchItems(prefs, externalSearchQuery)
         : [];
 
       // Quick-add blacklist: which author/title region (if any) sits under the
@@ -641,8 +641,8 @@ export const ContextMenu = ({ pttchrome }) => {
             ? menuTargetFromElement(target)
             : null,
         menuAnchor: menuAnchorRect(target, event.clientY, event.clientX),
-        quickSearchItems,
-        quickSearchQuery,
+        externalSearchItems,
+        externalSearchQuery,
         // 「複製本篇連結」只在文章畫面有意義（要按 Q 問文章資訊框）。pageState 3
         // = READING，與 term_view 判「可切回好讀模式」用的是同一個值。
         articleLinkEnabled: pttchrome.buf.pageState === 3,
@@ -693,8 +693,8 @@ export const ContextMenu = ({ pttchrome }) => {
         boardMarkReadTarget: null,
         menuTarget: null,
         menuAnchor: null,
-        quickSearchItems: [],
-        quickSearchQuery: "",
+        externalSearchItems: [],
+        externalSearchQuery: "",
       });
     }
   }, [pttchrome, update]);
@@ -1176,11 +1176,11 @@ export const ContextMenu = ({ pttchrome }) => {
     update({ ...initialState, showsSettings: true });
   }, [pttchrome, update]);
 
-  const onQuickSearchSelect = useCallback(
+  const onExternalSearchSelect = useCallback(
     (item, event) => {
-      const url = buildQuickSearchUrl(
+      const url = buildExternalSearchUrl(
         item.urlTemplate,
-        stateRef.current.quickSearchQuery,
+        stateRef.current.externalSearchQuery,
       );
       window.open(url, "_blank", "noopener");
       event.stopPropagation();
@@ -1374,8 +1374,8 @@ export const ContextMenu = ({ pttchrome }) => {
     articleLinkEnabled,
     contextArticle,
     previews,
-    quickSearchItems,
-    quickSearchQuery,
+    externalSearchItems,
+    externalSearchQuery,
     imageUploadEnabled,
     inputHelperEnabled,
     liveArticleHelperEnabled,
@@ -1419,8 +1419,8 @@ export const ContextMenu = ({ pttchrome }) => {
         urlEnabled={urlEnabled}
         normalEnabled={normalEnabled}
         selEnabled={selEnabled}
-        quickSearchItems={quickSearchItems}
-        quickSearchQuery={quickSearchQuery}
+        externalSearchItems={externalSearchItems}
+        externalSearchQuery={externalSearchQuery}
         authorBlacklistId={blacklistAuthorTarget}
         authorBlacklistExists={blacklistAuthorExists}
         titleBlacklistText={blacklistTitleTarget}
@@ -1445,7 +1445,7 @@ export const ContextMenu = ({ pttchrome }) => {
         commandPaletteEnabled={commandPaletteEnabled}
         commandPaletteKey={commandPaletteKey}
         onCommandPaletteClick={onCommandPaletteClick}
-        onQuickSearchSelect={onQuickSearchSelect}
+        onExternalSearchSelect={onExternalSearchSelect}
       />
       <Suspense fallback={null}>
         <InputHelperModal

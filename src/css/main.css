@@ -79,7 +79,7 @@
    子層的 `user-select: text`（Gecko 判定可選取性是沿 frame 鏈往上走，最外層的非 auto
    值決定），於是 `.main` 想收回來的 text 無效 → 拖曳看得到反白、`Range.toString()` 也
    拿得到字，但 `Selection.toString()` 走 document encoder 時整段被當成不可選而跳過，
-   **回傳空字串**。下游全中：選取自動複製寫進空字串、右鍵快速搜尋關鍵字是空的、^C 複製
+   **回傳空字串**。下游全中：選取自動複製寫進空字串、右鍵外部搜尋關鍵字是空的、^C 複製
    空的。Chrome 讓子層覆寫成功所以看不出來。
    終端機底下真正不該被選到的節點（游標 #cursor、好讀狀態列、樓層徽章）各自
    宣告 none，不需要在最外層再蓋一次。回歸守護：tests/e2e/offline/selection.offline.spec.js

@@ -1,5 +1,5 @@
 import { i18n } from "../../js/i18n";
-import { quickSearchLabel } from "../../js/quick_search";
+import { externalSearchLabel } from "../../js/external_search";
 
 // 右鍵／長按選單的項目清單（純資料）。桌機畫成 Mantine Menu（DropdownMenu.jsx），手機
 // 畫成 bottom sheet（ContextSheet.jsx）——兩邊共用這一份，順序與出現條件只有一個真相源。
@@ -20,7 +20,7 @@ export function buildContextMenuEntries(p) {
     out.push({ type: "divider", key });
   };
   const previews = p.previews || {};
-  const quickSearchItems = p.quickSearchItems || [];
+  const externalSearchItems = p.externalSearchItems || [];
 
   // 黑名單快速新增：桌機右鍵落在作者/標題區塊才出現；手機卡片長按整張都算，兩項
   // 一起出現（context_menu_items.listBlacklistTargets）。作者已在黑名單 → 反灰顯示「已在黑名單」不給點（不隱藏，避免
@@ -110,14 +110,14 @@ export function buildContextMenuEntries(p) {
     item("paste", i18n("cmenu_paste"), (e) => p.onMenuSelect("paste", e), {
       right: "Shift+Insert",
     });
-  // 快速搜尋：一層平鋪，每項自帶關鍵字（像 Chrome 原生的右鍵搜尋）。清單與
+  // 外部搜尋：一層平鋪，每項自帶關鍵字（像 Chrome 原生的右鍵搜尋）。清單與
   // 適用條件（任意文字／純數字）由 index.jsx 現讀偏好算出，這裡只負責排。
-  quickSearchItems.forEach((qs) =>
+  externalSearchItems.forEach((es) =>
     item(
-      "qs-" + qs.id,
-      `${quickSearchLabel(qs)} '${p.quickSearchQuery || ""}'`,
-      (e) => p.onQuickSearchSelect(qs, e),
-      { className: "DropdownMenu__QuickSearch" },
+      "es-" + es.id,
+      `${externalSearchLabel(es)} '${p.externalSearchQuery || ""}'`,
+      (e) => p.onExternalSearchSelect(es, e),
+      { className: "DropdownMenu__ExternalSearch" },
     ),
   );
   if (p.urlEnabled) {

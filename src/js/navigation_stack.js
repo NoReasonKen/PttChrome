@@ -331,7 +331,7 @@ export class NavigationStack {
   _revealed() {
     this.update();
     // Search results the stack was not told of: their Back follows search
-    // return history, not the page below (#33).
+    // backtracking, not the page below (#33).
     const top = this._top();
     if (top?.kind === PAGE.ARTICLE_LIST && !top.results && this._showsSearchResults()) return null;
     const target = revealTarget(this.stack);
@@ -479,7 +479,7 @@ export class NavigationStack {
 
   // The owning session presented a real page of `kind`: an article list
   // (rebuilt, scrolled and positioned), a board list, the home dashboard, or an
-  // article reopened by search return history.
+  // article reopened by search backtracking.
   pagePresented(kind) {
     const h = this.handoff;
     const core = this.core;
@@ -493,7 +493,7 @@ export class NavigationStack {
       return;
     }
     if (h.presentedAt != null) return;
-    // Search return history stopped on the board list instead of the article.
+    // Search backtracking stopped on the board list instead of the article.
     if (h.target === PAGE.ARTICLE && kind === PAGE.ARTICLE_LIST) return this._end('unexpected');
     if (h.target && kind !== h.target) {
       // An article list presents itself again while it is being left; any
@@ -530,7 +530,7 @@ export class NavigationStack {
       return this._end('presented');
     }
     if (h.target === PAGE.ARTICLE) {
-      // Search return history reopens the article by its code, through screens
+      // Search backtracking reopens the article by its code, through screens
       // of its own, and presents it.
       if (core.articleShortcutSearch?.active) return;
       if (pageState === 3 && openArticleKey(core) === h.id) return;
