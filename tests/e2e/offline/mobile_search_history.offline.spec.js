@@ -8,6 +8,7 @@ const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { bootOffline } = require('../helpers/replay');
 const { drawMainMenu } = require('../helpers/main_menu');
+const { expectKindLabelsFit } = require('../helpers/search_kinds');
 
 const byKey = (page, k) => page.locator(`[data-key="${k}"]`);
 const sheet = (page, k) => page.locator(`[data-sheet="${k}"]`);
@@ -118,6 +119,9 @@ test.describe('手機：搜尋紀錄', () => {
     await closeSearch(page);
 
     const { settings, manager } = await openManager(page);
+    const kinds = manager.locator('.mantine-SegmentedControl-root');
+    await expectKindLabelsFit(kinds);
+    await kinds.screenshot({ path: test.info().outputPath('search-kinds.png') });
     // 頂端的返回換成這一頁的名字（同分類頁的「< 本機設定」）。
     await expect(settings.locator('[data-pref-subpage-back]')).toBeVisible();
     // 「設回預設值」是整個設定的，不放在這一頁底下。

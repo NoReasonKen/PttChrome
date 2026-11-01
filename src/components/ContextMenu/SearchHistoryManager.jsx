@@ -4,7 +4,6 @@ import {
   Button,
   Group,
   Stack,
-  SegmentedControl,
   Text,
   Checkbox,
   Badge,
@@ -22,8 +21,8 @@ import {
   removeSearchEntries,
   MAX_PINNED_SEARCH_HISTORY,
   SEARCH_KINDS,
-  SEARCH_KIND_LABEL_KEY,
 } from "../../js/search_history";
+import { SearchKindControl } from "./SearchKindControl";
 import "./SearchHistoryManager.css";
 
 // 搜尋紀錄的管理頁（#70）：設定「本機」底下的一頁，進出由 PrefModal 管（返回、系統返回）。
@@ -215,14 +214,10 @@ export const SearchHistoryManager = ({ toolbarTarget = null }) => {
 
   return (
     <Stack gap="sm" data-search-history-manager>
-      <SegmentedControl
-        fullWidth
+      <SearchKindControl
+        kinds={SEARCH_KINDS}
         value={kind}
         onChange={onKindChange}
-        data={SEARCH_KINDS.map((k) => ({
-          value: k,
-          label: i18n(SEARCH_KIND_LABEL_KEY[k]),
-        }))}
       />
       <Text size="xs" c="dimmed">
         {i18n("searchHistoryManager_help")}

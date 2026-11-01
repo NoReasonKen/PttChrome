@@ -4,7 +4,6 @@ import {
   TextInput,
   Button,
   Group,
-  SegmentedControl,
   Text,
   ScrollArea,
 } from "@mantine/core";
@@ -22,6 +21,7 @@ import {
   searchHistoryOrder,
   SEARCH_KIND_LABEL_KEY,
 } from "../../js/search_history";
+import { SearchKindControl } from "./SearchKindControl";
 import "./SearchModal.css";
 
 // 搜尋彈窗（docs/article-search.md）。取代 PTT 原生的 / ? a Z s prompt：
@@ -229,15 +229,11 @@ export const SearchModal = ({
   const form = (
     <form onSubmit={onSubmit} data-search-modal>
       {shownKinds.length > 1 && (
-        <SegmentedControl
-          fullWidth
+        <SearchKindControl
+          kinds={shownKinds}
           mb="sm"
           value={currentKind}
           onChange={onKindChange}
-          data={shownKinds.map((k) => ({
-            value: k,
-            label: i18n(SEARCH_KIND_LABEL_KEY[k]),
-          }))}
         />
       )}
       <TextInput

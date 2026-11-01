@@ -6,6 +6,7 @@ const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { findCassettes, bootOffline, replayCassette, waitScreenSettled } = require('../helpers/replay');
 const { waitRectStable } = require('../helpers/layout');
+const { expectKindLabelsFit } = require('../helpers/search_kinds');
 
 const articles = findCassettes('article');
 
@@ -80,6 +81,7 @@ test.describe('手機底部工具列（離線重放）', () => {
     await expect(page.locator('input[name="searchKeyword"]')).toBeVisible();
     const kinds = page.locator('[data-search-modal] .mantine-SegmentedControl-label');
     await expect(kinds).toHaveCount(4);
+    await expectKindLabelsFit(page.locator('[data-search-modal] .mantine-SegmentedControl-root'));
     // 彈窗開著時工具列收起（同其他 modal）
     await expect(byKey(page, '__keys')).toHaveCount(0);
   });

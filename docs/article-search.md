@@ -139,6 +139,7 @@ localStorage `pttchrome.searchHistory.v2` = `{title,author,push,board}`，每類
 - 最近：MRU 去重（最新的在前）、上限 10，滿了最舊的掉出去。釘選：上限 10，使用者排的順序，不會被擠掉；滿了就不能再釘。
 - 每次送出搜尋（打字、點搜尋紀錄區、↑ 叫回都算）＝那一類的那個關鍵字 +1 次。已釘選的再搜尋不移動、不重複、不計數。
 - 自動釘選：未釘選的到第 10 次（`AUTO_PIN_USES`，固定值）就釘到釘選的最後面、標 `auto`；釘選已滿 10 筆就不釘也不擠掉任何一筆，下一次搜尋再判斷。任何釘選都把次數歸零；取消釘選回到最近的最前面，從 0 重算。
+- 種類切換列（`SearchKindControl.jsx`）：搜尋視窗與管理頁共用。手機上英文放不下一行就在格子裡換行，快捷鍵跟前一個字黏在一起，只在字之間斷（「Push / count (Z)」）；同一列格子一樣高、字置中。
 - 搜尋紀錄區（`SearchModal.jsx`）：只用來搜尋。列出這一類全部紀錄，釘選的在前（`light`）、最近的在後（`default`），按鈕 `compact-sm`（26px）、間距 8px、換行；超過三行固定三行高（94px），用 `ScrollArea.Autosize type="auto"` 框內捲動，內容超過就一直顯示捲軸，讓人看得出能往下滑。↑ 叫回的順序跟它相同，↓ 回草稿。
 - 管理頁（`SearchHistoryManager.jsx`）：設定「本機」分頁的「管理搜尋紀錄」那一列點進去（設定搜尋的 `ui:searchHistoryManager`），跟設定的分類一樣整頁蓋上去，不是浮動視窗。窄螢幕左欄的返回列變成「‹ 管理搜尋紀錄」，桌機在頁首放「‹ 本機設定」；返回與系統返回都只退回本機設定，Esc 照舊關設定；關掉設定、換分頁或設定搜尋跳走都會離開這一頁，本機設定的捲動位置還原（`PrefModal.jsx`）。
   - 分釘選／最近兩段，各自全選。每一列只有勾選框、關鍵字框、次數（或「自動」）：關鍵字框吃掉剩下的寬度，太長就在框內左右捲並顯示捲軸，不會蓋到次數或撐寬頁面。點關鍵字框也能勾選。
@@ -146,4 +147,4 @@ localStorage `pttchrome.searchHistory.v2` = `{title,author,push,board}`，每類
 
 ## 測試
 
-unit：`article_search.test.js`（判準／指紋／兩條送出路徑／看板列表 session 多步）、`board_search_bridge.test.js`（畫面解析／鍵序／被拒／最新勝出／逾時／收尾閘門）、`search_history.test.js`、`search_modal.test.jsx`（看板補全用假橋接）、`search_history_manager.test.jsx`、`pref_modal_local_tab.test.jsx`、`search_key_intercept.test.js`。offline e2e：`article_search.offline.spec.js`（線上 bytes＝`/\f` → prompt 幀 → `關鍵字\r`、↑ 叫回、Esc 零 byte、pref 關＝原生、已有 prompt 時不攔；看板補全用頁內照 `name.c` 寫的迷你 namecomplete 模擬）；`board_note_skip.offline.spec.js` 的主選單 `s` 卷含一趟合成的補全回應；手機入口在 `mobile_toolbar.offline.spec.js`；搜尋紀錄區的版面與管理頁在 `mobile_search_history.offline.spec.js`。
+unit：`article_search.test.js`（判準／指紋／兩條送出路徑／看板列表 session 多步）、`board_search_bridge.test.js`（畫面解析／鍵序／被拒／最新勝出／逾時／收尾閘門）、`search_history.test.js`、`search_modal.test.jsx`（看板補全用假橋接）、`search_history_manager.test.jsx`、`pref_modal_local_tab.test.jsx`、`search_key_intercept.test.js`。offline e2e：`article_search.offline.spec.js`（線上 bytes＝`/\f` → prompt 幀 → `關鍵字\r`、↑ 叫回、Esc 零 byte、pref 關＝原生、已有 prompt 時不攔；看板補全用頁內照 `name.c` 寫的迷你 namecomplete 模擬）；`board_note_skip.offline.spec.js` 的主選單 `s` 卷含一趟合成的補全回應；手機入口在 `mobile_toolbar.offline.spec.js`；搜尋紀錄區的版面與管理頁在 `mobile_search_history.offline.spec.js`（種類切換列不被裁切的檢查在 `helpers/search_kinds.js`，搜尋視窗那一份在 `mobile_toolbar.offline.spec.js`）。

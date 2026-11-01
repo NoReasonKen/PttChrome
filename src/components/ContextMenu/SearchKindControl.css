@@ -1,0 +1,13 @@
+/* 搜尋種類切換列（SearchKindControl.jsx）：字可以換行，同一列的格子一樣高、字置中。 */
+.searchKindItem {
+  display: flex;
+}
+
+.searchKindLabel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: normal;
+  line-height: 1.25;
+}
