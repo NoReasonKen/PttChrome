@@ -285,12 +285,15 @@ describe("Android APK (native Credential Manager bridge)", () => {
   function installAndroid(reply) {
     const listeners = [];
     const sent = [];
-    window.__PTT_ANDROID__ = { site: "wstelnet://127.0.0.1:1/bbs/t" };
+    window.__PTT_ANDROID__ = { encryptedCredentials: true, site: "wstelnet://127.0.0.1:1/bbs/t" };
     window.PttAndroid = {
       postMessage: str => {
         const msg = JSON.parse(str);
         sent.push(msg);
-        const out = { id: msg.id, ...reply(msg) };
+        const presence = { user: true, password: true, otpSecret: false };
+        const out = msg.op === 'getCredentialStatus'
+          ? { id: msg.id, ok: true, source: 'manager', local: { presence }, manager: { presence } }
+          : { id: msg.id, source: 'manager', ...reply(msg) };
         queueMicrotask(() =>
           listeners.forEach(fn => fn({ data: JSON.stringify(out) }))
         );
@@ -325,12 +328,12 @@ describe("Android APK (native Credential Manager bridge)", () => {
     expect(readValuesWithDefault().autoLoginPassword).toBe("oldpass");
   });
 
-  test("cancelled chooser falls back to local plaintext", async () => {
+  test("cancelled chooser never falls back to local plaintext", async () => {
     installAndroid(() => ({ ok: false }));
     writePrefs({ autoLoginUser: "u", autoLoginPassword: "p" });
     const al = await freshAutoLogin();
     const cred = await al._resolveCredential(readValuesWithDefault());
-    expect(cred).toMatchObject({ user: "u", pass: "p", legacy: true });
+    expect(cred).toBeNull();
   });
 
   test("Android login success never initiates provider storage or migration", async () => {
@@ -357,12 +360,19 @@ describe("Android APK (native Credential Manager bridge)", () => {
 
   test("an older chooser result cannot repopulate the cache after a saved replacement", async () => {
     let reply;
-    window.__PTT_ANDROID__ = {};
-    window.PttAndroid = { postMessage: text => { reply = JSON.parse(text); } };
+    window.__PTT_ANDROID__ = { encryptedCredentials: true };
+    window.PttAndroid = { postMessage: text => {
+      const msg = JSON.parse(text);
+      if (msg.op === 'getCredentialStatus') {
+        const presence = { user: true, password: true, otpSecret: false };
+        queueMicrotask(() => window.PttAndroid.onmessage({ data: JSON.stringify({ id: msg.id, ok: true, source: 'manager', local: { presence }, manager: { presence } }) }));
+      } else reply = msg;
+    } };
     const al = await freshAutoLogin();
     const pending = al._resolveCredential(DEFAULT_PREFS);
+    await vi.waitFor(() => expect(reply).toBeDefined());
     invalidateSessionCredential();
-    window.PttAndroid.onmessage({ data: JSON.stringify({ id: reply.id, ok: true, user: 'old-reader', password: 'old-password' }) });
+    window.PttAndroid.onmessage({ data: JSON.stringify({ id: reply.id, source: 'manager', ok: true, user: 'old-reader', password: 'old-password' }) });
     expect(await pending).toBeNull();
     installAndroid(() => ({ ok: true, user: 'new-reader', password: 'new-password' }));
     expect(await al._resolveCredential(DEFAULT_PREFS)).toMatchObject({ user: 'new-reader' });

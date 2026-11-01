@@ -26,7 +26,7 @@ internal class PasswordManagerCredentials(
     suspend fun get(): PasswordManagerCredential? {
         val credential = retrieve() ?: return null
         if (credential.user.isEmpty() || credential.password.isEmpty()) return null
-        if (!presence.write(presenceOf(credential.user, credential.password))) return null
+        if (!presence.write(credentialPresence(credential))) return null
         return credential
     }
 
@@ -34,15 +34,16 @@ internal class PasswordManagerCredentials(
         if (user.isEmpty() || password.isEmpty()) return PasswordSaveOutcome.FAILED
         val outcome = save.invoke(user, password)
         if (outcome != PasswordSaveOutcome.SAVED) return outcome
-        return if (presence.write(presenceOf(user, password))) outcome else PasswordSaveOutcome.FAILED
+        return if (presence.write(credentialPresence(PasswordManagerCredential(user, password)))) outcome else PasswordSaveOutcome.FAILED
     }
+}
 
-    private fun presenceOf(user: String, password: String): PasswordPresence {
-        // Match credential_pack.js: only a valid leading envelope carries a TOTP secret.
-        val packed = password.removePrefix("pttchrome:v1:")
-        val separator = packed.indexOf(':')
-        val hasSecret = packed != password && separator > 0 &&
-            packed.substring(0, separator).all { it in 'A'..'Z' || it in '2'..'7' }
-        return PasswordPresence(user.isNotEmpty(), password.isNotEmpty(), hasSecret)
-    }
+internal fun credentialPresence(credential: PasswordManagerCredential): PasswordPresence {
+    val (user, password) = credential
+    // Match credential_pack.js: only a valid leading envelope carries a TOTP secret.
+    val packed = password.removePrefix("pttchrome:v1:")
+    val separator = packed.indexOf(':')
+    val hasSecret = packed != password && separator > 0 &&
+        packed.substring(0, separator).all { it in 'A'..'Z' || it in '2'..'7' }
+    return PasswordPresence(user.isNotEmpty(), password.isNotEmpty(), hasSecret)
 }

@@ -320,9 +320,14 @@ describe("test.yml：test-e2e-android job", () => {
   const m = /\n {2}test-e2e-android:\n([\s\S]*?)(?=\n {2}[A-Za-z][\w-]*:\n)/.exec(yaml);
   const body = m ? m[1] : "";
   test("存在，script 直接跑 run-android-e2e --no-boot，不吞 exit code", () => {
-    expect(body).toMatch(/script: node scripts\/run-android-e2e\.mjs --no-boot\s*$/m);
+    expect(body).toMatch(/script:\s*\|\s*\n\s+node scripts\/run-android-e2e\.mjs --no-boot\s*$/m);
     expect(body).not.toMatch(/continue-on-error/);
     expect(body).not.toMatch(/e2e\.exit|\|\| true/);
+  });
+  test("the emulator runs actual Keystore integrity and key-loss checks after the offline APK flow", () => {
+    expect(body).toMatch(/assembleDebug assembleDebugAndroidTest/);
+    expect(body).toMatch(/node scripts\/run-android-e2e\.mjs --no-boot\s*\n\s+cd android && \.\/gradlew --no-daemon connectedDebugAndroidTest/);
+    expect(body).toContain("android/app/build/reports/androidTests/");
   });
   test("開模擬器前先開 KVM 權限", () => {
     const kvm = body.indexOf("udevadm trigger --name-match=kvm");

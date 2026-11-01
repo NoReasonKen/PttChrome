@@ -12,11 +12,13 @@ const secret = page => input(page, 'autoLoginOtpSecret');
 
 // Substitute only the external Android message endpoint. These tests exercise
 // the real narrow settings UI, not an installed APK or a real provider's UI.
-async function installCredentialHost(page) {
-  await page.addInitScript(() => {
+async function installCredentialHost(page, source = 'manager') {
+  await page.addInitScript(source => {
     const listeners = [];
     const host = window.__credentialHost = {
       requests: [],
+      source,
+      localPresence: { user: false, password: false, otpSecret: false },
       saveError: null,
       presence: { user: false, password: false, otpSecret: false },
     };
@@ -24,7 +26,7 @@ async function installCredentialHost(page) {
     localStorage.setItem('pttchrome.pref.v1', JSON.stringify({
       ...prefs, values: { ...prefs.values, autoLogin: false },
     }));
-    window.__PTT_ANDROID__ = { credentialSave: true };
+    window.__PTT_ANDROID__ = { credentialSave: true, encryptedCredentials: true };
     window.PttAndroid = {
       addEventListener(kind, listener) {
         if (kind === 'message') listeners.push(listener);
@@ -33,16 +35,18 @@ async function installCredentialHost(page) {
         const request = JSON.parse(data);
         host.requests.push(request);
         let reply = { id: request.id, ok: false, error: 'unknown op' };
-        if (request.op === 'getPasswordStatus') {
-          reply = { id: request.id, ok: true, presence: host.presence };
-        } else if (request.op === 'getPassword') {
+        if (request.op === 'getCredentialStatus') {
+          reply = { id: request.id, ok: true, source: host.source, local: { presence: host.localPresence }, manager: { presence: host.presence } };
+        } else if (request.op === 'getLoginCredential') {
           reply = { id: request.id, ok: false, error: 'missing' };
-        } else if (request.op === 'storePassword') {
+        } else if (request.op === 'saveCredentials') {
           if (host.saveError) {
             reply = { id: request.id, ok: false, error: host.saveError };
           } else {
-            host.presence = { user: true, password: true, otpSecret: request.password.startsWith('pttchrome:v1:') };
-            reply = { id: request.id, ok: true, presence: host.presence };
+            host.source = request.source;
+            const key = host.source === 'local' ? 'localPresence' : 'presence';
+            if (request.user) host[key] = { user: true, password: true, otpSecret: request.password.startsWith('pttchrome:v1:') };
+            reply = { id: request.id, ok: true, source: host.source, presence: host[key] };
           }
         }
         queueMicrotask(() => {
@@ -50,11 +54,11 @@ async function installCredentialHost(page) {
         });
       },
     };
-  });
+  }, source);
 }
 
-async function bootSettings(page) {
-  await installCredentialHost(page);
+async function bootSettings(page, source) {
+  await installCredentialHost(page, source);
   await bootOffline(page, ptt);
   await drawMainMenu(page);
   await expect(page.locator('body')).toHaveClass(/mobile-layout/);
@@ -80,7 +84,7 @@ const saveButton = async page => page.locator('.PrefModal').getByRole('button', 
 });
 const closeSettings = page => page.locator('.PrefModal').getByRole('button', { name: 'Close', exact: true }).tap();
 const providerOperations = page => page.evaluate(() => window.__credentialHost.requests
-  .filter(request => request.op === 'getPassword' || request.op === 'storePassword')
+  .filter(request => request.op === 'getLoginCredential' || request.op === 'saveCredentials')
   .map(request => request.op));
 
 async function expectPresence(page, withSecret) {
@@ -123,7 +127,7 @@ test('mobile explicit manager save clears fields and keeps per-field status on r
   await expect(page.locator('.PrefModal')).toHaveCount(0);
   await openCredentials(page);
   await expectPresence(page, true);
-  expect(await providerOperations(page)).toEqual(['storePassword']);
+  expect(await providerOperations(page)).toEqual(['saveCredentials']);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('pttchrome.pref.v1')).values);
   expect(stored.autoLogin).toBe(false);
   for (const key of ['autoLoginUser', 'autoLoginPassword', 'autoLoginOtpSecret']) {
@@ -137,7 +141,7 @@ test('mobile explicit manager save clears fields and keeps per-field status on r
   await closeSettings(page);
   await openCredentials(page);
   await expectPresence(page, false);
-  expect(await providerOperations(page)).toEqual(['storePassword', 'storePassword']);
+  expect(await providerOperations(page)).toEqual(['saveCredentials', 'saveCredentials']);
 });
 
 test('mobile cancelled and failed saves preserve drafts and leave unsaved choices under reader control', async ({ page }) => {
@@ -167,7 +171,7 @@ test('mobile cancelled and failed saves preserve drafts and leave unsaved choice
   await openCredentials(page);
   await expect(user(page)).toHaveValue('');
   await expect(user(page)).toHaveAttribute('placeholder', await text(page, 'placeholder_manager_user_empty'));
-  expect(await providerOperations(page)).toEqual(['storePassword', 'storePassword']);
+  expect(await providerOperations(page)).toEqual(['saveCredentials', 'saveCredentials']);
 
   await page.evaluate(() => { window.__credentialHost.saveError = null; });
   await fillCredentials(page);
@@ -176,7 +180,52 @@ test('mobile cancelled and failed saves preserve drafts and leave unsaved choice
   await expect(page.locator('.PrefModal')).toHaveCount(0);
   await openCredentials(page);
   await expectPresence(page, false);
-  expect(await providerOperations(page)).toEqual(['storePassword', 'storePassword', 'storePassword']);
+  expect(await providerOperations(page)).toEqual(['saveCredentials', 'saveCredentials', 'saveCredentials']);
+});
+
+test('mobile local storage choice remains a draft until saved and independently retains both destinations', async ({ page }) => {
+  await bootSettings(page, 'local');
+  const radio = async source => page.locator('.PrefModal').getByRole('radio', {
+    name: await text(page, 'options_credentialsSource_' + source), exact: true,
+  });
+  await expect(await radio('local')).toBeChecked();
+  await expect(user(page)).toHaveAttribute('placeholder', await text(page, 'placeholder_local_user_empty'));
+  await fillCredentials(page, SECRET);
+  await (await saveButton(page)).tap();
+  await expect(user(page)).toHaveValue('');
+  await expect(user(page)).toHaveAttribute('placeholder', await text(page, 'placeholder_local_user_saved'));
+  await expect(secret(page)).toHaveAttribute('placeholder', await text(page, 'placeholder_local_otpSecret_saved'));
+  await expectNoHorizontalOverflow(page);
+  await page.locator('.PrefModal').getByRole('radiogroup', { name: await text(page, 'options_credentialsSource') }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: test.info().outputPath('credentials-local-source.png'), animations: 'disabled' });
+
+  await (await radio('manager')).tap();
+  await expect(user(page)).toHaveAttribute('placeholder', await text(page, 'placeholder_manager_user_empty'));
+  expect(await page.evaluate(() => window.__credentialHost.source)).toBe('local');
+  await closeSettings(page);
+  const unsaved = page.getByRole('dialog', { name: await text(page, 'options_credentialsUnsaved'), exact: true });
+  await unsaved.getByRole('button', { name: await text(page, 'options_credentialsSave'), exact: true }).tap();
+  await expect(page.locator('.PrefModal')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__credentialHost.source)).toBe('manager');
+  await openCredentials(page);
+  await fillCredentials(page);
+  await (await saveButton(page)).tap();
+  await expectPresence(page, false);
+  await (await radio('local')).tap();
+  await expect(user(page)).toHaveValue('');
+  await expect(secret(page)).toHaveAttribute('placeholder', await text(page, 'placeholder_local_otpSecret_saved'));
+  await (await saveButton(page)).tap();
+  await closeSettings(page);
+  await openCredentials(page);
+  await expect(await radio('local')).toBeChecked();
+  await expect(secret(page)).toHaveAttribute('placeholder', await text(page, 'placeholder_local_otpSecret_saved'));
+  const saves = await page.evaluate(() => window.__credentialHost.requests.filter(request => request.op === 'saveCredentials'));
+  expect(saves.map(({ source, user }) => ({ source, replaced: !!user }))).toEqual([
+    { source: 'local', replaced: true }, { source: 'manager', replaced: false },
+    { source: 'manager', replaced: true }, { source: 'local', replaced: false },
+  ]);
+  const webStorage = await page.evaluate(() => Object.values(localStorage).join('\n'));
+  for (const value of ['offline-reader', 'synthetic-password', SECRET]) expect(webStorage).not.toContain(value);
 });
 
 test('mobile validation shows red field borders and reasons below each invalid input', async ({ page }) => {
@@ -225,5 +274,5 @@ test('mobile validation shows red field borders and reasons below each invalid i
   await secret(page).fill('');
   await (await saveButton(page)).tap();
   await expectPresence(page, false);
-  expect(await providerOperations(page)).toEqual(['storePassword']);
+  expect(await providerOperations(page)).toEqual(['saveCredentials']);
 });

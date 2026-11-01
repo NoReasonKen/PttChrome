@@ -8,7 +8,9 @@
 // app.sendData (Big5-converted). Stops once the main menu is reached or after a
 // max duration, so it never interferes with normal use.
 //
-// Credential sources, in order (see _resolveCredential):
+// Android resolves only the installed app's explicitly selected source, with no
+// provider/plaintext fallback. Native status is checked before cache reuse.
+// Browser credential sources, in order (see _resolveCredential):
 //   1. session cache — set when PrefModal saves, or by an earlier resolution;
 //      keeps reconnects from re-prompting the browser chooser.
 //   2. password manager via credential_store.js: the browser's Credential
@@ -38,10 +40,15 @@ import {
 import { packCredential, unpackCredential } from './credential_pack';
 import { isAndroidApp } from './android_bridge';
 import { rememberCredential } from './credential_redaction';
+import { i18n } from './i18n';
+import { HINT_ERROR } from './status_hint';
 import {
   credentialStoreAvailable,
   getStoredCredential,
-  storeCredential
+  storeCredential,
+  androidEncryptedCredentialsAvailable,
+  getAndroidCredentialStatus,
+  getAndroidLoginCredential,
 } from './credential_store';
 import {
   isValidOtpSecret,
@@ -138,6 +145,7 @@ AutoLogin.prototype.setSessionCredential = function(user, pass, otpSecret) {
 };
 
 AutoLogin.prototype._resolveCredential = async function(v) {
+  if (isAndroidApp()) return this._resolveAndroidCredential();
   const revision = credentialRevision;
   if (sessionCred) {
     console.info('auto_login: credential source = session cache');
@@ -202,6 +210,41 @@ AutoLogin.prototype._resolveCredential = async function(v) {
     if (revision !== credentialRevision) return null;
     return legacy();
   }
+};
+
+// The installed app owns the active source. Recheck it before reusing this
+// page's cache, so neither a draft choice nor an old cache overrides native state.
+AutoLogin.prototype._resolveAndroidCredential = async function() {
+  const revision = credentialRevision;
+  const failed = status => {
+    sessionCred = null;
+    const key = status === 'unavailable' ? 'options_credentialsUpgrade'
+      : status === 'unreadable' ? 'options_credentials_unreadable'
+      : 'options_credentialsLogin_' + (['missing', 'cancelled'].includes(status) ? status : 'failed');
+    this._app.view?.flashListHint?.(i18n(key), 6000, HINT_ERROR);
+    return null;
+  };
+  if (!androidEncryptedCredentialsAvailable()) return failed('unavailable');
+  const state = await getAndroidCredentialStatus();
+  if (revision !== credentialRevision) return null;
+  if (!state) return failed('failed');
+  if (state[state.source].error) return failed(state[state.source].error);
+  if (sessionCred?.source === state.source) return sessionCred;
+  const result = await getAndroidLoginCredential(state.source);
+  if (revision !== credentialRevision) return null;
+  if (result.status !== 'ready') return failed(result.status);
+  const unpacked = unpackCredential(result.credential.password);
+  if (!unpacked.password) return failed('missing');
+  sessionCred = {
+    source: state.source,
+    user: result.credential.id,
+    pass: unpacked.password,
+    otpSecret: unpacked.otpSecret,
+    legacy: false,
+    needsStore: false,
+  };
+  rememberCredential(sessionCred);
+  return sessionCred;
 };
 
 // Browser login succeeded and the store either doesn't have these credentials

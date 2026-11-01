@@ -21,6 +21,16 @@
   `ANDROID_E2E_APK` 已設（CI）或 `--no-build` 時不建；沒有 APK 就略過，CI 缺 APK＝exit 2。
 - 未涵蓋：密碼管理員／Google 登入 bridge（模擬器上沒有 Google 帳號與已存密碼）、檔案選擇器。
 
+`credentials.android.spec.js` exercises local encrypted automatic login through
+the real APK bridge and Keystore with synthetic offline prompts. It covers a
+fresh process, ciphertext inspection, approved page-source sharing and compatible
+package replacement. A higher-version compatible APK is optional through
+`ANDROID_CREDENTIAL_UPDATE_APK`; same-version replacement alone is not version
+upgrade evidence. `DeviceCredentialsInstrumentedTest` separately exercises actual
+Keystore integrity and missing-key failures. The CI emulator runs these with
+`connectedDebugAndroidTest` after the offline APK suite; see
+[Android credentials](android-credentials.md) for boundaries and device acceptance.
+
 ## 檔案
 
 | 路徑 | 職責 |

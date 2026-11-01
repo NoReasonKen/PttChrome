@@ -708,11 +708,12 @@ Base32（PTT 給 10 bytes＝16 字元），server 驗證 `time_window=1`（±30s
 
 ### 憑證儲存（Credential Management API）
 
-Android uses an explicit save action and app-owned last-confirmed field status;
-see [Android credentials](android-credentials.md). The implicit save-on-close,
+Android uses an explicit save action, a native local-encrypted/password-manager
+source choice, and per-field presence status; see [Android credentials](android-credentials.md).
+Android login never falls back to legacy plaintext or another source. The implicit save-on-close,
 post-login migration and provider/legacy-secret merging described below apply
-only to the browser version. The Android legacy fallback cleanup is a separate
-follow-up to the explicit-save slice.
+only to the browser version. Removal of retained Android legacy data and explicit
+local deletion follow separately.
 
 密碼**不再長期明文落地 localStorage**（支援的瀏覽器）。解析順序（`_resolveCredential`）：
 1. **session cache**（module-level `sessionCred`；PrefModal 存檔經 `onValuesPrefChange` →

@@ -1,12 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, Group, Modal, Text, TextInput } from "@mantine/core";
+import {
+  Button,
+  Group,
+  Modal,
+  Radio,
+  Stack,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import { i18n } from "../../js/i18n";
 import { normalizeOtpSecret, isValidOtpSecret } from "../../js/totp";
 import { packCredential } from "../../js/credential_pack";
 import {
-  androidCredentialSaveAvailable,
-  getPasswordManagerPresence,
-  storeCredential,
+  androidEncryptedCredentialsAvailable,
+  getAndroidCredentialStatus,
+  saveAndroidCredentials,
 } from "../../js/credential_store";
 import { invalidateSessionCredential } from "../../js/auto_login";
 import { rememberCredential } from "../../js/credential_redaction";
@@ -17,33 +25,37 @@ const emptyDraft = () => ({ user: "", pass: "", otpSecret: "" });
 // across category changes, but is discarded when the whole settings dialog closes.
 export function useAndroidCredentialDraft(show, enabled) {
   const [draft, setDraft] = useState(emptyDraft);
-  const [presence, setPresence] = useState(null);
+  const [status, setStatus] = useState(null);
+  const [source, setSource] = useState("local");
   const [result, setResult] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
   const statusRevision = useRef(0);
-  const supported = enabled && androidCredentialSaveAvailable();
+  const supported = enabled && androidEncryptedCredentialsAvailable();
   useEffect(() => {
     setDraft(emptyDraft());
     setResult(null);
     setFieldErrors({});
+    setSource("local");
+    setStatus(null);
     if (!show || !supported) return;
     let alive = true;
     const revision = ++statusRevision.current;
-    setPresence(null);
-    getPasswordManagerPresence().then((status) => {
+    getAndroidCredentialStatus().then((value) => {
       if (!alive || revision !== statusRevision.current) return;
-      setPresence(status);
-      if (!status) setResult("statusUnavailable");
+      setStatus(value);
+      if (value) setSource(value.source);
+      else setResult("statusUnavailable");
     });
     return () => {
       alive = false;
     };
   }, [show, supported]);
 
-  const dirty = Object.values(draft).some(Boolean);
-  const errors = dirty
+  const hasCredentials = Object.values(draft).some(Boolean);
+  const dirty = hasCredentials || !!(status && source !== status.source);
+  const errors = hasCredentials
     ? {
         user: !draft.user.trim()
           ? "options_credentials_userRequired"
@@ -68,9 +80,14 @@ export function useAndroidCredentialDraft(show, enabled) {
     setDraft(emptyDraft());
     setResult(null);
     setFieldErrors({});
+    setSource(status?.source || "local");
   };
   const save = async () => {
     if (busy.current || !supported) return false;
+    if (!status) {
+      setResult("statusUnavailable");
+      return false;
+    }
     if (!dirty) return true;
     setFieldErrors(errors);
     if (!valid) {
@@ -87,23 +104,30 @@ export function useAndroidCredentialDraft(show, enabled) {
     setSaving(true);
     setResult(null);
     try {
-      const saved = await storeCredential({
-        id: credential.user,
-        password: packCredential(credential.pass, credential.otpSecret),
+      const saved = await saveAndroidCredentials({
+        source,
+        ...(hasCredentials
+          ? {
+              id: credential.user,
+              password: packCredential(credential.pass, credential.otpSecret),
+            }
+          : {}),
       });
       setResult(
-        saved.status === "saved" || saved.status === "cancelled"
-          ? saved.status
-          : "failed",
+        saved.status === "saved" && !hasCredentials
+          ? "sourceSaved"
+          : ["saved", "cancelled", "unreadable"].includes(saved.status)
+            ? saved.status
+            : "failed",
       );
       if (saved.status !== "saved") return false;
       statusRevision.current += 1;
       invalidateSessionCredential();
-      setPresence({
-        user: true,
-        password: true,
-        otpSecret: !!credential.otpSecret,
-      });
+      setStatus((previous) => ({
+        ...previous,
+        source,
+        [source]: { presence: saved.presence },
+      }));
       setDraft(emptyDraft());
       setFieldErrors({});
       return true;
@@ -114,7 +138,16 @@ export function useAndroidCredentialDraft(show, enabled) {
   };
   return {
     draft,
-    presence,
+    source,
+    presence: status?.[source]?.error ? null : status?.[source]?.presence,
+    sourceError: status?.[source]?.error,
+    ready: !!status,
+    chooseSource: (value) => {
+      if (!busy.current && status && ["local", "manager"].includes(value)) {
+        setSource(value);
+        setResult(null);
+      }
+    },
     result,
     saving,
     supported,
@@ -137,6 +170,34 @@ export function AndroidCredentialSettings({ editor, anchor }) {
       {!editor.supported && (
         <Text role="alert" c="yellow" mb="xs">
           {i18n("options_credentialsUpgrade")}
+        </Text>
+      )}
+      <Radio.Group
+        name="androidCredentialSource"
+        label={i18n("options_credentialsSource")}
+        value={editor.source}
+        onChange={editor.chooseSource}
+        mb="sm"
+      >
+        <Stack gap="xs" mt="xs">
+          {["local", "manager"].map((source) => (
+            <Radio
+              key={source}
+              value={source}
+              label={i18n("options_credentialsSource_" + source)}
+              disabled={!editor.supported || !editor.ready || editor.saving}
+            />
+          ))}
+        </Stack>
+      </Radio.Group>
+      {editor.sourceError && (
+        <Text role="alert" c="red" mb="xs">
+          {i18n(
+            "options_credentials_" +
+              (editor.sourceError === "unreadable"
+                ? "unreadable"
+                : "statusUnavailable"),
+          )}
         </Text>
       )}
       {[
@@ -167,7 +228,7 @@ export function AndroidCredentialSettings({ editor, anchor }) {
             placeholder={
               editor.presence
                 ? i18n(
-                    `placeholder_manager_${statusKey}_${editor.presence[statusKey] ? "saved" : "empty"}`,
+                    `placeholder_${editor.source}_${statusKey}_${editor.presence[statusKey] ? "saved" : "empty"}`,
                   )
                 : undefined
             }
@@ -180,7 +241,7 @@ export function AndroidCredentialSettings({ editor, anchor }) {
                   }
                 : undefined
             }
-            disabled={!editor.supported || editor.saving}
+            disabled={!editor.supported || !editor.ready || editor.saving}
             maxLength={key === "pass" ? 72 : undefined}
             mb="xs"
             {...anchor(name)}
@@ -191,14 +252,14 @@ export function AndroidCredentialSettings({ editor, anchor }) {
         {i18n("tooltip_androidCredentialSecret")}
       </Text>
       <Text className="PrefModal__warning">
-        {i18n("tooltip_autoLoginOtpSecretRisk")}
+        {i18n("tooltip_androidCredentialSecretRisk")}
       </Text>
       <Button
         variant="default"
         size="xs"
         onClick={editor.save}
         loading={editor.saving}
-        disabled={!editor.supported || !editor.dirty}
+        disabled={!editor.supported || !editor.ready || !editor.dirty}
       >
         {i18n("options_credentialsSave")}
       </Button>

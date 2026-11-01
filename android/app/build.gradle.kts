@@ -39,6 +39,7 @@ android {
         targetSdk = 37
         versionCode = (System.getenv("ANDROID_VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("ANDROID_VERSION_NAME") ?: "1.0.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -92,4 +93,6 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation(libs.junit)
 }

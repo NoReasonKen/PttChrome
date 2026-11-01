@@ -282,7 +282,7 @@ jobs:
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew --no-daemon assembleDebug
+        run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
 
       # 沒有 KVM 的模擬器開機 13–20 分鐘、adb 動不動 offline；ubuntu runner 有 /dev/kvm 但要開權限。
       - name: Enable KVM
@@ -317,7 +317,9 @@ jobs:
           profile: pixel_6
           avd-name: pttchrome_e2e
           emulator-options: -no-window -no-snapshot -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: node scripts/run-android-e2e.mjs --no-boot
+          script: |
+            node scripts/run-android-e2e.mjs --no-boot
+            cd android && ./gradlew --no-daemon connectedDebugAndroidTest
 
       - name: Runner resources report
         if: always()
@@ -332,6 +334,8 @@ jobs:
           path: |
             test-results/
             ci-diagnostics/
+            android/app/build/reports/androidTests/
+            android/app/build/outputs/androidTest-results/
           retention-days: 14
 
   # proxy/imgur-worker 是獨立的 npm 子專案（Cloudflare Worker 代理，非 yarn workspace），

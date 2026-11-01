@@ -7,6 +7,18 @@
 //   window.PttAndroid       androidx.webkit WebMessageListener 物件：postMessage(string)／onmessage
 //
 // 訊息合約（JSON 字串）：
+//   encryptedCredentials:true enables the installed app's selected-source API:
+//   → { id, op: 'getCredentialStatus' }
+//     ← { id, ok:true, source:'local'|'manager', local:{presence,error?}, manager:{presence,error?} }
+//   → { id, op: 'saveCredentials', source, user?, password? }
+//     ← { id, ok:true, source, presence } | { id, ok:false, error }
+//     An omitted/empty pair changes only the source. A complete pair replaces
+//     that destination. Failure preserves the prior source and local record.
+//   → { id, op: 'getLoginCredential' }
+//     ← { id, ok:true, source, user, password } | { id, ok:false, source?, error }
+//     Only the selected destination is read. Error codes are sanitized; there
+//     is no legacy-plaintext or cross-source fallback. Status never returns a
+//     saved identity or secret. Existing provider ops remain for older pages.
 //   → { id, op: 'getPassword' }                          ← { id, ok, user, password }
 //   → { id, op: 'storePassword', user, password }        ← { id, ok, presence? } | { id, ok:false, error }
 //   → { id, op: 'getPasswordStatus' }                   ← { id, ok, presence }

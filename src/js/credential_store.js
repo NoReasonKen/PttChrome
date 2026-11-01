@@ -1,16 +1,71 @@
-// 密碼管理員的單一入口：瀏覽器的 Credential Management API（PasswordCredential，
-// Chrome → Google 密碼管理員），或 Android APK 殼的原生 Credential Manager（經
-// android_bridge）。Android WebView **沒有** PasswordCredential，所以 APK 裡必須走
-// bridge，否則自動登入永遠拿不到密碼。
-//
-// 兩個後端存的是同一種東西：id ＝ PTT 帳號，password ＝ credential_pack 打包後的字串
-// （可能夾帶 2FA 密鑰）。打包／解包留在呼叫端，所以 Chrome 與 APK 讀到的是同一筆。
-//
-//   available()        → boolean
-//   get()              → Promise<{ id, password } | null>（使用者取消／沒有 ⇒ null）
-//   store({ id, password }) → Promise<void>（失敗吞掉：呼叫端的本機副本就是後援）
+// Credential storage boundary. Android owns its selected source and encrypted
+// record; the browser keeps its Credential Management API behavior. Both carry
+// the existing optional-secret password envelope, decoded by the login caller.
+// Native result/status helpers expose only allowlisted fields and error codes.
 
 import { androidBridgeAvailable, requestAndroid } from './android_bridge';
+
+export function androidEncryptedCredentialsAvailable() {
+  return androidBridgeAvailable() && window.__PTT_ANDROID__.encryptedCredentials === true;
+}
+
+const sourceValid = source => source === 'local' || source === 'manager';
+const presenceKeys = ['user', 'password', 'otpSecret'];
+function readPresence(value) {
+  if (!value || !presenceKeys.every(key => typeof value[key] === 'boolean')) return null;
+  return Object.fromEntries(presenceKeys.map(key => [key, value[key]]));
+}
+
+// Native source and metadata belong to the installed app, never web preferences.
+// Allowlist response fields so a status request cannot populate identity values.
+export async function getAndroidCredentialStatus() {
+  if (!androidEncryptedCredentialsAvailable()) return null;
+  try {
+    const result = await requestAndroid('getCredentialStatus');
+    if (!result?.ok || !sourceValid(result.source)) return null;
+    const local = readPresence(result.local?.presence);
+    const manager = readPresence(result.manager?.presence);
+    if (!local || !manager) return null;
+    return {
+      source: result.source,
+      local: { presence: local, ...(result.local.error ? { error: 'unreadable' } : {}) },
+      manager: { presence: manager, ...(result.manager.error ? { error: 'failed' } : {}) },
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function saveAndroidCredentials({ source, id, password }) {
+  if (!androidEncryptedCredentialsAvailable() || !sourceValid(source)) return { status: 'unavailable' };
+  try {
+    const payload = { source };
+    if (id || password) Object.assign(payload, { user: id || '', password: password || '' });
+    const result = await requestAndroid('saveCredentials', payload);
+    const presence = readPresence(result?.presence);
+    if (result?.ok && result.source === source && presence) {
+      return { status: 'saved', source, presence };
+    }
+    return { status: result?.error === 'cancelled' ? 'cancelled' : result?.error === 'unreadable' ? 'unreadable' : 'failed' };
+  } catch {
+    return { status: 'failed' };
+  }
+}
+
+export async function getAndroidLoginCredential(source) {
+  if (!androidEncryptedCredentialsAvailable()) return { status: 'unavailable' };
+  try {
+    const result = await requestAndroid('getLoginCredential');
+    if (result?.ok && result.source === source &&
+        typeof result.user === 'string' && result.user &&
+        typeof result.password === 'string' && result.password) {
+      return { status: 'ready', credential: { id: result.user, password: result.password } };
+    }
+    return { status: ['missing', 'cancelled', 'unreadable'].includes(result?.error) ? result.error : 'failed' };
+  } catch {
+    return { status: 'failed' };
+  }
+}
 
 export function androidCredentialSaveAvailable() {
   return androidBridgeAvailable() && window.__PTT_ANDROID__.credentialSave === true;
@@ -41,6 +96,12 @@ export function credentialStoreAvailable() {
 }
 
 export async function getStoredCredential() {
+  if (androidEncryptedCredentialsAvailable()) {
+    const status = await getAndroidCredentialStatus();
+    if (!status) return null;
+    const result = await getAndroidLoginCredential(status.source);
+    return result.credential || null;
+  }
   if (androidBridgeAvailable()) {
     const r = await requestAndroid('getPassword');
     if (r && r.ok && r.user && r.password) {

@@ -18,16 +18,17 @@ import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
+import kotlinx.coroutines.CancellationException
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 
 /**
- * Credential Manager bridge for password-manager login and Google cloud-sync sign-in.
+ * Installed-app credential storage and Credential Manager bridge, plus Google cloud-sync sign-in.
  *
  * WebView has no PasswordCredential API. Passwords travel unchanged through this
- * bridge; credential_pack.js packs and unpacks the optional TOTP secret. Only
- * last-confirmed presence flags are retained by the app, not account information.
+ * bridge; credential_pack.js packs and unpacks the optional TOTP secret. Local
+ * credentials remain encrypted; provider status retains only last-confirmed flags.
  * The message contract is documented in src/js/android_bridge.js.
  */
 class CredentialBridge(private val activity: Activity) {
@@ -51,12 +52,18 @@ class CredentialBridge(private val activity: Activity) {
             }
         },
     )
+    private val deviceCredentials = DeviceCredentials(
+        DeviceCredentialFile(File(activity.noBackupFilesDir, DeviceCredentialFile.FILE_NAME)),
+        LocalCredentialEncryption(AndroidCredentialKey()::resolve),
+        passwords,
+    )
 
     /** Return the JSON reply for the requesting page. Never expose provider exception contents. */
     suspend fun handle(request: JSONObject): String {
         val id = request.optInt("id")
         val reply = JSONObject().put("id", id)
         when (request.optString("op")) {
+            "getCredentialStatus", "getLoginCredential", "saveCredentials" -> handleDeviceCredentials(request, reply)
             "getPassword" -> try {
                 val credential = passwords.get()
                 if (credential != null) {
@@ -100,6 +107,41 @@ class CredentialBridge(private val activity: Activity) {
             else -> reply.put("ok", false).put("error", "unknown op")
         }
         return reply.toString()
+    }
+
+    private suspend fun handleDeviceCredentials(request: JSONObject, reply: JSONObject) {
+        try {
+            when (request.optString("op")) {
+                "getCredentialStatus" -> {
+                    val status = deviceCredentials.status()
+                    reply.put("ok", true).put("source", status.source.wire)
+                        .put("local", status.local.toJson()).put("manager", status.manager.toJson())
+                }
+                "getLoginCredential" -> {
+                    val selected = deviceCredentials.get()
+                    reply.put("ok", true).put("source", selected.source.wire)
+                        .put("user", selected.credential.user).put("password", selected.credential.password)
+                }
+                "saveCredentials" -> {
+                    val source = CredentialSource.fromWire(request.optString("source"))
+                        ?: throw CredentialStorageException("invalid")
+                    val saved = deviceCredentials.save(source, request.optString("user"), request.optString("password"))
+                    reply.put("ok", true).put("source", saved.source.wire).put("presence", saved.presence.toJson())
+                }
+            }
+        } catch (failure: CredentialStorageException) {
+            reply.put("ok", false).put("error", failure.code)
+            failure.source?.let { reply.put("source", it.wire) }
+        } catch (_: NoCredentialException) {
+            reply.put("ok", false).put("source", CredentialSource.MANAGER.wire).put("error", "missing")
+        } catch (_: GetCredentialCancellationException) {
+            reply.put("ok", false).put("source", CredentialSource.MANAGER.wire).put("error", "cancelled")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Never send raw platform/provider exception contents to the page or diagnostics.
+            reply.put("ok", false).put("error", "failed")
+        }
     }
 
     /**
@@ -146,6 +188,10 @@ private fun PasswordPresence.toJson() = JSONObject()
     .put("user", user)
     .put("password", password)
     .put("otpSecret", otpSecret)
+
+private fun CredentialDestinationStatus.toJson() = JSONObject().put("presence", presence.toJson()).also { json ->
+    error?.let { json.put("error", it) }
+}
 
 private val GOOGLE_WEB_CLIENT_ID = Regex("""\d+-[a-z0-9]+\.apps\.googleusercontent\.com""")
 

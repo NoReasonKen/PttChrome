@@ -231,6 +231,7 @@ class MainActivity : ComponentActivity() {
             .put("systemLanguage", updater.systemLanguage())
             .put("updates", true)
             .put("credentialSave", true)
+            .put("encryptedCredentials", true)
             .put("updateBlocking", updater.blocking())
             .put("openUpdate", intent.getBooleanExtra("open_update", false))
             .put("site", site)
