@@ -246,14 +246,20 @@ jobs:
           path: test-results/
           retention-days: 14
 
-  # Android 模擬器上的真 Chrome（同 test.yml 的 test-e2e-android，步驟要跟著它改）。
+  # Android 模擬器上的真 Chrome（同 test.yml 的 test-e2e-android-group，步驟要跟著它改）。
   # 每週一次（gate 的 android 輸出），--repeat-each 經 run-android-e2e.mjs 轉給 playwright。
   # runner exit 2（模擬器環境沒準備好）一樣是紅：判讀見 docs/ci-troubleshooting.md。
+  # Same groups as test.yml: every spec × 5 repeats on one emulator would take ~45 min after
+  # the credentials spec arrived, the whole timeout.
   android-repeat:
     needs: gate
     if: needs.gate.outputs.skip != 'true' && needs.gate.outputs.android == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [apk, chrome]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -266,23 +272,27 @@ jobs:
           cache: yarn
       - run: yarn install --immutable
       - uses: actions/setup-java@v6
+        if: matrix.group == 'apk'
         with:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        if: matrix.group == 'apk'
       - name: Build debug APK
+        if: matrix.group == 'apk'
         working-directory: android
-        run: ./gradlew --no-daemon assembleDebug
+        run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       # grep 經 env 傳（不內插進 shell）；空 grep 就不帶。
-      - name: Android e2e × ${{ env.ANDROID_REPEAT }} (emulator)
+      - name: Android e2e × ${{ env.ANDROID_REPEAT }} (emulator, ${{ matrix.group }})
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         env:
           ANDROID_E2E_APK: ${{ github.workspace }}/android/app/build/outputs/apk/debug/app-debug.apk
+          ANDROID_E2E_TEST_APK: ${{ github.workspace }}/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
         with:
           api-level: 34
           target: google_apis
@@ -290,12 +300,12 @@ jobs:
           profile: pixel_6
           avd-name: pttchrome_e2e
           emulator-options: -no-window -no-snapshot -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: node scripts/run-android-e2e.mjs --no-boot --repeat-each="$ANDROID_REPEAT" ${GREP:+--grep "$GREP" --pass-with-no-tests}
+          script: node scripts/run-android-e2e.mjs --no-boot --group=${{ matrix.group }} --repeat-each="$ANDROID_REPEAT" ${GREP:+--grep "$GREP" --pass-with-no-tests}
       - name: Upload failure artifacts
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: flaky-hunt-android-attempt-${{ github.run_attempt }}
+          name: flaky-hunt-android-${{ matrix.group }}-attempt-${{ github.run_attempt }}
           path: |
             test-results/
             ci-diagnostics/

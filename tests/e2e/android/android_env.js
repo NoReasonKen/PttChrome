@@ -112,6 +112,13 @@ function apkPath(env = process.env, root = path.resolve(__dirname, '../../..')) 
   return env.ANDROID_E2E_APK || path.join(root, 'android/app/build/outputs/apk/debug/app-debug.apk');
 }
 
+// The instrumented test APK (`assembleDebugAndroidTest`) and its runner, from android/app/build.gradle.kts.
+const APK_TEST_PKG = `${APK_PKG}.test`;
+const INSTRUMENTATION_RUNNER = 'androidx.test.runner.AndroidJUnitRunner';
+function testApkPath(env = process.env, root = path.resolve(__dirname, '../../..')) {
+  return env.ANDROID_E2E_TEST_APK || path.join(root, 'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk');
+}
+
 // APK 的 SharedPreferences（AppSettings.kt）：開 dev server 模式。網址不給 ⇒ 預設
 // http://localhost:8080/（PageSource.DEFAULT_DEV_URL），adb reverse 正好接到 host 的 dev server。
 // 屬性值用單引號：整段要包在 `sh -c "…echo \"…\"…"` 裡。
@@ -155,6 +162,9 @@ module.exports = {
   APK_ACTIVITY,
   APK_DEV_PREFS_XML,
   apkPath,
+  APK_TEST_PKG,
+  INSTRUMENTATION_RUNNER,
+  testApkPath,
   sdkRoot,
   sdkTool,
 };
