@@ -6,6 +6,7 @@ import { serializeRecording } from './debug_recorder_logic';
 import { setDiagSink } from './diag';
 import { OWNER_BOARD_LIST } from './list_render_owner';
 import { filterSummary } from './list_row_filter';
+import { credentialRedaction } from './credential_redaction';
 
 // 輕量狀態快照：純讀取，不深拷貝 buf。欄位缺就缺（防呆）。
 //
@@ -315,6 +316,7 @@ export class DebugRecorder {
     this._origSendRaw = null;
 
     const app = this.app;
+    const knownCredentials = credentialRedaction();
     return serializeRecording({
       events: this.events,
       cols: (app.buf && app.buf.cols) || 80,
@@ -325,12 +327,14 @@ export class DebugRecorder {
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
       },
       redact: {
-        ids: prefs && prefs.autoLoginUser ? [prefs.autoLoginUser] : [],
+        ids: [...knownCredentials.ids, prefs?.autoLoginUser].filter(Boolean),
         // The 2FA secret is a long-lived credential — leaking it in a recording
         // means the account's second factor has to be reset to revoke it.
-        secrets: prefs
-          ? [prefs.autoLoginPassword, prefs.autoLoginOtpSecret].filter(Boolean)
-          : [],
+        secrets: [
+          ...knownCredentials.secrets,
+          prefs?.autoLoginPassword,
+          prefs?.autoLoginOtpSecret,
+        ].filter(Boolean),
       },
     });
   }

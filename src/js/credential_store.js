@@ -12,6 +12,25 @@
 
 import { androidBridgeAvailable, requestAndroid } from './android_bridge';
 
+export function androidCredentialSaveAvailable() {
+  return androidBridgeAvailable() && window.__PTT_ANDROID__.credentialSave === true;
+}
+
+// Native metadata describes only the last confirmed provider operation. Reading
+// it never opens the provider or retrieves an account identity or secret.
+export async function getPasswordManagerPresence() {
+  if (!androidCredentialSaveAvailable()) return null;
+  try {
+    const result = await requestAndroid('getPasswordStatus');
+    const keys = ['user', 'password', 'otpSecret'];
+    if (!result?.ok || !result.presence ||
+        !keys.every(key => typeof result.presence[key] === 'boolean')) return null;
+    return Object.fromEntries(keys.map(key => [key, result.presence[key]]));
+  } catch {
+    return null;
+  }
+}
+
 const browserApiAvailable = () =>
   typeof window !== 'undefined' && !!window.PasswordCredential &&
   !!(navigator.credentials && navigator.credentials.get &&
@@ -41,14 +60,22 @@ export async function getStoredCredential() {
 export async function storeCredential({ id, password }) {
   if (androidBridgeAvailable()) {
     try {
-      await requestAndroid('storePassword', { user: id, password });
-    } catch (e) {}
-    return;
+      const result = await requestAndroid('storePassword', { user: id, password });
+      if (result?.ok) return { status: 'saved' };
+      return { status: result?.error === 'cancelled' ? 'cancelled' : 'failed' };
+    } catch {
+      return { status: 'failed' };
+    }
   }
-  if (!browserApiAvailable()) return;
+  if (!browserApiAvailable()) return { status: 'unavailable' };
   try {
     await navigator.credentials.store(
       new window.PasswordCredential({ id, password, name: 'PTT' })
     );
-  } catch (e) {}
+    // Browser store() can resolve before its save UI is accepted. Keep that
+    // legacy path separate from Android's confirmed native save contract.
+    return { status: 'requested' };
+  } catch {
+    return { status: 'failed' };
+  }
 }

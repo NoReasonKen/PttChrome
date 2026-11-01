@@ -21,18 +21,23 @@
 //      browsers like Firefox/Safari, and e2e injection).
 // The stored password may carry the 2FA secret alongside it (credential_pack.js)
 // because a PasswordCredential has nowhere else to put it.
-// Migration is self-healing and never drops credentials: a legacy login that
+// Browser-version migration is self-healing: a legacy login that
 // reaches the main menu triggers credentials.store() (browser save prompt), but
 // the plaintext copy (username AND password) is only wiped once a later get()
 // proves the browser really has it (store() resolving does not mean the user
 // accepted the prompt). The same store() call re-packs the credential when the
 // user has since added an OTP secret.
+// Android provider saves happen only through the explicit settings action;
+// successful login never offers migration or combines a provider entry with a
+// different legacy account's TOTP secret.
 
 import {
   readValuesWithDefault,
   clearLegacyAutoLoginCredential
 } from './pref_storage';
 import { packCredential, unpackCredential } from './credential_pack';
+import { isAndroidApp } from './android_bridge';
+import { rememberCredential } from './credential_redaction';
 import {
   credentialStoreAvailable,
   getStoredCredential,
@@ -97,22 +102,31 @@ const OTP_EXTRA_MS = 75000;
 
 // Page-lifetime cache: { user, pass, otpSecret, legacy, needsStore }.
 let sessionCred = null;
+let credentialRevision = 0;
+
+// A confirmed replacement affects the next login without interrupting the
+// active connection. Also reject an older chooser result still in flight.
+export function invalidateSessionCredential() {
+  sessionCred = null;
+  credentialRevision += 1;
+}
 
 // 測試用：清掉 page-lifetime 快取（瀏覽器原生 ESM 不能重新執行模組，
 // vi.resetModules() 在 unit-browser 無效）。
 export function _resetSessionCredentialForTest() {
-  sessionCred = null;
+  invalidateSessionCredential();
 }
 
 export function AutoLogin(app) {
   this._app = app;
 }
 
-// Called when PrefModal saves with credentials filled in, so they take effect
+// Browser-version settings edits seed this cache, so they take effect
 // this session even though the password is no longer persisted to localStorage.
 // Merging rather than replacing: "I only changed the OTP secret" is a normal
 // edit now that the password may already live in the browser store alone.
 AutoLogin.prototype.setSessionCredential = function(user, pass, otpSecret) {
+  if (isAndroidApp()) return;
   if (!user && !pass && !otpSecret) return;
   const base = sessionCred || { user: '', pass: '', otpSecret: '', legacy: false };
   if (user && pass) {
@@ -124,6 +138,7 @@ AutoLogin.prototype.setSessionCredential = function(user, pass, otpSecret) {
 };
 
 AutoLogin.prototype._resolveCredential = async function(v) {
+  const revision = credentialRevision;
   if (sessionCred) {
     console.info('auto_login: credential source = session cache');
     return sessionCred;
@@ -138,6 +153,7 @@ AutoLogin.prototype._resolveCredential = async function(v) {
         otpSecret: v.autoLoginOtpSecret || '',
         legacy: true
       };
+      rememberCredential(sessionCred);
       return sessionCred;
     }
     console.info('auto_login: no credential available');
@@ -151,18 +167,20 @@ AutoLogin.prototype._resolveCredential = async function(v) {
 
   try {
     const cred = await getStoredCredential();
+    if (revision !== credentialRevision) return null;
     if (cred && cred.password) {
       console.info('auto_login: credential source = browser store');
       const unpacked = unpackCredential(cred.password);
-      // A credential saved before 2FA support carries no secret; fall back to
-      // the one in prefs and re-pack it on the next successful login.
-      const otpSecret = unpacked.otpSecret || v.autoLoginOtpSecret || '';
+      // Only the browser version augments pre-2FA entries from legacy prefs.
+      // Android replacements always include their entire optional-secret state.
+      const android = isAndroidApp();
+      const otpSecret = unpacked.otpSecret || (!android && v.autoLoginOtpSecret) || '';
       const needsStore = !unpacked.otpSecret && !!otpSecret;
       // The browser store is now the source of truth → drop any leftover
       // plaintext credentials (username included — useless without the
       // password) from prefs. The secret only goes once the store is proven to
       // hold it as well, otherwise this machine holds the only copy.
-      if (v.autoLoginPassword || v.autoLoginUser || (!needsStore && v.autoLoginOtpSecret)) {
+      if (!android && (v.autoLoginPassword || v.autoLoginUser || (!needsStore && v.autoLoginOtpSecret))) {
         console.info(
           'auto_login: clearing legacy plaintext credentials from prefs'
         );
@@ -175,19 +193,22 @@ AutoLogin.prototype._resolveCredential = async function(v) {
         legacy: false,
         needsStore
       };
+      rememberCredential(sessionCred);
       return sessionCred;
     }
     console.info('auto_login: browser store returned no credential');
     return legacy();
   } catch (e) {
+    if (revision !== credentialRevision) return null;
     return legacy();
   }
 };
 
-// Login succeeded and the browser store either doesn't have these credentials
+// Browser login succeeded and the store either doesn't have these credentials
 // yet (legacy plaintext) or holds a copy without the OTP secret → offer to
 // save/update them. Plaintext is wiped later, on a successful get().
 AutoLogin.prototype._maybeMigrate = function() {
+  if (isAndroidApp()) return;
   if (!(this._usedLegacy || this._needsStore) || !credentialStoreAvailable()) return;
   storeCredential({
     id: this._user,

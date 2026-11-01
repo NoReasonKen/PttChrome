@@ -9,7 +9,7 @@
 // _resetSessionCredentialForTest()（瀏覽器原生 ESM 不能 vi.resetModules() 重載）。
 
 import { App } from "../../src/js/pttchrome";
-import { AutoLogin, _resetSessionCredentialForTest } from "../../src/js/auto_login";
+import { AutoLogin, _resetSessionCredentialForTest, invalidateSessionCredential } from "../../src/js/auto_login";
 import { packCredential } from "../../src/js/credential_pack";
 import { hideCredentialApi, setNavigatorCredentials } from "./helpers/credential_api";
 import { DEFAULT_PREFS, readValuesWithDefault } from "../../src/js/pref_storage";
@@ -322,7 +322,7 @@ describe("Android APK (native Credential Manager bridge)", () => {
       otpSecret: SECRET,
       legacy: false
     });
-    expect(readValuesWithDefault().autoLoginPassword).toBe("");
+    expect(readValuesWithDefault().autoLoginPassword).toBe("oldpass");
   });
 
   test("cancelled chooser falls back to local plaintext", async () => {
@@ -333,7 +333,7 @@ describe("Android APK (native Credential Manager bridge)", () => {
     expect(cred).toMatchObject({ user: "u", pass: "p", legacy: true });
   });
 
-  test("legacy login is offered to the native store (packed)", async () => {
+  test("Android login success never initiates provider storage or migration", async () => {
     const sent = installAndroid(() => ({ ok: true }));
     const al = await freshAutoLogin();
     Object.assign(al, {
@@ -344,11 +344,27 @@ describe("Android APK (native Credential Manager bridge)", () => {
       _needsStore: false
     });
     al._maybeMigrate();
-    expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({
-      op: "storePassword",
-      user: "testuser",
-      password: packCredential("secretpass", SECRET)
-    });
+    expect(sent).toHaveLength(0);
+  });
+
+  test("a password-only manager entry never inherits another account's legacy secret", async () => {
+    installAndroid(() => ({ ok: true, user: 'new-reader', password: 'new-password' }));
+    writePrefs({ autoLoginOtpSecret: SECRET });
+    const al = await freshAutoLogin();
+    expect(await al._resolveCredential(readValuesWithDefault())).toMatchObject({ otpSecret: '', needsStore: false });
+    expect(readValuesWithDefault().autoLoginOtpSecret).toBe(SECRET);
+  });
+
+  test("an older chooser result cannot repopulate the cache after a saved replacement", async () => {
+    let reply;
+    window.__PTT_ANDROID__ = {};
+    window.PttAndroid = { postMessage: text => { reply = JSON.parse(text); } };
+    const al = await freshAutoLogin();
+    const pending = al._resolveCredential(DEFAULT_PREFS);
+    invalidateSessionCredential();
+    window.PttAndroid.onmessage({ data: JSON.stringify({ id: reply.id, ok: true, user: 'old-reader', password: 'old-password' }) });
+    expect(await pending).toBeNull();
+    installAndroid(() => ({ ok: true, user: 'new-reader', password: 'new-password' }));
+    expect(await al._resolveCredential(DEFAULT_PREFS)).toMatchObject({ user: 'new-reader' });
   });
 });

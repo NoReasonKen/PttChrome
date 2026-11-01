@@ -61,6 +61,11 @@ import {
   storeCredential as storeCredentialInManager,
 } from "../../js/credential_store";
 import { isAndroidApp, openAppSettings } from "../../js/android_bridge";
+import {
+  AndroidCredentialSettings,
+  UnsavedCredentialsDialog,
+  useAndroidCredentialDraft,
+} from "./AndroidCredentialSettings";
 import { updateBlocksInteraction } from "../../js/app_updates";
 import { DEFAULT_IMGUR_PROXY_BASE } from "../../js/image_proxy";
 import {
@@ -338,6 +343,12 @@ export const PrefModal = ({
   // What localStorage held when the dialog opened. `values` follows the user's
   // typing, so only this can answer "is there still a plaintext copy here?".
   const [storedSnapshot, setStoredSnapshot] = useState(readValuesWithDefault);
+  const androidCredentials = isAndroidApp();
+  const credentialEditor = useAndroidCredentialDraft(show, androidCredentials);
+  const credentialEditorRef = useRef(credentialEditor);
+  credentialEditorRef.current = credentialEditor;
+  const [confirmCredentialClose, setConfirmCredentialClose] = useState(false);
+  const credentialExitAction = useRef(null);
   const [syncUser, setSyncUser] = useState(null);
   const [syncAllowed, setSyncAllowed] = useState(prefSync.canSync);
   const syncSetupRequested = useSyncExternalStore(
@@ -487,14 +498,25 @@ export const PrefModal = ({
     [startAiDownload],
   );
 
-  const onCloseClick = useCallback(() => {
+  const finishClose = useCallback(() => {
     // A window-level Escape listener may run before the download overlay's handler.
     if (updateBlocksInteraction()) return;
-    const next = pruneQuickSearchEntries(normalizeAutoLoginValues(values));
+    let next = pruneQuickSearchEntries(normalizeAutoLoginValues(values));
+    if (androidCredentials) {
+      // Legacy data belongs to the later migration/deletion flow. Never copy
+      // the separate Android draft into these ordinary preferences.
+      const stored = readValuesWithDefault();
+      next = {
+        ...next,
+        autoLoginUser: stored.autoLoginUser,
+        autoLoginPassword: stored.autoLoginPassword,
+        autoLoginOtpSecret: stored.autoLoginOtpSecret,
+      };
+    }
     // Untouched form → nothing to persist or upload; uploading anyway
     // would bump updatedAt and ping every other device for nothing.
     if (!deepEqual(next, readValuesWithDefault())) {
-      storeCredential(next);
+      if (!androidCredentials) storeCredential(next);
       writeValues(next);
       prefSync.savePrefs(next);
     }
@@ -509,14 +531,48 @@ export const PrefModal = ({
     ensureNotifyPermission(
       next.deepLinkHandoffNotify || next.enableNotifications,
     );
+    setConfirmCredentialClose(false);
     onSave(next);
-  }, [values, onSave]);
-  backRef.current = inCategory ? () => setCategoryList(true) : onCloseClick;
+  }, [values, onSave, androidCredentials]);
+  const requestCredentialExit = useCallback(
+    (action) => {
+      // File reads can finish after the reader has changed the draft. Consult
+      // current state rather than the editor captured before that asynchronous work.
+      const editor = credentialEditorRef.current;
+      if (editor.busy.current || updateBlocksInteraction()) return;
+      if (androidCredentials && editor.dirty) {
+        credentialExitAction.current = action;
+        setConfirmCredentialClose(true);
+        return;
+      }
+      action();
+    },
+    [androidCredentials],
+  );
+  const onCloseClick = () => requestCredentialExit(finishClose);
+  const continueCredentialEditing = () => {
+    credentialExitAction.current = null;
+    setConfirmCredentialClose(false);
+  };
+  backRef.current = () => {
+    if (credentialEditor.busy.current) return;
+    if (confirmCredentialClose) continueCredentialEditing();
+    else if (inCategory) setCategoryList(true);
+    else onCloseClick();
+  };
 
-  const onResetClick = useCallback(() => {
+  const resetPreferences = useCallback(() => {
     prefSync.savePrefs(DEFAULT_PREFS);
+    setConfirmCredentialClose(false);
     onReset(writeValues({ ...DEFAULT_PREFS }));
   }, [onReset]);
+  const onResetClick = () => requestCredentialExit(resetPreferences);
+  const finishCredentialExit = () => {
+    const action = credentialExitAction.current;
+    credentialExitAction.current = null;
+    setConfirmCredentialClose(false);
+    action?.();
+  };
 
   const onCheckboxChange = useCallback(({ target: { name, checked } }) => {
     setValues((v) => changeNestedValue(v, name, !!checked));
@@ -660,9 +716,8 @@ export const PrefModal = ({
     );
   }, [values]);
 
-  // 匯入＝立即寫入 + 立即套用（走既有的 reset 路徑，見 ContextMenu/index.jsx
-  // #onPrefReset：redraw(true) + onPrefSaveImpl → onValuesPrefChange 全量重套）。
-  // 設定對話框沒有「取消」，關閉即存檔，所以「先預覽再決定」並不成立。
+  // Import applies through the existing reset path. Resolve an Android
+  // credential draft before either persisting the backup or leaving settings.
   const onBackupImportFile = useCallback(
     async (e) => {
       const file = e.target.files && e.target.files[0];
@@ -685,16 +740,17 @@ export const PrefModal = ({
       const merged = pruneQuickSearchEntries(
         mergeImportedPrefs(DEFAULT_PREFS, values, parsed.prefs),
       );
-      writeValues(merged);
-      prefSync.savePrefs(merged);
-      setValues(merged);
-      // storedSnapshot 是自動登入分頁憑證狀態的資料來源，不同步會顯示舊資訊。
-      setStoredSnapshot(merged);
-      // storeCredential 刻意不呼叫：匯入檔不含憑證，merged 的憑證欄位就是本機原值。
-      onReset(merged);
-      setBackupResult("imported");
+      requestCredentialExit(() => {
+        writeValues(merged);
+        prefSync.savePrefs(merged);
+        setValues(merged);
+        setStoredSnapshot(merged);
+        // Backups exclude credentials and must never trigger provider storage.
+        onReset(merged);
+        setBackupResult("imported");
+      });
     },
-    [values, onReset],
+    [values, onReset, requestCredentialExit],
   );
 
   useEffect(() => {
@@ -720,6 +776,7 @@ export const PrefModal = ({
       setValues(stored);
       setStoredSnapshot(stored);
       setBackupResult(null);
+      setConfirmCredentialClose(false);
     }
   }, [show]);
 
@@ -745,7 +802,9 @@ export const PrefModal = ({
     <Modal
       opened={show}
       onClose={onCloseClick}
-      closeOnEscape={!updateOfferOpen}
+      closeOnEscape={
+        !updateOfferOpen && !confirmCredentialClose && !credentialEditor.saving
+      }
       // marker 放在 content（可見的對話框本體）而非 mantine-Modal-root（外層 0 尺寸
       // wrapper，Playwright 會判定 hidden）。
       classNames={{
@@ -1397,7 +1456,10 @@ export const PrefModal = ({
                   allowDeselect={false}
                   onChange={(val) => onSelectStr("mobileLayout", val)}
                   data={[
-                    { value: "auto", label: i18n("options_mobileLayoutAuto") },
+                    {
+                      value: "auto",
+                      label: i18n("options_mobileLayoutAuto"),
+                    },
                     { value: "on", label: i18n("options_mobileLayoutOn") },
                     { value: "off", label: i18n("options_mobileLayoutOff") },
                   ]}
@@ -1596,7 +1658,10 @@ export const PrefModal = ({
                   data={[
                     { value: "push", label: i18n("options_clickFromPush") },
                     { value: "date", label: i18n("options_clickFromDate") },
-                    { value: "author", label: i18n("options_clickFromAuthor") },
+                    {
+                      value: "author",
+                      label: i18n("options_clickFromAuthor"),
+                    },
                     { value: "title", label: i18n("options_clickFromTitle") },
                   ]}
                   mb="xs"
@@ -1611,7 +1676,10 @@ export const PrefModal = ({
                   disabled={!values.useMouseBrowsing}
                   onChange={(val) => onSelectStr("mousePushClickStart", val)}
                   data={[
-                    { value: "author", label: i18n("options_clickFromPusher") },
+                    {
+                      value: "author",
+                      label: i18n("options_clickFromPusher"),
+                    },
                     {
                       value: "content",
                       label: i18n("options_clickFromContent"),
@@ -1629,7 +1697,10 @@ export const PrefModal = ({
                   disabled={!values.useMouseBrowsing}
                   onChange={(val) => onSelectStr("mousePushClickEnd", val)}
                   data={[
-                    { value: "content", label: i18n("options_clickToContent") },
+                    {
+                      value: "content",
+                      label: i18n("options_clickToContent"),
+                    },
                     { value: "date", label: i18n("options_clickToDate") },
                     { value: "time", label: i18n("options_clickToTime") },
                   ]}
@@ -2179,96 +2250,107 @@ export const PrefModal = ({
                     </PrefCheckbox>
                   </PrefSection>
                   <PrefSection legendKey="options_autoLoginCredentials">
-                    <Text className="PrefModal__warning">
-                      {credentialApi
-                        ? i18n("tooltip_autoLogin")
-                        : i18n("tooltip_autoLoginPlaintext")}
-                    </Text>
-                    {credentialApi && (
-                      <Text className="PrefModal__warning">
-                        {i18n("tooltip_autoLoginLocalCopy")}
-                      </Text>
-                    )}
-                    <Text size="xs" c="dimmed" mb="xs">
-                      {i18n("tooltip_autoLoginUpdate")}
-                    </Text>
-                    <TextInput
-                      label={i18n("options_autoLoginUser")}
-                      name="autoLoginUser"
-                      autoComplete="off"
-                      placeholder={
-                        credentialApi
-                          ? i18n("placeholder_autoLoginUser")
-                          : undefined
-                      }
-                      value={values.autoLoginUser}
-                      onChange={onTextInputChange}
-                      mb="xs"
-                      {...anchor("autoLoginUser")}
-                    />
-                    <TextInput
-                      label={i18n("options_autoLoginPassword")}
-                      type="password"
-                      name="autoLoginPassword"
-                      autoComplete="new-password"
-                      maxLength={72} /* PTT PW_PLAIN_LEN */
-                      placeholder={
-                        credentialApi
-                          ? i18n("placeholder_autoLoginPassword")
-                          : undefined
-                      }
-                      value={values.autoLoginPassword}
-                      onChange={onTextInputChange}
-                      mb="xs"
-                      {...anchor("autoLoginPassword")}
-                    />
-                    {/* 2FA 密鑰是長期憑證，且與密碼存在同一個保險庫 → 風險必須寫在
+                    {androidCredentials ? (
+                      <AndroidCredentialSettings
+                        editor={credentialEditor}
+                        anchor={anchor}
+                      />
+                    ) : (
+                      <>
+                        <Text className="PrefModal__warning">
+                          {credentialApi
+                            ? i18n("tooltip_autoLogin")
+                            : i18n("tooltip_autoLoginPlaintext")}
+                        </Text>
+                        {credentialApi && (
+                          <Text className="PrefModal__warning">
+                            {i18n("tooltip_autoLoginLocalCopy")}
+                          </Text>
+                        )}
+                        <Text size="xs" c="dimmed" mb="xs">
+                          {i18n("tooltip_autoLoginUpdate")}
+                        </Text>
+                        <TextInput
+                          label={i18n("options_autoLoginUser")}
+                          name="autoLoginUser"
+                          autoComplete="off"
+                          placeholder={
+                            credentialApi
+                              ? i18n("placeholder_autoLoginUser")
+                              : undefined
+                          }
+                          value={values.autoLoginUser}
+                          onChange={onTextInputChange}
+                          mb="xs"
+                          {...anchor("autoLoginUser")}
+                        />
+                        <TextInput
+                          label={i18n("options_autoLoginPassword")}
+                          type="password"
+                          name="autoLoginPassword"
+                          autoComplete="new-password"
+                          maxLength={72} /* PTT PW_PLAIN_LEN */
+                          placeholder={
+                            credentialApi
+                              ? i18n("placeholder_autoLoginPassword")
+                              : undefined
+                          }
+                          value={values.autoLoginPassword}
+                          onChange={onTextInputChange}
+                          mb="xs"
+                          {...anchor("autoLoginPassword")}
+                        />
+                        {/* 2FA 密鑰是長期憑證，且與密碼存在同一個保險庫 → 風險必須寫在
                   欄位前面，並附上兩條降級做法（留空手動輸入／PTT 端改用僅新 IP
                   才驗證）。留空是刻意支援的用法，不是設定不完整。 */}
-                    <Text className="PrefModal__warning">
-                      {i18n("tooltip_autoLoginOtpSecretRisk")}
-                    </Text>
-                    {/* **不可改成 type="password"**：第二個密碼欄會讓 Chrome 把整頁判成
+                        <Text className="PrefModal__warning">
+                          {i18n("tooltip_autoLoginOtpSecretRisk")}
+                        </Text>
+                        {/* **不可改成 type="password"**：第二個密碼欄會讓 Chrome 把整頁判成
                   登入表單，抓最近的文字輸入當帳號、把密鑰當密碼跳出假的儲存提示，
                   並開始自動填入（那會讓「欄位空白＝已交給密碼管理員」的說明失真）。
                   密鑰本來就是 PTT 在終端機上以明文印出來給使用者抄的東西。 */}
-                    <TextInput
-                      label={i18n("options_autoLoginOtpSecret")}
-                      name="autoLoginOtpSecret"
-                      autoComplete="off"
-                      description={i18n("tooltip_autoLoginOtpSecret")}
-                      placeholder={
-                        credentialApi
-                          ? i18n("placeholder_autoLoginOtpSecret")
-                          : undefined
-                      }
-                      error={
-                        values.autoLoginOtpSecret &&
-                        !isValidOtpSecret(values.autoLoginOtpSecret)
-                          ? i18n("tooltip_autoLoginOtpSecretInvalid")
-                          : null
-                      }
-                      value={values.autoLoginOtpSecret}
-                      onChange={onTextInputChange}
-                      onBlur={onOtpSecretBlur}
-                      mb="xs"
-                      {...anchor("autoLoginOtpSecret")}
-                    />
-                    <Text size="xs" c="dimmed" mb="xs">
-                      {i18n("options_autoLoginLocalStatus_" + credentialStatus)}
-                    </Text>
-                    <Button
-                      id="autoLoginClearLocalBtn"
-                      variant="default"
-                      size="xs"
-                      disabled={!hasLocalCredential}
-                      onClick={onClearLocalCredential}
-                    >
-                      {i18n("options_autoLoginClearLocal")}
-                    </Button>
-                    <Text size="xs" c="dimmed" mt={4}>
-                      {i18n("tooltip_autoLoginClearLocal")}
-                    </Text>
+                        <TextInput
+                          label={i18n("options_autoLoginOtpSecret")}
+                          name="autoLoginOtpSecret"
+                          autoComplete="off"
+                          description={i18n("tooltip_autoLoginOtpSecret")}
+                          placeholder={
+                            credentialApi
+                              ? i18n("placeholder_autoLoginOtpSecret")
+                              : undefined
+                          }
+                          error={
+                            values.autoLoginOtpSecret &&
+                            !isValidOtpSecret(values.autoLoginOtpSecret)
+                              ? i18n("tooltip_autoLoginOtpSecretInvalid")
+                              : null
+                          }
+                          value={values.autoLoginOtpSecret}
+                          onChange={onTextInputChange}
+                          onBlur={onOtpSecretBlur}
+                          mb="xs"
+                          {...anchor("autoLoginOtpSecret")}
+                        />
+                        <Text size="xs" c="dimmed" mb="xs">
+                          {i18n(
+                            "options_autoLoginLocalStatus_" + credentialStatus,
+                          )}
+                        </Text>
+                        <Button
+                          id="autoLoginClearLocalBtn"
+                          variant="default"
+                          size="xs"
+                          disabled={!hasLocalCredential}
+                          onClick={onClearLocalCredential}
+                        >
+                          {i18n("options_autoLoginClearLocal")}
+                        </Button>
+                        <Text size="xs" c="dimmed" mt={4}>
+                          {i18n("tooltip_autoLoginClearLocal")}
+                        </Text>
+                      </>
+                    )}
                   </PrefSection>
                 </>
               )}
@@ -2523,6 +2605,18 @@ export const PrefModal = ({
           </div>
         </div>
       </Tabs>
+      <UnsavedCredentialsDialog
+        opened={show && confirmCredentialClose}
+        editor={credentialEditor}
+        onContinue={continueCredentialEditing}
+        onDiscard={() => {
+          credentialEditor.discard();
+          finishCredentialExit();
+        }}
+        onSave={async () => {
+          if (await credentialEditor.save()) finishCredentialExit();
+        }}
+      />
     </Modal>
   );
 };

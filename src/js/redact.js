@@ -52,18 +52,16 @@ export function redactIPs(str) {
 // 密碼等機密字串：不做邊界判斷，凡出現即等長遮蔽（密碼可能緊貼任何字元）。
 export function redactSecret(str, secret) {
   if (!secret) return str;
-  let out = str;
-  let idx;
-  while ((idx = out.indexOf(secret)) >= 0) {
-    out = out.slice(0, idx) + 'x'.repeat(secret.length) + out.slice(idx + secret.length);
-  }
-  return out;
+  // Search the original input once, so an all-'x' secret cannot match its mask.
+  return str.split(secret).join('x'.repeat(secret.length));
 }
 
 // 對一段文字套用所有遮蔽：id 列表（邊界式）＋ secret 列表（無邊界）＋ IPv4。
 export function scrub(str, ids = [], secrets = []) {
   let out = str;
+  // Mask whole secrets before an account token can mutate a matching password
+  // prefix. Longer envelopes must likewise precede their component secrets.
+  for (const s of [...secrets].sort((a, b) => b.length - a.length)) out = redactSecret(out, s);
   for (const id of ids) out = redactUser(out, id);
-  for (const s of secrets) out = redactSecret(out, s);
   return redactIPs(out);
 }

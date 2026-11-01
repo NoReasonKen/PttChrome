@@ -91,9 +91,13 @@ WebView  https://noreasonken.github.io/PttChrome/
 | `src/js/boot_site.js` | connect 優先序：`?site` > android > prefs proxy > default |
 
 ## 不變量（改之前先想清楚）
+
+For the explicit Android credential editor, confirmed provider results and native
+last-confirmed presence metadata, see [Android credentials](android-credentials.md).
+
 1. **連線位址只在讀取端覆寫，絕不寫進 prefs**：prefs 經 `pref_sync` 同步到桌機，寫進去桌機會連 127.0.0.1。demo 就是用 seed localStorage 的做法。守護 `tests/unit/boot_site.test.js`。
 2. **Android WebView 沒有 `PasswordCredential`**：密碼管理員必須走原生 Credential Manager＋bridge。demo 在 APK 內「自動登入失效」就是這個原因。守護 `tests/unit/credential_store.test.js`、`auto_login_credentials.test.js`（Android 那組）。
-3. **密碼字串原樣傳遞**：2FA 密鑰打包在網頁 `credential_pack.js`；原生不解析。Chrome 與 APK 格式相同，但目前**不共用同一筆**（見「密碼共用」節的 Play 限制）。
+3. **Password payloads pass through unchanged**: `credential_pack.js` packs the optional 2FA secret. Native code only recognizes its presence for status metadata and never persists the payload. Chrome and the APK use the same format but currently keep separate entries (see the Digital Asset Links limitation below).
 4. **bridge 與 proxy 都鎖 origin**：`addDocumentStartJavaScript`／`addWebMessageListener` 的 allowedOriginRules 只放**當前頁面來源**（`PageSource.origin`：正式版 `PAGE_ORIGIN`，或 App 設定的 dev server）；proxy 握手當下讀同一個值，同一時間只認一個。換來源＝重建 WebView（注入規則只能建立時給）。dev 網址白名單在 `PageSource.parseDevServer`：只收 http＋`localhost`／`127.0.0.1`，debug APK 另收私有 IPv4。不用 `addJavascriptInterface`（不分 origin）。
 5. **proxy 路徑帶每次啟動的隨機 token**：127.0.0.1 本機任何 App 都連得到，沒有 token 就能拿它當 Origin 改寫跳板。token 必須完整經過 `siteToWsUrl`（多段路徑）——守護在 `boot_site.test.js`。
 6. **不注入 telnet 指令保活**（demo 的 `IAC DO TIMING-MARK` 已拿掉：PTT 的回應會流進網頁 telnet parser）。保活靠 OkHttp ping。實機若驗出 NAT 逾時再議。

@@ -733,6 +733,26 @@
   "tooltip_title_blacklist": {
     "message": "一行一個關鍵字；看板列表隱藏標題含此關鍵字的文章"
   },
+  "options_credentialsSave": { "message": "儲存帳密" },
+  "options_credentialsUpgrade": { "message": "請更新 Android APK，才能使用明確儲存帳密功能。" },
+  "options_credentials_saved": { "message": "帳密已儲存，欄位已清空；將於下次登入時使用。" },
+  "options_credentials_cancelled": { "message": "已取消儲存，草稿與先前的儲存狀態均未變更。" },
+  "options_credentials_failed": { "message": "無法確認儲存完成，已保留草稿，請再試一次。" },
+  "options_credentials_statusUnavailable": { "message": "無法取得上次確認的儲存狀態，未讀取任何帳密。" },
+  "options_credentials_incomplete": { "message": "請同時輸入帳號與密碼，才能替換帳密。" },
+  "options_credentials_invalidSecret": { "message": "請輸入有效的驗證器密鑰，或留空以手動輸入驗證碼。" },
+  "options_credentialsUnsaved": { "message": "尚未儲存的帳密" },
+  "tooltip_credentialsUnsaved": { "message": "要儲存這份帳密草稿、捨棄草稿，或繼續編輯？其他設定仍會在關閉時儲存。" },
+  "options_credentialsDiscard": { "message": "捨棄並關閉" },
+  "options_credentialsContinue": { "message": "繼續編輯" },
+  "tooltip_androidCredentials": { "message": "輸入完整帳密後按「儲存帳密」，才會交給你設定的密碼管理員。關閉設定不會儲存帳密。空白欄位只顯示上次確認的儲存狀態，可能與外部變更後的狀態不同；密碼管理員自行決定同步方式。" },
+  "tooltip_androidCredentialSecret": { "message": "可選：請輸入長期使用的 2FA 驗證器密鑰，不是六位數臨時驗證碼或救援碼。PttChrome 會據此產生驗證碼；留空可手動輸入驗證碼。替換帳密時留空，表示該筆帳密不使用自動 2FA。" },
+  "placeholder_manager_user_empty": { "message": "沒有儲存的密碼管理員帳號" },
+  "placeholder_manager_user_saved": { "message": "密碼管理員帳號已儲存" },
+  "placeholder_manager_password_empty": { "message": "沒有儲存的密碼管理員密碼" },
+  "placeholder_manager_password_saved": { "message": "密碼管理員密碼已儲存" },
+  "placeholder_manager_otpSecret_empty": { "message": "沒有儲存的密碼管理員密鑰 (沒開2FA請留空)" },
+  "placeholder_manager_otpSecret_saved": { "message": "密碼管理員密鑰已儲存" },
   "options_autoLoginTab": {
     "message": "自動登入"
   },

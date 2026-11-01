@@ -734,6 +734,26 @@ export const en_US = {
   "tooltip_title_blacklist": {
     "message": "One keyword per line; hides board-list posts whose title contains it"
   },
+  "options_credentialsSave": { "message": "Save credentials" },
+  "options_credentialsUpgrade": { "message": "Update the Android APK to use explicit credential saving." },
+  "options_credentials_saved": { "message": "Credentials saved. The fields have been cleared; changes apply on the next login." },
+  "options_credentials_cancelled": { "message": "Saving cancelled. Your draft and previous saved state are unchanged." },
+  "options_credentials_failed": { "message": "Could not confirm saving. Your draft is kept; try again." },
+  "options_credentials_statusUnavailable": { "message": "Last-confirmed credential status is unavailable. No credentials were retrieved." },
+  "options_credentials_incomplete": { "message": "Enter both username and password to replace credentials." },
+  "options_credentials_invalidSecret": { "message": "Enter a valid authenticator secret, or leave it empty for manual verification." },
+  "options_credentialsUnsaved": { "message": "Unsaved credentials" },
+  "tooltip_credentialsUnsaved": { "message": "Save this credential draft, discard it, or continue editing? Other settings keep their normal save-on-close behavior." },
+  "options_credentialsDiscard": { "message": "Discard and close" },
+  "options_credentialsContinue": { "message": "Continue editing" },
+  "tooltip_androidCredentials": { "message": "Enter a complete replacement and press Save credentials to use your configured password manager. Closing settings does not save credentials. Empty fields show only the last confirmed saved state, which may differ after external changes. The password manager controls its own synchronization." },
+  "tooltip_androidCredentialSecret": { "message": "Optional: enter the long-lived 2FA authenticator secret, not a temporary six-digit code or recovery code. PttChrome generates verification codes from it. Leave empty to enter codes manually; a replacement with an empty secret removes automatic 2FA for that entry." },
+  "placeholder_manager_user_empty": { "message": "No password-manager username saved" },
+  "placeholder_manager_user_saved": { "message": "Password-manager username saved" },
+  "placeholder_manager_password_empty": { "message": "No password-manager password saved" },
+  "placeholder_manager_password_saved": { "message": "Password-manager password saved" },
+  "placeholder_manager_otpSecret_empty": { "message": "No password-manager secret saved (leave empty without 2FA)" },
+  "placeholder_manager_otpSecret_saved": { "message": "Password-manager secret saved" },
   "options_autoLoginTab": {
     "message": "Auto login"
   },

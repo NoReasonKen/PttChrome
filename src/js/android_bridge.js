@@ -8,7 +8,12 @@
 //
 // 訊息合約（JSON 字串）：
 //   → { id, op: 'getPassword' }                          ← { id, ok, user, password }
-//   → { id, op: 'storePassword', user, password }        ← { id, ok }
+//   → { id, op: 'storePassword', user, password }        ← { id, ok, presence? } | { id, ok:false, error }
+//   → { id, op: 'getPasswordStatus' }                   ← { id, ok, presence }
+//     credentialSave:true in the injected config enables confirmed explicit
+//     saves. Errors distinguish cancelled/failed; older APKs lack this capability.
+//     presence contains user/password/otpSecret booleans from the last confirmed
+//     save/retrieval. Status reads private metadata, never the external provider.
 //   → { id, op: 'googleSignIn', serverClientId }         ← { id, ok, idToken } | { id, ok:false, error }
 //   → { id, op: 'googleSignOut' }                        ← { id, ok }
 //   → { id, op: 'openAppSettings' }                      ← { id, ok }   開原生「App 設定」頁
@@ -20,7 +25,8 @@
 //     水球的系統通知（WebView 沒有 Web Notification）。網頁每則都送，**前景與否由原生判斷**
 //     （App 在前景 ⇒ 不跳、ok:false；回到前景時把跳過的收掉，MessageNotifier.kt）。tag＝寄件人，
 //     同一人只留最新一則。舊版 APK 不回覆這個 op ⇒ 呼叫端不等結果。
-// ok:false ＝使用者取消／沒有存任何密碼／原生出錯，一律當「沒有」處理。
+// Password retrieval may return ok:false for missing/cancelled/failed. Explicit
+// saving must interpret that result rather than treating completion as success.
 // googleSignIn（雲端同步登入，google_sign_in.js）：原生 Credential Manager
 //   GetSignInWithGoogleOption 取 Google ID token；serverClientId ＝ Firebase Google provider
 //   的 Web OAuth client（firebase_config.js#GOOGLE_WEB_CLIENT_ID），原生只接受

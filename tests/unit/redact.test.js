@@ -52,6 +52,9 @@ describe("redactSecret", () => {
 });
 
 describe("scrub", () => {
+  it("masks the entire password when it contains the account token", () => {
+    expect(scrub('reader reader-suffix', ['reader'], ['reader-suffix'])).toBe('xxxxxx xxxxxxxxxxxxx');
+  });
   it("ids + secrets + IP 全套", () => {
     const out = scrub("myuser pw123 1.2.3.4", ["myuser"], ["pw123"]);
     expect(out).toBe("xxxxxx xxxxx xxxxxxx");

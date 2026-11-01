@@ -707,6 +707,13 @@ Base32（PTT 給 10 bytes＝16 字元），server 驗證 `time_window=1`（±30s
 - 守護：`tests/unit/totp.test.js`、`tests/unit/auto_login_2fa.test.js`。
 
 ### 憑證儲存（Credential Management API）
+
+Android uses an explicit save action and app-owned last-confirmed field status;
+see [Android credentials](android-credentials.md). The implicit save-on-close,
+post-login migration and provider/legacy-secret merging described below apply
+only to the browser version. The Android legacy fallback cleanup is a separate
+follow-up to the explicit-save slice.
+
 密碼**不再長期明文落地 localStorage**（支援的瀏覽器）。解析順序（`_resolveCredential`）：
 1. **session cache**（module-level `sessionCred`；PrefModal 存檔經 `onValuesPrefChange` →
    `setSessionCredential` 寫入，reconnect 不重跳 chooser。**合併語意**：只給密鑰也合法）

@@ -3,6 +3,9 @@
 //   （好讀長頁的真滾輪寫進錄製檔；本檔手捏事件只測分支邏輯，見 tests/unit/e2e_real_input.test.js）
 import { DebugRecorder, snapshotState, cursorGeomSample } from "../../src/js/debug_recorder";
 import { diag, diagActive } from "../../src/js/diag";
+import { rememberCredential, _resetCredentialRedactionForTest } from "../../src/js/credential_redaction";
+
+beforeEach(_resetCredentialRedactionForTest);
 
 // mock app：只給 recorder 用到的面。onData / conn._sendRaw 保留原行為可驗證。
 function makeApp() {
@@ -214,6 +217,52 @@ describe("DebugRecorder", () => {
     const recvEv = out.events.find((e) => e.dir === "recv");
     const decoded = atob(recvEv.data);
     expect(decoded).toBe("hi xxxxxx xxxxxxxx end");
+  });
+
+  it("redacts native credentials and packed secrets without plaintext preferences", () => {
+    const { app } = makeApp();
+    const rec = new DebugRecorder(app);
+    rec.start();
+    rememberCredential({ user: "nativeuser", pass: "native-password", otpSecret: "ABCDEFGHIJKLMNOP" });
+    app.onData("hello native");
+    app.onData("user native-password ABCDEFGHIJKLMNOP");
+    app.conn._sendRaw("pttchrome:v1:ABCDEFGHIJKLMNOP:native-password\r");
+    rec.log("credential.error", { message: "nativeuser native-password", secret: "ABCDEFGHIJKLMNOP" });
+
+    const out = JSON.parse(rec.stop({ prefs: {} }));
+    const recv = out.events.filter((event) => event.dir === "recv").map((event) => atob(event.data)).join("");
+    expect(recv).toBe("hello xxxxxxxxxx xxxxxxxxxxxxxxx xxxxxxxxxxxxxxxx");
+    expect(atob(out.events.find((event) => event.dir === "send").data)).toBe("x".repeat(45) + "\r");
+    expect(out.events.find((event) => event.tag === "credential.error").info).toEqual({
+      message: "xxxxxxxxxx xxxxxxxxxxxxxxx", secret: "xxxxxxxxxxxxxxxx",
+    });
+    const cassette = out.cassette.steps.map((step) => [atob(step.recv), step.send && atob(step.send)]).flat().join("");
+    for (const value of ["nativeuser", "native-password", "ABCDEFGHIJKLMNOP", "pttchrome:v1:"]) {
+      expect(cassette).not.toContain(value);
+    }
+  });
+
+  it("keeps prior account credentials redacted after a replacement", () => {
+    const { app } = makeApp();
+    const rec = new DebugRecorder(app);
+    rec.start();
+    rememberCredential({ user: "oldreader", pass: "old-password" });
+    app.onData("oldreader old-password\n");
+    rememberCredential({ user: "newreader", pass: "new-password" });
+    app.onData("newreader new-password");
+    const out = JSON.parse(rec.stop());
+    const recv = out.events.filter((event) => event.dir === "recv").map((event) => atob(event.data)).join("");
+    expect(recv).toBe("xxxxxxxxx xxxxxxxxxxxx\nxxxxxxxxx xxxxxxxxxxxx");
+  });
+
+  it("exports without looping when a password is already all lowercase mask characters", () => {
+    const { app } = makeApp();
+    const rec = new DebugRecorder(app);
+    rec.start();
+    rememberCredential({ user: "reader", pass: "xxxxxxxx" });
+    app.conn._sendRaw("xxxxxxxx\r");
+    const out = JSON.parse(rec.stop());
+    expect(atob(out.events.find((event) => event.dir === "send").data)).toBe("xxxxxxxx\r");
   });
 
   // 2FA 密鑰是長期憑證，外洩必須重設 2FA 才能作廢 → 一定要進 redact 清單。

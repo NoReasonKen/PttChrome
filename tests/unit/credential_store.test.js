@@ -5,7 +5,8 @@
 import {
   credentialStoreAvailable,
   getStoredCredential,
-  storeCredential
+  storeCredential,
+  getPasswordManagerPresence,
 } from "../../src/js/credential_store";
 import { hideCredentialApi, setNavigatorCredentials } from "./helpers/credential_api";
 
@@ -84,4 +85,21 @@ test("Android bridge is preferred even if the WebView grows PasswordCredential",
   installBrowserApi({ id: "browser", password: "x" });
   installAndroid(() => ({ ok: true, user: "native", password: "y" }));
   await expect(getStoredCredential()).resolves.toMatchObject({ id: "native" });
+});
+
+test.each([
+  [{ ok: true }, 'saved'],
+  [{ ok: false, error: 'cancelled' }, 'cancelled'],
+  [{ ok: false, error: 'failed' }, 'failed'],
+  [{ ok: false }, 'failed'],
+])('Android save reports its confirmed result: %j', async (reply, status) => {
+  installAndroid(() => reply);
+  expect(await storeCredential({ id: 'reader', password: 'synthetic' })).toEqual({ status });
+});
+
+test('Android status returns only native presence without retrieving provider credentials', async () => {
+  const sent = installAndroid(() => ({ ok: true, presence: { user: true, password: true, otpSecret: false }, user: 'must-not-return' }));
+  window.__PTT_ANDROID__.credentialSave = true;
+  expect(await getPasswordManagerPresence()).toEqual({ user: true, password: true, otpSecret: false });
+  expect(sent.map(m => m.op)).toEqual(['getPasswordStatus']);
 });
