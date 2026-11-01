@@ -520,6 +520,12 @@ export const PREF_SEARCH_ITEMS = [
       titleKey: "options_imageUploadToken",
       tooltipKey: "tooltip_imageUploadToken",
     },
+    {
+      kind: "ui",
+      key: "ui:searchHistoryManager",
+      titleKey: "searchHistoryManager_title",
+      tooltipKey: "tooltip_searchHistoryManager",
+    },
   ]),
 
   // ── 備份／同步 ──────────────────────────────────────────────────

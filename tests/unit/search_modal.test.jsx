@@ -2,13 +2,17 @@
 // 搜尋彈窗（src/components/ContextMenu/SearchModal.jsx）。
 //
 // 守的是使用者要的那個操作：**↑ 叫回之前用過的關鍵字**（PTT 原生的那份被跳號污染），
-// 以及手機上沒有方向鍵時可以直接點最近的關鍵字。
+// 以及手機上沒有方向鍵時可以直接點搜尋紀錄區的關鍵字。
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import SearchModal from "../../src/components/ContextMenu/SearchModal";
 // 標籤一律經 i18n 取：CI 是英文語系，寫死中文字面在那裡找不到。
 import { setupI18n, i18n } from "../../src/js/i18n";
-import { rememberSearch, readSearchHistory } from "../../src/js/search_history";
+import {
+  rememberSearch,
+  updateSearchHistory,
+  pinSearchEntries,
+} from "../../src/js/search_history";
 
 beforeAll(() => {
   setupI18n();
@@ -68,33 +72,55 @@ test("Enter 送出 {kind, text}", () => {
   expect(onConfirm).toHaveBeenCalledWith({ kind: "author", text: "testuser" });
 });
 
-test("最近的關鍵字可以直接點（手機沒有方向鍵）", () => {
+test("搜尋紀錄區的關鍵字可以直接點（手機沒有方向鍵）", () => {
   rememberSearch("title", "問卦");
   const { onConfirm } = renderModal();
-  fireEvent.click(document.querySelector('[data-search-recent-item="問卦"]'));
+  fireEvent.click(document.querySelector('[data-search-history-item="問卦"]'));
   expect(onConfirm).toHaveBeenCalledWith({ kind: "title", text: "問卦" });
 });
 
-test("× 刪掉一筆：清單與 ↑ 都不再出現它，也不會送出", () => {
-  rememberSearch("title", "舊的");
-  rememberSearch("title", "新的");
-  const { input, onConfirm } = renderModal();
-  fireEvent.click(document.querySelector('[data-search-forget="新的"]'));
-  expect(onConfirm).not.toHaveBeenCalled();
-  expect(document.querySelector('[data-search-recent-item="新的"]')).toBeNull();
-  expect(readSearchHistory().title).toEqual(["舊的"]);
-  fireEvent.keyDown(input, { key: "ArrowUp" });
-  expect(input.value).toBe("舊的");
+// ---- 搜尋紀錄區（#70）：只用來搜尋，管理移到設定裡的管理視窗 ----
+const historyItems = () =>
+  [...document.querySelectorAll("[data-search-history-item]")].map(
+    (e) => e.dataset.searchHistoryItem,
+  );
+function rememberWithPins(kind, texts, pins) {
+  texts.forEach((t) => rememberSearch(kind, t));
+  updateSearchHistory((h) => pins.reduce((acc, t) => pinSearchEntries(acc, kind, [t]), h));
+}
+
+test("搜尋紀錄區：全部顯示（不只 6 筆），釘選的在前", () => {
+  const texts = Array.from({ length: 9 }, (_, i) => "k" + i);
+  rememberWithPins("title", texts, ["k2", "k5"]);
+  renderModal();
+  expect(historyItems()).toEqual(["k2", "k5", "k8", "k7", "k6", "k4", "k3", "k1", "k0"]);
+  expect(document.querySelector("[data-search-history]").textContent).toContain(
+    i18n("searchModal_history"),
+  );
 });
 
-test("全部清除：只清目前這一類", () => {
-  rememberSearch("title", "t1");
-  rememberSearch("author", "someone");
+test("搜尋紀錄區：沒有刪除鈕；釘選的用 light，其他用 default，按鈕是 compact-sm（內距是 sm 的一半）", () => {
+  rememberWithPins("title", ["a", "b"], ["a"]);
   renderModal();
-  fireEvent.click(document.querySelector("[data-search-forget-all]"));
-  expect(document.querySelector("[data-search-recent]")).toBeNull();
-  expect(readSearchHistory().title).toEqual([]);
-  expect(readSearchHistory().author).toEqual(["someone"]);
+  const area = document.querySelector("[data-search-history]");
+  expect(area.querySelectorAll("button")).toHaveLength(2);
+  const btn = (t) => area.querySelector(`[data-search-history-item="${t}"]`);
+  expect(btn("a").dataset.variant).toBe("light");
+  expect(btn("b").dataset.variant).toBe("default");
+  expect(btn("a").dataset.size).toBe("compact-sm");
+  expect(btn("b").dataset.size).toBe("compact-sm");
+});
+
+test("↑ 的順序跟搜尋紀錄區相同（釘選的先叫回）", () => {
+  rememberWithPins("title", ["釘的", "舊的", "新的"], ["釘的"]);
+  const { input } = renderModal();
+  const seen = [];
+  for (let i = 0; i < 3; ++i) {
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    seen.push(input.value);
+  }
+  expect(seen).toEqual(historyItems());
+  expect(seen).toEqual(["釘的", "新的", "舊的"]);
 });
 
 test("推文數不是非零整數 ⇒ 不送出", () => {

@@ -4,9 +4,8 @@ import {
   TextInput,
   Button,
   Group,
-  SegmentedControl,
   Text,
-  CloseButton,
+  ScrollArea,
 } from "@mantine/core";
 import { i18n } from "../../js/i18n";
 import MobileSheet from "../MobileSheet";
@@ -18,36 +17,32 @@ import {
 } from "../../js/board_search_bridge";
 import {
   readSearchHistory,
-  forgetSearch,
-  forgetSearchKind,
+  searchHistoryKind,
+  searchHistoryOrder,
+  SEARCH_KIND_LABEL_KEY,
 } from "../../js/search_history";
+import { SearchKindControl } from "./SearchKindControl";
 import "./SearchModal.css";
 
 // 搜尋彈窗（docs/article-search.md）。取代 PTT 原生的 / ? a Z s prompt：
-//   - ↑／↓ 在輸入框裡循環**這個種類**的本機記憶（↑ 從最新的開始，比照 PTT 的
-//     輸入記憶；回到最底就還原自己打到一半的字）。
-//   - 下方列出最近幾筆可以直接點（手機軟鍵盤沒有方向鍵）；每筆旁的 × 刪那一筆，
-//     「全部清除」清掉目前這一類（其他種類的紀錄不動）。
+//   - ↑／↓ 在輸入框裡循環**這個種類**的搜尋紀錄（釘選的先、再從最新的往舊的，
+//     跟搜尋紀錄區同一個順序；回到最底就還原自己打到一半的字）。
+//   - 下方的搜尋紀錄區列出這一類的全部紀錄，點了就搜尋（手機軟鍵盤沒有方向鍵）。
+//     這裡只用來搜尋：刪除、釘選都在設定裡的管理視窗（SearchHistoryManager.jsx）。
 //   - 看板種類比照 PTT 原生補全（board_search_bridge.js）：createBoardSearch 開出背景的
 //     原生 `s` prompt，打字即查、沒有這個開頭的看板就把那個字退回並提示、空白鍵
 //     自動完成、下方列出符合的看板可直接點。沒給 createBoardSearch（或 prompt 開不出來）
 //     ＝退回普通輸入框。
 // 送出交給呼叫端（ContextMenu → bridge.submit／article_search.submitSearch），這裡只管輸入。
-const KIND_LABEL_KEY = {
-  title: "searchModal_kindTitle",
-  author: "searchModal_kindAuthor",
-  push: "searchModal_kindPush",
-  board: "searchModal_kindBoard",
-};
 const KIND_PLACEHOLDER_KEY = {
   title: "searchModal_placeholderTitle",
   author: "searchModal_placeholderAuthor",
   push: "searchModal_placeholderPush",
   board: "searchModal_placeholderBoard",
 };
-// 直接列出來可點的筆數（其餘仍可用 ↑ 叫回）。
-export const SEARCH_RECENT_SHOWN = 6;
-
+// 搜尋紀錄區：compact-sm 按鈕高 26px，最多三行。
+const HISTORY_GAP = 8;
+const HISTORY_AREA_MAX_HEIGHT = 3 * 26 + 2 * HISTORY_GAP;
 // mobile：手機版面改用 bottom sheet 外殼（components/MobileSheet，系統返回＝收起），
 // 內容（表單、記憶、送出）完全相同。
 export const SearchModal = ({
@@ -147,7 +142,8 @@ export const SearchModal = ({
     !!boardQuery &&
     !boardResolved;
 
-  const list = history[currentKind] || [];
+  const list = searchHistoryOrder(history, currentKind);
+  const pinnedCount = searchHistoryKind(history, currentKind).pinned.length;
   const valid = !!normalizeSearchText(currentKind, value) && !boardBlocks;
 
   const onKindChange = useCallback((k) => {
@@ -225,21 +221,6 @@ export const SearchModal = ({
     [submit, value, valid],
   );
 
-  // 刪除後 ↑ 的游標歸零（索引會對不上），並把焦點還給輸入框（點 × 會搶走焦點）。
-  const afterForget = useCallback((next) => {
-    setHistory(next);
-    indexRef.current = -1;
-    if (inputRef.current) inputRef.current.focus();
-  }, []);
-  const onForget = useCallback(
-    (text) => afterForget(forgetSearch(currentKind, text)),
-    [currentKind, afterForget],
-  );
-  const onForgetAll = useCallback(
-    () => afterForget(forgetSearchKind(currentKind)),
-    [currentKind, afterForget],
-  );
-
   const shownKinds = kinds && kinds.length ? kinds : [currentKind];
   const title = aidTarget
     ? i18n("aidBoardChoice_pickTitle").replace("{0}", "#" + aidTarget.aid)
@@ -248,15 +229,11 @@ export const SearchModal = ({
   const form = (
     <form onSubmit={onSubmit} data-search-modal>
       {shownKinds.length > 1 && (
-        <SegmentedControl
-          fullWidth
+        <SearchKindControl
+          kinds={shownKinds}
           mb="sm"
           value={currentKind}
           onChange={onKindChange}
-          data={shownKinds.map((k) => ({
-            value: k,
-            label: i18n(KIND_LABEL_KEY[k]),
-          }))}
         />
       )}
       <TextInput
@@ -264,7 +241,9 @@ export const SearchModal = ({
         ref={inputRef}
         name="searchKeyword"
         label={
-          shownKinds.length > 1 ? undefined : i18n(KIND_LABEL_KEY[currentKind])
+          shownKinds.length > 1
+            ? undefined
+            : i18n(SEARCH_KIND_LABEL_KEY[currentKind])
         }
         placeholder={i18n(KIND_PLACEHOLDER_KEY[currentKind])}
         inputMode={currentKind === "push" ? "numeric" : undefined}
@@ -291,38 +270,34 @@ export const SearchModal = ({
         />
       )}
       {list.length > 0 && (
-        <Group gap={6} mt="sm" data-search-recent>
-          <Text size="xs" c="dimmed">
-            {i18n("searchModal_recent")}
+        <div data-search-history>
+          <Text size="xs" c="dimmed" mt="sm" mb={4}>
+            {i18n("searchModal_history")}
           </Text>
-          {list.slice(0, SEARCH_RECENT_SHOWN).map((it) => (
-            <Group key={it} gap={0} wrap="nowrap">
-              <Button
-                size="compact-xs"
-                variant="light"
-                data-search-recent-item={it}
-                onClick={() => submit(it)}
-              >
-                {it}
-              </Button>
-              <CloseButton
-                size="sm"
-                aria-label={i18n("searchModal_forget") + " " + it}
-                data-search-forget={it}
-                onClick={() => onForget(it)}
-              />
-            </Group>
-          ))}
-          <Button
-            size="compact-xs"
-            variant="subtle"
-            color="gray"
-            data-search-forget-all
-            onClick={onForgetAll}
+          {/* 超過三行就固定三行高、框內捲動。type="auto"：有得捲時捲軸一直在，
+              不像手機原生捲軸只在滑動時閃一下，看不出下面還有。 */}
+          <ScrollArea.Autosize
+            type="auto"
+            mah={HISTORY_AREA_MAX_HEIGHT}
+            offsetScrollbars="y"
+            className="searchHistoryArea"
           >
-            {i18n("searchModal_forgetAll")}
-          </Button>
-        </Group>
+            <Group gap={HISTORY_GAP}>
+              {list.map((it, i) => (
+                <Button
+                  key={it}
+                  size="compact-sm"
+                  variant={i < pinnedCount ? "light" : "default"}
+                  className="searchHistoryItem"
+                  data-search-history-item={it}
+                  onClick={() => submit(it)}
+                >
+                  {it}
+                </Button>
+              ))}
+            </Group>
+          </ScrollArea.Autosize>
+        </div>
       )}
       <Group justify="flex-end" mt="md">
         <Button variant="default" onClick={onHide}>
@@ -352,7 +327,7 @@ export const SearchModal = ({
       opened={show}
       onClose={onHide}
       title={title}
-      // 貼頂不置中：置中時內容一變高（切種類、刪記憶）輸入框就跟著上下跳。
+      // 貼頂不置中：置中時內容一變高（切種類）輸入框就跟著上下跳。
       yOffset="10vh"
       size="lg"
     >

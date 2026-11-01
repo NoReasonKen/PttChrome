@@ -70,6 +70,24 @@
   padding: 16px 20px;
 }
 
+/* 子頁的底部工具列（管理搜尋紀錄）：右欄最後一格，貼在捲動區底部。它後面沒有東西，
+   捲到最後就停在內容正下方，不會蓋住任何一列；內容短時 margin-top:auto 把它推到底。
+   右欄因此不留底部 padding，工具列自己留。 */
+.PrefModal__Grid__Col--right--withFooter {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0;
+}
+.PrefModal__Grid__Col--right--withFooter > * {
+  flex-shrink: 0;
+}
+.PrefModal__SubpageFooter {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  background: var(--mantine-color-body);
+}
+
 /* ── 窄螢幕（PrefModal.jsx PREF_NARROW_QUERY）：全螢幕＋頂端橫向分頁 ──────────
    左欄變成頂端一條（搜尋框＋可左右滑的分頁），內容佔滿下方全寬。 */
 .PrefModal--narrow .mantine-Modal-header {
@@ -105,6 +123,9 @@
   flex: 1;
   min-height: 0;
   padding: 12px;
+}
+.PrefModal--narrow .PrefModal__Grid__Col--right--withFooter {
+  padding-bottom: 0;
 }
 
 /* 窄版分類清單（PREF_CATEGORIES）：清單佔滿整頁、設定內容不畫；點進分類後左欄只剩
@@ -216,7 +237,9 @@
   order: 1;
 }
 
+/* fieldset 預設不縮到比內容窄（min-width: min-content）：一行長字就把整欄撐寬。 */
 .PrefModal__Grid__Col--right__Fieldset {
+  min-width: 0;
   border: none;
   margin: 0 0 12px;
   padding: 0;

@@ -32,3 +32,13 @@
 .searchBoardCandidates[data-board-interim] {
   opacity: 0.6;
 }
+
+/* 搜尋紀錄區（ScrollArea，高度上限在 SearchModal.jsx）：捲到底不帶動整個彈窗。 */
+.searchHistoryArea .mantine-ScrollArea-viewport {
+  overscroll-behavior-y: contain;
+}
+
+/* 很長的關鍵字不把一行撐出彈窗。 */
+.searchHistoryItem {
+  max-width: 100%;
+}
