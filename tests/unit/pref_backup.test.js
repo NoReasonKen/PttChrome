@@ -91,7 +91,7 @@ describe("parseImportPayload：過濾", () => {
           fontSize: "big", // number ← string
           lineWrap: 78,
           blacklist: 123, // string ← number
-          quickSearchDisabled: "nope", // array ← string
+          externalSearchDisabled: "nope", // array ← string
           enablePicPreview: "yes", // boolean ← string
         },
       }),
@@ -145,9 +145,9 @@ describe("parseImportPayload：過濾", () => {
       },
     ];
     const res = parseImportPayload(
-      JSON.stringify({ prefs: { quickSearchCustom: custom } }),
+      JSON.stringify({ prefs: { externalSearchCustom: custom } }),
     );
-    expect(res.prefs.quickSearchCustom).toEqual(custom);
+    expect(res.prefs.externalSearchCustom).toEqual(custom);
   });
 });
 
@@ -190,7 +190,7 @@ describe("往返", () => {
       lineWrap: 60,
       blacklist: "someid",
       termSize: { cols: 120, rows: 40 },
-      quickSearchDisabled: ["google"],
+      externalSearchDisabled: ["google"],
     });
     const parsed = parseImportPayload(
       JSON.stringify(buildExportPayload(local)),

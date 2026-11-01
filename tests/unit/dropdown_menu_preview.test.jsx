@@ -23,8 +23,8 @@ const renderMenu = (props = {}) =>
         urlEnabled={false}
         normalEnabled={false}
         selEnabled={false}
-        quickSearchItems={[]}
-        quickSearchQuery=""
+        externalSearchItems={[]}
+        externalSearchQuery=""
         authorBlacklistId={null}
         authorBlacklistExists={false}
         titleBlacklistText={null}
@@ -39,7 +39,7 @@ const renderMenu = (props = {}) =>
         onInputHelperClick={() => {}}
         onLiveArticleHelperClick={() => {}}
         onSettingsClick={() => {}}
-        onQuickSearchSelect={() => {}}
+        onExternalSearchSelect={() => {}}
         {...props}
       />
     </MantineProvider>,

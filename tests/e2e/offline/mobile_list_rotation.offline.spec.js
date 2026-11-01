@@ -84,7 +84,7 @@ test.afterEach(async ({ page }, info) => {
       resize: { active: app?.listResize.active, pending: app?.listResize.pending, phase: app?.listResize.command?.phase },
       server: server && { surface: server.surface, rows: server.terminalRows, applicationRows: server.applicationRows, cursor: server.cursor, filtered: !!server.filter, sizes: server.sizeChanges },
       sent: window.__gestureSent?.slice(-30), stack: app?.articleGestures.stack.stack,
-      route: app?.articleShortcutSearch.route
+      trail: app?.articleShortcutSearch.trail
     };
   }).catch(() => null);
   await writeFile(info.outputPath('list-rotation-state.json'), JSON.stringify(state, null, 2));
@@ -135,18 +135,18 @@ test('ordinary title and author filters survive rotation without resubmitting th
   await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
 });
 
-test('shortcut results retain their search return history and source layer through rotation', async ({ page }) => {
+test('shortcut results retain their search trail and source layer through rotation', async ({ page }) => {
   await openList(page);
   await tapCard(page, '[Talk] Alpha topic');
   await waitArticle(page, 'Alpha');
   await tapShortcut(page, 'author');
   await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
   await stableList(page);
-  const route = await page.evaluate(() => JSON.stringify(window.__app.articleShortcutSearch.route));
+  const trail = await page.evaluate(() => JSON.stringify(window.__app.articleShortcutSearch.trail));
   const stack = await page.evaluate(() => window.__app.articleGestures.stack.stack.pages);
   expect(stack.some(entry => entry.kind === 'article' && entry.layer)).toBe(true);
   await rotate(page, LANDSCAPE);
-  expect(await page.evaluate(() => JSON.stringify(window.__app.articleShortcutSearch.route))).toBe(route);
+  expect(await page.evaluate(() => JSON.stringify(window.__app.articleShortcutSearch.trail))).toBe(trail);
   expect(await page.evaluate(() => window.__app.articleGestures.stack.stack.pages)).toEqual(stack);
   await ptt.sendKey(page, 'ArrowLeft');
   await waitArticle(page, 'Alpha');

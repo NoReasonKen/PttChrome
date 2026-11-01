@@ -1,4 +1,4 @@
-// 快速搜尋（右鍵選單）的真瀏覽器守門。unit 抓不到的兩件事在這裡守：
+// 外部搜尋（右鍵選單）的真瀏覽器守門。unit 抓不到的兩件事在這裡守：
 //   1) **選單寬度是動態的**（unit 只掛單一元件、沒有 Mantine 全域樣式，量不到真寬度）：舊版 Menu width={220} 固定寬，
 //      「Google 搜尋 '長關鍵字'」會被擠成第二行。現在改成 max-content + max-width，
 //      長關鍵字必須「變寬但仍單行、超出用省略號」。
@@ -47,7 +47,7 @@ async function feedLine(page, text) {
   await waitScreenSettled(page);
 }
 
-const quickItems = page => page.locator('.DropdownMenu__QuickSearch');
+const quickItems = page => page.locator('.DropdownMenu__ExternalSearch');
 
 // 量選單幾何之前先等它真的可見且不再動。React 掛上選單、Mantine 套 transition、
 // 文字量測撐開 max-content 都是分幀發生的 —— 右鍵之後**立刻** boundingBox() 量到的
@@ -60,7 +60,7 @@ async function stableMenuBox(page) {
   return { box, item };
 }
 
-test.describe('快速搜尋（offline）', () => {
+test.describe('外部搜尋（offline）', () => {
   test('選到純數字 → 三個內建項目全出現，點 pixiv 使用者開對的網址', async ({ page }) => {
     await boot(page);
     await feedLine(page, '126291399');
@@ -69,7 +69,7 @@ test.describe('快速搜尋（offline）', () => {
     await expect(page.locator('.DropdownMenu').first()).toBeVisible();
     await expect(quickItems(page)).toHaveCount(3);
 
-    const pixivUser = await label(page, 'quicksearch_builtin_pixivUser');
+    const pixivUser = await label(page, 'externalsearch_builtin_pixivUser');
     await quickItems(page).filter({ hasText: pixivUser }).click();
 
     await expect
@@ -91,12 +91,12 @@ test.describe('快速搜尋（offline）', () => {
   });
 
   test('設定停用的內建項目不出現在選單', async ({ page }) => {
-    await boot(page, { prefs: { quickSearchDisabled: ['pixiv-artwork'] } });
+    await boot(page, { prefs: { externalSearchDisabled: ['pixiv-artwork'] } });
     await feedLine(page, '126291399');
     await selectAndRightClick(page, '126291399');
 
     await expect(quickItems(page)).toHaveCount(2);
-    const artwork = await label(page, 'quicksearch_builtin_pixivArtwork');
+    const artwork = await label(page, 'externalsearch_builtin_pixivArtwork');
     await expect(quickItems(page).filter({ hasText: artwork })).toHaveCount(0);
   });
 

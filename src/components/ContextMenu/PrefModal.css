@@ -192,12 +192,12 @@
   margin-top: 8px;
 }
 
-/* 快速搜尋自訂項目：一列塞不下 5 個欄位 ⇒ 換行，網址佔滿一整行。 */
-.PrefModal--narrow .PrefModal__QuickSearchRow {
+/* 外部搜尋自訂項目：一列塞不下 5 個欄位 ⇒ 換行，網址佔滿一整行。 */
+.PrefModal--narrow .PrefModal__ExternalSearchRow {
   flex-wrap: wrap;
 }
 
-.PrefModal--narrow .PrefModal__QuickSearchRow__Url {
+.PrefModal--narrow .PrefModal__ExternalSearchRow__Url {
   flex-basis: 100%;
   order: 1;
 }
@@ -221,32 +221,32 @@
   user-select: text;
 }
 
-/* 快速搜尋自訂項目：一列＝啟用勾勾＋名稱＋網址＋適用條件＋刪除。
+/* 外部搜尋自訂項目：一列＝啟用勾勾＋名稱＋網址＋適用條件＋刪除。
    align-items:flex-end 讓沒有 label 的勾勾／刪除鈕跟有 label 的輸入框底部對齊。 */
-.PrefModal__QuickSearchRow {
+.PrefModal__ExternalSearchRow {
   display: flex;
   align-items: flex-end;
   gap: 8px;
   margin-bottom: 8px;
 }
 
-.PrefModal__QuickSearchRow > .mantine-Checkbox-root,
-.PrefModal__QuickSearchRow > .mantine-ActionIcon-root {
+.PrefModal__ExternalSearchRow > .mantine-Checkbox-root,
+.PrefModal__ExternalSearchRow > .mantine-ActionIcon-root {
   margin-bottom: 6px; /* 對齊輸入框本體（避開 label 高度） */
   flex-shrink: 0;
 }
 
-.PrefModal__QuickSearchRow__Name {
+.PrefModal__ExternalSearchRow__Name {
   flex: 1 1 120px;
   min-width: 0;
 }
 
-.PrefModal__QuickSearchRow__Url {
+.PrefModal__ExternalSearchRow__Url {
   flex: 2 1 200px;
   min-width: 0;
 }
 
-.PrefModal__QuickSearchRow__Match {
+.PrefModal__ExternalSearchRow__Match {
   flex: 0 0 120px;
 }
 

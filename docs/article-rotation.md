@@ -28,8 +28,8 @@ buffer/NAWS write. Other surfaces keep their existing behavior.
   [attachment](https://github.com/ptt/pttbbs/blob/975b27130ab3d35ac04a3fc168f3d909f8ed53a3/mbbsd/pmore.c#L941-L960)
   and [forward clamping](https://github.com/ptt/pttbbs/blob/975b27130ab3d35ac04a3fc168f3d909f8ed53a3/mbbsd/pmore.c#L1140-L1157).
 - Each phase uses CommandQueue. Automatic paging is paused, and list sessions,
-  search-return observation and reconnect checkpoints ignore these owned
-  intermediate screens. The rendered article and existing return history remain
+  search trail observation and reconnect checkpoints ignore these owned
+  intermediate screens. The rendered article and existing search trail remain
   in place; this is not a user-requested departure or a new search.
 - `easyReadingResizeInFlight` preserves article rendering through the stale
   screen and goto prompt. Completion requires written-row coverage for the new

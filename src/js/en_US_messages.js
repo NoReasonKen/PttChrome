@@ -436,7 +436,7 @@ export const en_US = {
   "optionsDesc_enhance": {
     "message": "Floors, comment merging and highlights, links, image upload, blacklist"
   },
-  "optionsDesc_quicksearch": {
+  "optionsDesc_externalsearch": {
     "message": "External searches for selected or long-pressed text"
   },
   "optionsDesc_autologin": {
@@ -474,7 +474,7 @@ export const en_US = {
   },
 
   // settings search (search box in the settings sidebar; unrelated to the
-  // quick search feature below -- do not mix the naming up)
+  // external search feature below -- do not mix the naming up)
   "options_settingsSearchLabel": {
     "message": "Search settings"
   },
@@ -488,56 +488,56 @@ export const en_US = {
     "message": "matched by internal name"
   },
 
-  // quick search (context menu)
-  "options_quickSearch": {
-    "message": "Quick Search"
+  // external search (context menu)
+  "options_externalSearch": {
+    "message": "External Search"
   },
-  "tooltip_quickSearch": {
+  "tooltip_externalSearch": {
     "message": "These entries show up in the context menu once you select some text (on mobile: long-press a word, or in select mode select text and tap \"More\" in the toolbar). Built-in entries can be disabled, but not edited or removed."
   },
-  "options_quickSearchBuiltin": {
+  "options_externalSearchBuiltin": {
     "message": "Built-in entries"
   },
-  "options_quickSearchCustom": {
+  "options_externalSearchCustom": {
     "message": "Custom entries"
   },
-  "options_quickSearchEnabled": {
+  "options_externalSearchEnabled": {
     "message": "Enabled"
   },
-  "options_quickSearchName": {
+  "options_externalSearchName": {
     "message": "Name"
   },
-  "options_quickSearchUrl": {
+  "options_externalSearchUrl": {
     "message": "URL (%s = selected text)"
   },
-  "options_quickSearchMatch": {
+  "options_externalSearchMatch": {
     "message": "Applies to"
   },
-  "options_quickSearchMatchAny": {
+  "options_externalSearchMatchAny": {
     "message": "Any text"
   },
-  "options_quickSearchMatchDigits": {
+  "options_externalSearchMatchDigits": {
     "message": "Digits only"
   },
-  "options_quickSearchAdd": {
+  "options_externalSearchAdd": {
     "message": "Add entry"
   },
-  "options_quickSearchDelete": {
+  "options_externalSearchDelete": {
     "message": "Delete"
   },
-  "quicksearch_err_name": {
+  "externalsearch_err_name": {
     "message": "Name is required"
   },
-  "quicksearch_err_url": {
+  "externalsearch_err_url": {
     "message": "URL must start with http:// or https:// and contain %s"
   },
-  "quicksearch_builtin_google": {
+  "externalsearch_builtin_google": {
     "message": "Search Google"
   },
-  "quicksearch_builtin_pixivUser": {
+  "externalsearch_builtin_pixivUser": {
     "message": "Pixiv user"
   },
-  "quicksearch_builtin_pixivArtwork": {
+  "externalsearch_builtin_pixivArtwork": {
     "message": "Pixiv artwork"
   },
 
@@ -1461,8 +1461,8 @@ export const en_US = {
   "articleShortcutSearch_failed": { "message": "Article search stopped because the current screen could not be verified." },
   "articleShortcutSearch_missing": { "message": "The source article could not be verified or was deleted. Stopped safely without opening a replacement." },
   "articleShortcutSearch_returned": { "message": "Returned to the source article." },
-  "articleShortcutSearch_recovered": { "message": "Search return history restored. Back continues along the search route." },
-  "articleShortcutSearch_recoveryInactive": { "message": "Search return history was not restored because the article or search could not be verified. Back works normally." },
+  "articleShortcutSearch_recovered": { "message": "Search trail restored. Back retraces the search trail." },
+  "articleShortcutSearch_recoveryInactive": { "message": "The search trail was not restored because the article or search could not be verified. Back works normally." },
   "searchResults_resumeFailed": { "message": "The previous search results could not be restored. Navigation has stopped safely; search again to continue." },
   "searchResults_positionMissing": { "message": "Search results restored, but the previous reading position could not be verified. Showing the newest results." },
   "tooltip_mobileAppBarScrollTop": {

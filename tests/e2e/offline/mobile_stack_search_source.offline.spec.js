@@ -1,6 +1,6 @@
 // An article shortcut search keeps the page stack (#49): the source article
 // stays alive under its results, so each Back on the way out reveals the page
-// below at once. Search return history still reopens the source by its code,
+// below at once. Search backtracking still reopens the source by its code,
 // and the real page takes over at the revealed position. The controlled PTT
 // board is helpers/article_shortcut_search.js; the app, touch input and Back
 // are real.
@@ -95,7 +95,7 @@ test('a nested search unwinds one level per Back, each revealing the page below'
   await waitArticle(page, 'Beta');
   await tapShortcut(page, 'thread');
   await waitList(page, { has: ['Re: [Talk] Beta topic'], lacks: ['Alpha topic'] });
-  // Search return history answers Back with its own keys: the stack layers on
+  // Search backtracking answers Back with its own keys: the stack layers on
   // screen as each Back's first key is sent.
   await page.evaluate(() => {
     const send = window.__stubWSSent;

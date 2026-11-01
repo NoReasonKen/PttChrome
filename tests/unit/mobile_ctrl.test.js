@@ -51,7 +51,7 @@ describe("onKeyDown", () => {
     expect(view._keyboard.onKeyDown).not.toHaveBeenCalled();
   });
 
-  test("an armed Ctrl converts q and a before search-return Back or search invalidation sees them", () => {
+  test("an armed Ctrl converts q and a before search backtracking or search invalidation sees them", () => {
     for (const key of ["q", "a"]) {
       const { core, view } = ctx();
       core.articleShortcutSearch = { handleBack: vi.fn(() => true), noteSearchKey: vi.fn() };

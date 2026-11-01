@@ -69,13 +69,13 @@ import {
 import { updateBlocksInteraction } from "../../js/app_updates";
 import { DEFAULT_IMGUR_PROXY_BASE } from "../../js/image_proxy";
 import {
-  BUILTIN_QUICK_SEARCH,
+  BUILTIN_EXTERNAL_SEARCH,
   MATCH_ANY,
   MATCH_DIGITS,
-  makeQuickSearchId,
-  pruneQuickSearchEntries,
-  validateQuickSearchEntry,
-} from "../../js/quick_search";
+  makeExternalSearchId,
+  pruneExternalSearchEntries,
+  validateExternalSearchEntry,
+} from "../../js/external_search";
 import {
   MOBILE_FONT_PX_MAX,
   MOBILE_FONT_PX_MIN,
@@ -139,7 +139,7 @@ export const PREF_CATEGORIES = [
   { value: "mouse", labelKey: "options_mouse" },
   { value: "connection", labelKey: "options_connection" },
   { value: "enhance", labelKey: "options_enhance" },
-  { value: "quicksearch", labelKey: "options_quickSearch" },
+  { value: "externalsearch", labelKey: "options_externalSearch" },
   { value: "autologin", labelKey: "options_autoLoginTab" },
   { value: "ai", labelKey: "options_ai" },
   { value: "local", labelKey: "options_local" },
@@ -501,7 +501,7 @@ export const PrefModal = ({
   const finishClose = useCallback(() => {
     // A window-level Escape listener may run before the download overlay's handler.
     if (updateBlocksInteraction()) return;
-    let next = pruneQuickSearchEntries(normalizeAutoLoginValues(values));
+    let next = pruneExternalSearchEntries(normalizeAutoLoginValues(values));
     if (androidCredentials) {
       // Legacy data belongs to the later migration/deletion flow. Never copy
       // the separate Android draft into these ordinary preferences.
@@ -636,44 +636,46 @@ export const PrefModal = ({
     setValues((v) => changeNestedValue(v, name, key));
   }, []);
 
-  // 快速搜尋清單：一律**直接替換整個陣列**，不可走 changeNestedValue（它只認物件，
+  // 外部搜尋清單：一律**直接替換整個陣列**，不可走 changeNestedValue（它只認物件，
   // 遇到陣列會 spread 成普通物件把陣列毀掉）。DEFAULT_PREFS 裡的空陣列是 frozen，
   // 且 readValuesWithDefault 的淺層複製共用同一個 reference → 禁止 in-place 修改。
-  const onQuickSearchBuiltinToggle = useCallback(
+  const onExternalSearchBuiltinToggle = useCallback(
     ({ target: { name, checked } }) => {
-      const id = name.replace(/^quickSearchBuiltin-/, "");
+      const id = name.replace(/^externalSearchBuiltin-/, "");
       setValues((v) => {
-        const rest = (v.quickSearchDisabled || []).filter((x) => x !== id);
+        const rest = (v.externalSearchDisabled || []).filter((x) => x !== id);
         return {
           ...v,
-          quickSearchDisabled: checked ? rest : rest.concat(id),
+          externalSearchDisabled: checked ? rest : rest.concat(id),
         };
       });
     },
     [],
   );
 
-  const onQuickSearchCustomChange = useCallback((id, patch) => {
+  const onExternalSearchCustomChange = useCallback((id, patch) => {
     setValues((v) => ({
       ...v,
-      quickSearchCustom: (v.quickSearchCustom || []).map((c) =>
+      externalSearchCustom: (v.externalSearchCustom || []).map((c) =>
         c.id === id ? { ...c, ...patch } : c,
       ),
     }));
   }, []);
 
-  const onQuickSearchCustomDelete = useCallback((id) => {
+  const onExternalSearchCustomDelete = useCallback((id) => {
     setValues((v) => ({
       ...v,
-      quickSearchCustom: (v.quickSearchCustom || []).filter((c) => c.id !== id),
+      externalSearchCustom: (v.externalSearchCustom || []).filter(
+        (c) => c.id !== id,
+      ),
     }));
   }, []);
 
-  const onQuickSearchCustomAdd = useCallback(() => {
+  const onExternalSearchCustomAdd = useCallback(() => {
     setValues((v) => ({
       ...v,
-      quickSearchCustom: (v.quickSearchCustom || []).concat({
-        id: makeQuickSearchId(),
+      externalSearchCustom: (v.externalSearchCustom || []).concat({
+        id: makeExternalSearchId(),
         name: "",
         urlTemplate: "",
         match: MATCH_ANY,
@@ -708,7 +710,7 @@ export const PrefModal = ({
   // 匯出的是**當下表單值**（含還沒關閉存檔的修改），所以套用與 onCloseClick 同一組
   // 正規化。憑證的剝除由 buildExportPayload 負責（共用雲端同步的排除名單）。
   const onBackupExportClick = useCallback(() => {
-    const next = pruneQuickSearchEntries(normalizeAutoLoginValues(values));
+    const next = pruneExternalSearchEntries(normalizeAutoLoginValues(values));
     downloadAsFile(
       backupFileName(),
       JSON.stringify(buildExportPayload(next), null, 2),
@@ -737,7 +739,7 @@ export const PrefModal = ({
         return;
       }
       // 備份檔沒提到的 key 回預設值，local-only（帳密／上班模式）保留本機現值。
-      const merged = pruneQuickSearchEntries(
+      const merged = pruneExternalSearchEntries(
         mergeImportedPrefs(DEFAULT_PREFS, values, parsed.prefs),
       );
       requestCredentialExit(() => {
@@ -2087,112 +2089,114 @@ export const PrefModal = ({
                 />
               </PrefSection>
             </Tabs.Panel>
-            {/* 快速搜尋分頁：右鍵選單（選取文字後）的搜尋項目清單。內建項目只能停用
-              不能編輯／刪除——它們定義在 quick_search.js#BUILTIN_QUICK_SEARCH，
+            {/* 外部搜尋分頁：右鍵選單（選取文字後）的搜尋項目清單。內建項目只能停用
+              不能編輯／刪除——它們定義在 external_search.js#BUILTIN_EXTERNAL_SEARCH，
               pref 只存「被停用的 id」，所以日後新增內建項目舊使用者也拿得到。 */}
-            <Tabs.Panel value="quicksearch">
-              <PrefSection legendKey="options_quickSearchBuiltin">
+            <Tabs.Panel value="externalsearch">
+              <PrefSection legendKey="options_externalSearchBuiltin">
                 <Text size="xs" c="dimmed" mb="xs">
-                  {i18n("tooltip_quickSearch")}
+                  {i18n("tooltip_externalSearch")}
                 </Text>
-                {BUILTIN_QUICK_SEARCH.map((b) => (
+                {BUILTIN_EXTERNAL_SEARCH.map((b) => (
                   <PrefCheckbox
                     key={b.id}
-                    name={`quickSearchBuiltin-${b.id}`}
+                    name={`externalSearchBuiltin-${b.id}`}
                     checked={
-                      (values.quickSearchDisabled || []).indexOf(b.id) < 0
+                      (values.externalSearchDisabled || []).indexOf(b.id) < 0
                     }
-                    onChange={onQuickSearchBuiltinToggle}
+                    onChange={onExternalSearchBuiltinToggle}
                   >
                     {i18n(b.nameKey)}
                     <Text span size="xs" c="dimmed" ml="xs">
                       {b.urlTemplate}
                       {b.match === MATCH_DIGITS
-                        ? ` (${i18n("options_quickSearchMatchDigits")})`
+                        ? ` (${i18n("options_externalSearchMatchDigits")})`
                         : ""}
                     </Text>
                   </PrefCheckbox>
                 ))}
               </PrefSection>
-              <PrefSection legendKey="options_quickSearchCustom">
-                {(values.quickSearchCustom || []).map((c) => {
+              <PrefSection legendKey="options_externalSearchCustom">
+                {(values.externalSearchCustom || []).map((c) => {
                   // 整列空白＝剛按下「新增」還沒填，不要馬上噴紅字（關閉時會被
-                  // pruneQuickSearchEntries 丟掉）。
+                  // pruneExternalSearchEntries 丟掉）。
                   const touched = !!(
                     String(c.name || "").trim() ||
                     String(c.urlTemplate || "").trim()
                   );
-                  const err = touched ? validateQuickSearchEntry(c) : null;
+                  const err = touched ? validateExternalSearchEntry(c) : null;
                   return (
-                    <div className="PrefModal__QuickSearchRow" key={c.id}>
+                    <div className="PrefModal__ExternalSearchRow" key={c.id}>
                       <Checkbox
                         checked={c.enabled !== false}
-                        aria-label={i18n("options_quickSearchEnabled")}
+                        aria-label={i18n("options_externalSearchEnabled")}
                         onChange={(e) =>
-                          onQuickSearchCustomChange(c.id, {
+                          onExternalSearchCustomChange(c.id, {
                             enabled: !!e.target.checked,
                           })
                         }
                       />
                       <TextInput
-                        label={i18n("options_quickSearchName")}
+                        label={i18n("options_externalSearchName")}
                         value={c.name}
                         error={
-                          err === "quicksearch_err_name" ? i18n(err) : null
+                          err === "externalsearch_err_name" ? i18n(err) : null
                         }
                         onChange={(e) =>
-                          onQuickSearchCustomChange(c.id, {
+                          onExternalSearchCustomChange(c.id, {
                             name: e.target.value,
                           })
                         }
-                        className="PrefModal__QuickSearchRow__Name"
+                        className="PrefModal__ExternalSearchRow__Name"
                       />
                       <TextInput
-                        label={i18n("options_quickSearchUrl")}
+                        label={i18n("options_externalSearchUrl")}
                         value={c.urlTemplate}
                         placeholder="https://example.com/search?q=%s"
-                        error={err === "quicksearch_err_url" ? i18n(err) : null}
+                        error={
+                          err === "externalsearch_err_url" ? i18n(err) : null
+                        }
                         onChange={(e) =>
-                          onQuickSearchCustomChange(c.id, {
+                          onExternalSearchCustomChange(c.id, {
                             urlTemplate: e.target.value,
                           })
                         }
-                        className="PrefModal__QuickSearchRow__Url"
+                        className="PrefModal__ExternalSearchRow__Url"
                       />
                       <Select
-                        label={i18n("options_quickSearchMatch")}
+                        label={i18n("options_externalSearchMatch")}
                         value={
                           c.match === MATCH_DIGITS ? MATCH_DIGITS : MATCH_ANY
                         }
                         allowDeselect={false}
                         onChange={(val) =>
-                          onQuickSearchCustomChange(c.id, { match: val })
+                          onExternalSearchCustomChange(c.id, { match: val })
                         }
                         data={[
                           {
                             value: MATCH_ANY,
-                            label: i18n("options_quickSearchMatchAny"),
+                            label: i18n("options_externalSearchMatchAny"),
                           },
                           {
                             value: MATCH_DIGITS,
-                            label: i18n("options_quickSearchMatchDigits"),
+                            label: i18n("options_externalSearchMatchDigits"),
                           },
                         ]}
-                        className="PrefModal__QuickSearchRow__Match"
+                        className="PrefModal__ExternalSearchRow__Match"
                       />
                       <ActionIcon
                         variant="subtle"
                         color="red"
-                        aria-label={i18n("options_quickSearchDelete")}
-                        onClick={() => onQuickSearchCustomDelete(c.id)}
+                        aria-label={i18n("options_externalSearchDelete")}
+                        onClick={() => onExternalSearchCustomDelete(c.id)}
                       >
                         ✕
                       </ActionIcon>
                     </div>
                   );
                 })}
-                <Button variant="default" onClick={onQuickSearchCustomAdd}>
-                  {i18n("options_quickSearchAdd")}
+                <Button variant="default" onClick={onExternalSearchCustomAdd}>
+                  {i18n("options_externalSearchAdd")}
                 </Button>
               </PrefSection>
             </Tabs.Panel>

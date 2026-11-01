@@ -4,8 +4,8 @@
 
 The mobile article drawer searches the whole current board for the article's
 author (native `a`) or thread (native `S`) without an editable dialog, and Back
-unwinds a bounded, board-scoped search return route. Another list search, from a
-list search key or a search-sheet submission, clears that route
+unwinds a bounded, board-scoped search trail. Another list search, from a
+list search key or a search-sheet submission, clears that trail
 (`ArticleShortcutSearch.noteSearchKey` / `noteOtherSearch`); keys inside an
 article do not. Rules and implementation notes are in
 [the article shortcut specification](article-swipe-drawer-spec.md).
@@ -34,8 +34,8 @@ and twelve-hour expiry. After the existing board-resume operation succeeds,
 `resume_search_results.js` uses the shared command queue to reconstruct each
 filter. Native same-thread recovery first selects the source by verified AID;
 an unavailable source stops recovery instead of substituting a keyword search.
-No source-return history entry is added by reconstruction. Successful shortcut
-results reactivate the existing return route only after both the saved query
+No search trail entry is added by reconstruction. Successful shortcut
+results reactivate the existing search trail only after both the saved query
 and its actual destination are verified.
 
 Result numbers can change when articles are added or deleted. The local resume

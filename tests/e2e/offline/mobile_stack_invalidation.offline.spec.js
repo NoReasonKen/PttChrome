@@ -34,7 +34,7 @@ async function openAlphaFromDashboard(page) {
   await dashboardVisible(page);
   await page.locator('#homeDashboard [data-home-board="Test"]').tap();
   await waitList(page, BOARD);
-  // Search return on PTT goes from the results straight to the source article;
+  // Search backtracking on PTT goes from the results straight to the source article;
   // the controlled board passes the main menu, where the dashboard would
   // start a new base by itself.
   await ptt.applyPrefs(page, { enableHomeDashboard: false });
@@ -42,7 +42,7 @@ async function openAlphaFromDashboard(page) {
   await waitArticle(page, 'Alpha');
 }
 
-test('Back from an article reopened by search return reveals its list, not the dashboard below it', async ({ page }) => {
+test('Back from an article reopened by search backtracking reveals its list, not the dashboard below it', async ({ page }) => {
   await openAlphaFromDashboard(page);
   await tapShortcut(page, 'author');
   await waitList(page, RESULTS);

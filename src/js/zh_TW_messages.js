@@ -436,7 +436,7 @@
   "optionsDesc_enhance": {
     "message": "樓層、推文合併與高亮、連結、圖片上傳、黑名單"
   },
-  "optionsDesc_quicksearch": {
+  "optionsDesc_externalsearch": {
     "message": "選字或長按後的外部搜尋清單"
   },
   "optionsDesc_autologin": {
@@ -473,7 +473,7 @@
     "message": "設定備份"
   },
 
-  // settings search (設定頁左欄搜尋框；與下面的 quick search 無關，勿混用)
+  // settings search (設定頁左欄搜尋框；與下面的 external search 無關，勿混用)
   "options_settingsSearchLabel": {
     "message": "搜尋設定"
   },
@@ -487,56 +487,56 @@
     "message": "比對英文名稱"
   },
 
-  // quick search (context menu)
-  "options_quickSearch": {
-    "message": "快速搜尋"
+  // external search (context menu)
+  "options_externalSearch": {
+    "message": "外部搜尋"
   },
-  "tooltip_quickSearch": {
+  "tooltip_externalSearch": {
     "message": "在畫面上選取文字後按右鍵，這些項目就會出現在選單裡（手機：長按字詞；選取模式下選好字後按工具列「更多」）。內建項目可以停用，但不能編輯或刪除。"
   },
-  "options_quickSearchBuiltin": {
+  "options_externalSearchBuiltin": {
     "message": "內建項目"
   },
-  "options_quickSearchCustom": {
+  "options_externalSearchCustom": {
     "message": "自訂項目"
   },
-  "options_quickSearchEnabled": {
+  "options_externalSearchEnabled": {
     "message": "啟用"
   },
-  "options_quickSearchName": {
+  "options_externalSearchName": {
     "message": "名稱"
   },
-  "options_quickSearchUrl": {
+  "options_externalSearchUrl": {
     "message": "網址（%s 代表選取的文字）"
   },
-  "options_quickSearchMatch": {
+  "options_externalSearchMatch": {
     "message": "適用條件"
   },
-  "options_quickSearchMatchAny": {
+  "options_externalSearchMatchAny": {
     "message": "任意文字"
   },
-  "options_quickSearchMatchDigits": {
+  "options_externalSearchMatchDigits": {
     "message": "純數字"
   },
-  "options_quickSearchAdd": {
+  "options_externalSearchAdd": {
     "message": "新增項目"
   },
-  "options_quickSearchDelete": {
+  "options_externalSearchDelete": {
     "message": "刪除"
   },
-  "quicksearch_err_name": {
+  "externalsearch_err_name": {
     "message": "請輸入名稱"
   },
-  "quicksearch_err_url": {
+  "externalsearch_err_url": {
     "message": "網址須以 http:// 或 https:// 開頭，且要包含 %s"
   },
-  "quicksearch_builtin_google": {
+  "externalsearch_builtin_google": {
     "message": "Google 搜尋"
   },
-  "quicksearch_builtin_pixivUser": {
+  "externalsearch_builtin_pixivUser": {
     "message": "pixiv 使用者"
   },
-  "quicksearch_builtin_pixivArtwork": {
+  "externalsearch_builtin_pixivArtwork": {
     "message": "pixiv 圖片"
   },
 
@@ -1460,8 +1460,8 @@
   "articleShortcutSearch_failed": { "message": "無法確認目前畫面，已停止文章搜尋。" },
   "articleShortcutSearch_missing": { "message": "無法確認原文章或文章已刪除，已安全停止，不會開啟其他文章。" },
   "articleShortcutSearch_returned": { "message": "已返回原文。" },
-  "articleShortcutSearch_recovered": { "message": "已恢復搜尋返回路線，返回會沿著搜尋路線回去。" },
-  "articleShortcutSearch_recoveryInactive": { "message": "無法確認文章或搜尋，未恢復搜尋返回路線；返回維持一般行為。" },
+  "articleShortcutSearch_recovered": { "message": "已恢復搜尋路徑，返回會沿著搜尋路徑往回走。" },
+  "articleShortcutSearch_recoveryInactive": { "message": "無法確認文章或搜尋，未恢復搜尋路徑；返回維持一般行為。" },
   "searchResults_resumeFailed": { "message": "無法恢復先前的搜尋結果，已安全停止導覽；請重新搜尋。" },
   "searchResults_positionMissing": { "message": "已恢復搜尋結果，但無法確認原閱讀位置，目前顯示最新結果。" },
   "tooltip_mobileAppBarScrollTop": {

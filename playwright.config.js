@@ -24,7 +24,7 @@ const ADVERSE_LAYOUT_SPECS = [
   'offline/comment_merge.offline.spec.js',
   'offline/enhance.offline.spec.js',
 ];
-// quick_search 不在清單：它不走 bootOffline／installOfflineNetwork（沒有圖片網路），
+// external_search 不在清單：它不走 bootOffline／installOfflineNetwork（沒有圖片網路），
 // 放進來三個逆境桶只是同一條原封不動重跑三次（守護 e2e_layout_settle.test.js）。
 // image_load_conditions 刻意**不在**逆境清單裡：它自己用 bootOffline 的 imageProfile
 // 逐條指定情境（明確傳入的優先序高於 project 名），放進來只會原封不動再跑一次。
@@ -139,7 +139,7 @@ module.exports = defineConfig({
     },
     {
       // offline-firefox：只跑「選取文字」那支。issue #22 的兩個症狀（選取自動複製、
-      // 右鍵快速搜尋帶入選取）只在 Firefox 壞，Chromium 永遠綠 —— 沒有真 Firefox
+      // 右鍵外部搜尋帶入選取）只在 Firefox 壞，Chromium 永遠綠 —— 沒有真 Firefox
       // 就沒有回歸守護。其餘 offline spec 仍只跑 chromium（不少 spec 依賴
       // grantPermissions 之類的 Chromium-only 行為）。
       // 本機首次需 `yarn playwright install firefox`。

@@ -62,7 +62,7 @@ function app(board = 'Test') {
       readingPosition: () => null,
       beginExternalNavigation: vi.fn(), endExternalNavigation: vi.fn()
     },
-    articleShortcutSearch: { route: { board, origins: [{ aid: '1gIeu-3A' }], phase: 'results' } }
+    articleShortcutSearch: { trail: { board, origins: [{ aid: '1gIeu-3A' }], phase: 'results' } }
   };
   const screen = (caption = '文章列表', bottom = null) => {
     rows = { 0: `【板主:test】看板《${board}》`, 23: bottom || ` ${caption} [←]離開 [→]閱讀` };
@@ -91,7 +91,7 @@ function app(board = 'Test') {
 test('ordinary filters reconstruct in order and become current only after final verified results', () => {
   const a = app();
   const filters = [title, { kind: 'author', value: 'alice' }, { kind: 'push', value: '-2' }];
-  const routeBefore = JSON.stringify(a.core.articleShortcutSearch.route);
+  const trailBefore = JSON.stringify(a.core.articleShortcutSearch.trail);
   resumeSearchResults(a.core, search(filters), a.done);
   for (const [i, [key, prompt, value]] of [
     ['/', '搜尋標題: ', 'topic'],
@@ -114,7 +114,7 @@ test('ordinary filters reconstruct in order and become current only after final 
   expect(a.core.boardListSession.endExternalNavigation).toHaveBeenCalledTimes(1);
   expect(a.end).toHaveBeenCalledTimes(1);
   expect(a.end.mock.calls[0][1]).toBe('done');
-  expect(JSON.stringify(a.core.articleShortcutSearch.route)).toBe(routeBefore);
+  expect(JSON.stringify(a.core.articleShortcutSearch.trail)).toBe(trailBefore);
 });
 
 test('wrong-board recovery rejects before sending or claiming external navigation', () => {

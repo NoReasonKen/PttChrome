@@ -164,7 +164,7 @@ NavHistory.prototype = {
         : null;
   },
 
-  // A non-jump run (reconnect or search return) landed on this article by
+  // A non-jump run (reconnect or search backtracking) landed on this article by
   // verified AID. It identifies the article without changing the stack.
   noteLanded: function(board, aid) {
     this._landed = board && aid ? { board: board, aid: aid } : null;

@@ -1,7 +1,7 @@
 // Article shortcut searches skip the waits and round trips they do not need
 // (#86). The results take over as soon as the search lands. From an article
 // opened from its board's full list, harmless keys go together and the author
-// id waits for the verified prompt; anything else takes the verified route.
+// id waits for the verified prompt; anything else takes the verified keystroke route.
 // The controlled PTT board is helpers/article_shortcut_search.js; the app,
 // touch input and Back are real.
 const { test, expect } = require('@playwright/test');
@@ -31,8 +31,8 @@ async function watchAfterResults(page, submit, ms) {
 }
 
 // The article with `title` and `body`, open as PTT's first screen (no list
-// below it: the verified route), or opened from the board's full list in the
-// easy-reading list (the fast route). `squeezedFooter`: see the board's state.
+// below it: the verified keystroke route), or opened from the board's full list in the
+// easy-reading list (the fast keystroke route). `squeezedFooter`: see the board's state.
 async function openArticle(page, { route, title, body, squeezedFooter = false, ...options }) {
   await bootNestedShortcutSearch(page, { easyList: true, urls: true, ...options });
   if (route === 'fast' || body !== 'Alpha') {
@@ -43,7 +43,7 @@ async function openArticle(page, { route, title, body, squeezedFooter = false, .
     await tapCard(page, title);
     await waitArticle(page, body);
   }
-  if (route === 'verified' && body !== 'Alpha') throw new Error('the verified route starts on Alpha');
+  if (route === 'verified' && body !== 'Alpha') throw new Error('the verified keystroke route starts on Alpha');
   await page.evaluate(() => { window.__gestureSent = []; });
 }
 
@@ -75,9 +75,9 @@ test('the results of a shortcut search take over as soon as the search lands', a
   await expect.poll(() => page.evaluate(() => window.__afterResults)).toEqual({ list: 'active', covered: false });
 });
 
-// Both routes land on the same results, the same selection and the same Back.
+// Both keystroke routes land on the same results, the same selection and the same Back.
 for (const route of ['verified', 'fast']) {
-  test(`same-author search by the ${route} route lands on its results, newest selected, and Back returns to the source`, async ({ page }) => {
+  test(`same-author search by the ${route} keystroke route lands on its results, newest selected, and Back returns to the source`, async ({ page }) => {
     await openArticle(page, { route, title: '[Talk] Alpha topic', body: 'Alpha' });
     await tapShortcut(page, 'author');
     await waitList(page, AUTHOR_RESULTS);
@@ -90,7 +90,7 @@ for (const route of ['verified', 'fast']) {
 // The reply in Beta's thread; its title names a single card.
 const REPLY = { title: 'Re: [Talk] Beta topic', body: 'Charlie' };
 
-test('same-thread search by the fast route lands on its results and Back returns to the source', async ({ page }) => {
+test('same-thread search by the fast keystroke route lands on its results and Back returns to the source', async ({ page }) => {
   await openArticle(page, { route: 'fast', ...REPLY });
   await tapShortcut(page, 'thread');
   await waitList(page, THREAD_RESULTS);
@@ -113,7 +113,7 @@ test('same-thread search from an article opened from its board\'s full list take
   expect(await sentUntil(page, 'S')).toEqual([LEFT + 'S']);
 });
 
-test('an article opened from search results takes the verified route', async ({ page }) => {
+test('an article opened from search results takes the verified keystroke route', async ({ page }) => {
   await openArticle(page, { route: 'verified', title: '[Talk] Alpha topic', body: 'Alpha' });
   await tapShortcut(page, 'author');
   await waitList(page, AUTHOR_RESULTS);
@@ -129,7 +129,7 @@ test('an article opened from search results takes the verified route', async ({ 
 
 // pmore's movies answer Left themselves; an article whose footer does not
 // prove plain reading is treated the same.
-test('an article whose footer does not prove plain reading takes the verified route', async ({ page }) => {
+test('an article whose footer does not prove plain reading takes the verified keystroke route', async ({ page }) => {
   await openArticle(page, { route: 'fast', title: '[Talk] Alpha topic', body: 'Alpha', squeezedFooter: true });
   await tapShortcut(page, 'author');
   await waitList(page, AUTHOR_RESULTS);
@@ -140,7 +140,7 @@ test('an article whose footer does not prove plain reading takes the verified ro
 
 // The legacy caption cannot tell results from the full list, so the reading
 // position names no results mode there.
-test('same-thread search on a board with the legacy list caption takes the verified route to the same results and Back', async ({ page }) => {
+test('same-thread search on a board with the legacy list caption takes the verified keystroke route to the same results and Back', async ({ page }) => {
   await openArticle(page, { route: 'fast', ...REPLY, legacyCaptions: true });
   await tapShortcut(page, 'thread');
   await waitList(page, THREAD_RESULTS);
@@ -154,7 +154,7 @@ test('same-thread search on a board with the legacy list caption takes the verif
 });
 
 // A stale rule: Left returned to results, where `a` adds a condition.
-test('when PTT asks to add a condition instead, the prompt is left empty and the verified route runs', async ({ page }) => {
+test('when PTT asks to add a condition instead, the prompt is left empty and the verified keystroke route runs', async ({ page }) => {
   await openArticle(page, { route: 'fast', title: '[Talk] Alpha topic', body: 'Alpha' });
   // PTT's list below is already results, unknown to the app.
   await page.evaluate(() => {

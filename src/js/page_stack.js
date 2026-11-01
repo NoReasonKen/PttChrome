@@ -108,8 +108,8 @@ export function boundLayers(stack, bound = LIVE_LAYER_BOUND) {
 }
 
 // The lower page that Back may reveal: it has a live layer and is the page the
-// current one was opened from. Back from search results follows search return
-// history to the article the search started from (#49); results opened any
+// current one was opened from. Back from search results follows search
+// backtracking to the article the search started from (#49); results opened any
 // other way go back to the board's full list, so they reveal nothing.
 export function revealTarget(stack) {
   const n = stack.pages.length;

@@ -1,6 +1,6 @@
 // Search results stack like any article list (#33): leaving an article opened
 // from results reveals the results at once, with the same handoff. Back from
-// the results follows search return history and reveals the source article
+// the results follows search backtracking and reveals the source article
 // (#49, mobile_stack_search_source), and results reconstructed after a
 // reconnect start a new stack. The controlled PTT board is
 // helpers/article_shortcut_search.js; the app, touch input and Back are real.
@@ -101,17 +101,17 @@ test('results reconstructed after a reconnect stack the articles opened from the
   await release();
   await expect(page.locator(LAYER)).toHaveCount(0, { timeout: 10000 });
   await waitList(page, RESULTS);
-  // Back from the rebuilt results follows search return history alone.
+  // Back from the rebuilt results follows search backtracking alone.
   await watchReveals(page);
   await nativeBack(page);
   await waitArticle(page, 'Alpha');
   expect(await revealedSinceWatch(page)).toBe(false);
 });
 
-test('results reconstructed by search return after a reconnect reveal nothing from before it', async ({ page }) => {
+test('results reconstructed by search backtracking after a reconnect reveal nothing from before it', async ({ page }) => {
   const position = await openFromAuthorResults(page, { loggedIn: true });
   // A result article has no free identity: recovery returns to the full board
-  // list, and Back rebuilds the results from search return history.
+  // list, and Back rebuilds the results from the search trail.
   await disconnectAndReconnect(page);
   await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
   await watchReveals(page);

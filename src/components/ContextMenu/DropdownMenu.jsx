@@ -21,7 +21,7 @@ const CopyItem = ({ label, preview, onClick }) => (
 
 // 右鍵 context menu。改用 Mantine Menu（受控 opened，由 index.js 的 open 狀態驅動）：
 // Menu.Target 是定位於游標 (pageX,pageY) 的零尺寸元素，floating-ui 自動處理超出邊界
-// 翻轉（取代舊的手算 top()/left()）。快速搜尋是**一層**平鋪（不用 Menu.Sub），項目
+// 翻轉（取代舊的手算 top()/left()）。外部搜尋是**一層**平鋪（不用 Menu.Sub），項目
 // 由 index.jsx 依偏好＋選取內容算好後傳進來。手機改畫成 bottom sheet（ContextSheet.jsx），
 // 兩邊吃同一份 context_menu_entries.js。
 export const DropdownMenu = (props) => {

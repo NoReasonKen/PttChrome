@@ -1,6 +1,6 @@
 // 設定頁左欄的搜尋框。
 //
-// **命名**：與右鍵選單的「快速搜尋」（src/js/quick_search.js，選字跳 Google）
+// **命名**：與右鍵選單的「外部搜尋」（src/js/external_search.js，選字跳 Google）
 // 是兩回事，勿混用。
 //
 // 為什麼用 Mantine 內建的 Combobox 而不是 @mantine/spotlight：後者要新增依賴，

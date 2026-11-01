@@ -643,8 +643,8 @@ index.jsx#onContextMenu` 開選單當下 `readValuesWithDefault()` 現讀，**�
   `pref_modal_safe_mode.test.jsx`（反灰、存回原值）、`board_note_skip.offline.spec.js`（完整 boot 鏈）。
 
 ### 設定搜尋（`src/js/pref_search.js` ＋ `components/ContextMenu/PrefSearchBox.jsx`）
-左欄搜尋框 → 下拉結果 → 切分頁＋捲動＋短暫高亮。**與右鍵選單的「快速搜尋」
-（`quick_search.js`）無關**，命名一律 `settingsSearch`/`prefSearch`，勿混。
+左欄搜尋框 → 下拉結果 → 切分頁＋捲動＋短暫高亮。**與右鍵選單的「外部搜尋」
+（`external_search.js`）無關**，命名一律 `settingsSearch`/`prefSearch`，勿混。
 
 - **索引 `PREF_SEARCH_ITEMS` 是手動維護的第二份事實**：`PrefModal.jsx` 純 hardcode JSX、無 schema
   可反射。漏收＝那一項**永遠搜不到**且畫面一切正常（靜默失效）⇒ 唯一防線是
@@ -861,7 +861,7 @@ axios/tippy/GM_config/國旗 IP 查詢(外部 osk2.me:9977 已失效)、滑鼠�
 - **在測試/工具裡直接餵 cassette 進 `TermBuf` 後讀 `getRowText`，必須先讓事件回圈跑一拍**（unit 用 `vi.advanceTimersByTime(300)`、瀏覽器用 `await sleep(120)`）：`isLeadByte` 只在 buf 的 update pass（notify 30ms + settle 50ms）才標記，沒跑完就讀會拿到**未轉碼的 Big5 位元組**（症狀：整片 `§@ªÌ` 亂碼，看起來像編碼表沒載）。
 - **終端機的任何祖先都不可有 `user-select: none`**（issue #22）。Firefox 判定可選取性是沿 frame 鏈**往上**走、
   最外層的非 auto 值決定 ⇒ 祖先的 `user-select:none` 會蓋掉 `.main { user-select:text }`，而且**只壞讀取端**：
-  拖曳照樣反白，唯獨 **`Selection.toString()` 回空字串** ⇒ 自動複製／快速搜尋／^C 全拿到空字串。
+  拖曳照樣反白，唯獨 **`Selection.toString()` 回空字串** ⇒ 自動複製／外部搜尋／^C 全拿到空字串。
   **Chrome 讓子層覆寫成功，所以 Chromium e2e 永遠綠**——這類症狀一律先在 Firefox 量整條祖先鏈的
   `getComputedStyle(row).userSelect`。真正不該被選到的節點（`#cursor`、好讀狀態列、樓層徽章）各自宣告 none 即可。
   另：Firefox 的 `Element.focus()` 會收合 document selection（Chrome 不會），`setInputAreaFocus` 各呼叫點都要有 `isCollapsed` 守門。
