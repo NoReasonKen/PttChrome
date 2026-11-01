@@ -181,6 +181,10 @@ test('mobile cancelled and failed saves preserve drafts and leave unsaved choice
 
 test('mobile validation shows red field borders and reasons below each invalid input', async ({ page }) => {
   await bootSettings(page);
+  const normalColors = await secret(page).evaluate(element => ({
+    text: getComputedStyle(element).color,
+    placeholder: getComputedStyle(element, '::placeholder').color,
+  }));
   await secret(page).fill('123456');
   await (await saveButton(page)).tap();
   for (const [field, key] of [
@@ -194,6 +198,8 @@ test('mobile validation shows red field borders and reasons below each invalid i
     await message.scrollIntoViewIfNeeded();
     const color = await message.evaluate(element => getComputedStyle(element).color);
     await expect(field).toHaveCSS('border-top-color', color);
+    await expect(field).toHaveCSS('color', normalColors.text);
+    expect(await field.evaluate(element => getComputedStyle(element, '::placeholder').color)).toBe(normalColors.placeholder);
     const [inputRect, messageRect] = await Promise.all([field.boundingBox(), message.boundingBox()]);
     expect(messageRect.y).toBeGreaterThanOrEqual(inputRect.y + inputRect.height);
   }
@@ -205,6 +211,16 @@ test('mobile validation shows red field borders and reasons below each invalid i
   await user(page).fill('offline-reader');
   await expect(user(page)).not.toHaveAttribute('aria-invalid', 'true');
   await expect(password(page)).toHaveAttribute('aria-invalid', 'true');
+  await user(page).fill('');
+  await secret(page).fill('12345');
+  await password(page).focus();
+  await expect(user(page)).not.toHaveAttribute('aria-invalid', 'true');
+  await expect(secret(page)).not.toHaveAttribute('aria-invalid', 'true');
+  await expect(password(page)).toHaveAttribute('aria-invalid', 'true');
+  await (await saveButton(page)).tap();
+  await expect(user(page)).toHaveAttribute('aria-invalid', 'true');
+  await expect(secret(page)).toHaveAttribute('aria-invalid', 'true');
+  await user(page).fill('offline-reader');
   await password(page).fill('synthetic-password');
   await secret(page).fill('');
   await (await saveButton(page)).tap();

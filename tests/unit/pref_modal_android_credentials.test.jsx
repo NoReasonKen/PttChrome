@@ -152,7 +152,7 @@ test('blurring a malformed authenticator URI preserves the invalid draft for cor
   expect(sent.filter(m => m.op === 'storePassword')).toHaveLength(0);
 });
 
-test('correcting a field clears only its own validation error', async () => {
+test('editing clears only that field error until another explicit save, even if it remains invalid', async () => {
   mountSettings();
   fireEvent.change(field('autoLoginOtpSecret'), { target: { value: '123456' } });
   fireEvent.click(screen.getByRole('button', { name: i18n('options_credentialsSave') }));
@@ -163,8 +163,18 @@ test('correcting a field clears only its own validation error', async () => {
   expect(field('autoLoginUser')).not.toHaveAttribute('aria-invalid', 'true');
   expect(field('autoLoginPassword')).toHaveAttribute('aria-invalid', 'true');
   expect(field('autoLoginOtpSecret')).toHaveAttribute('aria-invalid', 'true');
-  fireEvent.change(field('autoLoginOtpSecret'), { target: { value: '' } });
+  fireEvent.change(field('autoLoginUser'), { target: { value: '' } });
+  expect(field('autoLoginUser')).not.toHaveAttribute('aria-invalid', 'true');
+  fireEvent.change(field('autoLoginOtpSecret'), { target: { value: '12345' } });
+  fireEvent.blur(field('autoLoginOtpSecret'));
   expect(field('autoLoginOtpSecret')).not.toHaveAttribute('aria-invalid', 'true');
+  expect(field('autoLoginPassword')).toHaveAttribute('aria-invalid', 'true');
+  fireEvent.click(screen.getByRole('button', { name: i18n('options_credentialsSave') }));
+  for (const name of ['autoLoginUser', 'autoLoginPassword', 'autoLoginOtpSecret']) {
+    expect(field(name)).toHaveAttribute('aria-invalid', 'true');
+  }
+  fireEvent.blur(field('autoLoginOtpSecret'));
+  expect(field('autoLoginOtpSecret')).toHaveAttribute('aria-invalid', 'true');
   expect(sent.filter(m => m.op === 'storePassword')).toHaveLength(0);
 });
 

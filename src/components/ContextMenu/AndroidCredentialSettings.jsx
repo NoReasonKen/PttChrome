@@ -19,7 +19,7 @@ export function useAndroidCredentialDraft(show, enabled) {
   const [draft, setDraft] = useState(emptyDraft);
   const [presence, setPresence] = useState(null);
   const [result, setResult] = useState(null);
-  const [validationRequested, setValidationRequested] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
   const statusRevision = useRef(0);
@@ -27,7 +27,7 @@ export function useAndroidCredentialDraft(show, enabled) {
   useEffect(() => {
     setDraft(emptyDraft());
     setResult(null);
-    setValidationRequested(false);
+    setFieldErrors({});
     if (!show || !supported) return;
     let alive = true;
     const revision = ++statusRevision.current;
@@ -57,21 +57,22 @@ export function useAndroidCredentialDraft(show, enabled) {
     : {};
   const valid = !Object.values(errors).some(Boolean);
   const change = (key, value) => {
-    if (busy.current) return;
+    if (busy.current || draft[key] === value) return;
     const next = { ...draft, [key]: value };
     setDraft(next);
+    setFieldErrors((previous) => ({ ...previous, [key]: undefined }));
     setResult(null);
   };
   const discard = () => {
     if (busy.current) return;
     setDraft(emptyDraft());
     setResult(null);
-    setValidationRequested(false);
+    setFieldErrors({});
   };
   const save = async () => {
     if (busy.current || !supported) return false;
     if (!dirty) return true;
-    setValidationRequested(true);
+    setFieldErrors(errors);
     if (!valid) {
       setResult(null);
       return false;
@@ -104,7 +105,7 @@ export function useAndroidCredentialDraft(show, enabled) {
         otpSecret: !!credential.otpSecret,
       });
       setDraft(emptyDraft());
-      setValidationRequested(false);
+      setFieldErrors({});
       return true;
     } finally {
       busy.current = false;
@@ -119,7 +120,7 @@ export function useAndroidCredentialDraft(show, enabled) {
     supported,
     dirty,
     valid,
-    fieldErrors: validationRequested ? errors : {},
+    fieldErrors,
     change,
     discard,
     save,
@@ -152,6 +153,12 @@ export function AndroidCredentialSettings({ editor, anchor }) {
             autoComplete={autoComplete}
             label={i18n("options_" + name)}
             value={editor.draft[key]}
+            styles={{
+              input: {
+                "--input-color": "var(--mantine-color-text)",
+                "--input-placeholder-color": "var(--mantine-color-placeholder)",
+              },
+            }}
             error={
               editor.fieldErrors[key]
                 ? i18n(editor.fieldErrors[key])
