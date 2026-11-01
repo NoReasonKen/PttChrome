@@ -132,10 +132,16 @@ navigation or list cleanup discards the pending notice.
 
 守護 `search_modal.test.jsx`「看板補全區高度固定」（真 Chromium 量表單高度，桌機／手機各一）。
 
-## 記憶（`search_history.js`）
+## 搜尋紀錄（`search_history.js`，#70）
 
-localStorage `pttchrome.searchHistory.v1` = `{title,author,push,board}`，各 MRU 去重、上限 20。**不在 `pttchrome.pref.v1`** ⇒ 不同步、不進匯出（使用者要求）。彈窗內 ↑ 從最新開始、↓ 回草稿；下方列最近 6 筆可點（手機沒有方向鍵）。刪除：每筆旁 ×（`forgetSearch`）；「全部清除」（`forgetSearchKind`）**只清目前這一類**，其他種類不動。刪除後 ↑ 游標歸零。
+localStorage `pttchrome.searchHistory.v2` = `{title,author,push,board}`，每類 `{ pinned: [{text, auto}], recent: [{text, uses}] }`。**不在 `pttchrome.pref.v1`** ⇒ 不同步、不進匯出（使用者要求）。v1 不搬（擁有者決定）。
+
+- 最近：MRU 去重、上限 20，滿了最舊的掉出去。釘選：上限 20，使用者排的順序，不會被擠掉；滿了就不能再釘。
+- 每次送出搜尋（打字、點搜尋紀錄區、↑ 叫回都算）＝那一類的那個關鍵字 +1 次。已釘選的再搜尋不移動、不重複、不計數。
+- 自動釘選：未釘選的到第 10 次（`AUTO_PIN_USES`，固定值）就釘到釘選的最後面、標 `auto`；釘選已滿 20 筆就不釘也不擠掉任何一筆，下一次搜尋再判斷。任何釘選都把次數歸零；取消釘選回到最近的最前面，從 0 重算。
+- 搜尋紀錄區（`SearchModal.jsx`）：只用來搜尋。列出這一類全部紀錄，釘選的在前（`light`）、最近的在後（`default`），按鈕 `sm`（36px）、間距 8px、換行；超過三行固定三行高、框內捲動（`SearchModal.css`）。↑ 叫回的順序跟它相同，↓ 回草稿。
+- 管理視窗（`SearchHistoryManager.jsx`）：設定「本機」分頁的「管理搜尋紀錄」打開（設定搜尋的 `ui:searchHistoryManager`），桌機 Modal、窄螢幕 MobileSheet，系統返回只收它。分釘選／最近兩段，各自全選；釘選、取消釘選、上移／下移、勾選後「刪除 N 筆」，變更立刻寫回，只有「完成」。
 
 ## 測試
 
-unit：`article_search.test.js`（判準／指紋／兩條送出路徑／看板列表 session 多步）、`board_search_bridge.test.js`（畫面解析／鍵序／被拒／最新勝出／逾時／收尾閘門）、`search_history.test.js`、`search_modal.test.jsx`（看板補全用假橋接）、`search_key_intercept.test.js`。offline e2e：`article_search.offline.spec.js`（線上 bytes＝`/\f` → prompt 幀 → `關鍵字\r`、↑ 叫回、Esc 零 byte、pref 關＝原生、已有 prompt 時不攔；看板補全用頁內照 `name.c` 寫的迷你 namecomplete 模擬）；`board_note_skip.offline.spec.js` 的主選單 `s` 卷含一趟合成的補全回應；手機入口在 `mobile_toolbar.offline.spec.js`。
+unit：`article_search.test.js`（判準／指紋／兩條送出路徑／看板列表 session 多步）、`board_search_bridge.test.js`（畫面解析／鍵序／被拒／最新勝出／逾時／收尾閘門）、`search_history.test.js`、`search_modal.test.jsx`（看板補全用假橋接）、`search_history_manager.test.jsx`、`pref_modal_local_tab.test.jsx`、`search_key_intercept.test.js`。offline e2e：`article_search.offline.spec.js`（線上 bytes＝`/\f` → prompt 幀 → `關鍵字\r`、↑ 叫回、Esc 零 byte、pref 關＝原生、已有 prompt 時不攔；看板補全用頁內照 `name.c` 寫的迷你 namecomplete 模擬）；`board_note_skip.offline.spec.js` 的主選單 `s` 卷含一趟合成的補全回應；手機入口在 `mobile_toolbar.offline.spec.js`；搜尋紀錄區的版面與管理視窗在 `mobile_search_history.offline.spec.js`。

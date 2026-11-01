@@ -352,14 +352,50 @@ export const en_US = {
   "searchModal_boardAscii": {
     "message": "Board names only contain letters, digits and symbols"
   },
-  "searchModal_recent": {
+  "searchModal_history": {
+    "message": "Search history"
+  },
+  "searchHistoryManager_title": {
+    "message": "Manage search history"
+  },
+  "searchHistoryManager_help": {
+    "message": "A keyword searched 10 times is pinned automatically, unless 20 entries are already pinned. Pinning resets its count. Entries marked \"Auto\" were pinned automatically."
+  },
+  "searchHistoryManager_pinned": {
+    "message": "Pinned"
+  },
+  "searchHistoryManager_recent": {
     "message": "Recent"
   },
-  "searchModal_forget": {
-    "message": "Delete entry"
+  "searchHistoryManager_selectAll": {
+    "message": "Select all"
   },
-  "searchModal_forgetAll": {
-    "message": "Clear all"
+  "searchHistoryManager_auto": {
+    "message": "Auto"
+  },
+  "searchHistoryManager_pin": {
+    "message": "Pin"
+  },
+  "searchHistoryManager_unpin": {
+    "message": "Unpin"
+  },
+  "searchHistoryManager_moveUp": {
+    "message": "Move up"
+  },
+  "searchHistoryManager_moveDown": {
+    "message": "Move down"
+  },
+  "searchHistoryManager_delete": {
+    "message": "Delete {0}"
+  },
+  "searchHistoryManager_deleteNone": {
+    "message": "Delete"
+  },
+  "searchHistoryManager_empty": {
+    "message": "No search history"
+  },
+  "searchHistoryManager_done": {
+    "message": "Done"
   },
   "searchModal_cancel": {
     "message": "Cancel"
@@ -561,6 +597,9 @@ export const en_US = {
   },
   "tooltip_imageUploadToken": {
     "message": "Leave empty to upload anonymously; with a token the uploads belong to your urusai account and stay manageable"
+  },
+  "tooltip_searchHistoryManager": {
+    "message": "Pin, reorder or delete the search history shown under the search input"
   },
 
   // debug recording mode (about tab, runtime-only)

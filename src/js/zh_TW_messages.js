@@ -352,14 +352,50 @@
   "searchModal_boardAscii": {
     "message": "看板名稱只能是英文、數字與符號"
   },
-  "searchModal_recent": {
+  "searchModal_history": {
+    "message": "搜尋紀錄"
+  },
+  "searchHistoryManager_title": {
+    "message": "管理搜尋紀錄"
+  },
+  "searchHistoryManager_help": {
+    "message": "同一個關鍵字搜尋 10 次會自動釘選，但釘選已滿 20 筆時不會；釘選後次數歸零。標示「自動」的是自動釘選的。"
+  },
+  "searchHistoryManager_pinned": {
+    "message": "釘選"
+  },
+  "searchHistoryManager_recent": {
     "message": "最近"
   },
-  "searchModal_forget": {
-    "message": "刪除紀錄"
+  "searchHistoryManager_selectAll": {
+    "message": "全選"
   },
-  "searchModal_forgetAll": {
-    "message": "全部清除"
+  "searchHistoryManager_auto": {
+    "message": "自動"
+  },
+  "searchHistoryManager_pin": {
+    "message": "釘選"
+  },
+  "searchHistoryManager_unpin": {
+    "message": "取消釘選"
+  },
+  "searchHistoryManager_moveUp": {
+    "message": "上移"
+  },
+  "searchHistoryManager_moveDown": {
+    "message": "下移"
+  },
+  "searchHistoryManager_delete": {
+    "message": "刪除 {0} 筆"
+  },
+  "searchHistoryManager_deleteNone": {
+    "message": "刪除"
+  },
+  "searchHistoryManager_empty": {
+    "message": "沒有搜尋紀錄"
+  },
+  "searchHistoryManager_done": {
+    "message": "完成"
   },
   "searchModal_cancel": {
     "message": "取消"
@@ -560,6 +596,9 @@
   },
   "tooltip_imageUploadToken": {
     "message": "留空＝匿名上傳；填入後圖片會歸在你的 urusai 帳號下，可事後管理或刪除"
+  },
+  "tooltip_searchHistoryManager": {
+    "message": "釘選、排序或刪除搜尋視窗下方的搜尋紀錄"
   },
 
   // debug 錄製模式（關於分頁，runtime-only）

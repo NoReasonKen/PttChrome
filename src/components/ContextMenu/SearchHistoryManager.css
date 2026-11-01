@@ -1,0 +1,21 @@
+/* 搜尋紀錄的管理視窗（SearchHistoryManager.jsx）。 */
+.searchHistoryManagerHeading {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+
+.searchHistoryManagerEntry {
+  min-height: 44px;
+}
+
+/* 關鍵字佔掉剩下的寬度，太長就截斷，次數與按鈕固定在右邊。 */
+.searchHistoryManagerText {
+  flex: 1;
+  min-width: 0;
+}
+
+.searchHistoryManagerText .mantine-Checkbox-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

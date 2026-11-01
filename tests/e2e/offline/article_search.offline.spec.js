@@ -147,7 +147,7 @@ test.describe('搜尋彈窗（離線）', () => {
     await expect(modalInput(page)).toHaveValue('someoneElse');
     // 存在專用 key，不在 prefs（不會被雲端同步帶走）
     const stored = await page.evaluate(() => ({
-      own: localStorage.getItem('pttchrome.searchHistory.v1') || '',
+      own: localStorage.getItem('pttchrome.searchHistory.v2') || '',
       pref: localStorage.getItem('pttchrome.pref.v1') || '',
     }));
     expect(stored.own).toContain('someoneElse');
@@ -176,27 +176,6 @@ test.describe('搜尋彈窗（離線）', () => {
     await waitScreenSettled(page, { 1: '請輸入看板名稱' });
     // 輸入欄是空的 ⇒ 不必退格；查詢趟被送出取代（最新的勝出），直接送板名＋Enter
     await expect.poll(() => sentText(page)).toBe('s\fC_Chat\r');
-  });
-
-  test('紀錄可以逐筆刪除與全部清除', async ({ page }) => {
-    await boot(page);
-    await page.evaluate(() =>
-      localStorage.setItem(
-        'pttchrome.searchHistory.v1',
-        JSON.stringify({ title: ['新的', '舊的'], author: ['someone'], push: [], board: [] })
-      )
-    );
-    await ptt.sendKey(page, '/');
-    await expect(modalInput(page)).toBeVisible();
-    await page.locator('[data-search-forget="新的"]').click();
-    await expect(page.locator('[data-search-recent-item="新的"]')).toHaveCount(0);
-    await modalInput(page).press('ArrowUp');
-    await expect(modalInput(page)).toHaveValue('舊的');
-    await page.locator('[data-search-forget-all]').click();
-    await expect(page.locator('[data-search-recent]')).toHaveCount(0);
-    const h = await page.evaluate(() => JSON.parse(localStorage.getItem('pttchrome.searchHistory.v1')));
-    expect(h.title).toEqual([]);
-    expect(h.author).toEqual(['someone']);
   });
 
   test('Esc 關彈窗：什麼都不送，那一下也不落到終端機', async ({ page }) => {

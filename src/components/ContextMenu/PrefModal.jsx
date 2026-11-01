@@ -83,6 +83,7 @@ import {
   normalizeMobileFontPx,
 } from "../../js/mobile_layout";
 import { PrefSearchBox } from "./PrefSearchBox";
+import SearchHistoryManager from "./SearchHistoryManager";
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import "./PrefModal.css";
 import {
@@ -349,6 +350,8 @@ export const PrefModal = ({
   credentialEditorRef.current = credentialEditor;
   const [confirmCredentialClose, setConfirmCredentialClose] = useState(false);
   const credentialExitAction = useRef(null);
+  const [searchHistoryOpen, setSearchHistoryOpen] = useState(false);
+  const closeSearchHistory = useCallback(() => setSearchHistoryOpen(false), []);
   const [syncUser, setSyncUser] = useState(null);
   const [syncAllowed, setSyncAllowed] = useState(prefSync.canSync);
   const syncSetupRequested = useSyncExternalStore(
@@ -458,11 +461,12 @@ export const PrefModal = ({
     };
   }, [pendingJump]);
 
-  // 設定頁關閉 → 下次打開是乾淨狀態（否則會看到上次那一項還在閃）。
+  // 設定頁關閉 → 下次打開是乾淨狀態（否則會看到上次那一項還在閃、搜尋紀錄管理視窗還開著）。
   useEffect(() => {
     if (!show) {
       setPendingJump(null);
       setFlashKey(null);
+      setSearchHistoryOpen(false);
     }
   }, [show]);
 
@@ -814,7 +818,8 @@ export const PrefModal = ({
         !updateOfferOpen &&
         !confirmCredentialClose &&
         !credentialEditor.saving &&
-        !credentialEditor.confirmDelete
+        !credentialEditor.confirmDelete &&
+        !searchHistoryOpen
       }
       // marker 放在 content（可見的對話框本體）而非 mantine-Modal-root（外層 0 尺寸
       // wrapper，Playwright 會判定 hidden）。
@@ -2466,6 +2471,26 @@ export const PrefModal = ({
                   onChange={onTextInputChange}
                   mt="xs"
                   {...anchor("imageUploadToken")}
+                />
+                {/* 搜尋紀錄只存本機（search_history.js），不是 pref：這裡只放入口。 */}
+                <PrefAnchor anchorKey="ui:searchHistoryManager">
+                  <Button
+                    variant="default"
+                    size="xs"
+                    mt="md"
+                    onClick={() => setSearchHistoryOpen(true)}
+                  >
+                    {i18n("searchHistoryManager_title")}
+                  </Button>
+                  <Text size="xs" c="dimmed" mt={4}>
+                    {i18n("tooltip_searchHistoryManager")}
+                  </Text>
+                </PrefAnchor>
+                <SearchHistoryManager
+                  opened={show && searchHistoryOpen}
+                  onClose={closeSearchHistory}
+                  mobile={narrow}
+                  registerBack={registerBack}
                 />
               </PrefSection>
             </Tabs.Panel>

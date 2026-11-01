@@ -32,3 +32,15 @@
 .searchBoardCandidates[data-board-interim] {
   opacity: 0.6;
 }
+
+/* 搜尋紀錄區：按鈕 sm（36px）、間距 8px，最多三行高，再多就框內捲動（#70）。 */
+.searchHistoryArea {
+  max-height: calc(3 * 2.25rem + 2 * 8px);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+/* 很長的關鍵字不把一行撐出彈窗。 */
+.searchHistoryItem {
+  max-width: 100%;
+}

@@ -20,7 +20,7 @@ import { MantineProvider } from "@mantine/core";
 import ContextMenu from "../../src/components/ContextMenu";
 import { setupI18n, i18n } from "../../src/js/i18n";
 import { DEFAULT_PREFS } from "../../src/js/pref_storage";
-import { readSearchHistory } from "../../src/js/search_history";
+import { readSearchHistory, searchHistoryOrder } from "../../src/js/search_history";
 
 vi.mock("../../src/js/pref_sync", () => ({
   canSync: vi.fn(() => false),
@@ -186,7 +186,7 @@ test("PTT 補全回來的板名可直接點；進板落地後才接手 #AID", as
     "C_Chat",
   );
   expect(pttchrome.aidNavigation.start).not.toHaveBeenCalled();
-  expect(readSearchHistory().board).toEqual(["C_Chat"]);
+  expect(searchHistoryOrder(readSearchHistory(), "board")).toEqual(["C_Chat"]);
 });
 
 test("prompt 根本沒開出來（人還在文章裡）⇒ 退回一般 AID 跳轉", async () => {
