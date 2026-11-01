@@ -12,15 +12,15 @@ const secret = page => input(page, 'autoLoginOtpSecret');
 
 // Substitute only the external Android message endpoint. These tests exercise
 // the real narrow settings UI, not an installed APK or a real provider's UI.
-async function installCredentialHost(page, source = 'manager') {
-  await page.addInitScript(source => {
+async function installCredentialHost(page, source = 'manager', savedSecretSource = null) {
+  await page.addInitScript(({ source, savedSecretSource }) => {
     const listeners = [];
     const host = window.__credentialHost = {
       requests: [],
       source,
-      localPresence: { user: false, password: false, otpSecret: false },
+      localPresence: { user: false, password: false, otpSecret: savedSecretSource === 'local' },
       saveError: null,
-      presence: { user: false, password: false, otpSecret: false },
+      presence: { user: false, password: false, otpSecret: savedSecretSource === 'manager' },
     };
     const prefs = JSON.parse(localStorage.getItem('pttchrome.pref.v1') || '{}');
     localStorage.setItem('pttchrome.pref.v1', JSON.stringify({
@@ -54,11 +54,11 @@ async function installCredentialHost(page, source = 'manager') {
         });
       },
     };
-  }, source);
+  }, { source, savedSecretSource });
 }
 
-async function bootSettings(page, source) {
-  await installCredentialHost(page, source);
+async function bootSettings(page, source, savedSecretSource) {
+  await installCredentialHost(page, source, savedSecretSource);
   await bootOffline(page, ptt);
   await drawMainMenu(page);
   await expect(page.locator('body')).toHaveClass(/mobile-layout/);
@@ -146,6 +146,50 @@ test('mobile explicit manager save clears fields and keeps per-field status on r
   await openCredentials(page);
   await expectPresence(page, false);
   expect(await providerOperations(page)).toEqual(['saveCredentials', 'saveCredentials']);
+});
+
+for (const source of ['local', 'manager']) test(`mobile ${source} 2FA guidance is visible only during focus or a nonempty draft`, async ({ page }) => {
+  await bootSettings(page, source, source);
+  const guidance = page.getByText(await text(page, 'tooltip_androidCredentialSecret'), { exact: true });
+  const warning = page.getByText(await text(page, 'tooltip_androidCredentialSecretRisk'), { exact: true });
+  const expectHidden = async () => {
+    await expect(guidance).toHaveCount(0);
+    await expect(warning).toHaveCount(0);
+  };
+
+  await expectHidden();
+  await secret(page).tap();
+  await expect(guidance).toBeVisible();
+  await expect(warning).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath(`${source}-2fa-help-focused.png`), animations: 'disabled' });
+  await user(page).tap();
+  await expectHidden();
+
+  await secret(page).tap();
+  await secret(page).fill(SECRET);
+  await user(page).tap();
+  await expect(guidance).toBeVisible();
+  await expect(warning).toBeVisible();
+  await secret(page).tap();
+  await secret(page).fill('');
+  await expect(guidance).toBeVisible();
+  await expect(warning).toBeVisible();
+  await user(page).tap();
+  await expectHidden();
+
+  await user(page).fill('offline-reader');
+  await password(page).fill('synthetic-password');
+  await secret(page).tap();
+  await expect(guidance).toBeVisible();
+  // Use a mouse click while the empty secret is focused; blur collapses the
+  // guidance as Save is activated, so the button must still receive the click.
+  await (await saveButton(page)).click();
+  await expect(user(page)).toHaveValue('');
+  await expectHidden();
+  await closeSettings(page);
+  await openCredentials(page);
+  await expect(secret(page)).toHaveValue('');
+  await expectHidden();
 });
 
 test('mobile cancelled and failed saves preserve drafts and leave unsaved choices under reader control', async ({ page }) => {

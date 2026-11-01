@@ -175,6 +175,8 @@ export function useAndroidCredentialDraft(show, enabled) {
 }
 
 export function AndroidCredentialSettings({ editor, anchor }) {
+  const [secretFocused, setSecretFocused] = useState(false);
+  const showSecretHelp = secretFocused || !!editor.draft.otpSecret;
   return (
     <>
       <Text size="sm" mb="xs">
@@ -246,9 +248,13 @@ export function AndroidCredentialSettings({ editor, anchor }) {
                 : undefined
             }
             onChange={(event) => editor.change(key, event.currentTarget.value)}
+            onFocus={
+              key === "otpSecret" ? () => setSecretFocused(true) : undefined
+            }
             onBlur={
               key === "otpSecret"
                 ? () => {
+                    setSecretFocused(false);
                     const raw = editor.draft[key];
                     editor.change(key, normalizeOtpSecret(raw) || raw.trim());
                   }
@@ -261,12 +267,16 @@ export function AndroidCredentialSettings({ editor, anchor }) {
           />
         );
       })}
-      <Text size="xs" c="dimmed" mb="xs">
-        {i18n("tooltip_androidCredentialSecret")}
-      </Text>
-      <Text className="PrefModal__warning">
-        {i18n("tooltip_androidCredentialSecretRisk")}
-      </Text>
+      {showSecretHelp && (
+        <>
+          <Text size="xs" c="dimmed" mb="xs">
+            {i18n("tooltip_androidCredentialSecret")}
+          </Text>
+          <Text className="PrefModal__warning">
+            {i18n("tooltip_androidCredentialSecretRisk")}
+          </Text>
+        </>
+      )}
       <Button
         variant="default"
         size="xs"

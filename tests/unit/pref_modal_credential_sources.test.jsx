@@ -111,6 +111,58 @@ test.each(['local', 'manager'])('opening settings for %s keeps empty unchanged c
   expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeDisabled();
 });
 
+test.each(['local', 'manager'])('%s 2FA guidance follows only the secret draft and focus', async source => {
+  host.source = source;
+  host[source].presence.otpSecret = true;
+  const { reopen } = openSettings();
+  const secret = field('autoLoginOtpSecret');
+  const guidance = () => screen.queryByText(i18n('tooltip_androidCredentialSecret'));
+  const warning = () => screen.queryByText(i18n('tooltip_androidCredentialSecretRisk'));
+  await waitFor(() => expect(radio(source)).toBeEnabled());
+
+  // Saved presence does not populate a draft or reveal the long explanations.
+  expect(secret).toHaveValue('');
+  expect(guidance()).not.toBeInTheDocument();
+  expect(warning()).not.toBeInTheDocument();
+
+  fireEvent.focus(secret);
+  expect(guidance()).toBeInTheDocument();
+  expect(warning()).toBeInTheDocument();
+  fireEvent.blur(secret);
+  expect(guidance()).not.toBeInTheDocument();
+  expect(warning()).not.toBeInTheDocument();
+
+  fireEvent.focus(secret);
+  fireEvent.change(secret, { target: { value: 'JBSWY3DPEHPK3PXP' } });
+  fireEvent.blur(secret);
+  expect(guidance()).toBeInTheDocument();
+  expect(warning()).toBeInTheDocument();
+  fireEvent.focus(secret);
+  fireEvent.change(secret, { target: { value: '' } });
+  expect(guidance()).toBeInTheDocument();
+  expect(warning()).toBeInTheDocument();
+  fireEvent.blur(secret);
+  expect(guidance()).not.toBeInTheDocument();
+  expect(warning()).not.toBeInTheDocument();
+
+  // Simulate blur before Save; the mobile E2E covers the real pointer sequence.
+  fireEvent.change(field('autoLoginUser'), { target: { value: 'reader' } });
+  fireEvent.change(field('autoLoginPassword'), { target: { value: 'synthetic-password' } });
+  fireEvent.focus(secret);
+  expect(guidance()).toBeInTheDocument();
+  fireEvent.blur(secret);
+  fireEvent.click(screen.getByRole('button', { name: i18n('options_credentialsSave') }));
+  await waitFor(() => expect(field('autoLoginUser')).toHaveValue(''));
+  expect(guidance()).not.toBeInTheDocument();
+  expect(warning()).not.toBeInTheDocument();
+
+  reopen();
+  await waitFor(() => expect(radio(source)).toBeEnabled());
+  expect(field('autoLoginOtpSecret')).toHaveValue('');
+  expect(guidance()).not.toBeInTheDocument();
+  expect(warning()).not.toBeInTheDocument();
+});
+
 test('local saving clears all fields and independently reflects optional-secret presence while automatic login is off', async () => {
   localStorage.setItem('pttchrome.pref.v1', JSON.stringify({ values: { autoLogin: false } }));
   openSettings();

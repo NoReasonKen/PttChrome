@@ -24,6 +24,8 @@ adds no separate message below the button; errors and cancellation remain visibl
 as explanatory text.
 No saved identity, secrets, or masking-dot values are repopulated. Each field's
 placeholder independently reports presence for the selected destination.
+The two long explanations below the 2FA secret field appear only while it is
+focused or its current draft is nonempty; saved-secret presence alone does not show them.
 
 Leaving with credential edits offers Save, Discard, or Continue editing; a source
 switch alone needs no confirmation on exit. Failed/cancelled credential saving
