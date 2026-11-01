@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "version": "0.3.0",
+  "tag": "android-fork-v0.3.0",
+  "publishedAt": null,
+  "previousRelease": {
+    "version": "0.2.1",
+    "sourceCommit": "4075709e8697732ebb466da282a8563afa9c8a7b"
+  },
+  "nativeChanged": true,
+  "summary": {
+    "zhTW": [
+      "文章中的內嵌影片改以卡片顯示封面、標題與頻道，點封面才開始播放，影片上也能左右滑動翻頁。",
+      "同標題的上一篇、下一篇與第一篇（[、]、=）可跳到 PTT 搜尋範圍以外的文章，到底時滑回列表。",
+      "同標題與同作者搜尋更快顯示結果，搜尋與返回途中保持在文章畫面。",
+      "沒有檔頭的文章也會在 App Bar 顯示看板、發文時間與作者。",
+      "文章列表的推文數移到資訊列，讓標題對齊。",
+      "修正原地換文章或搜尋後，返回只看到暗色底層而不是列表的問題。"
+    ],
+    "en": [
+      "Show embedded videos as a card with a cover, title and channel; the video starts only when its cover is tapped, and swipes work over it.",
+      "Let the same-thread keys ([, ] and =) reach articles beyond PTT's search range, sliding back to the list past the last one.",
+      "Show same-thread and same-author search results sooner, keeping the article on screen through the search and Back.",
+      "Show the board, posting time and author in the App Bar for articles without a header.",
+      "Move article list scores into the metadata line so titles align.",
+      "Fix Back showing a dark underlay instead of the list after an article was replaced in place or searched from."
+    ]
+  },
+  "commits": [
+    {
+      "sha": "da91614ec5371c145760534e990bc11dc0f50faa",
+      "subject": "feat(thread-jump): read the answer of a same-thread jump and find the source among results"
+    },
+    {
+      "sha": "329b5c812afbb67f7200049fa92702d7ccba3fc1",
+      "subject": "feat(thread-jump): land far same-thread jumps through the thread search"
+    },
+    {
+      "sha": "9d5e7b54eea95352c7cbf0b4a107e70c510d0a23",
+      "subject": "fix(thread-jump): reach the original for = and slide back to the list for ]"
+    },
+    {
+      "sha": "1779a29cfc197bdf6aad87c3cbb17542674d14ad",
+      "subject": "test(thread-jump): land = on the earliest reply when the original was deleted"
+    },
+    {
+      "sha": "25dfaeb0a7f093366e32dcb0f29ba218a22284fd",
+      "subject": "fix(thread-jump): slide back over the dark fallback after a jump in place"
+    },
+    {
+      "sha": "1f3925b068751b836602759d050f4480e01dc92b",
+      "subject": "test(resize-recovery): give the stand-in app the thread jump that disconnect resets"
+    },
+    {
+      "sha": "d6be0fd2b6729968227edb768f460b72e87ffdf4",
+      "subject": "Add release dry runs and enforce validated commits"
+    },
+    {
+      "sha": "751ebcb0892e80621d8ee01586892c61f03008e5",
+      "subject": "fix(app-bar): headerless articles take their list row as identity"
+    },
+    {
+      "sha": "fdaa3733374bfca43bdf928262fab4aee2bbd0a7",
+      "subject": "feat(app-bar): read a headerless article's list row out of sight"
+    },
+    {
+      "sha": "e5dd28a200e0d172e8d09a565805552a9ddf6901",
+      "subject": "fix(app-bar): headerless articles get their post time and survive early paging"
+    },
+    {
+      "sha": "f1e5c2acea5ede4908b09649684e48e2c150f6b0",
+      "subject": "Suppress native tap feedback on the terminal surface"
+    },
+    {
+      "sha": "0e85c2d47f0a8a73b6792a96a0b25d6b004ea3db",
+      "subject": "Validate replay geometry and await actual article readiness"
+    },
+    {
+      "sha": "b4c57f34ebbb310a74fc6473cd815441dda76e82",
+      "subject": "Align article titles by moving score badges to metadata"
+    },
+    {
+      "sha": "e4a232c46a3eadf8b36c772d9b7b8adc7b2ca89e",
+      "subject": "fix(stack): keep the list's live layer when the article is replaced in place"
+    },
+    {
+      "sha": "cb5cb0ab77046564a8fa23406383a75ce732ded6",
+      "subject": "fix(stack): follow PTT's selection through jumps in search results"
+    },
+    {
+      "sha": "5d315d029ec99c3eb45712fb0413137bb4ede342",
+      "subject": "fix(aid): tell an author's articles apart when reading the local AID"
+    },
+    {
+      "sha": "606488dda04c2932e8d85077c7c29ed966ce542d",
+      "subject": "fix(stack): keep the revealed page's layout and App Bar until it takes over"
+    },
+    {
+      "sha": "6613ef56ff37ce3f7c294ce2de99ef08ff1382d2",
+      "subject": "fix(search): keep easy reading on screen through a shortcut search and Back"
+    },
+    {
+      "sha": "bdd7f9c26ce80ff644d9db3eca887c60886aabfe",
+      "subject": "fix(stack): let the page shown swipe as soon as a handoff ends"
+    },
+    {
+      "sha": "5dc0ee4db9800844cdd4b6353f09c2230a72a745",
+      "subject": "feat(search): shortcut searches take over on landing and skip needless round trips"
+    },
+    {
+      "sha": "963078984fbedc5145430705c57ae4d3051e087d",
+      "subject": "Center list metadata badges within the clipped card line"
+    },
+    {
+      "sha": "a56c7f57ecda6a15a3a37a516a6c2c49040e8149",
+      "subject": "Show an embed cover until the reader starts an embedded video"
+    },
+    {
+      "sha": "41111e7662f2800f58627e9e35712e53992b4d28",
+      "subject": "Show embedded videos as a card with title and channel"
+    },
+    {
+      "sha": "869e79cfb5ec5ae58668ab1790025613e7b04522",
+      "subject": "Let embed card details behave as article text and tighten the card"
+    },
+    {
+      "sha": "6ce2329da82fcff4d3edbe29e012950d3e39a31d",
+      "subject": "Even out the embed card's text spacing"
+    }
+  ]
+}
