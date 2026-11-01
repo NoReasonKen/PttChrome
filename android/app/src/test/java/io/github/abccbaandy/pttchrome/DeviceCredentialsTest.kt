@@ -166,4 +166,94 @@ class DeviceCredentialsTest {
         }
         assertEquals(PasswordManagerCredential("reader", "original"), credentials.get().credential)
     }
+
+    @Test
+    fun deletingLocalCredentialsRetainsTheSelectedProviderAndItsSavedEntry() = runBlocking {
+        val state = MemoryState()
+        var provider: PasswordManagerCredential? = null
+        var providerPresence = PasswordPresence()
+        val manager = PasswordManagerCredentials(
+            object : PasswordPresenceStore {
+                override fun read() = providerPresence
+                override fun write(presence: PasswordPresence): Boolean { providerPresence = presence; return true }
+            },
+            retrieve = { provider },
+            save = { user, password ->
+                provider = PasswordManagerCredential(user, password)
+                PasswordSaveOutcome.SAVED
+            },
+        )
+        val credentials = DeviceCredentials(state, TestCipher(), manager)
+        credentials.save(CredentialSource.LOCAL, "local-reader", "local-password")
+        credentials.save(CredentialSource.MANAGER, "manager-reader", "manager-password")
+
+        val result = credentials.deleteLocal()
+
+        assertEquals(CredentialSource.MANAGER, result.source)
+        assertEquals(PasswordPresence(), result.presence)
+        val reopened = DeviceCredentials(state, TestCipher(), manager)
+        assertEquals(CredentialSource.MANAGER, reopened.status().source)
+        assertEquals(PasswordPresence(), reopened.status().local.presence)
+        assertEquals(PasswordPresence(true, true, false), reopened.status().manager.presence)
+        assertEquals(PasswordManagerCredential("manager-reader", "manager-password"), reopened.get().credential)
+    }
+
+    @Test
+    fun deletingAnUnreadableLocalPayloadAllowsFreshEnrollmentWithoutProviderFallback() = runBlocking {
+        val state = MemoryState()
+        val cipher = TestCipher()
+        val credentials = DeviceCredentials(state, cipher, emptyManager())
+        credentials.save(CredentialSource.LOCAL, "reader", "original")
+        cipher.readable = false
+        assertEquals("unreadable", credentials.status().local.error)
+
+        assertEquals(PasswordPresence(), credentials.deleteLocal().presence)
+        assertEquals(CredentialSource.LOCAL, credentials.status().source)
+        assertEquals(CredentialDestinationStatus(PasswordPresence()), credentials.status().local)
+        try {
+            credentials.get()
+            error("Deleted local credentials must not remain usable")
+        } catch (failure: CredentialStorageException) {
+            assertEquals("missing", failure.code)
+        }
+        cipher.readable = true
+        credentials.save(CredentialSource.LOCAL, "replacement-reader", "replacement-password")
+        assertEquals(PasswordManagerCredential("replacement-reader", "replacement-password"), credentials.get().credential)
+    }
+
+    @Test
+    fun failedDeletionPreservesTheSavedCredentialAndPresence() = runBlocking {
+        val state = MemoryState()
+        val credentials = DeviceCredentials(state, TestCipher(), emptyManager())
+        credentials.save(CredentialSource.LOCAL, "reader", "original")
+        state.failWrites = true
+
+        try {
+            credentials.deleteLocal()
+            error("A failed deletion must not report success")
+        } catch (failure: CredentialStorageException) {
+            assertEquals("failed", failure.code)
+        }
+        assertEquals(CredentialSource.LOCAL, credentials.status().source)
+        assertEquals(PasswordPresence(true, true, false), credentials.status().local.presence)
+        assertEquals(PasswordManagerCredential("reader", "original"), credentials.get().credential)
+    }
+
+    @Test
+    fun corruptStateDoesNotGuessAReplacementSelectionDuringDeletion() = runBlocking {
+        val credentials = DeviceCredentials(
+            object : DeviceCredentialStateStore {
+                override fun read(): DeviceCredentialState = throw IOException("Synthetic corrupt record")
+                override fun write(value: DeviceCredentialState) = error("A corrupt envelope must not reset selection")
+            },
+            TestCipher(),
+            emptyManager(),
+        )
+        try {
+            credentials.deleteLocal()
+            error("A corrupt state must report failure")
+        } catch (failure: CredentialStorageException) {
+            assertEquals("unreadable", failure.code)
+        }
+    }
 }

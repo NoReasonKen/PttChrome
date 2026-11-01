@@ -63,7 +63,8 @@ class CredentialBridge(private val activity: Activity) {
         val id = request.optInt("id")
         val reply = JSONObject().put("id", id)
         when (request.optString("op")) {
-            "getCredentialStatus", "getLoginCredential", "saveCredentials" -> handleDeviceCredentials(request, reply)
+            "getCredentialStatus", "getLoginCredential", "saveCredentials", "deleteLocalCredentials" ->
+                handleDeviceCredentials(request, reply)
             "getPassword" -> try {
                 val credential = passwords.get()
                 if (credential != null) {
@@ -127,6 +128,10 @@ class CredentialBridge(private val activity: Activity) {
                         ?: throw CredentialStorageException("invalid")
                     val saved = deviceCredentials.save(source, request.optString("user"), request.optString("password"))
                     reply.put("ok", true).put("source", saved.source.wire).put("presence", saved.presence.toJson())
+                }
+                "deleteLocalCredentials" -> {
+                    val deleted = deviceCredentials.deleteLocal()
+                    reply.put("ok", true).put("source", deleted.source.wire).put("presence", deleted.presence.toJson())
                 }
             }
         } catch (failure: CredentialStorageException) {

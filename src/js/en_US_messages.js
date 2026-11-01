@@ -734,6 +734,16 @@ export const en_US = {
   "tooltip_title_blacklist": {
     "message": "One keyword per line; hides board-list posts whose title contains it"
   },
+  "options_credentialsLegacySetup": { "message": "Old plaintext credentials remain on this page source but are not used for login. Enter your credentials manually and save them. A successful local encrypted save removes the old copy; using the password manager keeps it unused." },
+  "options_credentialsDeleteLegacy": { "message": "Clear old plaintext credentials" },
+  "options_credentialsDeleteLocal": { "message": "Delete local encrypted credentials" },
+  "options_credentialsDeleteConfirm": { "message": "Delete these app-owned saved credentials? Other settings, your current PTT connection and external password-manager entries will remain unchanged." },
+  "options_credentialsConfirmDelete": { "message": "Delete" },
+  "options_credentialsCancelDelete": { "message": "Cancel" },
+  "options_credentialsDeleteUpgrade": { "message": "Update the Android APK to enable deletion of local encrypted credentials." },
+  "options_credentials_deleted": { "message": "Local credentials deleted. External password-manager entries were not changed." },
+  "options_credentials_deleteFailed": { "message": "Could not confirm deletion. The saved status has not been changed; try again." },
+  "options_credentials_legacyCleanupFailed": { "message": "Encrypted credentials were saved, but the old plaintext copy could not be removed. Use Clear old plaintext credentials to try again." },
   "options_credentialsSave": { "message": "Save credentials" },
   "options_credentialsUpgrade": { "message": "Update the Android APK to choose a credential source and use local encrypted storage." },
   "options_credentialsSource": { "message": "Credential storage" },

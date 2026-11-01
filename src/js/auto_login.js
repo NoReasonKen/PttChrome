@@ -35,7 +35,8 @@
 
 import {
   readValuesWithDefault,
-  clearLegacyAutoLoginCredential
+  clearLegacyAutoLoginCredential,
+  hasLegacyAutoLoginCredential
 } from './pref_storage';
 import { packCredential, unpackCredential } from './credential_pack';
 import { isAndroidApp } from './android_bridge';
@@ -220,6 +221,7 @@ AutoLogin.prototype._resolveAndroidCredential = async function() {
     sessionCred = null;
     const key = status === 'unavailable' ? 'options_credentialsUpgrade'
       : status === 'unreadable' ? 'options_credentials_unreadable'
+      : status === 'missing' && hasLegacyAutoLoginCredential() ? 'options_credentialsLegacySetup'
       : 'options_credentialsLogin_' + (['missing', 'cancelled'].includes(status) ? status : 'failed');
     this._app.view?.flashListHint?.(i18n(key), 6000, HINT_ERROR);
     return null;
@@ -229,7 +231,10 @@ AutoLogin.prototype._resolveAndroidCredential = async function() {
   if (revision !== credentialRevision) return null;
   if (!state) return failed('failed');
   if (state[state.source].error) return failed(state[state.source].error);
-  if (sessionCred?.source === state.source) return sessionCred;
+  if (sessionCred?.source === state.source &&
+      (state.source !== 'local' || (state.local.presence.user && state.local.presence.password))) {
+    return sessionCred;
+  }
   const result = await getAndroidLoginCredential(state.source);
   if (revision !== credentialRevision) return null;
   if (result.status !== 'ready') return failed(result.status);

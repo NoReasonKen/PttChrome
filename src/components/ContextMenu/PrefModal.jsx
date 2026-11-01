@@ -503,8 +503,8 @@ export const PrefModal = ({
     if (updateBlocksInteraction()) return;
     let next = pruneExternalSearchEntries(normalizeAutoLoginValues(values));
     if (androidCredentials) {
-      // Legacy data belongs to the later migration/deletion flow. Never copy
-      // the separate Android draft into these ordinary preferences.
+      // Read current retained legacy fields: encrypted enrollment or explicit
+      // cleanup may have removed them while this settings snapshot was open.
       const stored = readValuesWithDefault();
       next = {
         ...next,
@@ -539,7 +539,12 @@ export const PrefModal = ({
       // File reads can finish after the reader has changed the draft. Consult
       // current state rather than the editor captured before that asynchronous work.
       const editor = credentialEditorRef.current;
-      if (editor.busy.current || updateBlocksInteraction()) return;
+      if (
+        editor.busy.current ||
+        editor.confirmDelete ||
+        updateBlocksInteraction()
+      )
+        return;
       if (androidCredentials && editor.dirty) {
         credentialExitAction.current = action;
         setConfirmCredentialClose(true);
@@ -556,7 +561,8 @@ export const PrefModal = ({
   };
   backRef.current = () => {
     if (credentialEditor.busy.current) return;
-    if (confirmCredentialClose) continueCredentialEditing();
+    if (credentialEditor.confirmDelete) credentialEditor.cancelDelete();
+    else if (confirmCredentialClose) continueCredentialEditing();
     else if (inCategory) setCategoryList(true);
     else onCloseClick();
   };
@@ -805,7 +811,10 @@ export const PrefModal = ({
       opened={show}
       onClose={onCloseClick}
       closeOnEscape={
-        !updateOfferOpen && !confirmCredentialClose && !credentialEditor.saving
+        !updateOfferOpen &&
+        !confirmCredentialClose &&
+        !credentialEditor.saving &&
+        !credentialEditor.confirmDelete
       }
       // marker 放在 content（可見的對話框本體）而非 mantine-Modal-root（外層 0 尺寸
       // wrapper，Playwright 會判定 hidden）。

@@ -733,6 +733,16 @@
   "tooltip_title_blacklist": {
     "message": "一行一個關鍵字；看板列表隱藏標題含此關鍵字的文章"
   },
+  "options_credentialsLegacySetup": { "message": "此網頁來源仍有舊版明文帳密，但不會用來登入。請手動輸入並儲存帳密；本機加密儲存成功後會清除舊明文，使用密碼管理員則保留但不使用。" },
+  "options_credentialsDeleteLegacy": { "message": "清除舊版明文帳密" },
+  "options_credentialsDeleteLocal": { "message": "刪除本機加密帳密" },
+  "options_credentialsDeleteConfirm": { "message": "確定刪除這份由 App 保管的帳密？其他設定、目前的 PTT 連線與外部密碼管理員資料都不受影響。" },
+  "options_credentialsConfirmDelete": { "message": "刪除" },
+  "options_credentialsCancelDelete": { "message": "取消" },
+  "options_credentialsDeleteUpgrade": { "message": "請更新 Android APK，以啟用刪除本機加密帳密。" },
+  "options_credentials_deleted": { "message": "本機帳密已刪除，外部密碼管理員資料未變更。" },
+  "options_credentials_deleteFailed": { "message": "無法確認刪除完成，未變更已儲存狀態，請重試。" },
+  "options_credentials_legacyCleanupFailed": { "message": "加密帳密已儲存，但無法清除舊版明文；請使用「清除舊版明文帳密」重試。" },
   "options_credentialsSave": { "message": "儲存帳密" },
   "options_credentialsUpgrade": { "message": "請更新 Android APK，才能選擇帳密來源與使用本機加密儲存。" },
   "options_credentialsSource": { "message": "帳密儲存方式" },

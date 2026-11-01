@@ -15,7 +15,13 @@ import {
   androidEncryptedCredentialsAvailable,
   getAndroidCredentialStatus,
   saveAndroidCredentials,
+  androidCredentialDeletionAvailable,
+  deleteAndroidLocalCredentials,
 } from "../../js/credential_store";
+import {
+  hasLegacyAutoLoginCredential,
+  clearAndroidLegacyAutoLoginCredential,
+} from "../../js/pref_storage";
 import { invalidateSessionCredential } from "../../js/auto_login";
 import { rememberCredential } from "../../js/credential_redaction";
 
@@ -31,6 +37,8 @@ export function useAndroidCredentialDraft(show, enabled) {
   const [fieldErrors, setFieldErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [legacy, setLegacy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const busy = useRef(false);
   const statusRevision = useRef(0);
   const supported = enabled && androidEncryptedCredentialsAvailable();
@@ -40,6 +48,8 @@ export function useAndroidCredentialDraft(show, enabled) {
     setSaved(false);
     setFieldErrors({});
     setStatus(null);
+    setConfirmDelete(null);
+    setLegacy(enabled && hasLegacyAutoLoginCredential());
     if (!show || !supported) return;
     let alive = true;
     const revision = ++statusRevision.current;
@@ -151,7 +161,51 @@ export function useAndroidCredentialDraft(show, enabled) {
     setSaved(true);
     setDraft(emptyDraft());
     setFieldErrors({});
+    if (source === "local") {
+      if (clearAndroidLegacyAutoLoginCredential()) setLegacy(false);
+      else {
+        setLegacy(true);
+        setResult("legacyCleanupFailed");
+        return false;
+      }
+    }
     return true;
+  };
+  const remove = async () => {
+    if (busy.current || !confirmDelete) return;
+    busy.current = true;
+    setSaving(true);
+    setResult(null);
+    try {
+      // A native delete can commit even if its acknowledgement is lost. Stop
+      // cached/pending reuse before the confirmed attempt, never on cancellation.
+      invalidateSessionCredential();
+      if (confirmDelete === "legacy") {
+        if (!clearAndroidLegacyAutoLoginCredential()) {
+          setResult("deleteFailed");
+          return;
+        }
+        setLegacy(false);
+      } else {
+        const outcome = await deleteAndroidLocalCredentials();
+        if (outcome.status !== "deleted") {
+          setResult("deleteFailed");
+          return;
+        }
+        statusRevision.current += 1;
+        setStatus((previous) => ({
+          ...previous,
+          source: outcome.source,
+          local: { presence: outcome.presence },
+        }));
+      }
+      setSaved(false);
+      setResult("deleted");
+    } finally {
+      setConfirmDelete(null);
+      busy.current = false;
+      setSaving(false);
+    }
   };
   return {
     draft,
@@ -171,6 +225,21 @@ export function useAndroidCredentialDraft(show, enabled) {
     discard,
     save,
     busy,
+    legacy,
+    localPresent:
+      !!status?.local?.error ||
+      !!status?.local?.presence?.user ||
+      !!status?.local?.presence?.password ||
+      !!status?.local?.presence?.otpSecret,
+    deletionSupported: supported && androidCredentialDeletionAvailable(),
+    confirmDelete,
+    requestDelete: (kind) => {
+      if (!busy.current) setConfirmDelete(kind);
+    },
+    cancelDelete: () => {
+      if (!busy.current) setConfirmDelete(null);
+    },
+    remove,
   };
 }
 
@@ -182,6 +251,11 @@ export function AndroidCredentialSettings({ editor, anchor }) {
       <Text size="sm" mb="xs">
         {i18n("tooltip_androidCredentials")}
       </Text>
+      {editor.legacy && (
+        <Text role="note" c="yellow" mb="xs">
+          {i18n("options_credentialsLegacySetup")}
+        </Text>
+      )}
       {!editor.supported && (
         <Text role="alert" c="yellow" mb="xs">
           {i18n("options_credentialsUpgrade")}
@@ -297,6 +371,66 @@ export function AndroidCredentialSettings({ editor, anchor }) {
           {i18n("options_credentials_" + editor.result)}
         </Text>
       )}
+      <Group mt="sm">
+        {editor.legacy && (
+          <Button
+            variant="default"
+            size="xs"
+            disabled={editor.saving}
+            onClick={() => editor.requestDelete("legacy")}
+          >
+            {i18n("options_credentialsDeleteLegacy")}
+          </Button>
+        )}
+        <Button
+          variant="default"
+          size="xs"
+          disabled={
+            !editor.deletionSupported ||
+            !editor.ready ||
+            !editor.localPresent ||
+            editor.saving
+          }
+          onClick={() => editor.requestDelete("local")}
+        >
+          {i18n("options_credentialsDeleteLocal")}
+        </Button>
+      </Group>
+      {editor.supported && !editor.deletionSupported && (
+        <Text size="xs" c="dimmed" mt="xs">
+          {i18n("options_credentialsDeleteUpgrade")}
+        </Text>
+      )}
+      <Modal
+        opened={!!editor.confirmDelete}
+        onClose={editor.cancelDelete}
+        title={i18n(
+          editor.confirmDelete === "legacy"
+            ? "options_credentialsDeleteLegacy"
+            : "options_credentialsDeleteLocal",
+        )}
+        closeOnEscape={!editor.saving}
+        closeOnClickOutside={!editor.saving}
+        withCloseButton={!editor.saving}
+      >
+        <Text mb="sm">{i18n("options_credentialsDeleteConfirm")}</Text>
+        <Group>
+          <Button
+            variant="default"
+            onClick={editor.remove}
+            loading={editor.saving}
+          >
+            {i18n("options_credentialsConfirmDelete")}
+          </Button>
+          <Button
+            variant="default"
+            onClick={editor.cancelDelete}
+            disabled={editor.saving}
+          >
+            {i18n("options_credentialsCancelDelete")}
+          </Button>
+        </Group>
+      </Modal>
     </>
   );
 }

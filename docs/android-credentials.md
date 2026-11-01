@@ -81,6 +81,7 @@ encryption works. Browser-version storage and migration behavior are unchanged.
 | `getCredentialStatus` | No credentials | `source`, `local` and `manager` status containing `presence: { user, password, otpSecret }`; destination errors carry only sanitized codes |
 | `saveCredentials` | `source: local/manager`, optional complete `user`/`password` pair | Confirmed `source` and `presence` |
 | `getLoginCredential` | No source override | Selected `source`, `user`, and existing password/optional-secret envelope |
+| `deleteLocalCredentials` | No credentials; requires `credentialDeletion: true` | Unchanged `source` and empty local `presence` |
 
 Errors are sanitized `missing`, `cancelled`, `failed`, `unreadable`, or invalid
 request outcomes; raw platform exceptions and credential values are never logged.
@@ -93,10 +94,34 @@ Credentials encountered during save/login are registered with diagnostic
 redaction before use, even after fields or login caches are cleared. The
 redaction registry is page-local and never persisted.
 
-This implements #92 and #93 of [the Android storage redesign](https://github.com/NoReasonKen/PttChrome/issues/91).
-Retained legacy plaintext is unused, not migrated. Automatic removal after local
-enrollment and confirmed local deletion follow in #94. The broader cross-feature
-privacy audit follows in #95; these do not defer basic protection of new secrets.
+## Legacy plaintext and local deletion
+
+Old web preferences may still contain plaintext credentials. The Android login
+path never uses them, even if the selected destination fails or returns nothing.
+Settings explains their presence without filling any field; an unconfigured login
+also prompts for manual setup. Password-manager selection, saving and retrieval
+retain that copy unused. Only a confirmed local encrypted enrollment automatically
+clears all three old fields. A failed enrollment retains them. If encryption succeeds
+but web storage cleanup fails, the saved encrypted entry remains usable and settings
+reports that explicit legacy cleanup is still needed.
+
+**Clear old plaintext credentials** and **Delete local encrypted credentials** are
+separate confirmed actions. Either can be cancelled without changing saved state.
+They retain unrelated settings, the selected source, the other destination and the
+current PTT connection. They never delete external password-manager entries.
+Confirmed deletion invalidates cached and pending login results so a reconnect
+cannot silently reuse the deleted entry. Ordinary preference saves, imports and
+cloud merges cannot refresh or restore the old plaintext after cleanup.
+
+Legacy cleanup affects the current reading-page origin's web preferences; encrypted
+deletion affects the installed app's shared local record. An older APK without the
+deletion capability shows an update explanation. Unreadable encrypted payloads can
+be explicitly removed without decrypting them; a structurally corrupt record that
+cannot identify the selected source reports failure instead of guessing a reset.
+Storage failures remain visible and never claim deletion succeeded.
+
+This implements #92, #93 and #94 of [the Android storage redesign](https://github.com/NoReasonKen/PttChrome/issues/91).
+The broader cross-feature privacy audit follows in #95.
 
 ## Verification
 

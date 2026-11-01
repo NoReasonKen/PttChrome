@@ -232,6 +232,7 @@ class MainActivity : ComponentActivity() {
             .put("updates", true)
             .put("credentialSave", true)
             .put("encryptedCredentials", true)
+            .put("credentialDeletion", true)
             .put("updateBlocking", updater.blocking())
             .put("openUpdate", intent.getBooleanExtra("open_update", false))
             .put("site", site)

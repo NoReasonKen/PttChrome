@@ -98,4 +98,36 @@ class DeviceCredentialsInstrumentedTest {
         assertFalse(keys.containsAlias(alias))
         assertArrayEquals(persisted, record.readBytes())
     }
+
+    @Test
+    fun explicitDeletionRemovesCiphertextAndPreventsRetrievalFromAFreshStore() = runBlocking {
+        open().save(CredentialSource.LOCAL, credential.user, credential.password)
+        val selected = open().deleteLocal()
+        assertEquals(CredentialSource.LOCAL, selected.source)
+        assertEquals(PasswordPresence(), selected.presence)
+        assertNull(DeviceCredentialFile(record).read().local)
+        assertEquals(CredentialDestinationStatus(PasswordPresence()), open().status().local)
+        try {
+            open().get()
+            error("A fresh store must not retrieve deleted credentials")
+        } catch (failure: CredentialStorageException) {
+            assertEquals("missing", failure.code)
+        }
+        open().save(CredentialSource.LOCAL, credential.user, credential.password)
+        assertEquals(credential, open().get().credential)
+    }
+
+    @Test
+    fun explicitDeletionAfterKeyLossAllowsManualEnrollmentWithoutTheOldCiphertext() = runBlocking {
+        open().save(CredentialSource.LOCAL, credential.user, credential.password)
+        KeyStore.getInstance("AndroidKeyStore").apply { load(null); deleteEntry(alias) }
+        assertEquals("unreadable", open().status().local.error)
+
+        open().deleteLocal()
+
+        assertNull(DeviceCredentialFile(record).read().local)
+        assertEquals(CredentialDestinationStatus(PasswordPresence()), open().status().local)
+        open().save(CredentialSource.LOCAL, "synthetic-replacement", "synthetic-replacement-password")
+        assertEquals(PasswordManagerCredential("synthetic-replacement", "synthetic-replacement-password"), open().get().credential)
+    }
 }

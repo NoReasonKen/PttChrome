@@ -67,6 +67,25 @@ export async function getAndroidLoginCredential(source) {
   }
 }
 
+export function androidCredentialDeletionAvailable() {
+  return androidEncryptedCredentialsAvailable() && window.__PTT_ANDROID__.credentialDeletion === true;
+}
+
+export async function deleteAndroidLocalCredentials() {
+  if (!androidCredentialDeletionAvailable()) return { status: 'unavailable' };
+  try {
+    const result = await requestAndroid('deleteLocalCredentials');
+    const presence = readPresence(result?.presence);
+    if (result?.ok && sourceValid(result.source) && presence &&
+        presenceKeys.every(key => !presence[key])) {
+      return { status: 'deleted', source: result.source, presence };
+    }
+    return { status: 'failed' };
+  } catch {
+    return { status: 'failed' };
+  }
+}
+
 export function androidCredentialSaveAvailable() {
   return androidBridgeAvailable() && window.__PTT_ANDROID__.credentialSave === true;
 }

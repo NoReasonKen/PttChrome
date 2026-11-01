@@ -19,6 +19,10 @@
 //     Only the selected destination is read. Error codes are sanitized; there
 //     is no legacy-plaintext or cross-source fallback. Status never returns a
 //     saved identity or secret. Existing provider ops remain for older pages.
+//   credentialDeletion:true additionally enables:
+//   → { id, op: 'deleteLocalCredentials' }
+//     ← { id, ok:true, source, presence:{user:false,password:false,otpSecret:false} }
+//     Removes the local encrypted entry without changing source/provider data.
 //   → { id, op: 'getPassword' }                          ← { id, ok, user, password }
 //   → { id, op: 'storePassword', user, password }        ← { id, ok, presence? } | { id, ok:false, error }
 //   → { id, op: 'getPasswordStatus' }                   ← { id, ok, presence }

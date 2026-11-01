@@ -14,6 +14,11 @@ const PASSWORD = 'synthetic-local-password';
 // RFC 6238's SHA-1 test key, represented as Base32 for the shared settings form.
 const SECRET = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
 const RECORD = 'no_backup/device-credentials';
+const LEGACY = {
+  autoLoginUser: 'legacyreader',
+  autoLoginPassword: 'synthetic-legacy-password',
+  autoLoginOtpSecret: 'JBSWY3DPEHPK3PXP',
+};
 const text = (page, key) => page.evaluate(value => window.__i18n(value), key);
 const field = (page, name) => page.locator(`.PrefModal input[name="${name}"]`);
 const saveButton = async page => page.locator('.PrefModal').getByRole('button', {
@@ -21,7 +26,8 @@ const saveButton = async page => page.locator('.PrefModal').getByRole('button', 
 });
 const status = page => page.evaluate(async () => {
   const { requestAndroid } = await import('/src/js/android_bridge.js');
-  return requestAndroid('getCredentialStatus');
+  const { id, ...result } = await requestAndroid('getCredentialStatus');
+  return result;
 });
 
 async function preparePage(page, autoLogin = false) {
@@ -51,6 +57,10 @@ async function openSettings(page) {
 
 async function saveLocal(page, withSecret = true) {
   await openSettings(page);
+  await saveEnteredLocal(page, withSecret);
+}
+
+async function saveEnteredLocal(page, withSecret = true) {
   await expect(page.getByRole('radio', {
     name: await text(page, 'options_credentialsSource_local'), exact: true,
   })).toBeChecked();
@@ -66,6 +76,38 @@ async function saveLocal(page, withSecret = true) {
   await expect(field(page, 'autoLoginOtpSecret')).toHaveAttribute('placeholder',
     await text(page, `placeholder_local_otpSecret_${withSecret ? 'saved' : 'empty'}`));
   await page.locator('.PrefModal').getByRole('button', { name: 'Close', exact: true }).click();
+}
+
+const storedValues = page => page.evaluate(key =>
+  JSON.parse(localStorage.getItem(key) || '{}').values || {}, ptt.PREF_KEY);
+
+async function seedLegacy(page) {
+  // Simulate persisted preferences from the old APK after the clean fixture has
+  // booted. preparePage intentionally clears these fields during normal reloads.
+  await page.evaluate(({ key, legacy }) => {
+    const current = JSON.parse(localStorage.getItem(key) || '{}');
+    localStorage.setItem(key, JSON.stringify({ ...current, values: {
+      ...current.values, ...legacy, highlightAuthorComments: false,
+    } }));
+  }, { key: ptt.PREF_KEY, legacy: LEGACY });
+}
+
+async function requestDeletion(page, kind) {
+  const key = kind === 'local' ? 'options_credentialsDeleteLocal' : 'options_credentialsDeleteLegacy';
+  await page.locator('.PrefModal').getByRole('button', {
+    name: await text(page, key), exact: true,
+  }).click();
+  const dialog = page.getByRole('dialog', { name: await text(page, key), exact: true });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+async function finishDeletion(page, dialog, confirm) {
+  await dialog.getByRole('button', {
+    name: await text(page, confirm ? 'options_credentialsConfirmDelete' : 'options_credentialsCancelDelete'),
+    exact: true,
+  }).click();
+  await expect(dialog).toHaveCount(0);
 }
 
 async function selectRetainedSource(page, source) {
@@ -153,6 +195,100 @@ function installApk(android, file, extra = []) {
 }
 
 test.describe('Android encrypted automatic-login credentials', () => {
+  test('legacy plaintext is not prefilled and is cleared only after manual native encrypted enrollment', async ({ apk }) => {
+    await preparePage(apk.page);
+    await seedLegacy(apk.page);
+    await openSettings(apk.page);
+    await expect(apk.page.getByText(await text(apk.page, 'options_credentialsLegacySetup'), { exact: true })).toBeVisible();
+    for (const name of Object.keys(LEGACY)) await expect(field(apk.page, name)).toHaveValue('');
+    expect(await storedValues(apk.page)).toMatchObject(LEGACY);
+    expect(await status(apk.page)).toMatchObject({ local: {
+      presence: { user: false, password: false, otpSecret: false },
+    } });
+
+    await saveEnteredLocal(apk.page);
+
+    expect(await storedValues(apk.page)).toMatchObject({
+      autoLoginUser: '', autoLoginPassword: '', autoLoginOtpSecret: '', highlightAuthorComments: false,
+    });
+    expect(await status(apk.page)).toMatchObject({ local: {
+      presence: { user: true, password: true, otpSecret: true },
+    } });
+    const reopened = await reopen(apk);
+    await expectLocalLogin(reopened);
+    for (const value of Object.values(LEGACY)) expect(await sent(reopened)).not.toContain(value);
+  });
+
+  test('confirmed legacy cleanup preserves ordinary settings and does not enroll native credentials', async ({ apk }) => {
+    await preparePage(apk.page);
+    await seedLegacy(apk.page);
+    await openSettings(apk.page);
+    const before = await status(apk.page);
+
+    await finishDeletion(apk.page, await requestDeletion(apk.page, 'legacy'), false);
+    expect(await storedValues(apk.page)).toMatchObject(LEGACY);
+    expect(await status(apk.page)).toEqual(before);
+
+    await finishDeletion(apk.page, await requestDeletion(apk.page, 'legacy'), true);
+    expect(await storedValues(apk.page)).toMatchObject({
+      autoLoginUser: '', autoLoginPassword: '', autoLoginOtpSecret: '', highlightAuthorComments: false,
+    });
+    expect(await status(apk.page)).toEqual(before);
+    expect(await apk.page.evaluate(() => window.__app.isConnected())).toBe(true);
+    await apk.page.locator('.PrefModal').getByRole('button', { name: 'Close', exact: true }).click();
+    await openSettings(apk.page);
+    await expect(apk.page.getByText(await text(apk.page, 'options_credentialsLegacySetup'), { exact: true })).toHaveCount(0);
+    await expect(field(apk.page, 'autoLoginUser')).toHaveValue('');
+    await expect(field(apk.page, 'autoLoginUser')).toHaveAttribute('placeholder',
+      await text(apk.page, 'placeholder_local_user_empty'));
+  });
+
+  test('confirmed encrypted deletion after retrieval blocks cached login on reconnect and survives a fresh process', async ({ apk }) => {
+    test.setTimeout(180000);
+    await preparePage(apk.page);
+    await expect.poll(() => apk.page.evaluate(() => window.__PTT_ANDROID__?.credentialDeletion)).toBe(true);
+    await saveLocal(apk.page, false);
+    const page = await reopen(apk);
+    // Actual successful retrieval populates the product's page-lifetime cache.
+    await expectLocalLogin(page, false);
+    await openSettings(page);
+    const before = await status(page);
+    await finishDeletion(page, await requestDeletion(page, 'local'), false);
+    expect(await status(page)).toEqual(before);
+    await expect(field(page, 'autoLoginUser')).toHaveAttribute('placeholder',
+      await text(page, 'placeholder_local_user_saved'));
+
+    await finishDeletion(page, await requestDeletion(page, 'local'), true);
+    expect(await status(page)).toMatchObject({ source: 'local', local: {
+      presence: { user: false, password: false, otpSecret: false },
+    }, manager: before.manager });
+    await expect(field(page, 'autoLoginUser')).toHaveAttribute('placeholder',
+      await text(page, 'placeholder_local_user_empty'));
+    expect(await page.evaluate(() => window.__app.isConnected())).toBe(true);
+    await page.locator('.PrefModal').getByRole('button', { name: 'Close', exact: true }).click();
+
+    await page.evaluate(() => {
+      window.__stubWS.close();
+      window.__credentialSends = [];
+    });
+    await page.locator('#reactAlert').getByRole('button', {
+      name: await text(page, 'alert_connectionReconnect'), exact: true,
+    }).click();
+    await waitConnected(page);
+    await expect(page.locator('.ListHint')).toHaveText(await text(page, 'options_credentialsLogin_missing'));
+    await drawPrompt(page, '請輸入代號');
+    await drawPrompt(page, '請輸入密碼');
+    for (const value of [ACCOUNT, PASSWORD]) expect(await sent(page)).not.toContain(value);
+
+    const fresh = await reopen(apk);
+    await expect(fresh.locator('.ListHint')).toHaveText(await text(fresh, 'options_credentialsLogin_missing'));
+    expect(await status(fresh)).toMatchObject({ source: 'local', local: {
+      presence: { user: false, password: false, otpSecret: false },
+    } });
+    await drawPrompt(fresh, '請輸入代號');
+    for (const value of [ACCOUNT, PASSWORD]) expect(await sent(fresh)).not.toContain(value);
+  });
+
   test('real native save survives process restart and approved page-source changes without exposing plaintext storage', async ({ apk }) => {
     test.setTimeout(180000);
     await preparePage(apk.page);

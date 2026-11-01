@@ -2,6 +2,8 @@
 // non-React modules (main.js, pref_sync.js) can read/write prefs without
 // importing a component module.
 
+import { isAndroidApp } from "./android_bridge";
+
 export const DEFAULT_PREFS = {
   // general
   //dbcsDetect    : false,
@@ -404,6 +406,16 @@ export const DEFAULT_PREFS = {
 };
 
 const PREF_STORAGE_KEY = "pttchrome.pref.v1";
+const LEGACY_CREDENTIAL_KEYS = [
+  "autoLoginUser", "autoLoginPassword", "autoLoginOtpSecret"
+];
+
+// Unlike the forgiving display read below, persistence must stop when the old
+// record cannot be read. Otherwise a transient read failure could erase it.
+const readStoredPreferences = () => {
+  const raw = window.localStorage.getItem(PREF_STORAGE_KEY);
+  return raw === null ? { values: {} } : JSON.parse(raw);
+};
 
 export const readValuesWithDefault = () => {
   try {
@@ -455,15 +467,51 @@ export const effectivePrefs = values => {
 export const readEffectivePrefs = () => effectivePrefs(readValuesWithDefault());
 
 export const writeValues = values => {
+  let next = values;
   try {
+    if (isAndroidApp()) {
+      const stored = readStoredPreferences();
+      next = { ...values };
+      for (const key of LEGACY_CREDENTIAL_KEYS) {
+        next[key] = stored.values?.[key] ?? "";
+      }
+    }
     window.localStorage.setItem(
       PREF_STORAGE_KEY,
       JSON.stringify({
-        values
+        values: next
       })
     );
   } catch (e) {}
-  return values;
+  return next;
+};
+
+// Expose presence only; the Android editor never receives the old account data.
+export const hasLegacyAutoLoginCredential = () => {
+  try {
+    const stored = readStoredPreferences();
+    return LEGACY_CREDENTIAL_KEYS.some(key => !!stored.values?.[key]);
+  } catch {
+    return false;
+  }
+};
+
+// Only confirmed encrypted enrollment or an explicit cleanup action may call
+// this. Bypass ordinary Android writes, which deliberately retain the old copy.
+// A failed read/write is not evidence of deletion and must remain visible.
+export const clearAndroidLegacyAutoLoginCredential = () => {
+  if (!isAndroidApp()) return false;
+  try {
+    const stored = readStoredPreferences();
+    if (!LEGACY_CREDENTIAL_KEYS.some(key => !!stored.values?.[key])) return true;
+    const values = { ...stored.values };
+    for (const key of LEGACY_CREDENTIAL_KEYS) values[key] = "";
+    window.localStorage.setItem(PREF_STORAGE_KEY, JSON.stringify({ ...stored, values }));
+    const confirmed = readStoredPreferences();
+    return LEGACY_CREDENTIAL_KEYS.every(key => !confirmed.values?.[key]);
+  } catch {
+    return false;
+  }
 };
 
 // Auto-login migration (see src/js/auto_login.js): wipe the legacy plaintext
@@ -476,6 +524,7 @@ export const writeValues = values => {
 // (not yet re-packed, see credential_pack.js) means the secret exists on this
 // machine ONLY, so clearing it unconditionally would lose it for good.
 export const clearLegacyAutoLoginCredential = ({ clearSecret = false } = {}) => {
+  if (isAndroidApp()) return;
   const v = readValuesWithDefault();
   const stale =
     v.autoLoginPassword || v.autoLoginUser || (clearSecret && v.autoLoginOtpSecret);

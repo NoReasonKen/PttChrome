@@ -37,7 +37,7 @@ internal data class DeviceCredentialStatus(
     val manager: CredentialDestinationStatus,
 )
 internal data class SelectedCredential(val source: CredentialSource, val credential: PasswordManagerCredential)
-internal data class CredentialSaveResult(val source: CredentialSource, val presence: PasswordPresence)
+internal data class CredentialWriteResult(val source: CredentialSource, val presence: PasswordPresence)
 
 /** Sanitized error codes only; never retain provider exception text or credential values. */
 internal class CredentialStorageException(val code: String, val source: CredentialSource? = null) :
@@ -68,7 +68,7 @@ internal class DeviceCredentials(
         }
     }
 
-    suspend fun save(source: CredentialSource, user: String, password: String): CredentialSaveResult = mutex.withLock {
+    suspend fun save(source: CredentialSource, user: String, password: String): CredentialWriteResult = mutex.withLock {
         val saved = withContext(Dispatchers.IO) { readState() }
         if (user.isEmpty() && password.isEmpty()) {
             val presence = when (source) {
@@ -78,7 +78,7 @@ internal class DeviceCredentials(
                 CredentialSource.MANAGER -> withContext(Dispatchers.IO) { manager.status() }
             }
             withContext(Dispatchers.IO) { writeState(saved.copy(source = source)) }
-            return@withLock CredentialSaveResult(source, presence)
+            return@withLock CredentialWriteResult(source, presence)
         }
         if (user.isEmpty() || password.isEmpty()) throw CredentialStorageException("invalid", saved.source)
         val credential = PasswordManagerCredential(user, password)
@@ -101,7 +101,16 @@ internal class DeviceCredentials(
             }
         }
         withContext(Dispatchers.IO) { writeState(next) }
-        CredentialSaveResult(source, credentialPresence(credential))
+        CredentialWriteResult(source, credentialPresence(credential))
+    }
+
+    /** Explicit deletion need not decrypt the payload, including after key loss or integrity failure. */
+    suspend fun deleteLocal(): CredentialWriteResult = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            val saved = readState()
+            writeState(saved.copy(local = null))
+            CredentialWriteResult(saved.source, PasswordPresence())
+        }
     }
 
     suspend fun get(): SelectedCredential = mutex.withLock {
