@@ -52,4 +52,8 @@ export const cloudSyncSetupRequested = () => store?.getSnapshot() || false;
 export const subscribeCloudSyncSetup = (listener) =>
   store ? store.subscribe(listener) : () => {};
 
-if (import.meta.hot) import.meta.hot.dispose(() => store?.dispose());
+// CodeQL's JavaScript parser reads a statement that starts with `import.meta`
+// as an import declaration and stops on the dot, so the hook goes through a
+// local binding.
+const hot = import.meta.hot;
+if (hot) hot.dispose(() => store?.dispose());
