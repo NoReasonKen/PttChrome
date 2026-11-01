@@ -72,12 +72,12 @@ async function selectRetainedSource(page, source) {
   await openSettings(page);
   await page.getByRole('radio', {
     name: await text(page, 'options_credentialsSource_' + source), exact: true,
-  }).check();
+  }).click();
   for (const name of ['autoLoginUser', 'autoLoginPassword', 'autoLoginOtpSecret']) {
     await expect(field(page, name)).toHaveValue('');
   }
-  await (await saveButton(page)).click();
   await expect.poll(async () => (await status(page)).source).toBe(source);
+  await expect(await saveButton(page)).toBeDisabled();
   await page.locator('.PrefModal').getByRole('button', { name: 'Close', exact: true }).click();
 }
 

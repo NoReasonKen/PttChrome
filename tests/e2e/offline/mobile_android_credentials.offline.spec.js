@@ -187,7 +187,7 @@ test('mobile cancelled and failed saves preserve drafts and leave unsaved choice
   expect(await providerOperations(page)).toEqual(['saveCredentials', 'saveCredentials', 'saveCredentials']);
 });
 
-test('mobile local storage choice remains a draft until saved and independently retains both destinations', async ({ page }) => {
+test('mobile storage selection persists immediately without enabling save and independently retains both destinations', async ({ page }) => {
   await bootSettings(page, 'local');
   const radio = async source => page.locator('.PrefModal').getByRole('radio', {
     name: await text(page, 'options_credentialsSource_' + source), exact: true,
@@ -205,11 +205,12 @@ test('mobile local storage choice remains a draft until saved and independently 
 
   await (await radio('manager')).tap();
   await expect(user(page)).toHaveAttribute('placeholder', await text(page, 'placeholder_manager_user_empty'));
-  expect(await page.evaluate(() => window.__credentialHost.source)).toBe('local');
+  await expect(await radio('manager')).toBeChecked();
+  expect(await page.evaluate(() => window.__credentialHost.source)).toBe('manager');
+  await expect(await saveButton(page)).toBeDisabled();
   await closeSettings(page);
-  const unsaved = page.getByRole('dialog', { name: await text(page, 'options_credentialsUnsaved'), exact: true });
-  await unsaved.getByRole('button', { name: await text(page, 'options_credentialsSave'), exact: true }).tap();
   await expect(page.locator('.PrefModal')).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: await text(page, 'options_credentialsUnsaved'), exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__credentialHost.source)).toBe('manager');
   await openCredentials(page);
   await fillCredentials(page);
@@ -218,7 +219,7 @@ test('mobile local storage choice remains a draft until saved and independently 
   await (await radio('local')).tap();
   await expect(user(page)).toHaveValue('');
   await expect(secret(page)).toHaveAttribute('placeholder', await text(page, 'placeholder_local_otpSecret_saved'));
-  await (await saveButton(page)).tap();
+  await expect(await saveButton(page)).toBeDisabled();
   await closeSettings(page);
   await openCredentials(page);
   await expect(await radio('local')).toBeChecked();
@@ -230,6 +231,42 @@ test('mobile local storage choice remains a draft until saved and independently 
   ]);
   const webStorage = await page.evaluate(() => Object.values(localStorage).join('\n'));
   for (const value of ['offline-reader', 'synthetic-password', SECRET]) expect(webStorage).not.toContain(value);
+});
+
+test('mobile source-switch failures retain the previous choice and switching never writes pending credential input', async ({ page }) => {
+  await bootSettings(page, 'local');
+  const radio = async source => page.locator('.PrefModal').getByRole('radio', {
+    name: await text(page, 'options_credentialsSource_' + source), exact: true,
+  });
+  await page.evaluate(() => { window.__credentialHost.saveError = 'failed'; });
+  await (await radio('manager')).tap();
+  await expect(page.locator('.PrefModal').getByRole('status')).toHaveText(await text(page, 'options_credentials_failed'));
+  await expect(await radio('local')).toBeChecked();
+  await expect(await saveButton(page)).toBeDisabled();
+  expect(await page.evaluate(() => window.__credentialHost.source)).toBe('local');
+
+  await fillCredentials(page, SECRET);
+  await page.evaluate(() => { window.__credentialHost.saveError = null; });
+  await (await radio('manager')).tap();
+  await expect(await radio('manager')).toBeChecked();
+  await expect(user(page)).toHaveValue('offline-reader');
+  await expect(password(page)).toHaveValue('synthetic-password');
+  await expect(secret(page)).toHaveValue(SECRET);
+  await expect(await saveButton(page)).toBeEnabled();
+  const selections = await page.evaluate(() => window.__credentialHost.requests.filter(request => request.op === 'saveCredentials'));
+  expect(selections).toHaveLength(2);
+  for (const selection of selections) {
+    expect(selection.source).toBe('manager');
+    expect(selection.user).toBeUndefined();
+    expect(selection.password).toBeUndefined();
+  }
+  await closeSettings(page);
+  const unsaved = page.getByRole('dialog', { name: await text(page, 'options_credentialsUnsaved'), exact: true });
+  await unsaved.getByRole('button', { name: await text(page, 'options_credentialsDiscard'), exact: true }).tap();
+  await expect(page.locator('.PrefModal')).toHaveCount(0);
+  await openCredentials(page);
+  await expect(await radio('manager')).toBeChecked();
+  await expect(user(page)).toHaveAttribute('placeholder', await text(page, 'placeholder_manager_user_empty'));
 });
 
 test('mobile validation shows red field borders and reasons below each invalid input', async ({ page }) => {

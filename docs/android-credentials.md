@@ -6,23 +6,29 @@ form. Local encryption is initially selected but unconfigured. Enter credentials
 manually and choose **Save credentials**; nothing is imported automatically.
 Saving works offline and while automatic login is disabled.
 
-Only saving commits a source choice or replacement. An entirely empty form
-changes only the source, retaining both destinations independently. A replacement
-requires username and password; a blank optional secret removes automatic TOTP
+Changing the storage radio immediately persists the selected login source,
+retaining both destinations independently. It never submits the input fields,
+copies credentials, or opens the password manager. Controls wait for confirmation;
+a failed switch preserves the previous source and any entered credentials.
+Source changes affect the next connection, not an established PTT session.
+
+Only **Save credentials** replaces credentials in the selected destination. A
+replacement requires username and password; a blank optional secret removes automatic TOTP
 for that entry. Successful saving clears every input, including the username,
 and displays **Saved successfully** inside the disabled save button until the next
-credential or source edit. There is no timed cooldown: a new edit enables saving
+credential edit or source switch. There is no timed cooldown: a credential edit enables saving
 immediately. Opening settings with empty unchanged fields leaves saving disabled;
-clearing all edits or returning to the active source disables it again. Success
+clearing all input disables it again. Switching the source alone never enables
+the save button; any existing unsaved input is retained for explicit saving. Success
 adds no separate message below the button; errors and cancellation remain visible
 as explanatory text.
 No saved identity, secrets, or masking-dot values are repopulated. Each field's
-placeholder independently reports presence for the draft destination. Changing
-the draft source never changes the active login source until saved.
+placeholder independently reports presence for the selected destination.
 
-Leaving with credential edits or an unsaved source choice offers Save, Discard,
-or Continue editing. Failed/cancelled saving preserves the draft and previous
-active source. Only Save validates fields, with a red border and an explanation
+Leaving with credential edits offers Save, Discard, or Continue editing; a source
+switch alone needs no confirmation on exit. Failed/cancelled credential saving
+preserves the draft and already selected source. Discarding input does not undo
+a confirmed source switch. Only Save validates fields, with a red border and an explanation
 below each invalid input. Editing clears that field's error until the next Save;
 text and placeholders keep their normal colors. Other preferences retain their
 normal save-on-close behavior.
@@ -93,7 +99,7 @@ privacy audit follows in #95; these do not defer basic protection of new secrets
 ## Verification
 
 Real-browser unit and narrow mobile offline tests cover shared settings, radios,
-draft selection, validation, cleared fields, placeholders, unsaved choices,
+immediate source selection, validation, cleared fields, placeholders, unsaved input,
 failures, cache invalidation and strict-source login. Their Android endpoint is
 a controlled substitute, not evidence of installed Keystore behavior. JVM tests
 cover source transactions and real JCE authenticated-encryption roundtrips/tampering.

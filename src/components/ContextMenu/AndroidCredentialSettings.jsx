@@ -26,8 +26,7 @@ const emptyDraft = () => ({ user: "", pass: "", otpSecret: "" });
 export function useAndroidCredentialDraft(show, enabled) {
   const [draft, setDraft] = useState(emptyDraft);
   const [status, setStatus] = useState(null);
-  const [sourceChoice, setSourceChoice] = useState(null);
-  const source = sourceChoice ?? status?.source ?? "local";
+  const source = status?.source ?? "local";
   const [result, setResult] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [saving, setSaving] = useState(false);
@@ -40,7 +39,6 @@ export function useAndroidCredentialDraft(show, enabled) {
     setResult(null);
     setSaved(false);
     setFieldErrors({});
-    setSourceChoice(null);
     setStatus(null);
     if (!show || !supported) return;
     let alive = true;
@@ -56,7 +54,7 @@ export function useAndroidCredentialDraft(show, enabled) {
   }, [show, supported]);
 
   const hasCredentials = Object.values(draft).some(Boolean);
-  const dirty = hasCredentials || !!(status && source !== status.source);
+  const dirty = hasCredentials;
   const errors = hasCredentials
     ? {
         user: !draft.user.trim()
@@ -84,7 +82,45 @@ export function useAndroidCredentialDraft(show, enabled) {
     setResult(null);
     setSaved(false);
     setFieldErrors({});
-    setSourceChoice(null);
+  };
+  const persist = async (payload) => {
+    busy.current = true;
+    setSaving(true);
+    setResult(null);
+    try {
+      const outcome = await saveAndroidCredentials(payload);
+      if (outcome.status !== "saved") {
+        setResult(
+          ["cancelled", "unreadable"].includes(outcome.status)
+            ? outcome.status
+            : "failed",
+        );
+        return false;
+      }
+      statusRevision.current += 1;
+      invalidateSessionCredential();
+      setStatus((previous) => ({
+        ...previous,
+        source: payload.source,
+        [payload.source]: { presence: outcome.presence },
+      }));
+      return true;
+    } finally {
+      busy.current = false;
+      setSaving(false);
+    }
+  };
+  const chooseSource = async (value) => {
+    if (
+      busy.current ||
+      !supported ||
+      !status ||
+      value === source ||
+      !["local", "manager"].includes(value)
+    )
+      return;
+    // Source selection never submits the credential draft or opens the provider.
+    if (await persist({ source: value })) setSaved(false);
   };
   const save = async () => {
     if (busy.current || !supported || saved) return false;
@@ -104,43 +140,18 @@ export function useAndroidCredentialDraft(show, enabled) {
       otpSecret: normalizeOtpSecret(draft.otpSecret),
     };
     rememberCredential(credential);
-    busy.current = true;
-    setSaving(true);
-    setResult(null);
-    try {
-      const outcome = await saveAndroidCredentials({
+    if (
+      !(await persist({
         source,
-        ...(hasCredentials
-          ? {
-              id: credential.user,
-              password: packCredential(credential.pass, credential.otpSecret),
-            }
-          : {}),
-      });
-      if (outcome.status !== "saved") {
-        setResult(
-          ["cancelled", "unreadable"].includes(outcome.status)
-            ? outcome.status
-            : "failed",
-        );
-        return false;
-      }
-      setSaved(true);
-      statusRevision.current += 1;
-      invalidateSessionCredential();
-      setStatus((previous) => ({
-        ...previous,
-        source,
-        [source]: { presence: outcome.presence },
-      }));
-      setSourceChoice(null);
-      setDraft(emptyDraft());
-      setFieldErrors({});
-      return true;
-    } finally {
-      busy.current = false;
-      setSaving(false);
-    }
+        id: credential.user,
+        password: packCredential(credential.pass, credential.otpSecret),
+      }))
+    )
+      return false;
+    setSaved(true);
+    setDraft(emptyDraft());
+    setFieldErrors({});
+    return true;
   };
   return {
     draft,
@@ -148,18 +159,7 @@ export function useAndroidCredentialDraft(show, enabled) {
     presence: status?.[source]?.error ? null : status?.[source]?.presence,
     sourceError: status?.[source]?.error,
     ready: !!status,
-    chooseSource: (value) => {
-      if (
-        !busy.current &&
-        status &&
-        value !== source &&
-        ["local", "manager"].includes(value)
-      ) {
-        setSourceChoice(value);
-        setSaved(false);
-        setResult(null);
-      }
-    },
+    chooseSource,
     result,
     saving,
     saved,

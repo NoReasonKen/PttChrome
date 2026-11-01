@@ -45,25 +45,25 @@ function openSettings() {
   } };
 }
 
-test('local is the initial source; draft changes do not persist, and empty explicit save selects retained manager data', async () => {
+test('switching the initial local source immediately selects retained manager data without enabling credential saving', async () => {
   openSettings();
   await waitFor(() => expect(radio('local')).toBeChecked());
   await waitFor(() => expect(field('autoLoginUser')).toHaveAttribute('placeholder', i18n('placeholder_local_user_empty')));
   fireEvent.click(radio('manager'));
-  expect(radio('local')).not.toBeChecked();
-  expect(host.source).toBe('local');
+  await waitFor(() => expect(radio('manager')).toBeChecked());
+  expect(host.source).toBe('manager');
   expect(field('autoLoginUser')).toHaveValue('');
   expect(field('autoLoginUser')).toHaveAttribute('placeholder', i18n('placeholder_manager_user_saved'));
-  fireEvent.click(screen.getByRole('button', { name: i18n('options_credentialsSave') }));
-  await waitFor(() => expect(host.source).toBe('manager'));
-  expect(screen.getByRole('button', { name: i18n('options_credentials_saved') })).toBeDisabled();
+  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeDisabled();
   expect(screen.queryByRole('status')).not.toBeInTheDocument();
   expect(host.sent.filter(request => request.op === 'saveCredentials')).toEqual([expect.objectContaining({ source: 'manager' })]);
   expect(host.sent.some(request => request.user || request.password)).toBe(false);
   const preferences = localStorage.getItem('pttchrome.pref.v1') || '';
   expect(preferences).not.toContain('credentialSource');
   fireEvent.click(radio('local'));
-  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeEnabled();
+  await waitFor(() => expect(radio('local')).toBeChecked());
+  expect(host.source).toBe('local');
+  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeDisabled();
 });
 
 test('successful saving stays confirmed until another edit enables saving immediately', async () => {
@@ -101,8 +101,10 @@ test.each(['local', 'manager'])('opening settings for %s keeps empty unchanged c
   fireEvent.change(field('autoLoginUser'), { target: { value: '' } });
   expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeDisabled();
   fireEvent.click(radio(source === 'local' ? 'manager' : 'local'));
-  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeEnabled();
+  await waitFor(() => expect(radio(source === 'local' ? 'manager' : 'local')).toBeChecked());
+  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeDisabled();
   fireEvent.click(radio(source));
+  await waitFor(() => expect(radio(source)).toBeChecked());
   expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeDisabled();
   reopen();
   await waitFor(() => expect(radio(source)).toBeEnabled());
@@ -133,40 +135,95 @@ test('local saving clears all fields and independently reflects optional-secret 
   for (const key of ['autoLoginUser', 'autoLoginPassword', 'autoLoginOtpSecret']) expect(field(key)).toHaveValue('');
 });
 
-test('a failed source-and-credential save preserves the active source, old presence, and draft until discard', async () => {
+test('a failed credential save preserves the already selected source, old presence, and draft until discard', async () => {
   const { onSave } = openSettings();
   await waitFor(() => expect(radio('manager')).toBeEnabled());
   fireEvent.click(radio('manager'));
+  await waitFor(() => expect(radio('manager')).toBeChecked());
   fireEvent.change(field('autoLoginUser'), { target: { value: 'replacement' } });
   fireEvent.change(field('autoLoginPassword'), { target: { value: 'replacement-pass' } });
   host.error = 'cancelled';
   fireEvent.click(screen.getByRole('button', { name: i18n('options_credentialsSave') }));
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(i18n('options_credentials_cancelled')));
-  expect(host.source).toBe('local');
+  expect(host.source).toBe('manager');
   expect(field('autoLoginPassword')).toHaveValue('replacement-pass');
   expect(field('autoLoginUser')).toHaveAttribute('placeholder', i18n('placeholder_manager_user_saved'));
   fireEvent.click(screen.getByLabelText('Close'));
   const dialog = await screen.findByRole('dialog', { name: i18n('options_credentialsUnsaved') });
   fireEvent.click(within(dialog).getByRole('button', { name: i18n('options_credentialsDiscard') }));
   expect(onSave).toHaveBeenCalledTimes(1);
-  expect(host.source).toBe('local');
+  expect(host.source).toBe('manager');
 });
 
-test('leaving with only an unsaved source choice offers save, discard, and continued editing', async () => {
+test('leaving after a source-only change closes settings without an unsaved-credentials dialog', async () => {
   const { onSave } = openSettings();
   await waitFor(() => expect(radio('manager')).toBeEnabled());
   fireEvent.click(radio('manager'));
+  await waitFor(() => expect(radio('manager')).toBeChecked());
   fireEvent.click(screen.getByLabelText('Close'));
-  let dialog = await screen.findByRole('dialog', { name: i18n('options_credentialsUnsaved') });
-  fireEvent.click(within(dialog).getByRole('button', { name: i18n('options_credentialsContinue') }));
-  expect(onSave).not.toHaveBeenCalled();
-  expect(host.source).toBe('local');
-  expect(radio('manager')).toBeChecked();
-  fireEvent.click(screen.getByLabelText('Close'));
-  dialog = await screen.findByRole('dialog', { name: i18n('options_credentialsUnsaved') });
-  fireEvent.click(within(dialog).getByRole('button', { name: i18n('options_credentialsSave') }));
   await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+  expect(screen.queryByRole('dialog', { name: i18n('options_credentialsUnsaved') })).not.toBeInTheDocument();
   expect(host.source).toBe('manager');
+});
+
+test('a source switch preserves typed credentials without saving them to either destination', async () => {
+  openSettings();
+  await waitFor(() => expect(radio('manager')).toBeEnabled());
+  fireEvent.change(field('autoLoginUser'), { target: { value: 'replacement' } });
+  fireEvent.change(field('autoLoginPassword'), { target: { value: 'replacement-pass' } });
+  fireEvent.click(radio('manager'));
+  await waitFor(() => expect(radio('manager')).toBeChecked());
+  expect(field('autoLoginUser')).toHaveValue('replacement');
+  expect(field('autoLoginPassword')).toHaveValue('replacement-pass');
+  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeEnabled();
+  expect(host.sent.filter(request => request.op === 'saveCredentials')).toEqual([
+    expect.objectContaining({ source: 'manager' }),
+  ]);
+  expect(host.sent.some(request => request.user || request.password)).toBe(false);
+  expect(host.local.presence).toEqual(empty);
+});
+
+test('a failed source switch keeps the previous selection and any unsaved credential edits', async () => {
+  openSettings();
+  await waitFor(() => expect(radio('manager')).toBeEnabled());
+  fireEvent.change(field('autoLoginUser'), { target: { value: 'replacement' } });
+  host.error = 'failed';
+  fireEvent.click(radio('manager'));
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(i18n('options_credentials_failed')));
+  expect(host.source).toBe('local');
+  expect(radio('local')).toBeChecked();
+  expect(field('autoLoginUser')).toHaveValue('replacement');
+  expect(field('autoLoginUser')).toHaveAttribute('placeholder', i18n('placeholder_local_user_empty'));
+  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeEnabled();
+});
+
+test('a delayed source switch keeps the confirmed selection and blocks competing input until native confirmation', async () => {
+  openSettings();
+  await waitFor(() => expect(radio('manager')).toBeEnabled());
+  let finish;
+  window.PttAndroid.postMessage = text => {
+    const request = JSON.parse(text);
+    host.sent.push(request);
+    finish = () => {
+      host.source = request.source;
+      window.PttAndroid.onmessage({ data: JSON.stringify({
+        id: request.id, ok: true, source: host.source, presence: host[host.source].presence,
+      }) });
+    };
+  };
+  fireEvent.click(radio('manager'));
+  expect(host.source).toBe('local');
+  expect(radio('local')).toBeChecked();
+  expect(radio('manager')).toBeDisabled();
+  expect(field('autoLoginUser')).toBeDisabled();
+  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeDisabled();
+  fireEvent.click(radio('manager'));
+  expect(host.sent.filter(request => request.op === 'saveCredentials')).toHaveLength(1);
+  await act(async () => finish());
+  expect(radio('manager')).toBeChecked();
+  expect(radio('manager')).toBeEnabled();
+  expect(field('autoLoginUser')).toBeEnabled();
+  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeDisabled();
 });
 
 test('unreadable local storage is visible without claiming field presence or blocking a retained manager source', async () => {
@@ -175,10 +232,11 @@ test('unreadable local storage is visible without claiming field presence or blo
   await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(i18n('options_credentials_unreadable')));
   expect(field('autoLoginUser')).not.toHaveAttribute('placeholder');
   fireEvent.click(radio('manager'));
+  await waitFor(() => expect(radio('manager')).toBeChecked());
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   expect(field('autoLoginUser')).toHaveAttribute('placeholder', i18n('placeholder_manager_user_saved'));
-  fireEvent.click(screen.getByRole('button', { name: i18n('options_credentialsSave') }));
-  await waitFor(() => expect(host.source).toBe('manager'));
+  expect(host.source).toBe('manager');
+  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeDisabled();
 });
 
 test('manual editing waits for the installed app to identify the active source', async () => {
