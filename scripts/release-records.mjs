@@ -130,6 +130,14 @@ export function parseApkBadging(text) {
   return result;
 }
 
+// Older apksigner labels each signer "Signer #1"; build-tools 37 labels them by
+// verified scheme, such as "V2 Signer:", "V3.0 Signer:" or "V2 Signer #2:".
+export function parseApkSignerCertificates(text) {
+  const digests = [...text.matchAll(/^(?:Signer #\d+|V\d+(?:\.\d+)? Signer(?: #\d+)?:) certificate SHA-256 digest: ([a-fA-F0-9]{64})\r?$/gm)].map(match => match[1].toLowerCase()).sort();
+  requireValue(digests.length, "No verified APK signing certificate found");
+  return digests;
+}
+
 export function prepareUpdateArtifacts(record, records, { apkBytes, badging, sourceCommit, versionCode, notes, previousMetadata = null }) {
   validateReleaseRecord(record);
   requireValue(notes === renderReleaseNotes(record), "Tracked release detail is out of date; regenerate and review it before publication");

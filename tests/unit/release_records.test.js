@@ -2,6 +2,7 @@ import {
   renderReleaseNotes,
   createUpdateMetadata,
   parseApkBadging,
+  parseApkSignerCertificates,
   validateReleaseRecord,
   synchronizePublication,
 } from "../../scripts/release-records.mjs";
@@ -149,6 +150,43 @@ test("release metadata reads current aapt2 badging from a production APK", () =>
     minSdk: 26,
   });
   expect(() => parseApkBadging(badging.replace("minSdkVersion:'26'", "minSdkVersion:'25'"))).toThrow("compatibility");
+});
+
+const signerA = "85f42dce0807ef9fae714bd2135cd018d454672a61549617cca37a62f345f46a";
+const signerB = "85503193dbbbf587a10e0e80827641a82b361e1220ee1733a5e22c69957dbb74";
+const signerLines = (label, digest, name) =>
+  [
+    `${label} certificate DN: CN=${name}`,
+    `${label} certificate SHA-256 digest: ${digest}`,
+    `${label} certificate SHA-1 digest: 19407f3e1a05ea0fae4fc827161201fec497a837`,
+    `${label} certificate MD5 digest: 78af37a39a9c78d5ae6040f1c835fb0d`,
+  ].join("\n");
+
+test("signing certificates are read from build-tools 36 apksigner output", () => {
+  expect(parseApkSignerCertificates(`${signerLines("Signer #1", signerA, "Test A")}\n`)).toEqual([signerA]);
+  expect(
+    parseApkSignerCertificates(`${signerLines("Signer #1", signerB, "Test B")}\r\n${signerLines("Signer #2", signerA.toUpperCase(), "Test A")}\r\n`),
+  ).toEqual([signerB, signerA].sort());
+});
+
+test("signing certificates are read from build-tools 37 apksigner output", () => {
+  expect(parseApkSignerCertificates(`${signerLines("V2 Signer:", signerA, "Test A")}\n`)).toEqual([signerA]);
+  expect(parseApkSignerCertificates(`${signerLines("V3.0 Signer:", signerA, "Test A")}\n`)).toEqual([signerA]);
+  expect(
+    parseApkSignerCertificates(`${signerLines("V2 Signer #1:", signerA, "Test A")}\n${signerLines("V2 Signer #2:", signerB, "Test B")}\n`),
+  ).toEqual([signerA, signerB].sort());
+});
+
+test("signing certificate parsing ignores public keys and requires a signer", () => {
+  const verbose = [
+    "Verifies",
+    "Number of signers: 1",
+    signerLines("V2 Signer:", signerA, "Test A"),
+    `V2 Signer: public key SHA-256 digest: ${signerB}`,
+    `Signer #1 public key SHA-256 digest: ${signerB}`,
+  ].join("\n");
+  expect(parseApkSignerCertificates(verbose)).toEqual([signerA]);
+  expect(() => parseApkSignerCertificates("Verifies\n")).toThrow("No verified APK signing certificate found");
 });
 
 test("incomplete or ambiguous notes fail before publication", () => {
