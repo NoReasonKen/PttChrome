@@ -289,7 +289,41 @@ test('mobile confirmed encrypted deletion clears cached reconnect credentials an
   await expectSyntheticLogin(page);
   await openCredentials(page);
 
-  await chooseDeletion(page, await deleteDialog(page, 'local'), false);
+  const remove = page.locator('.PrefModal').getByRole('button', {
+    name: await text(page, 'options_credentialsDeleteLocal'), exact: true,
+  });
+  const reset = page.locator('.PrefModal').getByRole('button', {
+    name: await text(page, 'options_reset'), exact: true,
+  });
+  const buttonAppearance = locator => locator.evaluate(button => {
+    const style = getComputedStyle(button);
+    return { fontSize: style.fontSize, size: style.getPropertyValue('--button-height').trim(), background: style.backgroundColor };
+  });
+  const baseline = await buttonAppearance(reset);
+  const appearance = await buttonAppearance(remove);
+  expect(appearance.fontSize).toBe(baseline.fontSize);
+  expect(appearance.size).toBe(baseline.size);
+  const channels = appearance.background.match(/\d+/g).map(Number);
+  expect(channels[0]).toBeGreaterThan(channels[1] * 1.5);
+  const saveRect = await (await saveButton(page)).boundingBox();
+  const removeRect = await remove.boundingBox();
+  expect(Math.abs(saveRect.y - removeRect.y)).toBeLessThanOrEqual(1);
+  expect(removeRect.x).toBeGreaterThan(saveRect.x + saveRect.width);
+  const fieldRect = await user(page).boundingBox();
+  expect(Math.abs(removeRect.x + removeRect.width - fieldRect.x - fieldRect.width)).toBeLessThanOrEqual(1);
+  await remove.scrollIntoViewIfNeeded();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({ path: test.info().outputPath('credential-actions.png'), animations: 'disabled' });
+  const confirmation = await deleteDialog(page, 'local');
+  const confirmAppearance = await buttonAppearance(confirmation.getByRole('button', {
+    name: await text(page, 'options_credentialsConfirmDelete'), exact: true,
+  }));
+  expect(confirmAppearance.fontSize).toBe(baseline.fontSize);
+  expect(confirmAppearance.size).toBe(baseline.size);
+  const confirmChannels = confirmAppearance.background.match(/\d+/g).map(Number);
+  expect(confirmChannels[0]).toBeGreaterThan(confirmChannels[1] * 1.5);
+  await page.screenshot({ path: test.info().outputPath('credential-delete-red-confirmation.png'), animations: 'disabled' });
+  await chooseDeletion(page, confirmation, false);
   await expect(user(page)).toHaveAttribute('placeholder', await text(page, 'placeholder_local_user_saved'));
   expect(await page.evaluate(() => window.__credentialHost.requests.filter(request => request.op === 'deleteLocalCredentials'))).toEqual([]);
   await page.evaluate(() => { window.__credentialHost.deleteError = 'failed'; });

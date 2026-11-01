@@ -192,6 +192,20 @@
   margin-top: 8px;
 }
 
+/* Keep the actions on one row while allowing longer translations to wrap. */
+.PrefModal__CredentialActions .mantine-Button-root {
+  min-width: 0;
+  height: auto;
+  min-height: var(--button-height);
+  padding-block: 6px;
+  flex-shrink: 1;
+}
+.PrefModal__CredentialActions .mantine-Button-label {
+  white-space: normal;
+  text-align: center;
+  overflow: visible;
+}
+
 /* 外部搜尋自訂項目：一列塞不下 5 個欄位 ⇒ 換行，網址佔滿一整行。 */
 .PrefModal--narrow .PrefModal__ExternalSearchRow {
   flex-wrap: wrap;

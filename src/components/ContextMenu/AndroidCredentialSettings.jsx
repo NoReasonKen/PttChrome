@@ -351,40 +351,29 @@ export function AndroidCredentialSettings({ editor, anchor }) {
           </Text>
         </>
       )}
-      <Button
-        variant="default"
-        size="xs"
-        onClick={editor.save}
-        loading={editor.saving}
-        disabled={
-          !editor.supported || !editor.ready || !editor.dirty || editor.saved
-        }
+      <Group
+        className="PrefModal__CredentialActions"
+        justify="space-between"
+        align="stretch"
+        wrap="nowrap"
+        gap="xs"
       >
-        {i18n(
-          editor.saved
-            ? "options_credentials_saved"
-            : "options_credentialsSave",
-        )}
-      </Button>
-      {editor.result && (
-        <Text role="status" size="sm" mt="xs">
-          {i18n("options_credentials_" + editor.result)}
-        </Text>
-      )}
-      <Group mt="sm">
-        {editor.legacy && (
-          <Button
-            variant="default"
-            size="xs"
-            disabled={editor.saving}
-            onClick={() => editor.requestDelete("legacy")}
-          >
-            {i18n("options_credentialsDeleteLegacy")}
-          </Button>
-        )}
         <Button
           variant="default"
-          size="xs"
+          onClick={editor.save}
+          loading={editor.saving}
+          disabled={
+            !editor.supported || !editor.ready || !editor.dirty || editor.saved
+          }
+        >
+          {i18n(
+            editor.saved
+              ? "options_credentials_saved"
+              : "options_credentialsSave",
+          )}
+        </Button>
+        <Button
+          color="red"
           disabled={
             !editor.deletionSupported ||
             !editor.ready ||
@@ -396,6 +385,22 @@ export function AndroidCredentialSettings({ editor, anchor }) {
           {i18n("options_credentialsDeleteLocal")}
         </Button>
       </Group>
+      {editor.result && (
+        <Text role="status" size="sm" mt="xs">
+          {i18n("options_credentials_" + editor.result)}
+        </Text>
+      )}
+      {editor.legacy && (
+        <Button
+          variant="default"
+          size="xs"
+          mt="sm"
+          disabled={editor.saving}
+          onClick={() => editor.requestDelete("legacy")}
+        >
+          {i18n("options_credentialsDeleteLegacy")}
+        </Button>
+      )}
       {editor.supported && !editor.deletionSupported && (
         <Text size="xs" c="dimmed" mt="xs">
           {i18n("options_credentialsDeleteUpgrade")}
@@ -415,11 +420,7 @@ export function AndroidCredentialSettings({ editor, anchor }) {
       >
         <Text mb="sm">{i18n("options_credentialsDeleteConfirm")}</Text>
         <Group>
-          <Button
-            variant="default"
-            onClick={editor.remove}
-            loading={editor.saving}
-          >
+          <Button color="red" onClick={editor.remove} loading={editor.saving}>
             {i18n("options_credentialsConfirmDelete")}
           </Button>
           <Button
