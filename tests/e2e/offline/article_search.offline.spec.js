@@ -154,6 +154,23 @@ test.describe('搜尋彈窗（離線）', () => {
     expect(stored.pref).not.toContain('someoneElse');
   });
 
+  test('連搜兩次：搜尋紀錄區最新的在最前面', async ({ page }) => {
+    await boot(page);
+    for (const name of ['firstAuthor', 'secondAuthor']) {
+      await ptt.sendKey(page, 'a');
+      await expect(modalInput(page)).toBeVisible();
+      await modalInput(page).fill(name);
+      await modalInput(page).press('Enter');
+      await drawPrompt(page, '搜尋作者: ');
+      await drawArticleList(page);
+    }
+    await ptt.sendKey(page, 'a');
+    await expect(page.locator('[data-search-history-item]')).toHaveText([
+      'secondAuthor',
+      'firstAuthor',
+    ]);
+  });
+
   test('s 也攔：開成看板搜尋；prompt 沒出現前送出，板名等 prompt 出現才送', async ({ page }) => {
     await boot(page);
     await collectSent(page);

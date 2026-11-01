@@ -2,8 +2,8 @@
 // 搜尋紀錄區的順序跟著變。只在 offline-mobile project 跑（Pixel 7 模擬）。
 //
 // unit（search_history.test.js／search_modal.test.jsx／search_history_manager.test.jsx）
-// 守資料模型與元件；這裡守 unit 摸不到的：真的版面（三行高、36px 按鈕、框內捲動）、
-// 設定裡疊出來的 sheet、系統返回只收管理視窗。
+// 守資料模型與元件；這裡守 unit 摸不到的：真的版面（三行高、26px 按鈕、框內捲動且
+// 捲軸一直在；長關鍵字不把管理頁撐寬）、設定裡一層層蓋上去的管理頁、系統返回只退一層。
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { bootOffline } = require('../helpers/replay');
@@ -60,28 +60,33 @@ async function closeSearch(page) {
 }
 
 test.describe('手機：搜尋紀錄', () => {
-  test('搜尋紀錄區：全部顯示、按鈕 36px；超過三行固定三行高，框內捲動', async ({ page }) => {
-    const boards = Array.from({ length: 20 }, (_, i) => 'Board' + String(i).padStart(2, '0'));
+  test('搜尋紀錄區：全部顯示、按鈕 26px；超過三行固定三行高，框內捲動，捲軸一直在', async ({ page }) => {
+    const boards = Array.from({ length: 10 }, (_, i) => 'Board' + String(i).padStart(2, '0') + 'Long');
     await bootMenu(page, boards);
     await openSearch(page);
-    await expect(historyItems(page)).toHaveCount(20);
+    await expect(historyItems(page)).toHaveCount(10);
     const box = await historyItems(page).first().boundingBox();
-    expect(Math.round(box.height)).toBe(36);
+    expect(Math.round(box.height)).toBe(26);
     const area = sheet(page, 'search').locator('.searchHistoryArea');
-    const m = await area.evaluate((el) => {
+    const viewport = area.locator('.mantine-ScrollArea-viewport');
+    const m = await viewport.evaluate((el) => {
       el.scrollTop = el.scrollHeight;
       return { client: el.clientHeight, scroll: el.scrollHeight, top: el.scrollTop };
     });
-    expect(m.client).toBe(3 * 36 + 2 * 8);
+    expect(m.client).toBe(3 * 26 + 2 * 8);
     expect(m.scroll).toBeGreaterThan(m.client);
     expect(m.top).toBeGreaterThan(0);
+    // 沒在滑也看得到捲軸（手機原生捲軸只在滑動時閃一下）。
+    await page.waitForTimeout(1500); // sleep-ok: outlasts Mantine's 1s scrollbar auto-hide; the assertion is that it never hides
+    await expect(area.locator('.mantine-ScrollArea-scrollbar[data-orientation="vertical"]')).toBeVisible();
     await area.screenshot({ path: test.info().outputPath('search-history-area.png') });
   });
 
-  test('從設定打開管理視窗，釘選後搜尋紀錄區把它排到最前面；系統返回只收管理視窗', async ({ page }) => {
-    await bootMenu(page, ['Gossiping', 'C_Chat', 'Steam']);
+  test('從本機設定點進管理頁，釘選後搜尋紀錄區把它排到最前面；系統返回只退回本機設定', async ({ page }) => {
+    const long = 'VeryLongKeyword'.repeat(8);
+    await bootMenu(page, ['Gossiping', 'C_Chat', 'Steam', long]);
     await openSearch(page);
-    await expect(historyItems(page)).toHaveText(['Steam', 'C_Chat', 'Gossiping']);
+    await expect(historyItems(page)).toHaveText([long, 'Steam', 'C_Chat', 'Gossiping']);
     await closeSearch(page);
 
     const settings = page.locator('.PrefModal');
@@ -89,21 +94,34 @@ test.describe('手機：搜尋紀錄', () => {
     await byKey(page, '__settings').tap();
     await expect(settings).toBeVisible();
     await settings.locator('[data-pref-category="local"]').tap();
-    await settings.locator('[data-pref-anchor="ui:searchHistoryManager"] button').tap();
-    const manager = sheet(page, 'searchHistory');
+    await settings.locator('[data-pref-subpage="searchHistory"]').tap();
+    const manager = settings.locator('[data-search-history-manager]');
     await expect(manager).toBeVisible();
+    // 頂端的返回換成這一頁的名字（同分類頁的「< 本機設定」）。
+    await expect(settings.locator('[data-pref-subpage-back]')).toBeVisible();
     const boardId = await manager.locator('input[value="board"]').getAttribute('id');
     await manager.locator(`label[for="${boardId}"]`).tap();
-    await manager.locator('[data-manager-entry="Gossiping"] [data-manager-pin]').tap();
+    // 長關鍵字在自己的框裡左右捲：頁面不變寬，右邊的次數不被蓋住。
+    const right = settings.locator('.PrefModal__Grid__Col--right');
+    const widths = await right.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
+    expect(widths.scroll).toBeLessThanOrEqual(widths.client);
+    const longRow = manager.locator(`[data-manager-entry="${long}"]`);
+    const textBox = await longRow.locator('[data-manager-text]').boundingBox();
+    const usesBox = await longRow.locator('[data-manager-uses]').boundingBox();
+    expect(textBox.x + textBox.width).toBeLessThanOrEqual(usesBox.x);
+    await expect(longRow.locator('.mantine-ScrollArea-scrollbar[data-orientation="horizontal"]')).toBeVisible();
+
+    await manager.locator('[data-manager-entry="Gossiping"] [data-manager-text]').tap();
+    await manager.locator('[data-manager-action="pin"]').tap();
     await expect(
       manager.locator('[data-manager-section="pinned"] [data-manager-entry]'),
     ).toHaveCount(1);
-    await page.screenshot({ path: test.info().outputPath('search-history-manager.png') });
+    await page.screenshot({ path: test.info().outputPath('search-history-manager.png'), fullPage: true });
 
     await page.waitForFunction(() => !!(window.history.state && window.history.state.pttchromeBackGuard));
     await page.goBack();
     await expect(manager).toHaveCount(0);
-    await expect(settings).toBeVisible();
+    await expect(settings.locator('[data-pref-subpage="searchHistory"]')).toBeVisible();
     await collectSent(page);
     await settings.getByRole('button', { name: 'Close', exact: true }).tap();
     await expect(settings).toBeHidden();
@@ -112,7 +130,7 @@ test.describe('手機：搜尋紀錄', () => {
     await drawMainMenu(page);
 
     await openSearch(page);
-    await expect(historyItems(page)).toHaveText(['Gossiping', 'Steam', 'C_Chat']);
+    await expect(historyItems(page)).toHaveText(['Gossiping', long, 'Steam', 'C_Chat']);
     await expect(historyItems(page).first()).toHaveAttribute('data-variant', 'light');
     await expect(historyItems(page).nth(1)).toHaveAttribute('data-variant', 'default');
   });

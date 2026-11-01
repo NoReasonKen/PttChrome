@@ -1,21 +1,42 @@
-/* 搜尋紀錄的管理視窗（SearchHistoryManager.jsx）。 */
+/* 搜尋紀錄的管理頁（SearchHistoryManager.jsx）。 */
 .searchHistoryManagerHeading {
   padding: 4px 0;
   border-bottom: 1px solid var(--mantine-color-default-border);
 }
 
+/* 勾選框｜關鍵字框（吃掉剩下的寬度）｜次數或「自動」：右邊那格不會被長字蓋住。 */
 .searchHistoryManagerEntry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-height: 44px;
 }
 
-/* 關鍵字佔掉剩下的寬度，太長就截斷，次數與按鈕固定在右邊。 */
 .searchHistoryManagerText {
   flex: 1;
   min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-sm);
+  cursor: pointer;
 }
 
-.searchHistoryManagerText .mantine-Checkbox-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
+.searchHistoryManagerTextLabel {
+  display: block;
+  font-size: var(--mantine-font-size-sm);
   white-space: nowrap;
+}
+
+.searchHistoryManagerInfo {
+  flex: none;
+  min-width: 2em;
+  text-align: right;
+}
+
+.searchHistoryManagerActions {
+  position: sticky;
+  bottom: 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
 }

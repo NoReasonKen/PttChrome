@@ -359,7 +359,7 @@
     "message": "管理搜尋紀錄"
   },
   "searchHistoryManager_help": {
-    "message": "同一個關鍵字搜尋 10 次會自動釘選，但釘選已滿 20 筆時不會；釘選後次數歸零。標示「自動」的是自動釘選的。"
+    "message": "勾選後用下方的按鈕上移、下移、釘選或刪除。釘選與最近各最多 10 筆。同一個關鍵字搜尋 10 次會自動釘選（釘選已滿時不會），釘選後次數歸零；標示「自動」的是自動釘選的。"
   },
   "searchHistoryManager_pinned": {
     "message": "釘選"
@@ -394,8 +394,8 @@
   "searchHistoryManager_empty": {
     "message": "沒有搜尋紀錄"
   },
-  "searchHistoryManager_done": {
-    "message": "完成"
+  "searchHistoryManager_pinFull": {
+    "message": "釘選最多 {0} 筆"
   },
   "searchModal_cancel": {
     "message": "取消"

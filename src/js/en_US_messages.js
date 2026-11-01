@@ -359,7 +359,7 @@ export const en_US = {
     "message": "Manage search history"
   },
   "searchHistoryManager_help": {
-    "message": "A keyword searched 10 times is pinned automatically, unless 20 entries are already pinned. Pinning resets its count. Entries marked \"Auto\" were pinned automatically."
+    "message": "Select entries, then move, pin or delete them with the buttons below. Pinned and Recent each hold up to 10 entries. A keyword searched 10 times is pinned automatically unless Pinned is full, and pinning resets its count. Entries marked \"Auto\" were pinned automatically."
   },
   "searchHistoryManager_pinned": {
     "message": "Pinned"
@@ -394,8 +394,8 @@ export const en_US = {
   "searchHistoryManager_empty": {
     "message": "No search history"
   },
-  "searchHistoryManager_done": {
-    "message": "Done"
+  "searchHistoryManager_pinFull": {
+    "message": "Pinned holds up to {0} entries"
   },
   "searchModal_cancel": {
     "message": "Cancel"

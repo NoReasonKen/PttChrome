@@ -33,10 +33,8 @@
   opacity: 0.6;
 }
 
-/* 搜尋紀錄區：按鈕 sm（36px）、間距 8px，最多三行高，再多就框內捲動（#70）。 */
-.searchHistoryArea {
-  max-height: calc(3 * 2.25rem + 2 * 8px);
-  overflow-y: auto;
+/* 搜尋紀錄區（ScrollArea，高度上限在 SearchModal.jsx）：捲到底不帶動整個彈窗。 */
+.searchHistoryArea .mantine-ScrollArea-viewport {
   overscroll-behavior-y: contain;
 }
 

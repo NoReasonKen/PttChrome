@@ -11,7 +11,7 @@ import { setupI18n, i18n } from "../../src/js/i18n";
 import {
   rememberSearch,
   updateSearchHistory,
-  pinSearchEntry,
+  pinSearchEntries,
 } from "../../src/js/search_history";
 
 beforeAll(() => {
@@ -86,7 +86,7 @@ const historyItems = () =>
   );
 function rememberWithPins(kind, texts, pins) {
   texts.forEach((t) => rememberSearch(kind, t));
-  updateSearchHistory((h) => pins.reduce((acc, t) => pinSearchEntry(acc, kind, t), h));
+  updateSearchHistory((h) => pins.reduce((acc, t) => pinSearchEntries(acc, kind, [t]), h));
 }
 
 test("搜尋紀錄區：全部顯示（不只 6 筆），釘選的在前", () => {
@@ -99,7 +99,7 @@ test("搜尋紀錄區：全部顯示（不只 6 筆），釘選的在前", () =>
   );
 });
 
-test("搜尋紀錄區：沒有刪除鈕；釘選的用 light，其他用 default，按鈕是 sm", () => {
+test("搜尋紀錄區：沒有刪除鈕；釘選的用 light，其他用 default，按鈕是 compact-sm（內距是 sm 的一半）", () => {
   rememberWithPins("title", ["a", "b"], ["a"]);
   renderModal();
   const area = document.querySelector("[data-search-history]");
@@ -107,8 +107,8 @@ test("搜尋紀錄區：沒有刪除鈕；釘選的用 light，其他用 default
   const btn = (t) => area.querySelector(`[data-search-history-item="${t}"]`);
   expect(btn("a").dataset.variant).toBe("light");
   expect(btn("b").dataset.variant).toBe("default");
-  expect(btn("a").dataset.size).toBe("sm");
-  expect(btn("b").dataset.size).toBe("sm");
+  expect(btn("a").dataset.size).toBe("compact-sm");
+  expect(btn("b").dataset.size).toBe("compact-sm");
 });
 
 test("↑ 的順序跟搜尋紀錄區相同（釘選的先叫回）", () => {

@@ -216,7 +216,9 @@
   order: 1;
 }
 
+/* fieldset 預設不縮到比內容窄（min-width: min-content）：一行長字就把整欄撐寬。 */
 .PrefModal__Grid__Col--right__Fieldset {
+  min-width: 0;
   border: none;
   margin: 0 0 12px;
   padding: 0;

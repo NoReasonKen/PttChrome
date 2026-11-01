@@ -350,8 +350,9 @@ export const PrefModal = ({
   credentialEditorRef.current = credentialEditor;
   const [confirmCredentialClose, setConfirmCredentialClose] = useState(false);
   const credentialExitAction = useRef(null);
+  // 搜尋紀錄管理頁：「本機」底下的一頁（同分類，一層層蓋上去），返回回到本機設定。
   const [searchHistoryOpen, setSearchHistoryOpen] = useState(false);
-  const closeSearchHistory = useCallback(() => setSearchHistoryOpen(false), []);
+  const localScrollTop = useRef(0);
   const [syncUser, setSyncUser] = useState(null);
   const [syncAllowed, setSyncAllowed] = useState(prefSync.canSync);
   const syncSetupRequested = useSyncExternalStore(
@@ -397,6 +398,26 @@ export const PrefModal = ({
     setCategoryList(false);
     if (rightColRef.current) rightColRef.current.scrollTop = 0;
   }, []);
+
+  const openSearchHistory = useCallback(() => {
+    if (rightColRef.current) {
+      localScrollTop.current = rightColRef.current.scrollTop;
+      rightColRef.current.scrollTop = 0;
+    }
+    setSearchHistoryOpen(true);
+  }, []);
+  // 回到本機設定時停在原來捲到的地方（入口那一列）。
+  const closeSearchHistory = useCallback(() => {
+    setSearchHistoryOpen(false);
+    requestAnimationFrame(() => {
+      if (rightColRef.current)
+        rightColRef.current.scrollTop = localScrollTop.current;
+    });
+  }, []);
+  // 換分類、回分類清單、設定搜尋跳轉：都離開管理頁。
+  useEffect(() => {
+    setSearchHistoryOpen(false);
+  }, [navActiveKey, categoryList, pendingJump]);
 
   // 系統返回（history_back_guard → App.dismissTopSheet）：窄版在分類裡＝回分類清單，
   // 其餘＝關閉設定（同關閉鈕，會存檔）。開著就一直登記同一個（#63），否則清單那層的
@@ -567,6 +588,7 @@ export const PrefModal = ({
     if (credentialEditor.busy.current) return;
     if (credentialEditor.confirmDelete) credentialEditor.cancelDelete();
     else if (confirmCredentialClose) continueCredentialEditing();
+    else if (searchHistoryOpen) closeSearchHistory();
     else if (inCategory) setCategoryList(true);
     else onCloseClick();
   };
@@ -818,8 +840,7 @@ export const PrefModal = ({
         !updateOfferOpen &&
         !confirmCredentialClose &&
         !credentialEditor.saving &&
-        !credentialEditor.confirmDelete &&
-        !searchHistoryOpen
+        !credentialEditor.confirmDelete
       }
       // marker 放在 content（可見的對話框本體）而非 mantine-Modal-root（外層 0 尺寸
       // wrapper，Playwright 會判定 hidden）。
@@ -905,17 +926,25 @@ export const PrefModal = ({
                 type="button"
                 className="PrefModal__CategoryBack"
                 data-pref-category-back=""
+                data-pref-subpage-back={searchHistoryOpen ? "" : undefined}
                 aria-label={i18n("options_categoryBack")}
-                onClick={() => setCategoryList(true)}
+                onClick={() =>
+                  searchHistoryOpen
+                    ? closeSearchHistory()
+                    : setCategoryList(true)
+                }
               >
                 <IconChevronLeft size={20} aria-hidden />
                 <span>
-                  {i18n(
-                    (
-                      PREF_CATEGORIES.find((c) => c.value === navActiveKey) ||
-                      PREF_CATEGORIES[0]
-                    ).labelKey,
-                  )}
+                  {searchHistoryOpen
+                    ? i18n("searchHistoryManager_title")
+                    : i18n(
+                        (
+                          PREF_CATEGORIES.find(
+                            (c) => c.value === navActiveKey,
+                          ) || PREF_CATEGORIES[0]
+                        ).labelKey,
+                      )}
                 </span>
               </button>
             )}
@@ -1846,12 +1875,7 @@ export const PrefModal = ({
                 <PrefSection legendKey="options_connection_bbs">
                   <Text size="sm">{i18n("options_androidProxyNote")}</Text>
                   {/* APK 自己的設定（dev server 模式等）在原生頁面，不進網頁 prefs（不同步到桌機）。 */}
-                  <Button
-                    variant="default"
-                    size="xs"
-                    mt="xs"
-                    onClick={openAppSettings}
-                  >
+                  <Button variant="default" mt="xs" onClick={openAppSettings}>
                     {i18n("options_androidAppSettings")}
                   </Button>
                 </PrefSection>
@@ -2358,7 +2382,6 @@ export const PrefModal = ({
                         <Button
                           id="autoLoginClearLocalBtn"
                           variant="default"
-                          size="xs"
                           disabled={!hasLocalCredential}
                           onClick={onClearLocalCredential}
                         >
@@ -2405,7 +2428,6 @@ export const PrefModal = ({
                   <Button
                     id="aiDownloadBtn"
                     variant="default"
-                    size="xs"
                     mb="xs"
                     onClick={startAiDownload}
                   >
@@ -2446,53 +2468,79 @@ export const PrefModal = ({
               例外：自動登入的帳號／密碼／2FA 密鑰同樣 local-only，但整條登入
               流程要一起看才讀得懂，故集中在「自動登入」分頁。 */}
             <Tabs.Panel value="local">
-              <PrefSection legendKey="options_local">
-                <Text className="PrefModal__warning">
-                  {i18n("tooltip_local")}
-                </Text>
-                <PrefCheckbox
-                  name="enableWorkMode"
-                  checked={values.enableWorkMode}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_enableWorkMode")}
-                </PrefCheckbox>
-                {/* urusai 圖床的存取憑證：是憑證就不上雲（LOCAL_ONLY_PREF_KEYS），
+              {searchHistoryOpen ? (
+                <>
+                  {/* 窄版的返回在左欄頂端（分類那一顆）；寬版放在這一頁的頂端。 */}
+                  {!narrow && (
+                    <button
+                      type="button"
+                      className="PrefModal__CategoryBack"
+                      data-pref-subpage-back=""
+                      onClick={closeSearchHistory}
+                    >
+                      <IconChevronLeft size={20} aria-hidden />
+                      <span>{i18n("options_local")}</span>
+                    </button>
+                  )}
+                  {/* 不走 PrefSection：設定搜尋停在本機設定裡的入口那一列，不跳進這一頁。 */}
+                  <fieldset className="PrefModal__Grid__Col--right__Fieldset">
+                    <legend>{i18n("searchHistoryManager_title")}</legend>
+                    <SearchHistoryManager />
+                  </fieldset>
+                </>
+              ) : (
+                <PrefSection legendKey="options_local">
+                  <Text className="PrefModal__warning">
+                    {i18n("tooltip_local")}
+                  </Text>
+                  <PrefCheckbox
+                    name="enableWorkMode"
+                    checked={values.enableWorkMode}
+                    onChange={onCheckboxChange}
+                  >
+                    {i18n("options_enableWorkMode")}
+                  </PrefCheckbox>
+                  {/* urusai 圖床的存取憑證：是憑證就不上雲（LOCAL_ONLY_PREF_KEYS），
                   所以放這個分頁；留空＝匿名上傳，功能照常。
                   **刻意不是 type=password**（同 autoLoginOtpSecret 的理由）：整頁
                   多一個密碼欄，Chrome 就會把設定頁判成登入表單 → 跳假的「儲存密碼」
                   提示並開始自動填入。守護在 pref_modal_autologin_tab.test.jsx。 */}
-                <TextInput
-                  label={i18n("options_imageUploadToken")}
-                  name="imageUploadToken"
-                  autoComplete="off"
-                  value={values.imageUploadToken}
-                  placeholder={i18n("tooltip_imageUploadToken")}
-                  onChange={onTextInputChange}
-                  mt="xs"
-                  {...anchor("imageUploadToken")}
-                />
-                {/* 搜尋紀錄只存本機（search_history.js），不是 pref：這裡只放入口。 */}
-                <PrefAnchor anchorKey="ui:searchHistoryManager">
-                  <Button
-                    variant="default"
-                    size="xs"
-                    mt="md"
-                    onClick={() => setSearchHistoryOpen(true)}
-                  >
-                    {i18n("searchHistoryManager_title")}
-                  </Button>
-                  <Text size="xs" c="dimmed" mt={4}>
-                    {i18n("tooltip_searchHistoryManager")}
-                  </Text>
-                </PrefAnchor>
-                <SearchHistoryManager
-                  opened={show && searchHistoryOpen}
-                  onClose={closeSearchHistory}
-                  mobile={narrow}
-                  registerBack={registerBack}
-                />
-              </PrefSection>
+                  <TextInput
+                    label={i18n("options_imageUploadToken")}
+                    name="imageUploadToken"
+                    autoComplete="off"
+                    value={values.imageUploadToken}
+                    placeholder={i18n("tooltip_imageUploadToken")}
+                    onChange={onTextInputChange}
+                    mt="xs"
+                    {...anchor("imageUploadToken")}
+                  />
+                  {/* 搜尋紀錄只存本機（search_history.js），不是 pref：這裡只放入口，
+                  樣式同分類清單的一列。 */}
+                  <PrefAnchor anchorKey="ui:searchHistoryManager">
+                    <button
+                      type="button"
+                      className="PrefModal__Category"
+                      data-pref-subpage="searchHistory"
+                      onClick={openSearchHistory}
+                    >
+                      <span className="PrefModal__Category__Text">
+                        <span className="PrefModal__Category__Title">
+                          {i18n("searchHistoryManager_title")}
+                        </span>
+                        <span className="PrefModal__Category__Desc">
+                          {i18n("tooltip_searchHistoryManager")}
+                        </span>
+                      </span>
+                      <IconChevronRight
+                        className="PrefModal__Category__Chevron"
+                        size={18}
+                        aria-hidden
+                      />
+                    </button>
+                  </PrefAnchor>
+                </PrefSection>
+              )}
             </Tabs.Panel>
             <Tabs.Panel value="backup">
               <PrefSection legendKey="options_backupExport">

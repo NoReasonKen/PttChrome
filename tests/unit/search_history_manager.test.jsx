@@ -1,7 +1,8 @@
 // @unit-env browser
-// 搜尋紀錄的管理視窗（src/components/ContextMenu/SearchHistoryManager.jsx，#70）。
-// 守的是使用者在這裡做的事：分種類看釘選／最近兩段、釘選與取消、排釘選的順序、
-// 勾選後一次刪除；每個變更立刻寫回本機紀錄（視窗只有「完成」，沒有取消）。
+// 搜尋紀錄的管理頁（src/components/ContextMenu/SearchHistoryManager.jsx，#70），設定裡
+// 「本機」底下的一頁。守的是使用者在這裡做的事：分種類看釘選／最近兩段、勾選後用
+// 下方那排按鈕一次上移／下移／釘選／取消釘選／刪除；每個變更立刻寫回本機紀錄。
+// 進出這一頁（返回、系統返回）守在 pref_modal_local_tab.test.jsx。
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import SearchHistoryManager from "../../src/components/ContextMenu/SearchHistoryManager";
@@ -10,7 +11,7 @@ import { setupI18n, i18n } from "../../src/js/i18n";
 import {
   rememberSearch,
   updateSearchHistory,
-  pinSearchEntry,
+  pinSearchEntries,
   readSearchHistory,
   searchHistoryKind,
   searchHistoryOrder,
@@ -23,24 +24,17 @@ beforeEach(() => {
   localStorage.clear();
 });
 
-const renderManager = (props = {}) => {
-  const onClose = props.onClose || vi.fn();
+const renderManager = () =>
   render(
     <MantineProvider>
-      <SearchHistoryManager
-        opened
-        onClose={onClose}
-        mobile={props.mobile}
-        registerBack={props.registerBack}
-      />
+      <SearchHistoryManager />
     </MantineProvider>,
   );
-  return { onClose };
-};
 
+// 逐筆釘：釘選的順序就是 pins 的順序。
 function seed(kind, texts, pins = []) {
   texts.forEach((t) => rememberSearch(kind, t));
-  updateSearchHistory((h) => pins.reduce((acc, t) => pinSearchEntry(acc, kind, t), h));
+  updateSearchHistory((h) => pins.reduce((acc, t) => pinSearchEntries(acc, kind, [t]), h));
 }
 
 const section = (name) =>
@@ -50,15 +44,17 @@ const entries = (name) =>
     (e) => e.dataset.managerEntry,
   );
 const entry = (text) => document.querySelector(`[data-manager-entry="${text}"]`);
-const deleteButton = () => document.querySelector("[data-manager-delete]");
+const check = (text) => fireEvent.click(within(entry(text)).getByRole("checkbox"));
+const checked = (text) => within(entry(text)).getByRole("checkbox").checked;
+const action = (name) => document.querySelector(`[data-manager-action="${name}"]`);
 
-test("兩段：釘選在前、最近在後；未釘選的顯示次數，釘選的不顯示；自動釘選的標「自動」", () => {
+test("兩段：釘選在前、最近在後（最新的在前）；未釘選的顯示次數；自動釘選的標「自動」", () => {
   seed("title", ["a", "b", "b", "c"], ["a"]);
   for (let i = 0; i < 10; ++i) rememberSearch("title", "hot"); // 第 10 次自動釘選
   renderManager();
   expect(entries("pinned")).toEqual(["a", "hot"]);
   expect(entries("recent")).toEqual(["c", "b"]);
-  expect(within(entry("b")).getByText("2")).toBeTruthy();
+  expect(entry("b").querySelector("[data-manager-uses]").textContent).toBe("2");
   expect(entry("c").querySelector("[data-manager-uses]").textContent).toBe("1");
   expect(entry("a").querySelector("[data-manager-uses]")).toBeNull();
   expect(entry("hot").querySelector("[data-manager-auto]").textContent).toBe(
@@ -68,34 +64,46 @@ test("兩段：釘選在前、最近在後；未釘選的顯示次數，釘選�
   expect(screen.getByText(i18n("searchHistoryManager_help"))).toBeTruthy();
 });
 
-test("切換種類只顯示那一類", () => {
+test("每一列只有勾選框、文字與次數，沒有按鈕；點文字也能勾選", () => {
+  seed("title", ["a", "b"], ["a"]);
+  renderManager();
+  ["a", "b"].forEach((t) => expect(entry(t).querySelectorAll("button")).toHaveLength(0));
+  fireEvent.click(entry("b").querySelector("[data-manager-text]"));
+  expect(checked("b")).toBe(true);
+  fireEvent.click(entry("b").querySelector("[data-manager-text]"));
+  expect(checked("b")).toBe(false);
+});
+
+test("切換種類只顯示那一類，勾選清掉", () => {
   seed("title", ["t1"]);
   seed("author", ["someone"]);
   renderManager();
+  check("t1");
   fireEvent.click(screen.getByText(i18n("searchModal_kindAuthor")));
   expect(entries("recent")).toEqual(["someone"]);
   expect(entry("t1")).toBeNull();
+  expect(action("delete").disabled).toBe(true);
 });
 
-test("兩段各自全選；刪除鈕寫出筆數，刪了立刻寫回，其他種類不動", () => {
+test("兩段各自全選；刪除鈕寫出筆數，刪了立刻寫回、勾選清掉，其他種類不動", () => {
   seed("title", ["p1", "p2", "r1", "r2"], ["p1", "p2"]);
   seed("author", ["someone"]);
   renderManager();
-  expect(deleteButton().disabled).toBe(true);
+  expect(action("delete").disabled).toBe(true);
   fireEvent.click(within(section("recent")).getByLabelText(i18n("searchHistoryManager_selectAll")));
-  expect(deleteButton().textContent).toBe(
+  expect(action("delete").textContent).toBe(
     i18n("searchHistoryManager_delete").replace("{0}", "2"),
   );
-  fireEvent.click(within(entry("p2")).getByRole("checkbox"));
-  expect(deleteButton().textContent).toBe(
+  check("p2");
+  expect(action("delete").textContent).toBe(
     i18n("searchHistoryManager_delete").replace("{0}", "3"),
   );
-  fireEvent.click(deleteButton());
+  fireEvent.click(action("delete"));
   expect(entries("pinned")).toEqual(["p1"]);
   expect(entries("recent")).toEqual([]);
   expect(searchHistoryOrder(readSearchHistory(), "title")).toEqual(["p1"]);
   expect(searchHistoryOrder(readSearchHistory(), "author")).toEqual(["someone"]);
-  expect(deleteButton().disabled).toBe(true);
+  expect(action("delete").disabled).toBe(true);
 });
 
 test("全選再按一次＝全部取消", () => {
@@ -104,72 +112,78 @@ test("全選再按一次＝全部取消", () => {
   const all = within(section("pinned")).getByLabelText(i18n("searchHistoryManager_selectAll"));
   fireEvent.click(all);
   fireEvent.click(all);
-  expect(deleteButton().disabled).toBe(true);
+  expect(action("delete").disabled).toBe(true);
 });
 
-test("釘選切換：最近的釘到釘選最後面，取消釘選回到最近的最前面", () => {
-  seed("title", ["a", "b", "c"], ["a"]);
+test("一次釘選多筆（照最近的順序接到最後面），勾選保留；再一次取消釘選", () => {
+  seed("title", ["a", "b", "c"], ["a"]); // 最近：c b
   renderManager();
-  fireEvent.click(within(entry("b")).getByLabelText(i18n("searchHistoryManager_pin")));
-  expect(entries("pinned")).toEqual(["a", "b"]);
+  expect(action("pin").disabled).toBe(true);
+  expect(action("unpin").disabled).toBe(true);
+  check("b");
+  check("c");
+  expect(action("unpin").disabled).toBe(true);
+  fireEvent.click(action("pin"));
+  expect(entries("pinned")).toEqual(["a", "c", "b"]);
   expect(searchHistoryKind(readSearchHistory(), "title").pinned).toEqual([
     { text: "a", auto: false },
+    { text: "c", auto: false },
     { text: "b", auto: false },
   ]);
-  fireEvent.click(within(entry("a")).getByLabelText(i18n("searchHistoryManager_unpin")));
-  expect(entries("pinned")).toEqual(["b"]);
-  expect(entries("recent")).toEqual(["a", "c"]);
+  expect(checked("b") && checked("c")).toBe(true);
+  expect(action("pin").disabled).toBe(true);
+  fireEvent.click(action("unpin"));
+  expect(entries("pinned")).toEqual(["a"]);
+  expect(entries("recent")).toEqual(["c", "b"]);
 });
 
-test("釘選滿 20 筆：最近的釘選鈕停用", () => {
-  const pins = Array.from({ length: 20 }, (_, i) => "p" + i);
-  seed("title", pins, pins);
-  seed("title", ["extra"]);
+test("一次上移／下移多筆；移不動就停用；只勾最近的也停用", () => {
+  seed("title", ["a", "b", "c", "d", "r"], ["a", "b", "c", "d"]);
   renderManager();
-  expect(entries("pinned")).toHaveLength(20);
-  expect(within(entry("extra")).getByLabelText(i18n("searchHistoryManager_pin")).disabled).toBe(
-    true,
+  check("r");
+  expect(action("up").disabled).toBe(true);
+  expect(action("down").disabled).toBe(true);
+  check("r");
+  check("b");
+  check("d");
+  fireEvent.click(action("up"));
+  expect(entries("pinned")).toEqual(["b", "a", "d", "c"]);
+  fireEvent.click(action("up"));
+  expect(entries("pinned")).toEqual(["b", "d", "a", "c"]);
+  expect(action("up").disabled).toBe(true);
+  fireEvent.click(action("down"));
+  expect(entries("pinned")).toEqual(["a", "b", "d", "c"]);
+  expect(searchHistoryOrder(readSearchHistory(), "title").slice(0, 4)).toEqual([
+    "a",
+    "b",
+    "d",
+    "c",
+  ]);
+});
+
+test("釘選放不下勾的那幾筆：釘選鈕停用，提示上限", () => {
+  const pins = Array.from({ length: 9 }, (_, i) => "p" + i);
+  seed("title", pins, pins);
+  seed("title", ["x", "y"]);
+  renderManager();
+  check("x");
+  expect(action("pin").disabled).toBe(false);
+  expect(document.querySelector("[data-manager-pin-full]")).toBeNull();
+  check("y");
+  expect(action("pin").disabled).toBe(true);
+  expect(document.querySelector("[data-manager-pin-full]").textContent).toBe(
+    i18n("searchHistoryManager_pinFull").replace("{0}", "10"),
   );
 });
 
-test("釘選的上移／下移；第一筆不能上移、最後一筆不能下移", () => {
-  seed("title", ["a", "b", "c"], ["a", "b", "c"]);
-  renderManager();
-  const up = (t) => within(entry(t)).getByLabelText(i18n("searchHistoryManager_moveUp"));
-  const down = (t) => within(entry(t)).getByLabelText(i18n("searchHistoryManager_moveDown"));
-  expect(up("a").disabled).toBe(true);
-  expect(down("c").disabled).toBe(true);
-  fireEvent.click(up("c"));
-  expect(entries("pinned")).toEqual(["a", "c", "b"]);
-  fireEvent.click(down("a"));
-  expect(entries("pinned")).toEqual(["c", "a", "b"]);
-  expect(searchHistoryOrder(readSearchHistory(), "title")).toEqual(["c", "a", "b"]);
-});
-
-test("沒有紀錄的種類：顯示「沒有搜尋紀錄」，全選與刪除停用", () => {
+test("沒有紀錄的種類：顯示「沒有搜尋紀錄」，全選與所有操作停用", () => {
   renderManager();
   expect(screen.getByText(i18n("searchHistoryManager_empty"))).toBeTruthy();
   document
     .querySelectorAll("[data-manager-select-all]")
     .forEach((el) => expect(el.disabled).toBe(true));
   expect(document.querySelectorAll("[data-manager-select-all]")).toHaveLength(2);
-  expect(deleteButton().disabled).toBe(true);
-});
-
-test("「完成」關閉；開著時向系統返回登記同一個關閉", () => {
-  const unregister = vi.fn();
-  const registerBack = vi.fn(() => unregister);
-  const { onClose } = renderManager({ registerBack });
-  expect(registerBack).toHaveBeenCalledTimes(1);
-  registerBack.mock.calls[0][0]();
-  expect(onClose).toHaveBeenCalledTimes(1);
-  fireEvent.click(document.querySelector("[data-manager-done]"));
-  expect(onClose).toHaveBeenCalledTimes(2);
-});
-
-test("手機用 bottom sheet", () => {
-  seed("title", ["a"]);
-  renderManager({ mobile: true });
-  expect(document.querySelector('[data-sheet="searchHistory"]')).not.toBeNull();
-  expect(entries("recent")).toEqual(["a"]);
+  ["up", "down", "pin", "unpin", "delete"].forEach((a) =>
+    expect(action(a).disabled).toBe(true),
+  );
 });

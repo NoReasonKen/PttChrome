@@ -6,6 +6,7 @@ import {
   Group,
   SegmentedControl,
   Text,
+  ScrollArea,
 } from "@mantine/core";
 import { i18n } from "../../js/i18n";
 import MobileSheet from "../MobileSheet";
@@ -39,6 +40,9 @@ const KIND_PLACEHOLDER_KEY = {
   push: "searchModal_placeholderPush",
   board: "searchModal_placeholderBoard",
 };
+// 搜尋紀錄區：compact-sm 按鈕高 26px，最多三行。
+const HISTORY_GAP = 8;
+const HISTORY_AREA_MAX_HEIGHT = 3 * 26 + 2 * HISTORY_GAP;
 // mobile：手機版面改用 bottom sheet 外殼（components/MobileSheet，系統返回＝收起），
 // 內容（表單、記憶、送出）完全相同。
 export const SearchModal = ({
@@ -274,13 +278,19 @@ export const SearchModal = ({
           <Text size="xs" c="dimmed" mt="sm" mb={4}>
             {i18n("searchModal_history")}
           </Text>
-          {/* 超過三行就固定三行高、框內捲動（SearchModal.css）。 */}
-          <div className="searchHistoryArea">
-            <Group gap={8}>
+          {/* 超過三行就固定三行高、框內捲動。type="auto"：有得捲時捲軸一直在，
+              不像手機原生捲軸只在滑動時閃一下，看不出下面還有。 */}
+          <ScrollArea.Autosize
+            type="auto"
+            mah={HISTORY_AREA_MAX_HEIGHT}
+            offsetScrollbars="y"
+            className="searchHistoryArea"
+          >
+            <Group gap={HISTORY_GAP}>
               {list.map((it, i) => (
                 <Button
                   key={it}
-                  size="sm"
+                  size="compact-sm"
                   variant={i < pinnedCount ? "light" : "default"}
                   className="searchHistoryItem"
                   data-search-history-item={it}
@@ -290,7 +300,7 @@ export const SearchModal = ({
                 </Button>
               ))}
             </Group>
-          </div>
+          </ScrollArea.Autosize>
         </div>
       )}
       <Group justify="flex-end" mt="md">

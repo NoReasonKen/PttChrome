@@ -12,8 +12,8 @@
 // 守護 tests/unit/search_history.test.js。
 
 const HISTORY_KEY = 'pttchrome.searchHistory.v2';
-export const MAX_SEARCH_HISTORY = 20;
-export const MAX_PINNED_SEARCH_HISTORY = 20;
+export const MAX_SEARCH_HISTORY = 10;
+export const MAX_PINNED_SEARCH_HISTORY = 10;
 // 固定值，不是設定（#70）。
 export const AUTO_PIN_USES = 10;
 export const SEARCH_KINDS = ['title', 'author', 'push', 'board'];
@@ -82,8 +82,9 @@ export function searchHistoryOrder(history, kind) {
   return k.pinned.map((it) => it.text).concat(k.recent.map((it) => it.text));
 }
 
-export function isSearchPinFull(history, kind) {
-  return searchHistoryKind(history, kind).pinned.length >= MAX_PINNED_SEARCH_HISTORY;
+// 釘選還放得下幾筆。
+export function searchPinRoom(history, kind) {
+  return MAX_PINNED_SEARCH_HISTORY - searchHistoryKind(history, kind).pinned.length;
 }
 
 // 送出一次搜尋：最新的往前提、次數 +1。已釘選的原地不動、不計數。
@@ -101,39 +102,49 @@ export function addSearchEntry(history, kind, text) {
       MAX_SEARCH_HISTORY,
     );
   });
-  return uses >= AUTO_PIN_USES ? pinEntry(next, kind, t, true) : next;
+  return uses >= AUTO_PIN_USES ? pinEntries(next, kind, [t], true) : next;
 }
 
-// 從最近移到釘選的最後面，次數歸零（釘選期間不計數）。滿了就不動，不擠掉任何一筆。
-function pinEntry(history, kind, text, auto) {
+// 從最近移到釘選的最後面（照最近的順序），次數歸零（釘選期間不計數）。
+// 放不下就整批不動，不擠掉任何一筆。
+function pinEntries(history, kind, texts, auto) {
   return changeKind(history, kind, (k) => {
-    if (k.pinned.length >= MAX_PINNED_SEARCH_HISTORY) return;
-    if (!k.recent.some((it) => it.text === text)) return;
-    k.recent = k.recent.filter((it) => it.text !== text);
-    k.pinned.push({ text, auto });
+    const picked = k.recent.filter((it) => texts.indexOf(it.text) >= 0);
+    if (!picked.length || k.pinned.length + picked.length > MAX_PINNED_SEARCH_HISTORY) return;
+    k.recent = k.recent.filter((it) => texts.indexOf(it.text) < 0);
+    picked.forEach((it) => k.pinned.push({ text: it.text, auto }));
   });
 }
 
-export function pinSearchEntry(history, kind, text) {
-  return pinEntry(history, kind, text, false);
+export function pinSearchEntries(history, kind, texts) {
+  return pinEntries(history, kind, texts, false);
 }
 
-// 回到最近的最前面、次數從 0 重算；最近滿了照常擠掉最舊的。
-export function unpinSearchEntry(history, kind, text) {
+// 回到最近的最前面（照釘選的順序）、次數從 0 重算；最近滿了照常擠掉最舊的。
+export function unpinSearchEntries(history, kind, texts) {
   return changeKind(history, kind, (k) => {
-    if (!k.pinned.some((it) => it.text === text)) return;
-    k.pinned = k.pinned.filter((it) => it.text !== text);
-    k.recent = [{ text, uses: 0 }, ...k.recent].slice(0, MAX_SEARCH_HISTORY);
+    const back = k.pinned
+      .filter((it) => texts.indexOf(it.text) >= 0)
+      .map((it) => ({ text: it.text, uses: 0 }));
+    if (!back.length) return;
+    k.pinned = k.pinned.filter((it) => texts.indexOf(it.text) < 0);
+    k.recent = [...back, ...k.recent].slice(0, MAX_SEARCH_HISTORY);
   });
 }
 
-// 釘選的上移（delta -1）／下移（+1）；到頂或到底不動。沒有拖曳（#70）。
-export function moveSearchEntry(history, kind, text, delta) {
+// 勾到的釘選一起上移（delta -1）／下移（+1）一格，相對順序不變；最近的不受影響。
+// 擋在最前（後）面的那幾筆不動：前面那格也被勾到又沒移動，就跟著不動。
+export function moveSearchEntries(history, kind, texts, delta) {
   return changeKind(history, kind, (k) => {
-    const i = k.pinned.findIndex((it) => it.text === text);
-    const j = i + delta;
-    if (i < 0 || j < 0 || j >= k.pinned.length) return;
-    [k.pinned[i], k.pinned[j]] = [k.pinned[j], k.pinned[i]];
+    const list = k.pinned;
+    const picked = (i) => texts.indexOf(list[i].text) >= 0;
+    const n = list.length;
+    for (let step = 0; step < n; ++step) {
+      const i = delta < 0 ? step : n - 1 - step;
+      const j = i + delta;
+      if (!picked(i) || j < 0 || j >= n || picked(j)) continue;
+      [list[i], list[j]] = [list[j], list[i]];
+    }
   });
 }
 

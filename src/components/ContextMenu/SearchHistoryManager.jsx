@@ -1,68 +1,57 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import {
-  Modal,
   Button,
   Group,
   Stack,
   SegmentedControl,
   Text,
   Checkbox,
-  ActionIcon,
   Badge,
+  ScrollArea,
 } from "@mantine/core";
-import {
-  IconArrowUp,
-  IconArrowDown,
-  IconPin,
-  IconPinnedOff,
-} from "@tabler/icons-react";
 import { i18n } from "../../js/i18n";
-import MobileSheet, { SHEET_Z_INDEX } from "../MobileSheet";
 import {
   readSearchHistory,
   updateSearchHistory,
   searchHistoryKind,
-  isSearchPinFull,
-  pinSearchEntry,
-  unpinSearchEntry,
-  moveSearchEntry,
+  searchPinRoom,
+  pinSearchEntries,
+  unpinSearchEntries,
+  moveSearchEntries,
   removeSearchEntries,
+  MAX_PINNED_SEARCH_HISTORY,
   SEARCH_KINDS,
   SEARCH_KIND_LABEL_KEY,
 } from "../../js/search_history";
 import "./SearchHistoryManager.css";
 
-// 搜尋紀錄的管理視窗（#70），從設定的「本機」分頁打開，疊在設定上面。
+// 搜尋紀錄的管理頁（#70）：設定「本機」底下的一頁，進出由 PrefModal 管（返回、系統返回）。
 // 搜尋視窗下方的搜尋紀錄區只用來搜尋；釘選、排序、刪除都在這裡。
-//   - 每個變更立刻寫回本機紀錄，所以只有「完成」，沒有取消。
-//   - 釘選的排序用上移／下移：沒有拖曳套件，sheet 裡拖曳也會跟捲動打架。
-//   - 勾選只對目前的種類有效，切換種類就清掉。
-// 系統返回＝關閉這個視窗（registerBack，同 AboutPanels 的更新視窗），不關設定。
-
-export const SearchHistoryManager = ({
-  opened,
-  onClose,
-  mobile,
-  registerBack,
-}) => {
+//   - 每一列只有勾選框、關鍵字、次數；操作都在下方那排按鈕，對勾到的一起做。
+//   - 每個變更立刻寫回本機紀錄，沒有取消。
+//   - 釘選的排序用上移／下移：沒有拖曳套件，拖曳也會跟捲動打架。
+//   - 勾選只對目前的種類有效，切換種類或刪除就清掉；其他操作保留，才能連按上移。
+// 只在這一頁開著時掛載，所以一掛上就讀一次紀錄。
+export const SearchHistoryManager = () => {
   const [kind, setKind] = useState("title");
-  const [history, setHistory] = useState(() => readSearchHistory());
+  const [history, setHistory] = useState(readSearchHistory);
   const [selected, setSelected] = useState([]);
 
-  useEffect(() => {
-    if (!opened) return;
-    setHistory(readSearchHistory());
-    setSelected([]);
-  }, [opened]);
-
-  useEffect(() => {
-    if (opened) return registerBack?.(onClose);
-  }, [opened, registerBack, onClose]);
-
   const { pinned, recent } = searchHistoryKind(history, kind);
-  const pinFull = isSearchPinFull(history, kind);
+  const isSelected = (text) => selected.indexOf(text) >= 0;
+  const selectedPinned = pinned.filter((it) => isSelected(it.text));
+  const selectedRecent = recent.filter((it) => isSelected(it.text));
+  const pinFull = selectedRecent.length > searchPinRoom(history, kind);
+  // 移得動才啟用：試著移一次，看釘選的順序有沒有變。
+  const canMove = (delta) => {
+    const moved = searchHistoryKind(
+      moveSearchEntries(history, kind, selected, delta),
+      kind,
+    );
+    return moved.pinned.some((it, i) => it.text !== pinned[i].text);
+  };
 
-  const apply = useCallback(
+  const applyAndSave = useCallback(
     (change) => setHistory(updateSearchHistory(change)),
     [],
   );
@@ -90,17 +79,16 @@ export const SearchHistoryManager = ({
     [],
   );
 
-  const onDelete = useCallback(() => {
-    apply((h) => removeSearchEntries(h, kind, selected));
+  const onDelete = () => {
+    applyAndSave((h) => removeSearchEntries(h, kind, selected));
     setSelected([]);
-  }, [apply, kind, selected]);
+  };
 
   const isEmpty = !pinned.length && !recent.length;
 
   const sectionHeader = (name, labelKey, texts) => {
-    const checked =
-      texts.length > 0 && texts.every((t) => selected.indexOf(t) >= 0);
-    const some = texts.some((t) => selected.indexOf(t) >= 0);
+    const checked = texts.length > 0 && texts.every(isSelected);
+    const some = texts.some(isSelected);
     return (
       <Group justify="space-between" className="searchHistoryManagerHeading">
         <Text fw={600} size="sm">
@@ -120,29 +108,35 @@ export const SearchHistoryManager = ({
     );
   };
 
-  const entryRow = (text, extra, actions) => (
-    <Group
+  // 關鍵字框在固定寬度裡，太長就在框內左右捲（捲軸一直在；只有出現捲軸的框才留它的高度），
+  // 次數固定在右邊。
+  const entryRow = (text, info) => (
+    <div
       key={text}
-      gap="xs"
-      wrap="nowrap"
       className="searchHistoryManagerEntry"
       data-manager-entry={text}
     >
       <Checkbox
         size="sm"
-        className="searchHistoryManagerText"
-        label={text}
-        checked={selected.indexOf(text) >= 0}
+        aria-label={text}
+        checked={isSelected(text)}
         onChange={() => toggle(text)}
       />
-      {extra}
-      <Group gap={4} wrap="nowrap">
-        {actions}
-      </Group>
-    </Group>
+      <ScrollArea
+        type="auto"
+        scrollbars="x"
+        offsetScrollbars="present"
+        className="searchHistoryManagerText"
+        data-manager-text
+        onClick={() => toggle(text)}
+      >
+        <span className="searchHistoryManagerTextLabel">{text}</span>
+      </ScrollArea>
+      <div className="searchHistoryManagerInfo">{info}</div>
+    </div>
   );
 
-  const body = (
+  return (
     <Stack gap="sm" data-search-history-manager>
       <SegmentedControl
         fullWidth
@@ -167,7 +161,7 @@ export const SearchHistoryManager = ({
           "searchHistoryManager_pinned",
           pinned.map((it) => it.text),
         )}
-        {pinned.map((it, i) =>
+        {pinned.map((it) =>
           entryRow(
             it.text,
             it.auto ? (
@@ -175,41 +169,6 @@ export const SearchHistoryManager = ({
                 {i18n("searchHistoryManager_auto")}
               </Badge>
             ) : null,
-            <>
-              <ActionIcon
-                variant="default"
-                size="lg"
-                aria-label={i18n("searchHistoryManager_moveUp")}
-                data-manager-up
-                disabled={i === 0}
-                onClick={() =>
-                  apply((h) => moveSearchEntry(h, kind, it.text, -1))
-                }
-              >
-                <IconArrowUp size={18} />
-              </ActionIcon>
-              <ActionIcon
-                variant="default"
-                size="lg"
-                aria-label={i18n("searchHistoryManager_moveDown")}
-                data-manager-down
-                disabled={i === pinned.length - 1}
-                onClick={() =>
-                  apply((h) => moveSearchEntry(h, kind, it.text, 1))
-                }
-              >
-                <IconArrowDown size={18} />
-              </ActionIcon>
-              <ActionIcon
-                variant="light"
-                size="lg"
-                aria-label={i18n("searchHistoryManager_unpin")}
-                data-manager-unpin
-                onClick={() => apply((h) => unpinSearchEntry(h, kind, it.text))}
-              >
-                <IconPinnedOff size={18} />
-              </ActionIcon>
-            </>,
           ),
         )}
       </div>
@@ -225,65 +184,76 @@ export const SearchHistoryManager = ({
             <Text size="sm" c="dimmed" data-manager-uses>
               {it.uses}
             </Text>,
-            <ActionIcon
-              variant="default"
-              size="lg"
-              aria-label={i18n("searchHistoryManager_pin")}
-              data-manager-pin
-              disabled={pinFull}
-              onClick={() => apply((h) => pinSearchEntry(h, kind, it.text))}
-            >
-              <IconPin size={18} />
-            </ActionIcon>,
           ),
         )}
       </div>
-      <Group justify="space-between" mt="xs">
-        <Button
-          color="red"
-          variant="light"
-          disabled={!selected.length}
-          onClick={onDelete}
-          data-manager-delete
-        >
-          {selected.length
-            ? i18n("searchHistoryManager_delete").replace(
-                "{0}",
-                selected.length,
-              )
-            : i18n("searchHistoryManager_deleteNone")}
-        </Button>
-        <Button onClick={onClose} data-manager-done>
-          {i18n("searchHistoryManager_done")}
-        </Button>
-      </Group>
+      {/* 操作列貼在設定捲動區的底部：清單再長也按得到。 */}
+      <div className="searchHistoryManagerActions">
+        <Group gap={8}>
+          <Button
+            variant="default"
+            disabled={!selectedPinned.length || !canMove(-1)}
+            onClick={() =>
+              applyAndSave((h) => moveSearchEntries(h, kind, selected, -1))
+            }
+            data-manager-action="up"
+          >
+            {i18n("searchHistoryManager_moveUp")}
+          </Button>
+          <Button
+            variant="default"
+            disabled={!selectedPinned.length || !canMove(1)}
+            onClick={() =>
+              applyAndSave((h) => moveSearchEntries(h, kind, selected, 1))
+            }
+            data-manager-action="down"
+          >
+            {i18n("searchHistoryManager_moveDown")}
+          </Button>
+          <Button
+            variant="default"
+            disabled={!selectedRecent.length || pinFull}
+            onClick={() =>
+              applyAndSave((h) => pinSearchEntries(h, kind, selected))
+            }
+            data-manager-action="pin"
+          >
+            {i18n("searchHistoryManager_pin")}
+          </Button>
+          <Button
+            variant="default"
+            disabled={!selectedPinned.length}
+            onClick={() =>
+              applyAndSave((h) => unpinSearchEntries(h, kind, selected))
+            }
+            data-manager-action="unpin"
+          >
+            {i18n("searchHistoryManager_unpin")}
+          </Button>
+          <Button
+            color="red"
+            disabled={!selected.length}
+            onClick={onDelete}
+            data-manager-action="delete"
+          >
+            {selected.length
+              ? i18n("searchHistoryManager_delete").replace(
+                  "{0}",
+                  selected.length,
+                )
+              : i18n("searchHistoryManager_deleteNone")}
+          </Button>
+        </Group>
+        {pinFull && (
+          <Text size="xs" c="dimmed" mt={4} data-manager-pin-full>
+            {i18n("searchHistoryManager_pinFull").replace(
+              "{0}",
+              MAX_PINNED_SEARCH_HISTORY,
+            )}
+          </Text>
+        )}
+      </div>
     </Stack>
-  );
-
-  const title = i18n("searchHistoryManager_title");
-  // 系統返回已經由 registerBack 接住：sheet 不再自己登記（不傳 pttchrome）。
-  if (mobile)
-    return (
-      <MobileSheet
-        opened={opened}
-        onClose={onClose}
-        title={title}
-        sheetKey="searchHistory"
-      >
-        {body}
-      </MobileSheet>
-    );
-  return (
-    // 疊在設定（Mantine 預設層級）上面，跟手機 sheet 同一層。
-    <Modal
-      opened={opened}
-      onClose={onClose}
-      title={title}
-      size="lg"
-      zIndex={SHEET_Z_INDEX}
-    >
-      {body}
-    </Modal>
   );
 };
 
