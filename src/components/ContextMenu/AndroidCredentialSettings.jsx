@@ -30,12 +30,14 @@ export function useAndroidCredentialDraft(show, enabled) {
   const [result, setResult] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const busy = useRef(false);
   const statusRevision = useRef(0);
   const supported = enabled && androidEncryptedCredentialsAvailable();
   useEffect(() => {
     setDraft(emptyDraft());
     setResult(null);
+    setSaved(false);
     setFieldErrors({});
     setSource("local");
     setStatus(null);
@@ -52,6 +54,12 @@ export function useAndroidCredentialDraft(show, enabled) {
       alive = false;
     };
   }, [show, supported]);
+
+  useEffect(() => {
+    if (!saved) return;
+    const timer = setTimeout(() => setSaved(false), 3000);
+    return () => clearTimeout(timer);
+  }, [saved]);
 
   const hasCredentials = Object.values(draft).some(Boolean);
   const dirty = hasCredentials || !!(status && source !== status.source);
@@ -79,11 +87,12 @@ export function useAndroidCredentialDraft(show, enabled) {
     if (busy.current) return;
     setDraft(emptyDraft());
     setResult(null);
+    setSaved(false);
     setFieldErrors({});
     setSource(status?.source || "local");
   };
   const save = async () => {
-    if (busy.current || !supported) return false;
+    if (busy.current || !supported || saved) return false;
     if (!status) {
       setResult("statusUnavailable");
       return false;
@@ -104,7 +113,7 @@ export function useAndroidCredentialDraft(show, enabled) {
     setSaving(true);
     setResult(null);
     try {
-      const saved = await saveAndroidCredentials({
+      const outcome = await saveAndroidCredentials({
         source,
         ...(hasCredentials
           ? {
@@ -113,20 +122,21 @@ export function useAndroidCredentialDraft(show, enabled) {
             }
           : {}),
       });
-      setResult(
-        saved.status === "saved" && !hasCredentials
-          ? "sourceSaved"
-          : ["saved", "cancelled", "unreadable"].includes(saved.status)
-            ? saved.status
+      if (outcome.status !== "saved") {
+        setResult(
+          ["cancelled", "unreadable"].includes(outcome.status)
+            ? outcome.status
             : "failed",
-      );
-      if (saved.status !== "saved") return false;
+        );
+        return false;
+      }
+      setSaved(true);
       statusRevision.current += 1;
       invalidateSessionCredential();
       setStatus((previous) => ({
         ...previous,
         source,
-        [source]: { presence: saved.presence },
+        [source]: { presence: outcome.presence },
       }));
       setDraft(emptyDraft());
       setFieldErrors({});
@@ -150,6 +160,7 @@ export function useAndroidCredentialDraft(show, enabled) {
     },
     result,
     saving,
+    saved,
     supported,
     dirty,
     valid,
@@ -259,9 +270,15 @@ export function AndroidCredentialSettings({ editor, anchor }) {
         size="xs"
         onClick={editor.save}
         loading={editor.saving}
-        disabled={!editor.supported || !editor.ready || !editor.dirty}
+        disabled={
+          !editor.supported || !editor.ready || !editor.dirty || editor.saved
+        }
       >
-        {i18n("options_credentialsSave")}
+        {i18n(
+          editor.saved
+            ? "options_credentials_saved"
+            : "options_credentialsSave",
+        )}
       </Button>
       {editor.result && (
         <Text role="status" size="sm" mt="xs">
@@ -295,7 +312,12 @@ export function UnsavedCredentialsDialog({
         </Text>
       )}
       <Group>
-        <Button variant="default" onClick={onSave} loading={editor.saving}>
+        <Button
+          variant="default"
+          onClick={onSave}
+          loading={editor.saving}
+          disabled={editor.saved}
+        >
           {i18n("options_credentialsSave")}
         </Button>
         <Button variant="default" onClick={onDiscard} disabled={editor.saving}>

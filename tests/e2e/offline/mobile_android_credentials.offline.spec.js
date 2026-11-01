@@ -120,7 +120,9 @@ test('mobile explicit manager save clears fields and keeps per-field status on r
   await page.screenshot({ path: test.info().outputPath('credentials-before-save.png'), animations: 'disabled' });
   await (await saveButton(page)).tap();
   await expectPresence(page, true);
-  await expect(page.locator('.PrefModal').getByRole('status')).toHaveText(await text(page, 'options_credentials_saved'));
+  const saved = page.locator('.PrefModal').getByRole('button', { name: await text(page, 'options_credentials_saved'), exact: true });
+  await expect(saved).toBeDisabled();
+  await expect(page.locator('.PrefModal').getByRole('status')).toHaveCount(0);
   await page.screenshot({ path: test.info().outputPath('credentials-after-save.png'), animations: 'disabled' });
   await expectNoHorizontalOverflow(page);
   await closeSettings(page);
