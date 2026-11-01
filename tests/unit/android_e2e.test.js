@@ -10,7 +10,15 @@ import path from "path";
 import config from "../../playwright.config.js";
 import androidEnv from "../e2e/android/android_env.js";
 import { ANDROID_E2E_GLOBS, globToRegExp, matchAndroidE2e } from "../../scripts/android-e2e-needed.mjs";
-import { apkBuildPlan, classifyReport, parseArgs } from "../../scripts/run-android-e2e.mjs";
+import {
+  ANDROID_E2E_GROUPS,
+  apkBuildPlan,
+  classifyInstrumentation,
+  classifyReport,
+  combineVerdicts,
+  groupPlan,
+  parseArgs,
+} from "../../scripts/run-android-e2e.mjs";
 
 const { ENV_ERROR_TAG, pickEmulatorSerial, toDevicePoint, parseAdbDevices } = androidEnv;
 const ROOT = path.resolve(__dirname, "../..");
@@ -204,6 +212,65 @@ describe("parseArgs", () => {
     expect(parseArgs([]).build).toBe(true);
     expect(parseArgs(["--no-build"])).toMatchObject({ build: false, passthrough: [] });
   });
+  test("--group selects one CI group; an unknown name is an error", () => {
+    expect(parseArgs([]).group).toBeNull();
+    expect(parseArgs(["--group=chrome", "--grep", "x"])).toMatchObject({ group: "chrome", passthrough: ["--grep", "x"] });
+    expect(() => parseArgs(["--group=nope"])).toThrow(/nope/);
+  });
+});
+
+// CI runs each group on its own emulator. A spec missing from every group would silently
+// stop running in CI; a spec in two groups would run twice.
+describe("Android e2e groups", () => {
+  const dir = path.join(ROOT, "tests/e2e/android");
+  const specs = fs.readdirSync(dir).filter((n) => n.endsWith(".android.spec.js"));
+  test("every Android spec belongs to exactly one group", () => {
+    const grouped = Object.values(ANDROID_E2E_GROUPS).flatMap((g) => g.specs);
+    expect([...grouped].sort()).toEqual([...specs].sort());
+  });
+  test("a group runs its own spec files; no group runs every spec", () => {
+    expect(groupPlan(null)).toEqual({ specs: [], apk: true, instrumented: true });
+    const chrome = groupPlan("chrome");
+    expect(chrome.apk).toBe(false);
+    expect(chrome.instrumented).toBe(false);
+    expect(chrome.specs).toContain("tests/e2e/android/select_mode.android.spec.js");
+    const apk = groupPlan("apk");
+    expect(apk).toMatchObject({ apk: true, instrumented: true });
+    expect(apk.specs).toContain("tests/e2e/android/credentials.android.spec.js");
+  });
+});
+
+// `am instrument -w -r` output. Gradle's connectedDebugAndroidTest once reported
+// BUILD SUCCESSFUL after failing to install the APK, so zero tests must never pass.
+describe("classifyInstrumentation", () => {
+  const status = (code) => `INSTRUMENTATION_STATUS: test=t\nINSTRUMENTATION_STATUS_CODE: ${code}\n`;
+  const run = (codes, tail) =>
+    codes.map((c) => status(1) + status(c)).join("") + tail + "\nINSTRUMENTATION_CODE: -1\n";
+  test("all tests passed", () => {
+    expect(classifyInstrumentation(run([0, 0, 0], "OK (3 tests)"))).toEqual({ verdict: "pass", passed: 3, failed: 0 });
+  });
+  test("a failure or an error is a real failure", () => {
+    expect(classifyInstrumentation(run([0, -2], "FAILURES!!!\nTests run: 2,  Failures: 1")).verdict).toBe("fail");
+    expect(classifyInstrumentation(run([-1], "FAILURES!!!")).verdict).toBe("fail");
+  });
+  test("a crashed test process is a real failure", () => {
+    const out = status(1) + "INSTRUMENTATION_RESULT: shortMsg=Process crashed.\nINSTRUMENTATION_CODE: 0\n";
+    expect(classifyInstrumentation(out).verdict).toBe("fail");
+  });
+  test("zero executed tests, skipped-only runs and missing instrumentation are not a pass", () => {
+    expect(classifyInstrumentation(run([], "OK (0 tests)")).verdict).toBe("env");
+    expect(classifyInstrumentation(run([-3, -4], "OK (0 tests)")).verdict).toBe("env");
+    expect(classifyInstrumentation("INSTRUMENTATION_FAILED: x/androidx.test.runner.AndroidJUnitRunner\n").verdict).toBe("env");
+    expect(classifyInstrumentation("").verdict).toBe("env");
+  });
+});
+
+describe("combineVerdicts", () => {
+  test("a real failure wins over an environment problem; both beat a pass", () => {
+    expect(combineVerdicts(["pass", "pass"])).toBe("pass");
+    expect(combineVerdicts(["pass", "env"])).toBe("env");
+    expect(combineVerdicts(["env", "fail"])).toBe("fail");
+  });
 });
 
 // 回歸：本機原本不建 APK，直接裝 build 輸出目錄裡的舊檔 ⇒ apk spec 測的是舊 code。
@@ -211,17 +278,24 @@ describe("apkBuildPlan：每輪先建 APK", () => {
   test("本機預設要建；Windows 走 shell＋絕對路徑的 gradlew.bat（整條一個字串）", () => {
     const android = path.join(ROOT, "android");
     expect(apkBuildPlan(parseArgs([]), {}, "win32")).toEqual({
-      cmd: `"${path.join(android, "gradlew.bat")}" assembleDebug`,
+      cmd: `"${path.join(android, "gradlew.bat")}" assembleDebug assembleDebugAndroidTest`,
       args: [],
       cwd: android,
       shell: true,
     });
     expect(apkBuildPlan(parseArgs([]), {}, "linux")).toEqual({
       cmd: path.join(android, "gradlew"),
-      args: ["assembleDebug"],
+      args: ["assembleDebug", "assembleDebugAndroidTest"],
       cwd: android,
       shell: false,
     });
+  });
+  test("a group without APK specs builds nothing", () => {
+    expect(apkBuildPlan(parseArgs(["--group=chrome"]), {}, "linux")).toBeNull();
+    expect(apkBuildPlan(parseArgs(["--group=apk"]), {}, "linux").args).toEqual([
+      "assembleDebug",
+      "assembleDebugAndroidTest",
+    ]);
   });
   test("CI 已指定 ANDROID_E2E_APK 或 --no-build ⇒ 不建", () => {
     expect(apkBuildPlan(parseArgs([]), { ANDROID_E2E_APK: "/x/app-debug.apk" }, "linux")).toBeNull();
@@ -313,21 +387,37 @@ describe("android spec：不准用 device.wait", () => {
   }
 });
 
-// CI job：exit code 必須直接決定紅綠。spike 用的 continue-on-error＋把 exit 寫檔分類那套
-// 一旦被抄進來，job 永遠綠、斷言紅也被吞掉；沒開 KVM 則開機 13–20 分鐘、adb 常 offline。
-describe("test.yml：test-e2e-android job", () => {
+// CI jobs: the exit code alone decides red or green. The spike's continue-on-error plus
+// writing the exit code to a file would keep the job green on assertion failures; without
+// KVM the emulator takes 13–20 minutes to boot and adb keeps going offline.
+describe("test.yml: Android e2e groups", () => {
   const yaml = fs.readFileSync(path.join(ROOT, ".github/workflows/test.yml"), "utf8");
-  const m = /\n {2}test-e2e-android:\n([\s\S]*?)(?=\n {2}[A-Za-z][\w-]*:\n)/.exec(yaml);
+  const m = /\n {2}test-e2e-android-group:\n([\s\S]*?)(?=\n {2}[A-Za-z][\w-]*:\n)/.exec(yaml);
   const body = m ? m[1] : "";
-  test("存在，script 直接跑 run-android-e2e --no-boot，不吞 exit code", () => {
-    expect(body).toMatch(/script:\s*\|\s*\n\s+node scripts\/run-android-e2e\.mjs --no-boot\s*$/m);
+  test("one matrix cell per group, each running its group straight through the runner", () => {
+    const groups = /group: \[([^\]]*)\]/.exec(body)[1].split(",").map((g) => g.trim());
+    expect(groups.sort()).toEqual(Object.keys(ANDROID_E2E_GROUPS).sort());
+    expect(body).toMatch(/script: node scripts\/run-android-e2e\.mjs --no-boot --group=\$\{\{ matrix\.group \}\}\s*$/m);
     expect(body).not.toMatch(/continue-on-error/);
     expect(body).not.toMatch(/e2e\.exit|\|\| true/);
   });
-  test("the emulator runs actual Keystore integrity and key-loss checks after the offline APK flow", () => {
-    expect(body).toMatch(/assembleDebug assembleDebugAndroidTest/);
-    expect(body).toMatch(/node scripts\/run-android-e2e\.mjs --no-boot\s*\n\s+cd android && \.\/gradlew --no-daemon connectedDebugAndroidTest/);
-    expect(body).toContain("android/app/build/reports/androidTests/");
+  // A second Gradle build inside the emulator step re-signed the APK, its install failed,
+  // and Gradle still reported success. The runner installs the APKs built here instead.
+  test("instrumented tests use the APKs built before the emulator, never a second Gradle build", () => {
+    expect(body).toMatch(/gradlew --no-daemon assembleDebug assembleDebugAndroidTest/);
+    expect(body).not.toMatch(/connected\w*AndroidTest/);
+    expect(body).toMatch(/ANDROID_E2E_APK: .*app-debug\.apk/);
+    expect(body).toMatch(/ANDROID_E2E_TEST_APK: .*app-debug-androidTest\.apk/);
+    expect(body).toContain("android/app/build/outputs/androidTest-results/");
+  });
+  test("only the APK group sets up Java and builds", () => {
+    const steps = body.split(/\n {6}- /);
+    for (const marker of ["actions/setup-java@", "gradle/actions/setup-gradle@", "name: Build debug APK"]) {
+      const step = steps.find((st) => st.includes(marker));
+      expect(step, marker).toBeDefined();
+      expect(step, marker).toMatch(/^\s*if: matrix\.group == 'apk'\s*$/m);
+    }
+    expect(ANDROID_E2E_GROUPS.apk.apk).toBe(true);
   });
   test("開模擬器前先開 KVM 權限", () => {
     const kvm = body.indexOf("udevadm trigger --name-match=kvm");
@@ -348,12 +438,10 @@ describe("test.yml：test-e2e-android job", () => {
     expect(body).toContain(`system-images/android-${api}/${target}/${arch}`);
     expect(body).toMatch(new RegExp(`key: android-sysimg-${api}-${target}-${arch}-`));
   });
-  // 少了這步，apk.android.spec.js 在 CI 會以「找不到 debug APK」整輪 exit 2。
-  test("開模擬器前先建 debug APK，並把路徑交給 e2e", () => {
+  test("the APK build runs before the emulator starts", () => {
     const build = body.indexOf("assembleDebug");
     const emu = body.indexOf("android-emulator-runner@");
     expect(build).toBeGreaterThan(-1);
     expect(emu).toBeGreaterThan(build);
-    expect(body).toMatch(/ANDROID_E2E_APK: .*app-debug\.apk/);
   });
 });

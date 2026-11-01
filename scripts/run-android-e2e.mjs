@@ -7,12 +7,16 @@
 //   3. 找模擬器：已經有一台在跑就用它；沒有就用 AVD `pttchrome_e2e`（原生 Pixel 6）開一台，
 //      沒有 AVD 就建
 //   4. playwright test --project=android，依 JSON 報告分類結論
-//   5. 自己開的模擬器自己關（--keep-emulator 留著，下一輪省開機時間）
+//   5. When the run includes the APK group, install the built app and instrumented test APKs
+//      and run `am instrument`. CI used Gradle's connectedDebugAndroidTest here, which rebuilt
+//      and re-signed the app, failed to install it and still reported success.
+//   6. 自己開的模擬器自己關（--keep-emulator 留著，下一輪省開機時間）
 //
 // exit code（刻意分三種，比照 scripts/run-adverse-e2e.mjs）：
 //   0 全綠／略過｜1 有真失敗｜2 環境沒準備好、未取得有效結論（不可以當綠）
 // --no-boot：只用已經在跑的模擬器（CI：emulator-runner 已經開好）。
 // --no-build：不建 APK，直接用現有的那份（只在確定 android/ 沒改動、要省幾秒時用）。
+// --group=<name>: run one ANDROID_E2E_GROUPS entry (CI runs each group on its own emulator).
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -27,16 +31,54 @@ const env = require("../tests/e2e/android/android_env.js");
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PLAYWRIGHT_CLI = path.join(ROOT, "node_modules", "playwright", "cli.js");
 const BOOT_TIMEOUT_MS = 300000;
+// The raw `am instrument` output, uploaded with the CI failure artifacts.
+const INSTRUMENTATION_RESULTS = path.join(ROOT, "android/app/build/outputs/androidTest-results/am-instrument");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---- 純函式（unit 守護：tests/unit/android_e2e.test.js）----
 
+// CI splits the specs across parallel emulators. The APK group needs the debug APK and runs
+// the instrumented tests; the Chrome group only drives the emulator's Chrome. Every
+// *.android.spec.js belongs to exactly one group (tests/unit/android_e2e.test.js).
+export const ANDROID_E2E_GROUPS = {
+  apk: {
+    apk: true,
+    instrumented: true,
+    specs: ["apk.android.spec.js", "app_updates.android.spec.js", "credentials.android.spec.js"],
+  },
+  chrome: {
+    apk: false,
+    instrumented: false,
+    specs: [
+      "list_card_blacklist.android.spec.js",
+      "mobile_chrome.android.spec.js",
+      "mobile_input.android.spec.js",
+      "select_mode.android.spec.js",
+    ],
+  },
+};
+
+// What one run covers. Without a group it runs every spec, so it needs the APK and the
+// instrumented tests too; spec paths go to playwright as file filters.
+export function groupPlan(group) {
+  if (!group) return { specs: [], apk: true, instrumented: true };
+  const g = ANDROID_E2E_GROUPS[group];
+  return { specs: g.specs.map((f) => `tests/e2e/android/${f}`), apk: g.apk, instrumented: g.instrumented };
+}
+
 export function parseArgs(argv) {
-  const opts = { ifChanged: null, keepEmulator: false, boot: true, build: true, passthrough: [] };
+  const opts = { ifChanged: null, keepEmulator: false, boot: true, build: true, group: null, passthrough: [] };
   for (const arg of argv) {
     const m = /^--if-changed(?:=(.+))?$/.exec(arg);
+    const g = /^--group=(.+)$/.exec(arg);
     if (m) opts.ifChanged = m[1] || "origin/dev";
+    else if (g) {
+      if (!ANDROID_E2E_GROUPS[g[1]]) {
+        throw new Error(`[環境] unknown --group=${g[1]} (known: ${Object.keys(ANDROID_E2E_GROUPS).join(", ")})`);
+      }
+      opts.group = g[1];
+    }
     else if (arg === "--keep-emulator") opts.keepEmulator = true;
     else if (arg === "--no-boot") opts.boot = false;
     else if (arg === "--no-build") opts.build = false;
@@ -49,12 +91,14 @@ export function parseArgs(argv) {
 // Windows 的 .bat 只能經 shell 執行：給**絕對路徑**（cmd.exe 不保證在 cwd 找執行檔，實測
 // 'gradlew.bat' 不是內部或外部命令）、整條組成一個字串（args 陣列＋shell 會觸發 DEP0190）。
 export function apkBuildPlan(opts, processEnv = process.env, platform = process.platform) {
-  if (!opts.build || processEnv.ANDROID_E2E_APK) return null;
+  const plan = groupPlan(opts.group);
+  if (!opts.build || !plan.apk || processEnv.ANDROID_E2E_APK) return null;
   const cwd = path.join(ROOT, "android");
+  const tasks = plan.instrumented ? ["assembleDebug", "assembleDebugAndroidTest"] : ["assembleDebug"];
   if (platform === "win32") {
-    return { cmd: `"${path.join(cwd, "gradlew.bat")}" assembleDebug`, args: [], cwd, shell: true };
+    return { cmd: `"${path.join(cwd, "gradlew.bat")}" ${tasks.join(" ")}`, args: [], cwd, shell: true };
   }
-  return { cmd: path.join(cwd, "gradlew"), args: ["assembleDebug"], cwd, shell: false };
+  return { cmd: path.join(cwd, "gradlew"), args: tasks, cwd, shell: false };
 }
 
 // playwright JSON 報告 → 'pass' | 'fail' | 'env'。
@@ -80,6 +124,29 @@ export function classifyReport(report) {
   const allEnv =
     failed.every((r) => (r.errors || [r.error]).some(isEnv)) && errors.every(isEnv);
   return allEnv ? "env" : "fail";
+}
+
+// `am instrument -w -r` output → { verdict, passed, failed }. Status codes come from
+// AndroidJUnitRunner: 1 start, 0 pass, -1 error, -2 failure, -3 ignored, -4 assumption failure.
+// A run with no passing test is never a pass: missing instrumentation, an empty test APK
+// and a skipped-only run all leave no evidence ('env').
+export function classifyInstrumentation(output) {
+  const codes = [...String(output).matchAll(/^INSTRUMENTATION_STATUS_CODE: (-?\d+)/gm)].map((m) => Number(m[1]));
+  const passed = codes.filter((c) => c === 0).length;
+  const failed = codes.filter((c) => c === -1 || c === -2).length;
+  const crashed = /^INSTRUMENTATION_RESULT: shortMsg=/m.test(output);
+  const finished = /^INSTRUMENTATION_CODE: /m.test(output);
+  let verdict = "pass";
+  if (failed || crashed || /FAILURES!!!/.test(output)) verdict = "fail";
+  else if (!finished || /^INSTRUMENTATION_FAILED/m.test(output) || !passed) verdict = "env";
+  return { verdict, passed, failed };
+}
+
+// Several verdicts → one. A real failure must never hide behind an environment problem.
+export function combineVerdicts(verdicts) {
+  if (verdicts.includes("fail")) return "fail";
+  if (verdicts.includes("env")) return "env";
+  return "pass";
 }
 
 // ---- 環境 ----
@@ -186,6 +253,37 @@ function runPlaywright(serial, passthrough) {
   });
 }
 
+// Installs the APKs this job already built, so the app under test keeps the signature the
+// Playwright specs installed (-d: a spec may have left a higher-version APK installed).
+function runInstrumentation(serial) {
+  const apk = env.apkPath();
+  const testApk = env.testApkPath();
+  for (const file of [apk, testApk]) {
+    if (!fs.existsSync(file)) {
+      console.error(`[環境] instrumented tests: missing ${file} (build assembleDebug assembleDebugAndroidTest)`);
+      return "env";
+    }
+  }
+  for (const args of [["install", "-r", "-t", "-d", "-g", apk], ["install", "-r", "-t", testApk]]) {
+    const r = adb(["-s", serial, ...args]);
+    if (r.status !== 0) {
+      console.error(`[環境] instrumented tests: adb ${args.join(" ")} failed\n${r.stdout}${r.stderr}`);
+      return "env";
+    }
+  }
+  console.log(`Instrumented tests (${env.APK_TEST_PKG})…`);
+  const r = adb(["-s", serial, "shell", "am", "instrument", "-w", "-r", `${env.APK_TEST_PKG}/${env.INSTRUMENTATION_RUNNER}`]);
+  const output = `${r.stdout || ""}${r.stderr || ""}`;
+  const result = classifyInstrumentation(output);
+  fs.mkdirSync(INSTRUMENTATION_RESULTS, { recursive: true });
+  fs.writeFileSync(path.join(INSTRUMENTATION_RESULTS, "am-instrument.txt"), output);
+  adb(["-s", serial, "uninstall", env.APK_TEST_PKG]);
+  if (result.verdict === "pass") console.log(`Instrumented tests: ${result.passed} passed.`);
+  else if (result.verdict === "fail") console.error(`${output}\nInstrumented tests: ${result.failed} failed.`);
+  else console.error(`${output}\n[環境] instrumented tests: no test passed, so there is no evidence.`);
+  return result.verdict;
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
 
@@ -262,14 +360,19 @@ async function main() {
       return 2;
     }
 
-    const { code, report } = await runPlaywright(serial, opts.passthrough);
-    const verdict = code === 0 ? "pass" : classifyReport(report);
+    const plan = groupPlan(opts.group);
+    const { code, report } = await runPlaywright(serial, [...plan.specs, ...opts.passthrough]);
+    const verdicts = [code === 0 ? "pass" : classifyReport(report)];
+    if (plan.instrumented) verdicts.push(runInstrumentation(serial));
+    const verdict = combineVerdicts(verdicts);
     if (verdict === "pass") {
       console.log("結論：全綠。");
       return 0;
     }
     if (verdict === "env") {
-      console.error(`結論：環境問題（失敗全帶 ${env.ENV_ERROR_TAG}），未取得有效結論。`);
+      console.error(
+        `結論：環境問題（playwright 的失敗全帶 ${env.ENV_ERROR_TAG}，或 instrumented tests 沒有結論），未取得有效結論。`
+      );
       return 2;
     }
     console.error("結論：有真失敗。");

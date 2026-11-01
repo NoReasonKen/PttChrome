@@ -14,6 +14,7 @@ import path from "node:path";
 import { ANDROID_WEEKDAY_UTC, decideAndroid, decideGate, windowStart } from "../../scripts/flaky-hunt-gate.mjs";
 import { decideWatchdog, renderStalledComment, STALLED_LABEL } from "../../scripts/flaky-hunt-watchdog.mjs";
 import { ISSUE_TITLE } from "../../scripts/flaky-hunt-report.mjs";
+import { ANDROID_E2E_GROUPS } from "../../scripts/run-android-e2e.mjs";
 import { ADVERSE_PROJECTS } from "../../scripts/run-adverse-e2e.mjs";
 
 const yaml = fs.readFileSync(path.join(__dirname, "..", "..", ".github", "workflows", "flaky-hunt.yml"), "utf8");
@@ -118,8 +119,12 @@ describe("android-repeat（每週一次的模擬器重複輪）", () => {
     const job = all["android-repeat"];
     expect(job).toBeDefined();
     expect(job).toContain("needs.gate.outputs.android == 'true'");
-    expect(job).toContain("node scripts/run-android-e2e.mjs --no-boot");
+    expect(job).toContain("node scripts/run-android-e2e.mjs --no-boot --group=${{ matrix.group }}");
     expect(job).toContain('--repeat-each="$ANDROID_REPEAT"');
+    // Same groups as test.yml: one emulator for every spec × repeat outgrew the timeout.
+    const groups = /group: \[([^\]]*)\]/.exec(job)[1].split(",").map((g) => g.trim());
+    expect(groups.sort()).toEqual(Object.keys(ANDROID_E2E_GROUPS).sort());
+    expect(job).toContain("ANDROID_E2E_TEST_APK");
     // 同 test.yml：沒開 KVM 的模擬器開機 13–20 分鐘、adb 動不動 offline。
     expect(job).toContain("Enable KVM");
     expect(job).toContain("ANDROID_E2E_APK");

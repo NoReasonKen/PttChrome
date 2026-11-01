@@ -140,7 +140,8 @@ artifact is explicitly separate from version-update evidence. Supplemental
 `DeviceCredentialsInstrumentedTest` checks actual Keystore authentication policy,
 non-exportability, integrity failure and unavailable-key preservation with isolated
 test records. The Android CI emulator runs those instrumentation checks after
-the offline APK flow. These require an available Android device/emulator; compiling them
+the offline APK flow, from the APKs built for that job, and fails when none of them
+passed (see [Android e2e](android-e2e.md)). These require an available Android device/emulator; compiling them
 or passing browser/JVM substitutes alone does not establish native acceptance.
 
 Device acceptance also uses the reader's configured **password manager** for
