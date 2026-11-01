@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "version": "0.3.0",
   "tag": "android-fork-v0.3.0",
-  "publishedAt": null,
+  "publishedAt": "2026-11-01T00:32:50Z",
   "previousRelease": {
     "version": "0.2.1",
     "sourceCommit": "4075709e8697732ebb466da282a8563afa9c8a7b"
@@ -127,5 +127,7 @@
       "sha": "6ce2329da82fcff4d3edbe29e012950d3e39a31d",
       "subject": "Even out the embed card's text spacing"
     }
-  ]
+  ],
+  "sourceCommit": "8e573552e5b801cb13a4fb4da0e50958522766ef",
+  "versionCode": 23
 }
