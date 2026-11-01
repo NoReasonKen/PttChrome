@@ -59,6 +59,34 @@ async function closeSearch(page) {
   await expect.poll(() => page.evaluate(() => window.__app.searchInFlight)).toBe(false);
 }
 
+async function openManager(page) {
+  const settings = page.locator('.PrefModal');
+  await byKey(page, '__more').tap();
+  await byKey(page, '__settings').tap();
+  await expect(settings).toBeVisible();
+  await settings.locator('[data-pref-category="local"]').tap();
+  await settings.locator('[data-pref-subpage="searchHistory"]').tap();
+  const manager = settings.locator('[data-search-history-manager]');
+  await expect(manager).toBeVisible();
+  // 主選單只記看板這一類。
+  const boardId = await manager.locator('input[value="board"]').getAttribute('id');
+  await manager.locator(`label[for="${boardId}"]`).tap();
+  return { settings, manager };
+}
+
+// 工具列、設定內容區（捲動的那一欄）與刪除鈕在畫面上的位置。
+const toolbarLayout = (settings) =>
+  settings.evaluate((root) => {
+    const rect = (sel) => root.querySelector(sel).getBoundingClientRect();
+    const entries = root.querySelectorAll('[data-manager-entry]');
+    return {
+      column: rect('.PrefModal__Grid__Col--right'),
+      toolbar: rect('.searchHistoryManagerActions'),
+      remove: rect('[data-manager-action="delete"]'),
+      lastEntry: entries[entries.length - 1].getBoundingClientRect(),
+    };
+  });
+
 test.describe('手機：搜尋紀錄', () => {
   test('搜尋紀錄區：全部顯示、按鈕 26px；超過三行固定三行高，框內捲動，捲軸一直在', async ({ page }) => {
     const boards = Array.from({ length: 10 }, (_, i) => 'Board' + String(i).padStart(2, '0') + 'Long');
@@ -89,21 +117,12 @@ test.describe('手機：搜尋紀錄', () => {
     await expect(historyItems(page)).toHaveText([long, 'Steam', 'C_Chat', 'Gossiping']);
     await closeSearch(page);
 
-    const settings = page.locator('.PrefModal');
-    await byKey(page, '__more').tap();
-    await byKey(page, '__settings').tap();
-    await expect(settings).toBeVisible();
-    await settings.locator('[data-pref-category="local"]').tap();
-    await settings.locator('[data-pref-subpage="searchHistory"]').tap();
-    const manager = settings.locator('[data-search-history-manager]');
-    await expect(manager).toBeVisible();
+    const { settings, manager } = await openManager(page);
     // 頂端的返回換成這一頁的名字（同分類頁的「< 本機設定」）。
     await expect(settings.locator('[data-pref-subpage-back]')).toBeVisible();
     // 「設回預設值」是整個設定的，不放在這一頁底下。
     const reset = settings.locator('.PrefModal__Grid__Col--right__Reset');
     await expect(reset).toHaveCount(0);
-    const boardId = await manager.locator('input[value="board"]').getAttribute('id');
-    await manager.locator(`label[for="${boardId}"]`).tap();
     // 長關鍵字在自己的框裡左右捲：頁面不變寬，右邊的次數不被蓋住。
     const right = settings.locator('.PrefModal__Grid__Col--right');
     const widths = await right.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
@@ -116,12 +135,12 @@ test.describe('手機：搜尋紀錄', () => {
 
     await manager.locator('[data-manager-entry="Gossiping"] [data-manager-text]').tap();
     // 工具列五顆按鈕排在同一行（中文、英文都塞得下）。
-    const actionTops = await manager
+    const actionTops = await settings
       .locator('[data-manager-action]')
       .evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
     expect(actionTops).toHaveLength(5);
     expect(new Set(actionTops).size).toBe(1);
-    await manager.locator('[data-manager-action="pin"]').tap();
+    await settings.locator('[data-manager-action="pin"]').tap();
     await expect(
       manager.locator('[data-manager-section="pinned"] [data-manager-entry]'),
     ).toHaveCount(1);
@@ -143,5 +162,35 @@ test.describe('手機：搜尋紀錄', () => {
     await expect(historyItems(page)).toHaveText(['Gossiping', long, 'Steam', 'C_Chat']);
     await expect(historyItems(page).first()).toHaveAttribute('data-variant', 'light');
     await expect(historyItems(page).nth(1)).toHaveAttribute('data-variant', 'default');
+  });
+  test('管理頁的工具列一直貼在畫面底部：清單短也在底部，捲到最後也不擋到任何一筆；刪除靠右', async ({ page }) => {
+    await bootMenu(page, Array.from({ length: 10 }, (_, i) => 'Board' + i));
+    const { settings } = await openManager(page);
+    const column = settings.locator('.PrefModal__Grid__Col--right');
+    const size = await column.evaluate((el) => ({ scroll: el.scrollHeight, client: el.clientHeight }));
+    expect(size.scroll).toBeGreaterThan(size.client);
+
+    let box = await toolbarLayout(settings);
+    expect(Math.abs(box.toolbar.bottom - box.column.bottom)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box.remove.right - box.toolbar.right)).toBeLessThanOrEqual(1);
+
+    await column.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await expect.poll(() => column.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    box = await toolbarLayout(settings);
+    expect(Math.abs(box.toolbar.bottom - box.column.bottom)).toBeLessThanOrEqual(1);
+    expect(box.lastEntry.bottom).toBeLessThanOrEqual(box.toolbar.top);
+    await page.screenshot({ path: test.info().outputPath('search-history-manager-scrolled.png') });
+  });
+
+  test('紀錄少、不用捲：工具列一樣在畫面底部', async ({ page }) => {
+    // 預設的視窗矮到一筆加說明就要捲：換成直拿手機的高度，才有「內容比畫面短」的情形。
+    await page.setViewportSize({ width: 412, height: 915 });
+    await bootMenu(page, ['Gossiping']);
+    const { settings } = await openManager(page);
+    const column = settings.locator('.PrefModal__Grid__Col--right');
+    const size = await column.evaluate((el) => ({ scroll: el.scrollHeight, client: el.clientHeight }));
+    expect(size.scroll).toBeLessThanOrEqual(size.client);
+    const box = await toolbarLayout(settings);
+    expect(Math.abs(box.toolbar.bottom - box.column.bottom)).toBeLessThanOrEqual(1);
   });
 });

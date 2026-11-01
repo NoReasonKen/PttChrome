@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
   Button,
   Group,
@@ -32,7 +33,8 @@ import "./SearchHistoryManager.css";
 //   - 釘選的排序用上移／下移：沒有拖曳套件，拖曳也會跟捲動打架。
 //   - 勾選只對目前的種類有效，切換種類或刪除就清掉；其他操作保留，才能連按上移。
 // 只在這一頁開著時掛載，所以一掛上就讀一次紀錄。
-export const SearchHistoryManager = () => {
+// toolbarTarget：工具列畫進去的那一格（設定右欄底部，不跟著清單捲）；沒給就畫在清單下面。
+export const SearchHistoryManager = ({ toolbarTarget = null }) => {
   const [kind, setKind] = useState("title");
   const [history, setHistory] = useState(readSearchHistory);
   const [selected, setSelected] = useState([]);
@@ -136,6 +138,81 @@ export const SearchHistoryManager = () => {
     </div>
   );
 
+  // 工具列：對勾到的一起做。按鈕用 compact，手機上五顆排得進一行；刪除是危險動作，靠右。
+  const toolbar = (
+    <div className="searchHistoryManagerActions">
+      <Group gap={8}>
+        <Button
+          size="compact-sm"
+          variant="default"
+          disabled={!selectedPinned.length || !canMove(-1)}
+          onClick={() =>
+            applyAndSave((h) => moveSearchEntries(h, kind, selected, -1))
+          }
+          data-manager-action="up"
+        >
+          {i18n("searchHistoryManager_moveUp")}
+        </Button>
+        <Button
+          size="compact-sm"
+          variant="default"
+          disabled={!selectedPinned.length || !canMove(1)}
+          onClick={() =>
+            applyAndSave((h) => moveSearchEntries(h, kind, selected, 1))
+          }
+          data-manager-action="down"
+        >
+          {i18n("searchHistoryManager_moveDown")}
+        </Button>
+        <Button
+          size="compact-sm"
+          variant="default"
+          disabled={!selectedRecent.length || pinFull}
+          onClick={() =>
+            applyAndSave((h) => pinSearchEntries(h, kind, selected))
+          }
+          data-manager-action="pin"
+        >
+          {i18n("searchHistoryManager_pin")}
+        </Button>
+        <Button
+          size="compact-sm"
+          variant="default"
+          disabled={!selectedPinned.length}
+          onClick={() =>
+            applyAndSave((h) => unpinSearchEntries(h, kind, selected))
+          }
+          data-manager-action="unpin"
+        >
+          {i18n("searchHistoryManager_unpin")}
+        </Button>
+        <Button
+          size="compact-sm"
+          color="red"
+          ml="auto"
+          disabled={!selected.length}
+          onClick={onDelete}
+          data-manager-action="delete"
+        >
+          {selected.length
+            ? i18n("searchHistoryManager_delete").replace(
+                "{0}",
+                selected.length,
+              )
+            : i18n("searchHistoryManager_deleteNone")}
+        </Button>
+      </Group>
+      {pinFull && (
+        <Text size="xs" c="dimmed" mt={4} data-manager-pin-full>
+          {i18n("searchHistoryManager_pinFull").replace(
+            "{0}",
+            MAX_PINNED_SEARCH_HISTORY,
+          )}
+        </Text>
+      )}
+    </div>
+  );
+
   return (
     <Stack gap="sm" data-search-history-manager>
       <SegmentedControl
@@ -187,77 +264,7 @@ export const SearchHistoryManager = () => {
           ),
         )}
       </div>
-      {/* 操作列貼在設定捲動區的底部：清單再長也按得到。按鈕用 compact，五顆在手機上排得進一行。 */}
-      <div className="searchHistoryManagerActions">
-        <Group gap={8}>
-          <Button
-            size="compact-sm"
-            variant="default"
-            disabled={!selectedPinned.length || !canMove(-1)}
-            onClick={() =>
-              applyAndSave((h) => moveSearchEntries(h, kind, selected, -1))
-            }
-            data-manager-action="up"
-          >
-            {i18n("searchHistoryManager_moveUp")}
-          </Button>
-          <Button
-            size="compact-sm"
-            variant="default"
-            disabled={!selectedPinned.length || !canMove(1)}
-            onClick={() =>
-              applyAndSave((h) => moveSearchEntries(h, kind, selected, 1))
-            }
-            data-manager-action="down"
-          >
-            {i18n("searchHistoryManager_moveDown")}
-          </Button>
-          <Button
-            size="compact-sm"
-            variant="default"
-            disabled={!selectedRecent.length || pinFull}
-            onClick={() =>
-              applyAndSave((h) => pinSearchEntries(h, kind, selected))
-            }
-            data-manager-action="pin"
-          >
-            {i18n("searchHistoryManager_pin")}
-          </Button>
-          <Button
-            size="compact-sm"
-            variant="default"
-            disabled={!selectedPinned.length}
-            onClick={() =>
-              applyAndSave((h) => unpinSearchEntries(h, kind, selected))
-            }
-            data-manager-action="unpin"
-          >
-            {i18n("searchHistoryManager_unpin")}
-          </Button>
-          <Button
-            size="compact-sm"
-            color="red"
-            disabled={!selected.length}
-            onClick={onDelete}
-            data-manager-action="delete"
-          >
-            {selected.length
-              ? i18n("searchHistoryManager_delete").replace(
-                  "{0}",
-                  selected.length,
-                )
-              : i18n("searchHistoryManager_deleteNone")}
-          </Button>
-        </Group>
-        {pinFull && (
-          <Text size="xs" c="dimmed" mt={4} data-manager-pin-full>
-            {i18n("searchHistoryManager_pinFull").replace(
-              "{0}",
-              MAX_PINNED_SEARCH_HISTORY,
-            )}
-          </Text>
-        )}
-      </div>
+      {toolbarTarget ? createPortal(toolbar, toolbarTarget) : toolbar}
     </Stack>
   );
 };

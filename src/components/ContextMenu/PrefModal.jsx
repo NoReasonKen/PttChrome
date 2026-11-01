@@ -352,6 +352,8 @@ export const PrefModal = ({
   const credentialExitAction = useRef(null);
   // 搜尋紀錄管理頁：「本機」底下的一頁（同分類，一層層蓋上去），返回回到本機設定。
   const [searchHistoryOpen, setSearchHistoryOpen] = useState(false);
+  // 管理頁的工具列畫在右欄最底的這一格（portal），不在可捲動的內容裡。
+  const [subpageFooter, setSubpageFooter] = useState(null);
   const localScrollTop = useRef(0);
   const [syncUser, setSyncUser] = useState(null);
   const [syncAllowed, setSyncAllowed] = useState(prefSync.canSync);
@@ -958,7 +960,15 @@ export const PrefModal = ({
               </Button>
             )}
           </div>
-          <div className="PrefModal__Grid__Col--right" ref={rightColRef}>
+          <div
+            className={
+              "PrefModal__Grid__Col--right" +
+              (searchHistoryOpen
+                ? " PrefModal__Grid__Col--right--withFooter"
+                : "")
+            }
+            ref={rightColRef}
+          >
             <Tabs.Panel value="general">
               <PrefSection legendKey="options_general">
                 <PrefCheckbox
@@ -2485,7 +2495,7 @@ export const PrefModal = ({
                   {/* 不走 PrefSection：設定搜尋停在本機設定裡的入口那一列，不跳進這一頁。 */}
                   <fieldset className="PrefModal__Grid__Col--right__Fieldset">
                     <legend>{i18n("searchHistoryManager_title")}</legend>
-                    <SearchHistoryManager />
+                    <SearchHistoryManager toolbarTarget={subpageFooter} />
                   </fieldset>
                 </>
               ) : (
@@ -2687,6 +2697,12 @@ export const PrefModal = ({
               >
                 {i18n("options_reset")}
               </Button>
+            )}
+            {searchHistoryOpen && (
+              <div
+                ref={setSubpageFooter}
+                className="PrefModal__SubpageFooter"
+              />
             )}
           </div>
         </div>
