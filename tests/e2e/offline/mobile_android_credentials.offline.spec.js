@@ -106,7 +106,8 @@ test('mobile explicit manager save clears fields and keeps per-field status on r
   // A real Save tap blurs the secret first. Invalid nonempty input must not
   // silently become an intentional empty-secret replacement.
   await (await saveButton(page)).tap();
-  await expect(page.locator('.PrefModal').getByRole('status')).toHaveText(await text(page, 'options_credentials_invalidSecret'));
+  await expect(secret(page)).toHaveAttribute('aria-invalid', 'true');
+  await expect(secret(page)).toHaveAccessibleDescription(await text(page, 'options_credentials_invalidSecret'));
   await expect(secret(page)).toHaveValue('otpauth://totp/reader?issuer=PTT');
   expect(await providerOperations(page)).toEqual([]);
   await fillCredentials(page, SECRET);
@@ -150,6 +151,9 @@ test('mobile cancelled and failed saves preserve drafts and leave unsaved choice
     await expect(password(page)).toHaveValue('synthetic-password');
     await expect(secret(page)).toHaveValue(SECRET);
     await expect(user(page)).toHaveAttribute('placeholder', await text(page, 'placeholder_manager_user_empty'));
+    for (const field of [user(page), password(page), secret(page)]) {
+      await expect(field).not.toHaveAttribute('aria-invalid', 'true');
+    }
   }
   await closeSettings(page);
   const unsaved = page.getByRole('dialog', { name: await text(page, 'options_credentialsUnsaved'), exact: true });
@@ -173,4 +177,37 @@ test('mobile cancelled and failed saves preserve drafts and leave unsaved choice
   await openCredentials(page);
   await expectPresence(page, false);
   expect(await providerOperations(page)).toEqual(['storePassword', 'storePassword', 'storePassword']);
+});
+
+test('mobile validation shows red field borders and reasons below each invalid input', async ({ page }) => {
+  await bootSettings(page);
+  await secret(page).fill('123456');
+  await (await saveButton(page)).tap();
+  for (const [field, key] of [
+    [user(page), 'options_credentials_userRequired'],
+    [password(page), 'options_credentials_passwordRequired'],
+    [secret(page), 'options_credentials_invalidSecret'],
+  ]) {
+    const message = page.locator('.PrefModal').getByText(await text(page, key), { exact: true });
+    await expect(field).toHaveAttribute('aria-invalid', 'true');
+    await expect(field).toHaveAccessibleDescription(await text(page, key));
+    await message.scrollIntoViewIfNeeded();
+    const color = await message.evaluate(element => getComputedStyle(element).color);
+    await expect(field).toHaveCSS('border-top-color', color);
+    const [inputRect, messageRect] = await Promise.all([field.boundingBox(), message.boundingBox()]);
+    expect(messageRect.y).toBeGreaterThanOrEqual(inputRect.y + inputRect.height);
+  }
+  await password(page).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: test.info().outputPath('credentials-field-errors.png'), animations: 'disabled' });
+  await expectNoHorizontalOverflow(page);
+  expect(await providerOperations(page)).toEqual([]);
+
+  await user(page).fill('offline-reader');
+  await expect(user(page)).not.toHaveAttribute('aria-invalid', 'true');
+  await expect(password(page)).toHaveAttribute('aria-invalid', 'true');
+  await password(page).fill('synthetic-password');
+  await secret(page).fill('');
+  await (await saveButton(page)).tap();
+  await expectPresence(page, false);
+  expect(await providerOperations(page)).toEqual(['storePassword']);
 });

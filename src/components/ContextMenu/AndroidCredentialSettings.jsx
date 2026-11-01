@@ -19,6 +19,7 @@ export function useAndroidCredentialDraft(show, enabled) {
   const [draft, setDraft] = useState(emptyDraft);
   const [presence, setPresence] = useState(null);
   const [result, setResult] = useState(null);
+  const [validationRequested, setValidationRequested] = useState(false);
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
   const statusRevision = useRef(0);
@@ -26,6 +27,7 @@ export function useAndroidCredentialDraft(show, enabled) {
   useEffect(() => {
     setDraft(emptyDraft());
     setResult(null);
+    setValidationRequested(false);
     if (!show || !supported) return;
     let alive = true;
     const revision = ++statusRevision.current;
@@ -41,6 +43,19 @@ export function useAndroidCredentialDraft(show, enabled) {
   }, [show, supported]);
 
   const dirty = Object.values(draft).some(Boolean);
+  const errors = dirty
+    ? {
+        user: !draft.user.trim()
+          ? "options_credentials_userRequired"
+          : undefined,
+        pass: !draft.pass ? "options_credentials_passwordRequired" : undefined,
+        otpSecret:
+          draft.otpSecret && !isValidOtpSecret(draft.otpSecret)
+            ? "options_credentials_invalidSecret"
+            : undefined,
+      }
+    : {};
+  const valid = !Object.values(errors).some(Boolean);
   const change = (key, value) => {
     if (busy.current) return;
     const next = { ...draft, [key]: value };
@@ -51,16 +66,14 @@ export function useAndroidCredentialDraft(show, enabled) {
     if (busy.current) return;
     setDraft(emptyDraft());
     setResult(null);
+    setValidationRequested(false);
   };
   const save = async () => {
     if (busy.current || !supported) return false;
     if (!dirty) return true;
-    if (!draft.user.trim() || !draft.pass) {
-      setResult("incomplete");
-      return false;
-    }
-    if (draft.otpSecret && !isValidOtpSecret(draft.otpSecret)) {
-      setResult("invalidSecret");
+    setValidationRequested(true);
+    if (!valid) {
+      setResult(null);
       return false;
     }
     const credential = {
@@ -91,6 +104,7 @@ export function useAndroidCredentialDraft(show, enabled) {
         otpSecret: !!credential.otpSecret,
       });
       setDraft(emptyDraft());
+      setValidationRequested(false);
       return true;
     } finally {
       busy.current = false;
@@ -104,6 +118,8 @@ export function useAndroidCredentialDraft(show, enabled) {
     saving,
     supported,
     dirty,
+    valid,
+    fieldErrors: validationRequested ? errors : {},
     change,
     discard,
     save,
@@ -136,6 +152,11 @@ export function AndroidCredentialSettings({ editor, anchor }) {
             autoComplete={autoComplete}
             label={i18n("options_" + name)}
             value={editor.draft[key]}
+            error={
+              editor.fieldErrors[key]
+                ? i18n(editor.fieldErrors[key])
+                : undefined
+            }
             placeholder={
               editor.presence
                 ? i18n(

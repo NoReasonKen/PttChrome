@@ -2615,6 +2615,10 @@ export const PrefModal = ({
         }}
         onSave={async () => {
           if (await credentialEditor.save()) finishCredentialExit();
+          else if (!credentialEditor.valid) {
+            continueCredentialEditing();
+            openCategory("autologin");
+          }
         }}
       />
     </Modal>

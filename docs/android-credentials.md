@@ -13,6 +13,10 @@ complete replacement requires username and password; an empty optional secret
 removes automatic TOTP for that entry. An entirely empty form leaves the saved
 credentials alone. Successful saving clears every field, including the username.
 Cancelled or failed saving keeps the draft for retry.
+Input validation marks each invalid field with a red border and an explanation
+below it. Fixing one field clears that field's error while leaving other errors
+visible. Provider failures without field-specific information use an overall
+status message rather than marking an arbitrary input.
 
 The placeholder of each empty field reports its own last-confirmed saved state.
 The installed app stores only three presence flags, updated after a confirmed

@@ -86,6 +86,9 @@ test.each(['cancelled', 'failed'])('a %s replacement preserves the previous meta
   expect(field('autoLoginPassword')).toHaveValue('synthetic-password');
   expect(field('autoLoginUser')).toHaveValue('reader');
   expect(field('autoLoginOtpSecret')).toHaveAttribute('placeholder', i18n('placeholder_manager_otpSecret_saved'));
+  for (const name of ['autoLoginUser', 'autoLoginPassword', 'autoLoginOtpSecret']) {
+    expect(field(name)).not.toHaveAttribute('aria-invalid', 'true');
+  }
   expect(readValuesWithDefault().autoLoginPassword).toBe('');
 });
 
@@ -106,14 +109,19 @@ test('a complete password-only replacement clears the optional-secret presence w
 });
 
 test.each([
-  ['autoLoginUser', 'reader', 'incomplete'],
-  ['autoLoginPassword', 'synthetic-password', 'incomplete'],
-  ['autoLoginOtpSecret', SECRET, 'incomplete'],
-])('rejects a partial replacement containing only %s', async (name, value, message) => {
+  ['autoLoginUser', 'reader', ['autoLoginPassword']],
+  ['autoLoginPassword', 'synthetic-password', ['autoLoginUser']],
+  ['autoLoginOtpSecret', SECRET, ['autoLoginUser', 'autoLoginPassword']],
+])('marks each missing required field for a partial replacement containing only %s', async (name, value, missing) => {
   mountSettings();
   fireEvent.change(field(name), { target: { value } });
   fireEvent.click(screen.getByRole('button', { name: i18n('options_credentialsSave') }));
-  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(i18n('options_credentials_' + message)));
+  for (const key of missing) {
+    await waitFor(() => expect(field(key)).toHaveAttribute('aria-invalid', 'true'));
+    expect(field(key)).toHaveAccessibleDescription(i18n(key === 'autoLoginUser' ? 'options_credentials_userRequired' : 'options_credentials_passwordRequired'));
+  }
+  expect(field(name)).not.toHaveAttribute('aria-invalid', 'true');
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
   expect(sent.filter(m => m.op === 'storePassword')).toHaveLength(0);
   expect(field(name)).toHaveValue(value);
 });
@@ -122,7 +130,8 @@ test('invalid TOTP is rejected; a complete URI is normalized and saved explicitl
   mountSettings();
   typeCredentials('123456');
   fireEvent.click(screen.getByRole('button', { name: i18n('options_credentialsSave') }));
-  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(i18n('options_credentials_invalidSecret')));
+  await waitFor(() => expect(field('autoLoginOtpSecret')).toHaveAttribute('aria-invalid', 'true'));
+  expect(field('autoLoginOtpSecret')).toHaveAccessibleDescription(i18n('options_credentials_invalidSecret'));
   expect(sent.filter(m => m.op === 'storePassword')).toHaveLength(0);
   fireEvent.change(field('autoLoginOtpSecret'), { target: { value: `otpauth://totp/reader?secret=${SECRET}&issuer=PTT` } });
   fireEvent.blur(field('autoLoginOtpSecret'));
@@ -138,8 +147,38 @@ test('blurring a malformed authenticator URI preserves the invalid draft for cor
   fireEvent.blur(field('autoLoginOtpSecret'));
   expect(field('autoLoginOtpSecret')).toHaveValue(malformed);
   fireEvent.click(screen.getByRole('button', { name: i18n('options_credentialsSave') }));
-  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(i18n('options_credentials_invalidSecret')));
+  await waitFor(() => expect(field('autoLoginOtpSecret')).toHaveAttribute('aria-invalid', 'true'));
+  expect(field('autoLoginOtpSecret')).toHaveAccessibleDescription(i18n('options_credentials_invalidSecret'));
   expect(sent.filter(m => m.op === 'storePassword')).toHaveLength(0);
+});
+
+test('correcting a field clears only its own validation error', async () => {
+  mountSettings();
+  fireEvent.change(field('autoLoginOtpSecret'), { target: { value: '123456' } });
+  fireEvent.click(screen.getByRole('button', { name: i18n('options_credentialsSave') }));
+  for (const name of ['autoLoginUser', 'autoLoginPassword', 'autoLoginOtpSecret']) {
+    await waitFor(() => expect(field(name)).toHaveAttribute('aria-invalid', 'true'));
+  }
+  fireEvent.change(field('autoLoginUser'), { target: { value: 'reader' } });
+  expect(field('autoLoginUser')).not.toHaveAttribute('aria-invalid', 'true');
+  expect(field('autoLoginPassword')).toHaveAttribute('aria-invalid', 'true');
+  expect(field('autoLoginOtpSecret')).toHaveAttribute('aria-invalid', 'true');
+  fireEvent.change(field('autoLoginOtpSecret'), { target: { value: '' } });
+  expect(field('autoLoginOtpSecret')).not.toHaveAttribute('aria-invalid', 'true');
+  expect(sent.filter(m => m.op === 'storePassword')).toHaveLength(0);
+});
+
+test('saving an invalid draft from the close confirmation returns to the marked fields', async () => {
+  const { onSave } = mountSettings();
+  fireEvent.change(field('autoLoginUser'), { target: { value: 'reader' } });
+  fireEvent.click(screen.getByLabelText('Close'));
+  const confirmation = await screen.findByRole('dialog', { name: i18n('options_credentialsUnsaved') });
+  fireEvent.click(within(confirmation).getByRole('button', { name: i18n('options_credentialsSave') }));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: i18n('options_credentialsUnsaved') })).not.toBeInTheDocument());
+  expect(field('autoLoginPassword')).toHaveAttribute('aria-invalid', 'true');
+  expect(field('autoLoginPassword')).toHaveAccessibleDescription(i18n('options_credentials_passwordRequired'));
+  expect(onSave).not.toHaveBeenCalled();
+  expect(field('autoLoginUser')).toHaveValue('reader');
 });
 
 test('closing an empty form saves ordinary settings without retrieving or storing credentials', () => {
