@@ -26,7 +26,8 @@ const emptyDraft = () => ({ user: "", pass: "", otpSecret: "" });
 export function useAndroidCredentialDraft(show, enabled) {
   const [draft, setDraft] = useState(emptyDraft);
   const [status, setStatus] = useState(null);
-  const [source, setSource] = useState("local");
+  const [sourceChoice, setSourceChoice] = useState(null);
+  const source = sourceChoice ?? status?.source ?? "local";
   const [result, setResult] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [saving, setSaving] = useState(false);
@@ -39,7 +40,7 @@ export function useAndroidCredentialDraft(show, enabled) {
     setResult(null);
     setSaved(false);
     setFieldErrors({});
-    setSource("local");
+    setSourceChoice(null);
     setStatus(null);
     if (!show || !supported) return;
     let alive = true;
@@ -47,19 +48,12 @@ export function useAndroidCredentialDraft(show, enabled) {
     getAndroidCredentialStatus().then((value) => {
       if (!alive || revision !== statusRevision.current) return;
       setStatus(value);
-      if (value) setSource(value.source);
-      else setResult("statusUnavailable");
+      if (!value) setResult("statusUnavailable");
     });
     return () => {
       alive = false;
     };
   }, [show, supported]);
-
-  useEffect(() => {
-    if (!saved) return;
-    const timer = setTimeout(() => setSaved(false), 3000);
-    return () => clearTimeout(timer);
-  }, [saved]);
 
   const hasCredentials = Object.values(draft).some(Boolean);
   const dirty = hasCredentials || !!(status && source !== status.source);
@@ -80,6 +74,7 @@ export function useAndroidCredentialDraft(show, enabled) {
     if (busy.current || draft[key] === value) return;
     const next = { ...draft, [key]: value };
     setDraft(next);
+    setSaved(false);
     setFieldErrors((previous) => ({ ...previous, [key]: undefined }));
     setResult(null);
   };
@@ -89,7 +84,7 @@ export function useAndroidCredentialDraft(show, enabled) {
     setResult(null);
     setSaved(false);
     setFieldErrors({});
-    setSource(status?.source || "local");
+    setSourceChoice(null);
   };
   const save = async () => {
     if (busy.current || !supported || saved) return false;
@@ -138,6 +133,7 @@ export function useAndroidCredentialDraft(show, enabled) {
         source,
         [source]: { presence: outcome.presence },
       }));
+      setSourceChoice(null);
       setDraft(emptyDraft());
       setFieldErrors({});
       return true;
@@ -153,8 +149,14 @@ export function useAndroidCredentialDraft(show, enabled) {
     sourceError: status?.[source]?.error,
     ready: !!status,
     chooseSource: (value) => {
-      if (!busy.current && status && ["local", "manager"].includes(value)) {
-        setSource(value);
+      if (
+        !busy.current &&
+        status &&
+        value !== source &&
+        ["local", "manager"].includes(value)
+      ) {
+        setSourceChoice(value);
+        setSaved(false);
         setResult(null);
       }
     },

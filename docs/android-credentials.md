@@ -10,10 +10,12 @@ Only saving commits a source choice or replacement. An entirely empty form
 changes only the source, retaining both destinations independently. A replacement
 requires username and password; a blank optional secret removes automatic TOTP
 for that entry. Successful saving clears every input, including the username,
-and displays **Saved successfully** inside the disabled save button for three
-seconds. Success adds no separate message below the button; errors and cancellation
-remain visible as explanatory text. Editing during the confirmation does not end
-its three-second duration.
+and displays **Saved successfully** inside the disabled save button until the next
+credential or source edit. There is no timed cooldown: a new edit enables saving
+immediately. Opening settings with empty unchanged fields leaves saving disabled;
+clearing all edits or returning to the active source disables it again. Success
+adds no separate message below the button; errors and cancellation remain visible
+as explanatory text.
 No saved identity, secrets, or masking-dot values are repopulated. Each field's
 placeholder independently reports presence for the draft destination. Changing
 the draft source never changes the active login source until saved.

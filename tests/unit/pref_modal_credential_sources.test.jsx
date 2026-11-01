@@ -36,9 +36,13 @@ afterEach(() => { delete window.PttAndroid; delete window.__PTT_ANDROID__; });
 
 function openSettings() {
   const onSave = vi.fn();
-  render(<MantineProvider><PrefModal show onSave={onSave} onReset={() => {}} /></MantineProvider>);
+  const props = { show: true, onSave, onReset: () => {} };
+  const ui = render(<MantineProvider><PrefModal {...props} /></MantineProvider>);
   fireEvent.click(screen.getByRole('tab', { name: i18n('options_autoLoginTab') }));
-  return { onSave };
+  return { onSave, reopen: () => {
+    ui.rerender(<MantineProvider><PrefModal {...props} show={false} /></MantineProvider>);
+    ui.rerender(<MantineProvider><PrefModal {...props} /></MantineProvider>);
+  } };
 }
 
 test('local is the initial source; draft changes do not persist, and empty explicit save selects retained manager data', async () => {
@@ -58,9 +62,11 @@ test('local is the initial source; draft changes do not persist, and empty expli
   expect(host.sent.some(request => request.user || request.password)).toBe(false);
   const preferences = localStorage.getItem('pttchrome.pref.v1') || '';
   expect(preferences).not.toContain('credentialSource');
+  fireEvent.click(radio('local'));
+  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeEnabled();
 });
 
-test('successful saving confirms inside the button for exactly three seconds even when the reader starts editing again', async () => {
+test('successful saving stays confirmed until another edit enables saving immediately', async () => {
   openSettings();
   await waitFor(() => expect(radio('local')).toBeEnabled());
   fireEvent.change(field('autoLoginUser'), { target: { value: 'reader' } });
@@ -70,13 +76,37 @@ test('successful saving confirms inside the button for exactly three seconds eve
     await act(async () => fireEvent.click(screen.getByRole('button', { name: i18n('options_credentialsSave') })));
     expect(screen.getByRole('button', { name: i18n('options_credentials_saved') })).toBeDisabled();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    fireEvent.change(field('autoLoginUser'), { target: { value: 'replacement' } });
-    act(() => vi.advanceTimersByTime(2999));
+    act(() => vi.advanceTimersByTime(10000));
     expect(screen.getByRole('button', { name: i18n('options_credentials_saved') })).toBeDisabled();
-    act(() => vi.advanceTimersByTime(1));
+    fireEvent.change(field('autoLoginUser'), { target: { value: 'replacement' } });
     expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeEnabled();
     expect(host.sent.filter(request => request.op === 'saveCredentials')).toHaveLength(1);
   } finally { vi.useRealTimers(); }
+});
+
+test.each(['local', 'manager'])('opening settings for %s keeps empty unchanged credentials disabled throughout status loading', async source => {
+  host.source = source;
+  const { reopen } = openSettings();
+  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeDisabled();
+  await waitFor(() => expect(radio(source)).toBeEnabled());
+  expect(radio(source)).toBeChecked();
+  for (const name of ['autoLoginUser', 'autoLoginPassword', 'autoLoginOtpSecret']) {
+    expect(field(name)).toHaveValue('');
+    fireEvent.focus(field(name));
+    fireEvent.blur(field(name));
+  }
+  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeDisabled();
+  fireEvent.change(field('autoLoginUser'), { target: { value: 'reader' } });
+  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeEnabled();
+  fireEvent.change(field('autoLoginUser'), { target: { value: '' } });
+  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeDisabled();
+  fireEvent.click(radio(source === 'local' ? 'manager' : 'local'));
+  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeEnabled();
+  fireEvent.click(radio(source));
+  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeDisabled();
+  reopen();
+  await waitFor(() => expect(radio(source)).toBeEnabled());
+  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeDisabled();
 });
 
 test('local saving clears all fields and independently reflects optional-secret presence while automatic login is off', async () => {
@@ -96,7 +126,7 @@ test('local saving clears all fields and independently reflects optional-secret 
   ]);
   fireEvent.change(field('autoLoginUser'), { target: { value: 'replacement' } });
   fireEvent.change(field('autoLoginPassword'), { target: { value: 'replacement-pass' } });
-  await waitFor(() => expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeEnabled(), { timeout: 4000 });
+  expect(screen.getByRole('button', { name: i18n('options_credentialsSave') })).toBeEnabled();
   fireEvent.click(screen.getByRole('button', { name: i18n('options_credentialsSave') }));
   await waitFor(() => expect(field('autoLoginPassword')).toHaveValue(''));
   expect(field('autoLoginOtpSecret')).toHaveAttribute('placeholder', i18n('placeholder_local_otpSecret_empty'));

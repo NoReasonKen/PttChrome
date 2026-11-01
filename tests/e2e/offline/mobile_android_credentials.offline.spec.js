@@ -71,6 +71,8 @@ async function openCredentials(page) {
   await expect(page.locator('.PrefModal')).toBeVisible();
   await page.locator('.PrefModal [data-pref-category="autologin"]').tap();
   await expect(user(page)).toBeVisible();
+  await expect(page.locator('.PrefModal').getByRole('radio').first()).toBeEnabled();
+  await expect(await saveButton(page)).toBeDisabled();
 }
 
 async function fillCredentials(page, otpSecret = '') {
