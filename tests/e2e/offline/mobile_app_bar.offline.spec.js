@@ -43,7 +43,7 @@ test.describe('手機頂部 App Bar', () => {
     expect(c.mainBottom).toBeLessThanOrEqual(c.toolbarTop + 0.5);
   });
 
-  test('好讀文章：標題＝文章標題、副標＝看板與時間、第三行＝作者；第一列不被 App Bar 蓋住', async ({ page }) => {
+  test('好讀文章：標題＝文章標題、第二行＝作者、第三行＝看板與時間；第一列不被 App Bar 蓋住', async ({ page }) => {
     await bootOffline(page, ptt);
     await replayCassette(page, article, { easyReading: true });
     await page.waitForFunction(() => window.__app.view.reflow === true);
@@ -57,7 +57,7 @@ test.describe('手機頂部 App Bar', () => {
     expect(want.title).toBeTruthy();
     await expect(title(page)).toHaveText(want.title);
     if (want.board) await expect(subtitle(page)).toHaveText(want.board);
-    // #66: the time sits on the board's line, the author with nickname on a third line.
+    // #66: the author with nickname on the second line, the time on the board's third line.
     await expect(page.locator('#mobileAppBar [data-key="__time"]')).toHaveText(want.time);
     await expect(page.locator('#mobileAppBar [data-key="__byline"]')).toHaveText(want.byline);
     const c = await chrome(page);

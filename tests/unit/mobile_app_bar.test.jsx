@@ -70,8 +70,8 @@ test("標題／副標／新信件跟著畫面走；空標題顯示預設名", ()
   expect(bar().querySelector('[data-key="__newMail"]')).not.toBeNull();
 });
 
-// #66: an article's App Bar has three lines: title; board left, time right; author.
-test("文章三行：標題／看板與時間同一行（時間靠右）／作者帶暱稱", () => {
+// #66: an article's App Bar has three lines: title; author; board left, time right.
+test("文章三行：標題／作者帶暱稱／看板與時間同一行（時間靠右）", () => {
   const core = makeCore({
     appBar: {
       kind: "article",
@@ -88,7 +88,9 @@ test("文章三行：標題／看板與時間同一行（時間靠右）／作�
   expect(sub.textContent).toBe("C_Chat");
   expect(time.textContent).toBe("Thu Oct 29 23:10:05 2026");
   expect(sub.parentElement).toBe(time.parentElement);
-  expect(bar().querySelector('[data-key="__byline"]').textContent).toBe("wowBenny (阿 B)");
+  const byline = bar().querySelector('[data-key="__byline"]');
+  expect(byline.textContent).toBe("wowBenny (阿 B)");
+  expect(byline.nextElementSibling).toBe(sub.parentElement);
 });
 
 test("沒有返回鍵（返回交給系統手勢）：首頁以外沒有任何按鈕", () => {

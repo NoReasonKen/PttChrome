@@ -23,10 +23,10 @@ const CSS = fs.readFileSync(
 const STRIPPED = CSS.replace(/\/\*[\s\S]*?\*\//g, "");
 
 // 含 .commentSpacing 的每一條規則的宣告區塊（選擇器可能是多行逗號串）。
-const spacingBlocks = () =>
-  [...STRIPPED.matchAll(/[^{}]*\.commentSpacing[^{}]*\{([^}]*)\}/g)].map(
-    (m) => m[1],
-  );
+const spacingBlocks = ({ grid = false } = {}) =>
+  [...STRIPPED.matchAll(/([^{}]*\.commentSpacing[^{}]*)\{([^}]*)\}/g)]
+    .filter((m) => !grid || !m[1].includes(".mobileReflow"))
+    .map((m) => m[2]);
 
 // 一條規則的「選擇器 + 宣告」整段，方便對特定選擇器取值。
 const ruleFor = (selectorFragment) => {
@@ -84,8 +84,9 @@ describe("main.css 的推文區塊行距契約", () => {
     );
   });
 
+  // Mobile comment cards (.mobileReflow) have no monospace grid, so only they may pad.
   test("不得出現任何影響橫向格線的屬性", () => {
-    for (const body of spacingBlocks()) {
+    for (const body of spacingBlocks({ grid: true })) {
       expect(body).not.toMatch(/letter-spacing/);
       expect(body).not.toMatch(/padding/);
       expect(body).not.toMatch(/font-weight/);

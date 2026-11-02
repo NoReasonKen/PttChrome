@@ -73,7 +73,7 @@
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  padding: var(--safe-top, 0px) 16px 0;
+  padding: calc(var(--safe-top, 0px) + 4px) 6px 0;
   background: #141418;
   border-bottom: 1px solid #333;
   color: #eee;
