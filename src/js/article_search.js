@@ -95,6 +95,9 @@ export function normalizeSearchText(kind, text) {
 export function searchGateFacts(core) {
   const buf = core && core.buf;
   if (!buf || typeof buf.getRowText !== 'function') return null;
+  // Output written since the last repaint has no Big5 lead-byte flags yet (the
+  // 30 ms update window), so its rows would read as raw bytes.
+  if (buf.changed && typeof buf.updateCharAttr === 'function') buf.updateCharAttr();
   const rowTexts = [];
   for (let r = 0; r < buf.rows; ++r) rowTexts.push(buf.getRowText(r, 0, buf.cols));
   return {

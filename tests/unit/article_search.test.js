@@ -13,6 +13,7 @@ import {
   buildSearchSteps,
   isSearchPromptFrame,
   normalizeSearchText,
+  searchGateFacts,
   searchKindOfKey,
   SEARCH_INFLIGHT_MAX_MS,
   shouldInterceptSearchKey,
@@ -25,6 +26,9 @@ import { SLOW_STEP_BUDGET } from "../../src/js/aid_navigation";
 import { serializedOpHint } from "../../src/js/serialized_op_gate";
 import { writeValues, readValuesWithDefault } from "../../src/js/pref_storage";
 import { recordSearchResults, readSearchResultsContext } from "../../src/js/search_results_context";
+import { TermBuf } from "../../src/js/term_buf";
+import { AnsiParser } from "../../src/js/ansi_parser";
+import { u2b } from "../../src/js/string_util";
 
 beforeAll(() => {
   loadBig5Tables();
@@ -75,6 +79,30 @@ function promptFrame(row, text, curY) {
   f.curY = curY;
   return f;
 }
+
+describe("searchGateFacts", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // PTT output arrives a little before the buffer's next repaint flags its
+  // Big5 lead bytes (the 30 ms update window). A Back read in that window
+  // must still see the legacy caption, not raw bytes taken for another list.
+  test("reads Big5 rows written since the last repaint as text", () => {
+    const buf = new TermBuf(80, ROWS);
+    buf.setView({ update() {}, updateCursorPos() {}, refreshCursorVisibility() {}, blinkOn: false });
+    buf.useMouseBrowsing = false;
+    const parser = new AnsiParser(buf);
+    parser.feed(u2b("\x1b[1;1H【板主：test】看板《Test》\x1b[24;1H 文章選讀 [←]離開 [→]閱讀\x1b[5;1H"));
+    expect(buf.timerUpdate).not.toBe(null);
+    const facts = searchGateFacts({ buf });
+    expect(facts.rowTexts[0]).toContain("看板《Test》");
+    expect(facts.rowTexts[ROWS - 1]).toContain("文章選讀");
+  });
+});
 
 describe("searchKindOfKey", () => {
   test("/ ? a Z s 對到種類；小寫 z（精華區）不攔", () => {
