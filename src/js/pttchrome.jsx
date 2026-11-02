@@ -561,6 +561,7 @@ App.prototype._setupWebsocketConn = function(url) {
 App.prototype._attachConn = function(conn) {
   var self = this;
   this.conn = conn;
+  this.debugRecorder?.attachConnection(conn);
   // 線路編碼：連線前讀一次（server 只在登入時決定編碼，中途改 pref 要重連才生效）。
   // UTF-8 時回應 logind 的 CPR 編碼偵測，server 才會切過去；Big5 維持不回應。
   conn.setWireCharset(readValuesWithDefault().connectionEncoding);

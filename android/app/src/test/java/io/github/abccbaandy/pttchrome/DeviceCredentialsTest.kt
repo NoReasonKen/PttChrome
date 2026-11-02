@@ -2,6 +2,7 @@ package io.github.abccbaandy.pttchrome
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import java.io.IOException
 
@@ -255,5 +256,58 @@ class DeviceCredentialsTest {
         } catch (failure: CredentialStorageException) {
             assertEquals("unreadable", failure.code)
         }
+    }
+
+    @Test
+    fun localFailuresDoNotRetainSensitiveStorageOrCipherExceptionDetails() = runBlocking {
+        val sensitive = "synthetic-private-reader pttchrome:v1:JBSWY3DPEHPK3PXP:synthetic-private-password"
+        val stored = DeviceCredentialState(local = SealedCredential(byteArrayOf(1), byteArrayOf(2)))
+        val cipher = object : LocalCredentialCipher {
+            override fun seal(value: PasswordManagerCredential, existing: Boolean): SealedCredential =
+                throw IllegalStateException(sensitive)
+            override fun open(value: SealedCredential): PasswordManagerCredential =
+                throw IOException(sensitive)
+        }
+        val failingRead = DeviceCredentials(
+            object : DeviceCredentialStateStore {
+                override fun read(): DeviceCredentialState = throw IOException(sensitive)
+                override fun write(value: DeviceCredentialState) = Unit
+            }, cipher, emptyManager(),
+        )
+        val unreadable = DeviceCredentials(
+            object : DeviceCredentialStateStore {
+                override fun read() = stored
+                override fun write(value: DeviceCredentialState) = Unit
+            }, cipher, emptyManager(),
+        )
+        val failedWrite = DeviceCredentials(
+            object : DeviceCredentialStateStore {
+                override fun read() = DeviceCredentialState()
+                override fun write(value: DeviceCredentialState): Unit = throw IOException(sensitive)
+            }, TestCipher(), emptyManager(),
+        )
+        val failedEncryption = DeviceCredentials(MemoryState(), cipher, emptyManager())
+        fun failing(code: String, operation: suspend () -> Unit) = code to operation
+        val operations = listOf(
+            failing("unreadable") { failingRead.get(); Unit },
+            failing("unreadable") { unreadable.get(); Unit },
+            failing("unreadable") { unreadable.save(CredentialSource.LOCAL, "replacement", "replacement-password"); Unit },
+            failing("failed") { failedWrite.save(CredentialSource.LOCAL, "replacement", "replacement-password"); Unit },
+            failing("failed") { failedWrite.deleteLocal(); Unit },
+            failing("failed") { failedEncryption.save(CredentialSource.LOCAL, "replacement", "replacement-password"); Unit },
+        )
+
+        for ((expectedCode, operation) in operations) {
+            try {
+                operation()
+                error("The failing credential operation must report a sanitized failure")
+            } catch (failure: CredentialStorageException) {
+                assertEquals(expectedCode, failure.code)
+                for (secret in sensitive.split(' ')) {
+                    assertFalse("Failure diagnostics must not contain stored credentials", failure.stackTraceToString().contains(secret))
+                }
+            }
+        }
+        assertEquals(CredentialDestinationStatus(PasswordPresence(), "unreadable"), unreadable.status().local)
     }
 }

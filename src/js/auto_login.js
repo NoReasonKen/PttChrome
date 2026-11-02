@@ -415,8 +415,8 @@ AutoLogin.prototype._handleOtp = function(screen) {
       this._otpSentAt = Date.now();
       this._send(code + '\r');
     })
-    .catch(e => {
-      console.warn('auto_login: TOTP generation failed', e);
+    .catch(() => {
+      console.warn('auto_login: TOTP generation failed');
       this.stop();
     })
     .finally(() => {

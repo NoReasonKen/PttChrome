@@ -224,6 +224,12 @@ live 核心只驗幾個畫面；這個工具把整卷 live 錄製檔**每一幀*
 - 守護測試：`tests/unit/redact.test.js`、`tests/unit/debug_recorder_logic.test.js`、
   `tests/unit/debug_recorder.test.js`、`tests/e2e/offline/debug_record.offline.spec.js`。
 
+Android credential privacy coverage additionally inspects actual diagnostic and
+settings-export artifacts after save, native retrieval, reconnect and page restart;
+see [Android credentials](android-credentials.md#cross-feature-privacy-coverage).
+The recorder follows a replacement connection while recording, preserving masked
+login sends rather than silently dropping the reconnect's outgoing stream.
+
 ## 素材選用（逐卷測試的前提，選錯＝測試恆綠）
 逐卷 spec 會把 `cassettes/` 裡每一卷都跑一遍，但**不是每卷都能重現每個 bug**：
 

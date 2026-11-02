@@ -2,6 +2,7 @@ const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { bootOffline, waitConnected } = require('../helpers/replay');
 const { drawMainMenu } = require('../helpers/main_menu');
+const { expectPrivateArtifact, expectPrivateRecording } = require('../helpers/credential_privacy');
 
 const SECRET = 'JBSWY3DPEHPK3PXP';
 const text = (page, key) => page.evaluate(value => window.__i18n(value), key);
@@ -46,6 +47,8 @@ async function installCredentialHost(page, source = 'manager', savedSecretSource
         let reply = { id: request.id, ok: false, error: 'unknown op' };
         if (request.op === 'getCredentialStatus') {
           reply = { id: request.id, ok: true, source: host.source, local: { presence: host.localPresence }, manager: { presence: host.presence } };
+        } else if (request.op === 'saveFile') {
+          reply = { id: request.id, ok: true };
         } else if (request.op === 'getLoginCredential') {
           const credential = host[host.source];
           reply = host.readError || !credential
@@ -191,6 +194,138 @@ async function chooseDeletion(page, dialog, confirmed) {
   }).tap();
   await expect(dialog).toHaveCount(0);
 }
+
+const privacyValues = ['offline-reader', 'synthetic-password', SECRET,
+  'pttchrome:v1:' + SECRET + ':synthetic-password'];
+
+async function startPrivacyRecording(page) {
+  await page.evaluate(() => {
+    window.__app.setDebugMode(true);
+    window.__app.toggleDebugRecording();
+  });
+}
+
+async function exportPrivacyRecording(page, values = privacyValues) {
+  await page.evaluate(() => window.__app.toggleDebugRecording());
+  const files = await page.evaluate(() => window.__credentialHost.requests
+    .filter(request => request.op === 'saveFile' && request.filename.startsWith('ptt-debug-')));
+  expect(files.length).toBeGreaterThan(0);
+  const recording = JSON.parse(files.at(-1).text);
+  expectPrivateRecording(recording, values);
+  return recording;
+}
+
+async function expectPrivateSettingsExport(page) {
+  await page.locator('.PrefModal [data-pref-category-back]').tap();
+  await page.locator('.PrefModal [data-pref-category="backup"]').tap();
+  await page.locator('.PrefModal').getByRole('button', {
+    name: await text(page, 'options_backupExportBtn'), exact: true,
+  }).tap();
+  const files = await page.evaluate(() => window.__credentialHost.requests
+    .filter(request => request.op === 'saveFile' && request.filename.startsWith('pttchrome-prefs-')));
+  expect(files.length).toBeGreaterThan(0);
+  const payload = JSON.parse(files.at(-1).text);
+  expectPrivateArtifact(payload, privacyValues);
+  expect(payload.prefs).toHaveProperty('autoLogin');
+  for (const key of ['autoLoginUser', 'autoLoginPassword', 'autoLoginOtpSecret', 'source', 'presence', 'local', 'manager']) {
+    expect(payload.prefs).not.toHaveProperty(key);
+  }
+}
+
+for (const source of ['local', 'manager']) {
+  test(`mobile privacy artifacts stay redacted after ${source} save, retrieval, reconnect and page restart`, async ({ page }) => {
+    const logs = [];
+    page.on('console', message => logs.push(message.text()));
+    page.on('pageerror', error => logs.push(error.message));
+    await bootSettings(page, source);
+    await fillCredentials(page, SECRET);
+    await (await saveButton(page)).tap();
+    for (const field of [user(page), password(page), secret(page)]) await expect(field).toHaveValue('');
+    await closeSettings(page);
+    await startPrivacyRecording(page);
+    await reconnectForLogin(page);
+    await expectSyntheticLogin(page);
+    // A server response can split identity and credential echoes across frames.
+    // Use the actual capture/export path, with no direct redaction registration.
+    await page.evaluate(values => {
+      window.__app.onData('\x1b[H\x1b[2Jprivacy-login-context ' + values[0].slice(0, 7));
+      window.__app.onData(values[0].slice(7) + ' ' + values.slice(1).join(' ') + '\r\n');
+    }, privacyValues);
+    const first = await exportPrivacyRecording(page);
+    expect(first.events.filter(event => event.dir === 'recv')
+      .map(event => Buffer.from(event.data, 'base64').toString('latin1')).join(''))
+      .toContain('privacy-login-context');
+    await drawMainMenu(page);
+    await openCredentials(page);
+    await expectPrivateSettingsExport(page);
+    await closeSettings(page);
+
+    // Retain only the controlled external host's saved value across a new page;
+    // do not persist credentials in web storage or carry the redaction registry.
+    const retained = await page.evaluate(() => {
+      const { source, local, manager } = window.__credentialHost;
+      return { source, local, manager };
+    });
+    await page.reload();
+    await waitConnected(page);
+    await page.evaluate(value => Object.assign(window.__credentialHost, value), retained);
+    await startPrivacyRecording(page);
+    await reconnectForLogin(page);
+    await expectSyntheticLogin(page);
+    await exportPrivacyRecording(page);
+    expectPrivateArtifact(logs, privacyValues);
+  });
+}
+
+test('mobile privacy survives source changes, replacement, cancelled saves, unreadable retrieval and deletion', async ({ page }) => {
+  const replacement = ['replacement-reader', 'synthetic-replacement-password'];
+  const logs = [];
+  page.on('console', message => logs.push(message.text()));
+  page.on('pageerror', error => logs.push(error.message));
+  await bootSettings(page, 'local');
+  await fillCredentials(page, SECRET);
+  await (await saveButton(page)).tap();
+  await closeSettings(page);
+  await startPrivacyRecording(page);
+  await reconnectForLogin(page);
+  await expectSyntheticLogin(page);
+  await openCredentials(page);
+  await (await sourceRadio(page, 'manager')).tap();
+  await expect(await sourceRadio(page, 'manager')).toBeChecked();
+  await fillCredentials(page, SECRET);
+  await page.evaluate(() => { window.__credentialHost.saveError = 'cancelled'; });
+  await (await saveButton(page)).tap();
+  await expect(page.locator('.PrefModal').getByRole('status'))
+    .toHaveText(await text(page, 'options_credentials_cancelled'));
+  await page.evaluate(() => { window.__credentialHost.saveError = null; });
+  await (await saveButton(page)).tap();
+  await expect(user(page)).toHaveValue('');
+  await closeSettings(page);
+  await reconnectForLogin(page);
+  await expectSyntheticLogin(page);
+  await openCredentials(page);
+  await (await sourceRadio(page, 'local')).tap();
+  await expect(await sourceRadio(page, 'local')).toBeChecked();
+  await closeSettings(page);
+  await page.evaluate(values => { window.__credentialHost.readError = 'unreadable: ' + values.join(' '); }, privacyValues);
+  await reconnectForLogin(page);
+  await expect(page.locator('.ListHint')).toHaveText(await text(page, 'options_credentialsLogin_failed'));
+  expectPrivateArtifact(await page.locator('.ListHint').textContent(), privacyValues);
+  await drawMainMenu(page);
+  await openCredentials(page);
+  // Replace both identity and password, removing the optional secret.
+  await user(page).fill(replacement[0]);
+  await password(page).fill(replacement[1]);
+  await page.evaluate(() => { window.__credentialHost.readError = null; });
+  await (await saveButton(page)).tap();
+  await expect(user(page)).toHaveValue('');
+  await chooseDeletion(page, await deleteDialog(page, 'local'), true);
+  await closeSettings(page);
+  await page.evaluate(values => window.__app.onData('\r\nprivacy-history ' + values.join(' ')),
+    [...privacyValues, ...replacement]);
+  await exportPrivacyRecording(page, [...privacyValues, ...replacement]);
+  expectPrivateArtifact(logs, [...privacyValues, ...replacement]);
+});
 
 test('mobile legacy setup remains manual and only a confirmed encrypted save clears the old copy', async ({ page }) => {
   await bootSettings(page, 'local', null, { legacy: true });

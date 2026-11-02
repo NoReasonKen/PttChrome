@@ -142,6 +142,43 @@ describe("cursorGeomSample", () => {
 });
 
 describe("DebugRecorder", () => {
+  it("follows a replacement transport and restores both transports after recording", () => {
+    const { app, calls } = makeApp();
+    const old = app.conn;
+    const original = old._sendRaw;
+    const recorder = new DebugRecorder(app);
+    recorder.start();
+    old._sendRaw("before reconnect");
+    const replacement = { _sendRaw: vi.fn() };
+    const replacementSend = replacement._sendRaw;
+    app.conn = replacement;
+    recorder.attachConnection(replacement);
+    recorder.attachConnection(replacement);
+    expect(old._sendRaw).toBe(original);
+    old._sendRaw("old transport after reconnect");
+    replacement._sendRaw("new transport");
+    expect(replacementSend).toHaveBeenCalledOnce();
+    expect(replacementSend.mock.instances[0]).toBe(replacement);
+    const artifact = JSON.parse(recorder.stop());
+    expect(artifact.events.filter(event => event.dir === "send").map(event => atob(event.data)))
+      .toEqual(["before reconnect", "new transport"]);
+    expect(calls.sendRaw).toEqual(["before reconnect", "old transport after reconnect"]);
+    expect(replacement._sendRaw).toBe(replacementSend);
+  });
+
+  it("can begin without a transport and record a later connection", () => {
+    const { app } = makeApp();
+    const conn = app.conn;
+    app.conn = null;
+    const recorder = new DebugRecorder(app);
+    recorder.start();
+    app.conn = conn;
+    recorder.attachConnection(conn);
+    conn._sendRaw("late connection");
+    expect(JSON.parse(recorder.stop()).events.filter(event => event.dir === "send")
+      .map(event => atob(event.data))).toEqual(["late connection"]);
+  });
+
   it("includes recovery decisions made before recording began", () => {
     const { app } = makeApp();
     const info = { boot: { storage: "missing", validPlan: false }, recent: [] };

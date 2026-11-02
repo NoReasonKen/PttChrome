@@ -166,6 +166,23 @@ export class DebugRecorder {
     this.events.push(ev);
   }
 
+  // Reconnect replaces the transport while the recording stays active. Restore
+  // the old transport before following the new one, including when recording
+  // began before a connection existed.
+  attachConnection(conn) {
+    if (!this.isRecording || conn === this._patchedConn) return;
+    if (this._patchedConn) this._patchedConn._sendRaw = this._origSendRaw;
+    this._patchedConn = conn;
+    this._origSendRaw = conn?._sendRaw || null;
+    if (!this._origSendRaw) return;
+    const send = this._origSendRaw;
+    const rec = this;
+    conn._sendRaw = function (data) {
+      if (data) rec._push({ dir: 'send', data, state: snapshotState(rec.app) });
+      return send.call(conn, data);
+    };
+  }
+
   start() {
     if (this.isRecording) return;
     const app = this.app;
@@ -180,15 +197,7 @@ export class DebugRecorder {
       return rec._origOnData.call(app, data);
     };
 
-    if (app.conn) {
-      const conn = app.conn;
-      this._patchedConn = conn;
-      this._origSendRaw = conn._sendRaw;
-      conn._sendRaw = function (data) {
-        if (data) rec._push({ dir: 'send', data, state: snapshotState(app) });
-        return rec._origSendRaw.call(conn, data);
-      };
-    }
+    this.attachConnection(app.conn);
 
     // 渲染鏈的診斷 log（圖片尺寸模式、佔位盒掛載／卸載／高度）走 module 級出口，
     // 見 diag.js。
@@ -314,6 +323,7 @@ export class DebugRecorder {
     if (this._origSendRaw && this._patchedConn) this._patchedConn._sendRaw = this._origSendRaw;
     this._origOnData = null;
     this._origSendRaw = null;
+    this._patchedConn = null;
 
     const app = this.app;
     const knownCredentials = credentialRedaction();

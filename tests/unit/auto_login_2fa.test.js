@@ -227,6 +227,22 @@ describe("timing window", () => {
 });
 
 describe("async guards", () => {
+  test("a crypto failure stops login without exposing credential-bearing exception details", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const importKey = vi.spyOn(globalThis.crypto.subtle, "importKey")
+      .mockRejectedValueOnce(new Error("synthetic crypto failure: " + SECRET));
+    try {
+      const al = makeLogin({ __screen: OTP_PROMPT });
+      await tick(al);
+      expect(al.__sent).toEqual([]);
+      expect(al.__stopped).toBe(true);
+      expect(warning).toHaveBeenCalledExactlyOnceWith("auto_login: TOTP generation failed");
+    } finally {
+      importKey.mockRestore();
+      warning.mockRestore();
+    }
+  });
+
   test("a pending computation blocks a second send", async () => {
     const al = makeLogin({ __screen: OTP_PROMPT });
     al._tick();

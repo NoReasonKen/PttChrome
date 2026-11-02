@@ -120,8 +120,8 @@ be explicitly removed without decrypting them; a structurally corrupt record tha
 cannot identify the selected source reports failure instead of guessing a reset.
 Storage failures remain visible and never claim deletion succeeded.
 
-This implements #92, #93 and #94 of [the Android storage redesign](https://github.com/NoReasonKen/PttChrome/issues/91).
-The broader cross-feature privacy audit follows in #95.
+This implements the explicit storage and cleanup behavior of
+[the Android storage redesign](https://github.com/NoReasonKen/PttChrome/issues/91).
 
 ## Verification
 
@@ -148,3 +148,28 @@ Device acceptance also uses the reader's configured **password manager** for
 actual save/update/cancellation/retrieval UI. No particular provider is required.
 All automated credentials and protocol responses are synthetic; no real PTT
 login is part of these tests.
+
+### Cross-feature privacy coverage
+
+The mobile offline credential tests save through settings, clear the form, read
+from a controlled native endpoint and simulate login. They inspect the actual
+`saveFile` payloads emitted by diagnostic recording and settings export, including
+decoded send/receive streams and derived cassette steps. Reconnect, a fresh page,
+source changes, cancellation, replacement, unreadable retrieval and deletion are
+included. Recordings must retain masked login sends and useful non-secret context;
+an artifact with no captured login is not evidence of redaction. The recorder
+follows replacement connections, and stopping restores their original send hooks.
+TOTP computation failures report a fixed diagnostic without raw exception details.
+
+| Boundary | Evidence and limits |
+| --- | --- |
+| Preferences, exports and imports | Browser tests exercise saved/retrieved synthetic credentials, shared non-secret settings, rejected imported credentials and unchanged native selection. The mobile tests inspect emitted settings files; their native endpoint and file delivery are controlled. |
+| Cloud upload and incoming preferences | `tests/integration/pref_sync.test.js` uses the real Firebase SDK, local Auth/Firestore emulators and repository rules, inspecting the stored document through an independent REST read. Only the Android credential endpoint is controlled. |
+| Native failures and metadata | JVM tests verify sanitized storage/cipher failures; instrumentation verifies real metadata files contain only presence flags and tracks the optional secret independently. JVM ciphers and providers are controlled substitutes; only instrumentation executes Android storage/Keystore. |
+| Installed bridge and diagnostic export | The Android credential spec performs actual local save, process restart, native retrieval and offline login, then inspects exported recording JSON and decoded streams. Only the final file-delivery callback is replaced; it does not verify the system file chooser or saved-file persistence. It also checks direct subframe requests cannot read or change credentials and unapproved opaque frames have no bridge. Approved alternate page sources remain covered. These cases require an Android device/emulator to execute. |
+| Backup and external providers | The native records remain under no-backup storage, with app backup disabled and cloud/device-transfer exclusions. These are app configuration boundaries, not a promise about an external password manager's own synchronization. Real provider save, cancellation and retrieval UI still require device acceptance. |
+
+The redaction registry is page-local: a fresh page registers credentials again
+when saving or retrieving them. It does not persist a second credential copy.
+Manual secrets unknown to the app and unrelated private content still require
+review before sharing diagnostic captures.

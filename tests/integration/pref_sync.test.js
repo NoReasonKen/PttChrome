@@ -26,6 +26,9 @@
  */
 
 import * as prefSync from "../../src/js/pref_sync";
+import { DEFAULT_PREFS, readValuesWithDefault, writeValues } from "../../src/js/pref_storage";
+import { getAndroidCredentialStatus, getAndroidLoginCredential, saveAndroidCredentials } from "../../src/js/credential_store";
+import { packCredential } from "../../src/js/credential_pack";
 import { FIREBASE_CONFIG } from "../../src/js/firebase_config";
 import { initializeApp, deleteApp } from "firebase/app";
 import {
@@ -384,6 +387,93 @@ describe("startup restore (previously signed in)", () => {
 });
 
 describe("realtime propagation", () => {
+  it("keeps native credentials private during real sync and ignores incoming credential changes", async () => {
+    const identity = "sync-private-reader";
+    const password = "synthetic-sync-private-password";
+    const otpSecret = "JBSWY3DPEHPK3PXP";
+    const packed = packCredential(password, otpSecret);
+    const presence = { user: true, password: true, otpSecret: true };
+    const empty = { user: false, password: false, otpSecret: false };
+    const requests = [];
+    let selected = "manager";
+    let nativeEntry = null;
+    // Only the Android endpoint is controlled. Auth, Firestore, rules,
+    // preference application and the REST upload oracle remain genuine.
+    window.__PTT_ANDROID__ = { encryptedCredentials: true };
+    window.PttAndroid = {
+      postMessage(text) {
+        const request = JSON.parse(text);
+        requests.push(request);
+        if (request.op === "saveCredentials") {
+          selected = request.source;
+          nativeEntry = { user: request.user, password: request.password };
+        }
+        const result = request.op === "getCredentialStatus"
+          ? { source: selected, local: { presence }, manager: { presence: empty } }
+          : request.op === "getLoginCredential"
+            ? { source: selected, ...nativeEntry }
+            : { source: selected, presence };
+        queueMicrotask(() => window.PttAndroid.onmessage({
+          data: JSON.stringify({ id: request.id, ok: true, ...result }),
+        }));
+      },
+    };
+    try {
+      expect(await saveAndroidCredentials({ source: "local", id: identity, password: packed }))
+        .toMatchObject({ status: "saved", source: "local" });
+      expect(await getAndroidLoginCredential("local")).toEqual({
+        status: "ready", credential: { id: identity, password: packed },
+      });
+      writeValues({
+        ...DEFAULT_PREFS, fontSize: 23, autoLogin: false,
+        autoLoginDupConn: "N", autoLoginSkipWelcome: false,
+      });
+      const onCloudValues = vi.fn();
+      prefSync.registerOnCloudValues(onCloudValues);
+      await prefSync.signIn(null, credAuth);
+      await prefSync.savePrefs(readValuesWithDefault());
+      const uploaded = await waitForCloud(
+        data => data?.prefs?.fontSize === 23 && data.schemaVersion === 1,
+        "private native credential preferences upload",
+      );
+      expect(uploaded.prefs).toMatchObject({
+        fontSize: 23, autoLogin: false, autoLoginDupConn: "N", autoLoginSkipWelcome: false,
+      });
+      for (const key of ["autoLoginUser", "autoLoginPassword", "autoLoginOtpSecret", "source", "local", "manager", "presence"]) {
+        expect(uploaded.prefs).not.toHaveProperty(key);
+      }
+      for (const value of [identity, password, otpSecret, packed]) {
+        expect(JSON.stringify(uploaded)).not.toContain(value);
+      }
+
+      requests.length = 0;
+      onCloudValues.mockClear();
+      await seedDoc({ prefs: {
+        fontSize: 25, autoLogin: true, autoLoginDupConn: "Y", autoLoginSkipWelcome: true,
+        autoLoginUser: identity, autoLoginPassword: packed, autoLoginOtpSecret: otpSecret,
+        source: "manager", local: { presence: empty }, manager: { presence },
+      } });
+      await waitFor(() => readStoredPrefs().fontSize === 25, "incoming ordinary login preferences");
+      expect(readStoredPrefs()).toMatchObject({
+        fontSize: 25, autoLogin: true, autoLoginDupConn: "Y", autoLoginSkipWelcome: true,
+        autoLoginUser: "", autoLoginPassword: "", autoLoginOtpSecret: "",
+      });
+      expect(onCloudValues).toHaveBeenCalled();
+      expect(requests).toEqual([]);
+      expect(await getAndroidCredentialStatus()).toEqual({
+        source: "local", local: { presence }, manager: { presence: empty },
+      });
+      expect(requests.map(request => request.op)).toEqual(["getCredentialStatus"]);
+      for (const value of [identity, password, otpSecret, packed]) {
+        expect(JSON.stringify([...infoSpy.mock.calls, ...warnSpy.mock.calls])).not.toContain(value);
+      }
+    } finally {
+      await prefSync.signOut();
+      delete window.PttAndroid;
+      delete window.__PTT_ANDROID__;
+    }
+  });
+
   it("applies a change made on another device while this page is open", () => {
     writeStoredPrefs({ fontSize: 16 });
     const onCloudValues = vi.fn();

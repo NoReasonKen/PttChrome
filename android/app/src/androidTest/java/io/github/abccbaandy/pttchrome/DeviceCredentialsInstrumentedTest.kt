@@ -130,4 +130,36 @@ class DeviceCredentialsInstrumentedTest {
         open().save(CredentialSource.LOCAL, "synthetic-replacement", "synthetic-replacement-password")
         assertEquals(PasswordManagerCredential("synthetic-replacement", "synthetic-replacement-password"), open().get().credential)
     }
+
+    @Test
+    fun providerPresencePersistsOnlyFlagsAndTracksTheOptionalSecretIndependently() = runBlocking {
+        val metadata = File(directory, "provider-presence")
+        var current = credential
+        val manager = PasswordManagerCredentials(
+            PasswordPresenceFile(metadata),
+            retrieve = { current },
+            save = { user, password ->
+                current = PasswordManagerCredential(user, password)
+                PasswordSaveOutcome.SAVED
+            },
+        )
+        assertEquals(PasswordSaveOutcome.SAVED, manager.save(credential.user, credential.password))
+        assertEquals(PasswordPresence(true, true, true), manager.status())
+        val reopened = PasswordManagerCredentials(
+            PasswordPresenceFile(metadata),
+            retrieve = { error("Status must not retrieve the provider's stored account") },
+            save = { _, _ -> error("Status must not ask the provider to save credentials") },
+        )
+        assertEquals(PasswordPresence(true, true, true), reopened.status())
+        val persisted = metadata.readBytes()
+        assertEquals("Provider metadata must contain only its format and three presence flags", 4, persisted.size)
+        for (secret in listOf(credential.user, credential.password, "JBSWY3DPEHPK3PXP", "synthetic-keystore-password")) {
+            assertFalse("Provider metadata must not retain credential values", persisted.toString(Charsets.ISO_8859_1).contains(secret))
+        }
+
+        current = PasswordManagerCredential(credential.user, "synthetic-password-without-otp")
+        assertEquals(current, manager.get())
+        assertEquals(PasswordPresence(true, true, false), reopened.status())
+        assertEquals(4, metadata.length().toInt())
+    }
 }
