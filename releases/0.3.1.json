@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "version": "0.3.1",
+  "tag": "android-fork-v0.3.1",
+  "publishedAt": null,
+  "previousRelease": {
+    "version": "0.3.0",
+    "sourceCommit": "8e573552e5b801cb13a4fb4da0e50958522766ef"
+  },
+  "nativeChanged": true,
+  "summary": {
+    "zhTW": [
+      "Android 自動登入可選本機加密或密碼管理員；共用帳密表單，按「儲存帳密」才保存，並可確認刪除本機帳密。",
+      "升級後請手動儲存帳密至選定方式；舊明文不再用於自動登入，成功儲存本機加密帳密後才自動清除。",
+      "搜尋紀錄可在設定中管理與釘選，常用關鍵字也能自動釘選；舊搜尋紀錄不轉入新格式，原有外部搜尋設定需重新設定。",
+      "調整文章 App Bar 的作者、看板與時間排列，讓手機留言卡片的分隔線上下間距更均衡。",
+      "修正重新連線後除錯錄製漏記登入傳送的問題，並保護錄製、設定匯出與同步中的帳密隱私。",
+      "修正部分搜尋結果返回時，偶爾回到所有文章而未回到來源文章的問題。"
+    ],
+    "en": [
+      "Choose local encrypted storage or a password manager for Android automatic login, with one explicit save form and confirmed local credential deletion.",
+      "After upgrading, manually save credentials to the selected method. Legacy plaintext is no longer used for automatic login and is cleared automatically only after successful local encrypted enrollment.",
+      "Manage and pin search history in Settings, with automatic pinning for frequently used terms. Old search history is not migrated to the new format; previous external-search settings must be entered again.",
+      "Refine the article App Bar author, board and time layout, and balance spacing around mobile comment-card separators.",
+      "Restore diagnostic login sends after reconnecting while protecting credentials in recordings, settings exports and synchronization.",
+      "Fix occasional Back navigation from some search results returning to the full article list instead of the source article."
+    ]
+  },
+  "commits": [
+    {
+      "sha": "320b6def42169506e8e14f217c4cfb41a1f93e67",
+      "subject": "Accept build-tools 37 apksigner certificate output"
+    },
+    {
+      "sha": "90703861ad9815a43e36f4b19d3206570d61b8a4",
+      "subject": "Make Android password-manager saving explicit (#92)"
+    },
+    {
+      "sha": "1bd6a65096ca794b5634f9fab4ef857fbde55205",
+      "subject": "Show credential validation errors beside each input (#92)"
+    },
+    {
+      "sha": "76e2c8b0728ebacb05ebb5751eaf5ea4795534f6",
+      "subject": "Validate credential fields only on explicit save (#92)"
+    },
+    {
+      "sha": "a99b7ad3aa5c712b1a95c0810fa48bb5fbd8e8cb",
+      "subject": "Rename quick search, search return history and the search keystroke routes (#98)"
+    },
+    {
+      "sha": "76c19eb127d6a5b8ea6793c2609d7cc9de9b30bd",
+      "subject": "Add Android Keystore credential storage and source selection (#93)"
+    },
+    {
+      "sha": "d08e17e17b457928c8a743572edc41c27ffce32b",
+      "subject": "Confirm credential saves inside the button for three seconds (#93)"
+    },
+    {
+      "sha": "308fe2898c4ce5a43ca02f7f8a51b00a3f9e9a8e",
+      "subject": "Enable Android credential saving only for pending edits (#93)"
+    },
+    {
+      "sha": "14a7afb2ea1621f1bda520b0fad554feae6cc03c",
+      "subject": "Persist Android credential source selection independently (#93)"
+    },
+    {
+      "sha": "c3f7b7f33c27a90a89c8ea387d9aefb87cbe4d04",
+      "subject": "Show Android 2FA guidance only while editing (#93)"
+    },
+    {
+      "sha": "da8634bbf949852f5b2d29be448a50a13c489c38",
+      "subject": "Document reviewed CodeQL alert dismissals"
+    },
+    {
+      "sha": "d37cc1edaecaaf4e6ba954c2bab405ba60453082",
+      "subject": "Handle legacy Android credentials and confirmed local deletion (#94)"
+    },
+    {
+      "sha": "6031cd1f430b4add05677b51594d7e39ec292849",
+      "subject": "Align credential actions and emphasize destructive buttons (#94)"
+    },
+    {
+      "sha": "45e83e915140d76672375743fa560127969038f4",
+      "subject": "Manage search history from Settings with pinned entries (#70) (#100)"
+    },
+    {
+      "sha": "c97dc7ebbae641b8ea23d57b154eae4ff14226f8",
+      "subject": "Split Android CI e2e and run the instrumented tests for real (#101)"
+    },
+    {
+      "sha": "f9dbf5bb6dd723aca3d63658d2a7b17e707f1944",
+      "subject": "Keep cloud sync setup parseable by CodeQL"
+    },
+    {
+      "sha": "7f0bb40ac58a0d6f59b47b993b2cb0d48211d94e",
+      "subject": "Verify Android credential privacy across recording and preference boundaries (#95)"
+    },
+    {
+      "sha": "3e8a87e3d2bb9351ed13f51839dd8877e2df769f",
+      "subject": "Adjust the article App Bar and center comment card separators"
+    },
+    {
+      "sha": "30874210dd4a78dad610d8bad34259ef12136db5",
+      "subject": "Read search facts after flagging pending Big5 lead bytes"
+    }
+  ]
+}
