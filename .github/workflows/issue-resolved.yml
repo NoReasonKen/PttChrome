@@ -1,0 +1,26 @@
+name: Issue resolved
+
+# An issue closed as completed has met its acceptance criteria: apply `resolved` and
+# drop the triage state label, so a merge that closes the issue through `Closes #N`
+# finishes it too.
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    if: github.event.issue.state_reason == 'completed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply resolved and remove the state label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number }}
+          LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
+        run: |
+          states=$(jq -r '[.[] | select(IN("needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "backlog"))] | join(",")' <<<"$LABELS")
+          gh issue edit "$NUMBER" --repo "$REPO" --add-label resolved ${states:+--remove-label "$states"}
