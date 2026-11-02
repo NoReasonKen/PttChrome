@@ -398,8 +398,17 @@ export const PrefModal = ({
   const openCategory = useCallback((value) => {
     setNavActiveKey(value);
     setCategoryList(false);
-    if (rightColRef.current) rightColRef.current.scrollTop = 0;
   }, []);
+
+  // The shared column must be visible and the new Tabs.Panel laid out first.
+  // Run before the search-jump effect so an explicit target takes precedence.
+  useEffect(() => {
+    if (!show || (narrow && categoryList)) return;
+    const raf = requestAnimationFrame(() => {
+      if (rightColRef.current) rightColRef.current.scrollTop = 0;
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [show, narrow, categoryList, navActiveKey]);
 
   const openSearchHistory = useCallback(() => {
     if (rightColRef.current) {

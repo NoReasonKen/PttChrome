@@ -3,6 +3,8 @@
 // 是 nowrap＋overflow hidden）。只有完整頁面（Mantine 全域樣式＋PrefModal.css）量得到。
 const { test, expect } = require('@playwright/test');
 const { installReplay, waitConnected, feedRaw } = require('../helpers/replay');
+const { nextFrames } = require('../helpers/real_input');
+const { waitRectStable } = require('../helpers/layout');
 
 const label = (page, key) => page.evaluate((k) => window.__i18n(k), key);
 
@@ -35,3 +37,36 @@ test('左欄的分頁與「還原預設值」字都完整顯示', async ({ page 
   );
   expect(clipped).toEqual([]);
 });
+
+for (const narrow of [true, false]) {
+  test(`settings categories start at the top on ${narrow ? 'mobile' : 'desktop'}`, async ({ page }) => {
+    await page.setViewportSize({ width: narrow ? 390 : 1280, height: 650 });
+    await openSettings(page);
+    const column = page.locator('.PrefModal__Grid__Col--right');
+    const chooseCategory = async (value, labelKey) => {
+      if (narrow) {
+        const back = page.locator('[data-pref-category-back]');
+        if (await back.isVisible()) await back.click();
+        await page.locator(`[data-pref-category="${value}"]`).click();
+      } else {
+        await page.getByRole('tab', { name: await label(page, labelKey), exact: true }).click();
+      }
+      await nextFrames(page);
+      await expect.poll(() => column.evaluate((el) => el.scrollTop)).toBe(0);
+    };
+    const scrollDown = async () => {
+      await waitRectStable(page, '.PrefModal__Grid__Col--right', { fullRect: true });
+      const box = await column.boundingBox();
+      await page.mouse.move(box.x + box.width - 25, box.y + box.height / 2);
+      await page.mouse.wheel(0, 400);
+      await expect.poll(() => column.evaluate((el) => el.scrollTop)).toBeGreaterThan(100);
+    };
+
+    await chooseCategory('general', 'options_general');
+    await scrollDown();
+    await chooseCategory('enhance', 'options_enhance');
+    await scrollDown();
+    await chooseCategory('general', 'options_general');
+    await page.screenshot({ path: test.info().outputPath(`settings-top-${narrow ? 'mobile' : 'desktop'}.png`) });
+  });
+}
