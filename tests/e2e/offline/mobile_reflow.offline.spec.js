@@ -476,6 +476,34 @@ test.describe('手機推文卡片', () => {
     }
   });
 
+  // The separator at a card's bottom sits midway between that comment and the next one: the
+  // comment spacing above a card used to leave the gap under the line much taller than above it.
+  test('separators between comment cards sit midway between the two comments', async ({ page }) => {
+    test.setTimeout(90000);
+    await bootOffline(page, ptt);
+    await ptt.applyPrefs(page, { enableEasyReading: true });
+    await replayCassette(page, article, { easyReading: true });
+    await expect.poll(() => page.evaluate(() => window.__app.view.reflow)).toBe(true);
+    await waitPreviewsSettled(page);
+    const gaps = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('#mainContainer > .screenChunk > span.commentCard'))
+        .filter((c) => {
+          const prev = c.previousElementSibling;
+          return prev && prev.classList.contains('commentCard') && !c.classList.contains('newCommentsStart');
+        })
+        .map((c) => {
+          const prev = c.previousElementSibling;
+          // The separator is the previous card's 1px inset bottom shadow.
+          const line = prev.getBoundingClientRect().bottom;
+          const prevText = prev.querySelector('.commentCardText').getBoundingClientRect().bottom;
+          const nextHead = c.querySelector('.commentCardHead').getBoundingClientRect().top;
+          return { above: line - 1 - prevText, below: nextHead - line };
+        })
+    );
+    expect(gaps.length, 'no adjacent comment cards').toBeGreaterThan(0);
+    for (const g of gaps) expect(Math.abs(g.above - g.below)).toBeLessThanOrEqual(1.5);
+  });
+
   // 檔頭與 80 欄狀態列（docs/mobile.md「收起終端機標頭／狀態列」）：標題、看板、時間、
   // 作者在三行的 App Bar（#66），按鍵在底部導覽；檔頭每一列與 footer overlay 收起。
   test('檔頭整個收起（資訊在三行 App Bar）、80 欄狀態列收起、不橫向溢出', async ({ page }) => {

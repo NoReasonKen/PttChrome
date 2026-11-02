@@ -322,6 +322,15 @@ body.mobile-layout:not(.mobileSelectMode) #mainContainer {
   line-height: 1.3;
   box-shadow: inset 0 -1px 0 #333;
 }
+/* 推文區塊行距（.commentSpacing，見下方那段）在卡片上改成上下對半的 padding：它原本是卡片的
+   margin-top，分隔線畫在上一張卡片底部 ⇒ 線下方比線上方多出整段間距。總高不變、仍是整數 px；
+   「新推文」那張保留自己的 margin-top（小字畫在那段留白裡）。 */
+.main.mobileReflow #mainContainer.commentSpacing > .screenChunk > span[type="bbsrow"].commentCard {
+  padding-block: calc(4px + round(0.275em, 1px));
+}
+.main.mobileReflow #mainContainer.commentSpacing > .screenChunk > span[type="bbsrow"].commentCard:not(.newCommentsStart) {
+  margin-top: 0;
+}
 .commentCard .commentCardHead {
   display: flex;
   align-items: baseline;

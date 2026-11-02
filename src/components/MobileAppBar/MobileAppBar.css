@@ -13,7 +13,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: var(--safe-top, 0px) 16px 0;
+  padding: calc(var(--safe-top, 0px) + 4px) 6px 0;
   /* 低於 Mantine overlay（200）：對話框的遮罩要蓋得住它。高於終端機與 PageTopAlert。 */
   z-index: 150;
   background: rgba(20, 20, 24, 0.96);
@@ -49,7 +49,7 @@
   line-height: 22px;
 }
 
-/* 副標那一行：看板靠左、文章的時間靠右（#66）。看板先讓出空間給時間。 */
+/* 看板那一行：看板靠左、文章的時間靠右（#66）。看板先讓出空間給時間。 */
 .mobileAppBarSubline {
   display: flex;
   gap: 8px;

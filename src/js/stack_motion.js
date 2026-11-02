@@ -6,7 +6,7 @@ import { ARTICLE_SETTLE_MS } from './article_horizontal_gesture';
 
 export const slideDuration = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ARTICLE_SETTLE_MS;
 
-// The lines of the App Bar `appBar` ({ subtitle, time, byline }) under its
+// The lines of the App Bar `appBar` ({ byline, subtitle, time }) under its
 // title, as MobileAppBar lays them out.
 function appBarLines(heading, appBar) {
   const line = (tag, className, text) => {
@@ -15,13 +15,13 @@ function appBarLines(heading, appBar) {
     node.textContent = text;
     return node;
   };
+  if (appBar?.byline) heading.appendChild(line('div', 'mobileAppBarByline', appBar.byline));
   if (appBar?.subtitle || appBar?.time) {
     const subline = line('div', 'mobileAppBarSubline', '');
     subline.appendChild(line('span', 'mobileAppBarSubtitle', appBar.subtitle || ''));
     if (appBar.time) subline.appendChild(line('span', 'mobileAppBarTime', appBar.time));
     heading.appendChild(subline);
   }
-  if (appBar?.byline) heading.appendChild(line('div', 'mobileAppBarByline', appBar.byline));
 }
 
 // What shows under the real screen while it slides: the lower page's live

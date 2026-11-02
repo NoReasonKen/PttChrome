@@ -264,6 +264,9 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
   LinkSegmentBuilder，連結／AID／預覽照舊）。不畫冒號。
   builder 的 div 與空預覽 div 在卡片內收成行內；合併塊第二則起以 `div:empty + bbsline::before` 換行。
   內容暗黃 `.q3` 在卡片內提亮為 `#990`（＝網頁版 `.f3`），`:not()` 讓出上班模式／游標列加亮。
+- 分隔線是卡片底部的 inset box-shadow。推文區塊行距（`.commentSpacing`）在卡片上改成上下對半的 padding，不用
+  margin-top：否則線下方比線上方多出整段間距。「新推文」那張保留 margin-top 畫小字。守護：offline e2e `mobile_reflow`
+  「separators between comment cards」。
 - 契約：外層 `span[type=bbsrow][srow][data-pusher][data-pusher-col]`（`.commentSpacing` 直接子選擇器、長按黑名單），
   標頭與內容每行都是 `[data-type=bbsline][data-row]`。
 - 守護：unit `comment_card.test.js`；offline e2e `mobile_reflow`「手機推文卡片」。
@@ -353,10 +356,10 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
   與 `_articleAuthor/_articleBoard` 同一個檔頭事件記；副標＝看板）；文章列表（listOwner 或 `boardListContextKind==='article-list'`；
   row 0 是 `【板主:x】` ⇒ 必須先於 menu）→ `parseBoardName`；看板列表 → row 0【X】；其他 row 0【X】（`screen_titles.parseHeaderTitle`）→ menu；
   都不是 ⇒ 沿用 prev（不閃）。`newMail`＝row 0 含「你有新信件」（`menu.c#redraw_title`）。
-- Articles show three lines (#66, the owner's decision): the title; the board on the left and the time on the right
-  (the header's 時間 row as PTT shows it, `view._articleTime`); the author ID with nickname (the 作者 row without
-  its board field, `view._articleByline`). Lines 2 and 3 use the subtitle style (12px, line height 16px). Other screens
-  keep their one or two lines. The byline and time are written together with the article context below.
+- Articles show three lines (#66, the owner's decision): the title; the author ID with nickname (the 作者 row
+  without its board field, `view._articleByline`); the board on the left and the time on the right (the header's 時間
+  row as PTT shows it, `view._articleTime`). Lines 2 and 3 use the subtitle style (12px, line height 16px). Other
+  screens keep their one or two lines. The byline and time are written together with the article context below.
 - 「目前這篇」（作者／看板／標題）只准成組寫（`term_view._setArticleContext`）。逐幀規則 `comment_parse.articleContextFromScreen`：
   有檔頭 ⇒ 設；首頁（`第 01~`／舊式狀態列第 1 頁）卻無檔頭（進站系統公告等）⇒ 清空；其餘沿用。離開文章 ⇒ App 的 screenSettled
   依 `shouldClearArticleContextOnSettle` 整組清空（例外：functionMode／跳行修補／pageState 5）。守護 `tests/unit/article_context.test.js`。
