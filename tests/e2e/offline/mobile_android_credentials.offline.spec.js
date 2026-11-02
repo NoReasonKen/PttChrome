@@ -427,14 +427,11 @@ test('mobile confirmed encrypted deletion clears cached reconnect credentials an
   const remove = page.locator('.PrefModal').getByRole('button', {
     name: await text(page, 'options_credentialsDeleteLocal'), exact: true,
   });
-  const reset = page.locator('.PrefModal').getByRole('button', {
-    name: await text(page, 'options_reset'), exact: true,
-  });
   const buttonAppearance = locator => locator.evaluate(button => {
     const style = getComputedStyle(button);
     return { fontSize: style.fontSize, size: style.getPropertyValue('--button-height').trim(), background: style.backgroundColor };
   });
-  const baseline = await buttonAppearance(reset);
+  const baseline = await buttonAppearance(await saveButton(page));
   const appearance = await buttonAppearance(remove);
   expect(appearance.fontSize).toBe(baseline.fontSize);
   expect(appearance.size).toBe(baseline.size);

@@ -19,6 +19,7 @@ import {
   Switch,
   Title,
   Text,
+  Group,
   Anchor,
   ActionIcon,
   useMantineColorScheme,
@@ -349,6 +350,8 @@ export const PrefModal = ({
   const credentialEditorRef = useRef(credentialEditor);
   credentialEditorRef.current = credentialEditor;
   const [confirmCredentialClose, setConfirmCredentialClose] = useState(false);
+  // Restore defaults wipes every preference, auto-login data included: confirm first, cancel by default.
+  const [confirmReset, setConfirmReset] = useState(false);
   const credentialExitAction = useRef(null);
   // 搜尋紀錄管理頁：「本機」底下的一頁（同分類，一層層蓋上去），返回回到本機設定。
   const [searchHistoryOpen, setSearchHistoryOpen] = useState(false);
@@ -597,7 +600,8 @@ export const PrefModal = ({
   };
   backRef.current = () => {
     if (credentialEditor.busy.current) return;
-    if (credentialEditor.confirmDelete) credentialEditor.cancelDelete();
+    if (confirmReset) setConfirmReset(false);
+    else if (credentialEditor.confirmDelete) credentialEditor.cancelDelete();
     else if (confirmCredentialClose) continueCredentialEditing();
     else if (searchHistoryOpen) closeSearchHistory();
     else if (inCategory) setCategoryList(true);
@@ -609,7 +613,11 @@ export const PrefModal = ({
     setConfirmCredentialClose(false);
     onReset(writeValues({ ...DEFAULT_PREFS }));
   }, [onReset]);
-  const onResetClick = () => requestCredentialExit(resetPreferences);
+  const onResetClick = () => setConfirmReset(true);
+  const confirmResetPreferences = () => {
+    setConfirmReset(false);
+    requestCredentialExit(resetPreferences);
+  };
   const finishCredentialExit = () => {
     const action = credentialExitAction.current;
     credentialExitAction.current = null;
@@ -849,6 +857,7 @@ export const PrefModal = ({
       onClose={onCloseClick}
       closeOnEscape={
         !updateOfferOpen &&
+        !confirmReset &&
         !confirmCredentialClose &&
         !credentialEditor.saving &&
         !credentialEditor.confirmDelete
@@ -961,7 +970,7 @@ export const PrefModal = ({
             )}
             {!narrow && (
               <Button
-                variant="default"
+                color="red"
                 className="PrefModal__Grid__Col--left__Reset"
                 onClick={onResetClick}
               >
@@ -2696,17 +2705,17 @@ export const PrefModal = ({
                   />
                 </details>
               </PrefAnchor>
+              {/* Narrow layout has no left column. The reset covers all of Settings, so it lives once, at the end of About. */}
+              {narrow && (
+                <Button
+                  color="red"
+                  className="PrefModal__Grid__Col--right__Reset"
+                  onClick={onResetClick}
+                >
+                  {i18n("options_reset")}
+                </Button>
+              )}
             </Tabs.Panel>
-            {/* 窄版沒有左欄的底部空間：重設放在內容最底。它是整個設定的，管理搜尋紀錄那一頁不放。 */}
-            {narrow && !searchHistoryOpen && (
-              <Button
-                variant="default"
-                className="PrefModal__Grid__Col--right__Reset"
-                onClick={onResetClick}
-              >
-                {i18n("options_reset")}
-              </Button>
-            )}
             {searchHistoryOpen && (
               <div
                 ref={setSubpageFooter}
@@ -2732,6 +2741,25 @@ export const PrefModal = ({
           }
         }}
       />
+      <Modal
+        opened={show && confirmReset}
+        onClose={() => setConfirmReset(false)}
+        title={i18n("options_reset")}
+      >
+        <Text mb="sm">{i18n("options_resetConfirm")}</Text>
+        <Group>
+          <Button color="red" onClick={confirmResetPreferences}>
+            {i18n("options_reset")}
+          </Button>
+          <Button
+            variant="default"
+            data-autofocus
+            onClick={() => setConfirmReset(false)}
+          >
+            {i18n("options_resetCancel")}
+          </Button>
+        </Group>
+      </Modal>
     </Modal>
   );
 };

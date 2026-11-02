@@ -139,7 +139,7 @@ The enabled-by-default `articleHorizontalGestures` preference applies only to mo
 
 ## 設定頁窄版（`PrefModal.jsx` `PREF_NARROW_QUERY` = max-width 640px）
 
-看視窗寬、不看 App 的 mobile 旗標（桌機拉窄同樣適用）。`fullScreen`＋content class `PrefModal--narrow`；標題移到 Modal header；「重設」移到右欄最底。
+看視窗寬、不看 App 的 mobile 旗標（桌機拉窄同樣適用）。`fullScreen`＋content class `PrefModal--narrow`；標題移到 Modal header；「設回預設值」只放在「關於」最底（寬版在左欄底部）；它是紅色的，按下先確認。
 **分類清單**（像 Android 系統設定）：不畫橫向分頁列（10 個分頁時後半段一開始看不到），先列 `PREF_CATEGORIES`
 （每項＝分類名＋一行說明 `optionsDesc_<分類>`，class `PrefModal--categoryList` 時右欄 `display:none`）；點進去才是該分類的設定，
 上方「‹ 分類名」回清單。系統返回：在分類裡回清單，在清單（及寬版）關閉設定並照關閉鈕存檔；設定頁開著就經 `registerBack`＝`App.registerSheetDismiss`
