@@ -14,7 +14,7 @@ const { installPaintedFrameProbe } = require('../helpers/layout');
 const { beginArticleTouch, revealArticleDrawer } = require('../helpers/article_gestures');
 
 const ARTICLE_LAYER = '[data-stack-layer="article"]';
-const LIST_LAYER = '[data-stack-layer="articleList"]';
+const LIST_LAYER = '[data-stack-layer="articleList"]:not([data-stack-parked])';
 const FULL_LIST = { has: ['Alpha topic', 'Delta topic'] };
 const AUTHOR_RESULTS = { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] };
 
@@ -43,7 +43,7 @@ const rowAtTop = (page, root) => page.evaluate(root => {
 // the way it does today, without a reveal.
 const settled = page => page.waitForFunction(() => {
   const app = window.__app;
-  return !document.querySelector('[data-stack-layer], [data-article-exit-underlay]') && app.commandQueue.idle &&
+  return !document.querySelector('[data-stack-layer]:not([data-stack-parked]), [data-article-exit-underlay]') && app.commandQueue.idle &&
     !app.buf._settleTimer && (app.buf.pageState !== 2 || app.listSession.state === 'active');
 });
 
@@ -101,7 +101,7 @@ test('a nested search unwinds one level per Back, each revealing the page below'
     const send = window.__stubWSSent;
     window.__sends = [];
     window.__stubWSSent = data => {
-      window.__sends.push([...document.querySelectorAll('[data-stack-layer]')].map(el => el.dataset.stackLayer).join());
+      window.__sends.push([...document.querySelectorAll('[data-stack-layer]:not([data-stack-parked])')].map(el => el.dataset.stackLayer).join());
       return send(data);
     };
   });

@@ -9,7 +9,7 @@ const ptt = require('../helpers/ptt');
 const { loadCassette, waitFed } = require('../helpers/replay');
 const {
   fedBefore, openNextArticle, holdBackReply, heldBack, homeBoard, boardList, listActive, dashboardVisible, bootDashboard, boardOpened,
-  boardListEngaged, bootBoardList, watchReveals, revealedSinceWatch
+  MAIN, boardListEngaged, bootBoardList, watchReveals, revealedSinceWatch
 } = require('../helpers/stack_routes');
 
 const HOME_LAYER = '[data-stack-layer="home"]';
@@ -61,7 +61,7 @@ test('Back from a board entered from the dashboard reveals the dashboard at once
   await waitFed(page, homeBoard.steps.length);
 });
 
-const BOARD_LAYER = '[data-stack-layer="boardList"]';
+const BOARD_LAYER = '[data-stack-layer="boardList"]:not([data-stack-parked])';
 
 // The first card at the top of `root`'s view: its board and offset.
 const topBoard = (page, root) => page.locator(root).evaluate(el => {
@@ -96,7 +96,7 @@ test('Back from a board entered from a board list reveals that board list at onc
   await release();
   await expect(layer).toHaveCount(0, { timeout: 10000 });
   await boardListEngaged(page);
-  const after = await topBoard(page, '.main');
+  const after = await topBoard(page, MAIN);
   expect(after.board).toBe(scrolled.board);
   expect(Math.abs(after.offset - scrolled.offset)).toBeLessThanOrEqual(1);
   await waitFed(page, boardList.steps.length);

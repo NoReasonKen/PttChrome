@@ -7,7 +7,7 @@ const { beginArticleTouch } = require('../helpers/article_gestures');
 const { touchDrag } = require('../helpers/real_input');
 const { MAIN, ARTICLE_CARD, bootArticleListAtCard, waitArticleOpened, sampleFrames, framesBringingBackArticle } = require('../helpers/stack_routes');
 
-const LAYER = '[data-stack-layer]';
+const LAYER = '[data-stack-layer]:not([data-stack-parked])';
 const UNDERLAY = '[data-article-exit-underlay]';
 const BACK_DELAY_MS = 700;
 

@@ -10,6 +10,10 @@ import { subjectKey, subjectMatches } from './long_push_anchor';
 import { i18n } from './i18n';
 import { PAGE } from './page_stack';
 
+// Only one hidden list per terminal stays connected and laid out. Deeper
+// history keeps its detached renderer and the existing live-layer bound.
+const readyLists = new WeakMap();
+
 // Identity of a list card. An article is its author and title: its number can
 // move when earlier articles are deleted. A board is its name.
 export function cardIdentity(card) {
@@ -100,6 +104,9 @@ export class StackListLayer extends ScreenCopyLayer {
   constructor(view, rect, screen, frame) {
     const kind = frame.enhance.listScroll.kind;
     super(view, frame, kind === 'board' ? PAGE.BOARD_LIST : PAGE.ARTICLE_LIST);
+    // Keep this unchanged between parking and an inert drag reveal: changing
+    // an inherited property on reveal invalidates every descendant's style.
+    this.el.style.pointerEvents = 'none';
     this.kind = kind;
     this._render(rect, frame.forceWidth);
     this.scrollTop = screen.getListScrollTop();
@@ -154,24 +161,79 @@ export class StackListLayer extends ScreenCopyLayer {
   // Ready to be revealed at the current width. A width change, such as a
   // rotation, re-lays out the list, so the stored frame is rendered again over
   // the list's box and the reading position is kept by entry (#35).
-  fitViewport() {
-    if (this.width === window.innerWidth) return true;
+  fitViewport(force = false) {
+    if (!force && this.width === window.innerWidth) return true;
     const rect = this.view.mainDisplay.getBoundingClientRect();
     if (!rect.width || !rect.height) return false;
     this._render(rect, this.view.chh);
     this.scrollTop = null;
+    if (this.el.isConnected) {
+      this._restoreAnchor();
+      this._revealSelection();
+    }
     return true;
   }
 
   // Visible, and usable when `usable`: it scrolls, and its input stays local.
   show(usable) {
+    if (readyLists.get(this.view) === this) readyLists.delete(this.view);
+    this.viewportObserver?.disconnect();
+    this.el.removeAttribute('data-stack-parked');
+    this.el.style.opacity = '';
     if (!this.el.isConnected) {
       this.parent.appendChild(this.el);
       if (this.scrollTop != null) this.screen.setListScrollTop(this.scrollTop);
       else this._restoreAnchor();
       this._revealSelection();
     }
+    this.el.style.pointerEvents = usable ? '' : 'none';
     setUsable(this.el, usable);
+  }
+
+  // Preserve the layout already paid for during entry instead of reattaching
+  // and forcing a full list layout on the first pointer move. Opacity is not
+  // inherited, so revealing the root does not restyle every list descendant.
+  hide() {
+    const previous = readyLists.get(this.view);
+    if (previous && previous !== this) previous._detach();
+    readyLists.set(this.view, this);
+    this.el.setAttribute('data-stack-parked', '');
+    this.el.style.opacity = '0';
+    this.el.style.pointerEvents = 'none';
+    setUsable(this.el, false);
+    if (!this.el.isConnected) {
+      this.parent.appendChild(this.el);
+      if (this.scrollTop != null) this.screen.setListScrollTop(this.scrollTop);
+      else this._restoreAnchor();
+      this._revealSelection();
+    }
+    this.viewportObserver ||= new ResizeObserver(() => {
+      if (readyLists.get(this.view) !== this) return;
+      const rect = this.view.mainDisplay.getBoundingClientRect();
+      if (rect.width !== this.rect.width || rect.height !== this.rect.height || this.view.chh !== this.forceWidth)
+        this.fitViewport(true);
+    });
+    this.viewportObserver.observe(this.view.mainDisplay);
+  }
+
+  // A deeper list becomes the next reveal after a nested Back completes.
+  prepare() {
+    if (readyLists.get(this.view) !== this) this.hide();
+  }
+
+  _detach() {
+    if (readyLists.get(this.view) === this) readyLists.delete(this.view);
+    this.viewportObserver?.disconnect();
+    super.hide();
+    this.el.removeAttribute('data-stack-parked');
+    this.el.style.opacity = '';
+  }
+
+  destroy() {
+    // Destruction must remove the prepared DOM, rather than park it again.
+    this._detach();
+    this.screen?.release();
+    this.screen = null;
   }
 
   // Put the entry that was at the top back at its offset.

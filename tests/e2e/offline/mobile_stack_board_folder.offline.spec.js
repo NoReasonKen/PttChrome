@@ -9,7 +9,7 @@ const { bootScenario, loadCassette, waitFed } = require('../helpers/replay');
 const { MAIN, boardListEngaged, holdBackReply, heldBack, watchReveals, revealedSinceWatch } = require('../helpers/stack_routes');
 
 const folder = loadCassette('scn-stack-boardlist-folder.json');
-const BOARD_LAYER = '[data-stack-layer="boardList"]';
+const BOARD_LAYER = '[data-stack-layer="boardList"]:not([data-stack-parked])';
 
 // The board names on the engaged board list in `root`.
 const boardsIn = (page, root) => page.locator(`${root} .listCard[data-list-board]`).evaluateAll(
@@ -27,7 +27,7 @@ test('a group opened from a board list stacks over it, and Back reveals that lis
   await listShows(page, 'FPGinPTT');
   await boardListEngaged(page);
   // The open slid in and ended: the list it came from waits hidden below.
-  await expect(page.locator('[data-stack-layer]')).toHaveCount(0, { timeout: 10000 });
+  await expect(page.locator('[data-stack-layer]:not([data-stack-parked])')).toHaveCount(0, { timeout: 10000 });
 
   await holdBackReply(page);
   const release = () => page.evaluate(() => window.__heldBack());

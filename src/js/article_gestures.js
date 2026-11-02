@@ -2,7 +2,7 @@ import { readEffectivePrefs } from './pref_storage';
 import { mobileToolbarContext } from './mobile_toolbar';
 import { i18n } from './i18n';
 import { serializedOpHint } from './serialized_op_gate';
-import { ArticleHorizontalGesture, ARTICLE_GESTURE_SLOP } from './article_horizontal_gesture';
+import { ArticleHorizontalGesture, ARTICLE_TAP_SLOP } from './article_horizontal_gesture';
 import { NavigationStack } from './navigation_stack';
 import { PAGE } from './page_stack';
 import { StackEntry } from './stack_entry';
@@ -166,6 +166,15 @@ export class ArticleGestures {
   _move(event) {
     const track = this.track;
     if (!track || event.pointerId !== track.id) return;
+    const timing = this.diag.beginMove(event, track);
+    try {
+      this._moveTracked(event, track, timing);
+    } finally {
+      this.diag.endMove(timing);
+    }
+  }
+
+  _moveTracked(event, track, timing) {
     if (this._swipeLevel() !== track.level || this._otherModalOpen()) return this._cancel();
     const snapshot = track.gesture.move(event.clientX, event.clientY, event.timeStamp);
     if (this.opened || snapshot.operation) {
@@ -173,7 +182,9 @@ export class ArticleGestures {
       if (snapshot.operation) {
         if (snapshot.operation === 'exit') {
           this.exitLevel = track.level;
+          const before = timing && performance.now();
           this._ensureExit();
+          if (timing) timing.prepareMs = performance.now() - before;
           this.exitDistance = snapshot.distance;
           if (!this.frame) this.frame = requestAnimationFrame(() => {
             this.frame = null;
@@ -181,7 +192,9 @@ export class ArticleGestures {
           });
           return;
         }
+        const before = timing && performance.now();
         this._ensurePanel();
+        if (timing) timing.prepareMs = performance.now() - before;
         this.core.setModalOpen(MODAL_SOURCE, true);
         this.reveal = snapshot.reveal;
         if (!this.frame) this.frame = requestAnimationFrame(() => {
@@ -467,7 +480,7 @@ export class ArticleGestures {
       const tap = this.tap;
       this.tap = null;
       if (!tap || tap.id !== event.pointerId) return;
-      if (Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > ARTICLE_GESTURE_SLOP) return;
+      if (Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > ARTICLE_TAP_SLOP) return;
       const button = tap.target.closest?.('[data-article-shortcut]');
       if (button ? !button.contains(event.target) : tap.target !== this.root || event.target !== this.root || this.settling) return;
       this._consume(event);

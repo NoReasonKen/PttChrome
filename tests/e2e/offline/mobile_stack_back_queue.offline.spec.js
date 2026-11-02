@@ -9,7 +9,7 @@ const {
 } = require('../helpers/stack_routes');
 
 const homeArticle = loadCassette('scn-stack-home-article-back');
-const LIST_LAYER = '[data-stack-layer="articleList"]';
+const LIST_LAYER = '[data-stack-layer="articleList"]:not([data-stack-parked])';
 const HOME_LAYER = '[data-stack-layer="home"]';
 
 const pressBack = page => ptt.sendKey(page, 'ArrowLeft');
@@ -39,7 +39,7 @@ for (const [name, secondBack, afterLeave] of [
     await releaseLeave(page);
     // The list takes over, then the queued Back leaves it over the dashboard.
     await expect(page.locator(HOME_LAYER)).toBeVisible({ timeout: 10000 });
-    await expect(page.locator(LIST_LAYER)).toHaveCount(0);
+    await expect(page.locator('[data-stack-layer="articleList"]')).toHaveCount(0);
     await expect.poll(() => heldLeaves(page)).toBe(1);
     expect(await page.evaluate(() => window.__app.homeDashboard.state.visible)).toBe(false);
 

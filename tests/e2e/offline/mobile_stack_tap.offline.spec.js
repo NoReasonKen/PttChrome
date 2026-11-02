@@ -8,7 +8,7 @@ const { loadCassette, bootScenario, waitFed } = require('../helpers/replay');
 const { MAIN, holdBackReply, heldBack } = require('../helpers/stack_routes');
 
 const reopen = loadCassette('scn-stack-article-reopen');
-const LAYER = '[data-stack-layer]';
+const LAYER = '[data-stack-layer]:not([data-stack-parked])';
 const UNDERLAY = '[data-article-exit-underlay]';
 
 const listActive = page => page.waitForFunction(() => {
@@ -29,7 +29,7 @@ async function openRecordedArticle(page) {
   const card = await page.evaluate(() => {
     const ls = window.__app.listSession;
     const idx = window.__app.buf.listLineNums.indexOf(ls._selectedNum);
-    const row = document.querySelector(`.main [data-row="${ls.headerRows() + ls._sequence().indexOf(idx)}"]`)?.closest('.listCard');
+    const row = document.querySelector(`.main:not([data-stack-layer]) [data-row="${ls.headerRows() + ls._sequence().indexOf(idx)}"]`)?.closest('.listCard');
     return row && { author: row.dataset.listAuthor, title: row.dataset.listTitle };
   });
   expect(card).toBeTruthy();
@@ -73,7 +73,7 @@ test('a tapped article that moved on the refreshed list is found by identity and
   // Stand-in for a list where earlier articles were deleted: on the revealed
   // list the article sits on another card than on the refreshed one.
   const moved = await page.evaluate(({ author, title }) => {
-    const cards = [...document.querySelectorAll('[data-stack-layer] .listCard')];
+    const cards = [...document.querySelectorAll('[data-stack-layer]:not([data-stack-parked]) .listCard')];
     const own = cards.find(c => c.dataset.listAuthor === author && c.dataset.listTitle === title);
     const other = cards.find(c => c !== own && c.querySelector('.listCardBody') && c.getBoundingClientRect().height);
     own.dataset.listTitle = 'another article';

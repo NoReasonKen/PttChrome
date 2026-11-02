@@ -9,7 +9,7 @@ const { waitRectStable } = require('../helpers/layout');
 const { THREAD, NEAR_REPLY_BOARD, bootThreadBoard, listActive } = require('../helpers/thread_jump');
 
 const MAIN = '.main:not([data-stack-layer])';
-const LIST_LAYER = '[data-stack-layer="articleList"]';
+const LIST_LAYER = '[data-stack-layer="articleList"]:not([data-stack-parked])';
 const UNDERLAY = '[data-article-exit-underlay]';
 
 async function jump(page, key, num) {
@@ -146,15 +146,17 @@ async function backWalk(page, count) {
       window.__reveals = { layer: false, fallback: false };
       window.__revealWatch?.disconnect();
       const has = (node, selector) => node.nodeType === 1 && (node.matches(selector) || !!node.querySelector(selector));
-      window.__revealWatch = new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => {
-        if (has(node, '[data-stack-layer]')) window.__reveals.layer = true;
-        if (has(node, '[data-article-exit-underlay][data-preview="fallback"]')) window.__reveals.fallback = true;
-      })));
-      window.__revealWatch.observe(document.body, { childList: true, subtree: true });
+      window.__revealWatch = new MutationObserver(records => {
+        if (document.querySelector('[data-stack-layer]:not([data-stack-parked])')) window.__reveals.layer = true;
+        records.forEach(record => record.addedNodes.forEach(node => {
+          if (has(node, '[data-article-exit-underlay][data-preview="fallback"]')) window.__reveals.fallback = true;
+        }));
+      });
+      window.__revealWatch.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-stack-parked'] });
     });
     await page.goBack();
     await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle && !window.__app.articleGestures.stack.handingOff &&
-      !document.querySelector('[data-stack-layer], [data-article-exit-underlay]'))).toBe(true);
+      !document.querySelector('[data-stack-layer]:not([data-stack-parked]), [data-article-exit-underlay]'))).toBe(true);
     expect(await page.evaluate(() => window.__reveals), `Back ${i + 1}`).toEqual({ layer: true, fallback: false });
   }
 }
@@ -199,7 +201,7 @@ test('Back from author results reveals the source article at its own layout unde
   });
   await page.goBack();
   await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle && !window.__app.articleGestures.stack.handingOff &&
-    !document.querySelector('[data-stack-layer]'))).toBe(true);
+    !document.querySelector('[data-stack-layer]:not([data-stack-parked])'))).toBe(true);
   expect(await page.evaluate(() => window.__threadServer.state)).toMatchObject({ surface: 'article', open: { num: 1100 } });
   const frames = await page.evaluate(() => window.__frames);
   expect(frames.length).toBeGreaterThan(5);

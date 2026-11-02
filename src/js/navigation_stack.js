@@ -586,6 +586,9 @@ export class NavigationStack {
     if (how === 'timeout' && h.hint) h.hint();
     if (how === 'presented' && h.tap) h.layer.openTapped(core, h.tap);
     h.layer?.destroy();
+    // Prepare the next list outside a new contact, after the spent layer is
+    // removed. Only that list remains connected below the real page.
+    if (how === 'presented') this._revealed()?.layer.prepare?.();
     // Through the usual path: it reveals the next lower page, or waits for PTT.
     // Sent from its own task, since the swap can run inside the owning
     // session's presentation.

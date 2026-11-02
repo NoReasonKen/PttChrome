@@ -22,6 +22,42 @@ export class DrawerDiagnostics {
     this.gestures = gestures;
   }
 
+  // [DEBUG-69-latency] Temporary device probe, limited to three moves per
+  // contact while recording. An animation-frame callback is not a display
+  // presentation timestamp; it only bounds the page's scheduling work.
+  beginMove(event, track) {
+    const recorder = this.gestures.core.debugRecorder;
+    if (!recorder?.isRecording) return null;
+    track.diagnosticMoves = (track.diagnosticMoves || 0) + 1;
+    if (track.diagnosticMoves > 3) return null;
+    const received = performance.now();
+    return {
+      recorder, gesture: track.gesture, received,
+      move: track.diagnosticMoves,
+      eventLagMs: received - event.timeStamp,
+      contactMs: event.timeStamp - track.gesture.start.t,
+      dx: event.clientX - track.gesture.start.x,
+      dy: event.clientY - track.gesture.start.y
+    };
+  }
+
+  endMove(timing) {
+    if (!timing) return;
+    const { recorder, gesture, received, ...info } = timing;
+    const round = value => Math.round(value * 100) / 100;
+    const ended = performance.now();
+    const snapshot = gesture.snapshot();
+    const pendingPaint = !!this.gestures.frame;
+    requestAnimationFrame(() => {
+      if (!recorder.isRecording) return;
+      recorder.log('[DEBUG-69-latency]', {
+        ...Object.fromEntries(Object.entries(info).map(([key, value]) => [key, round(value)])),
+        axis: snapshot.axis, operation: snapshot.operation, distance: snapshot.distance,
+        handlerMs: round(ended - received), frameWaitMs: round(performance.now() - ended), pendingPaint
+      });
+    });
+  }
+
   // Record the drawer's input through `listen`, ArticleGestures' own listener
   // registration. They are added after its handlers, so the states logged are
   // after handling (taps right after the drawer opens).

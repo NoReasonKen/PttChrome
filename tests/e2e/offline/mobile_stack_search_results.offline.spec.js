@@ -15,7 +15,7 @@ const {
   MAIN, holdBackReply, heldBack, sampleFrames, framesBringingBackArticle, watchReveals, revealedSinceWatch
 } = require('../helpers/stack_routes');
 
-const LAYER = '[data-stack-layer="articleList"]';
+const LAYER = '[data-stack-layer="articleList"]:not([data-stack-parked])';
 const UNDERLAY = '[data-article-exit-underlay]';
 const RESULTS = { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] };
 
