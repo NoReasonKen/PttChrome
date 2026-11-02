@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "version": "0.3.1",
   "tag": "android-fork-v0.3.1",
-  "publishedAt": null,
+  "publishedAt": "2026-11-02T14:21:50Z",
   "previousRelease": {
     "version": "0.3.0",
     "sourceCommit": "8e573552e5b801cb13a4fb4da0e50958522766ef"
@@ -103,5 +103,7 @@
       "sha": "30874210dd4a78dad610d8bad34259ef12136db5",
       "subject": "Read search facts after flagging pending Big5 lead bytes"
     }
-  ]
+  ],
+  "sourceCommit": "cf133db5c96dd6e91656ca26597bf8394610243f",
+  "versionCode": 33
 }
