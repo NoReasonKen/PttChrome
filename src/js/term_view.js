@@ -689,18 +689,19 @@ TermView.prototype = {
     this.buf.queueUpdate(true);
   },
 
-  // 每秒閃爍相位（TermBuf.notify 尾端呼叫）。省電不變量（守護 tests/unit/blink_phase.test.js，
-  // 數據見 docs/deferred/android-battery-drain.md）：
-  //   - 游標只切換自己的 class：CSS 只動 visibility ⇒ 只需要 paint，不觸發 layout。
-  //   - body.blink--active（SGR 5 閃爍字 .qq* 的 CSS 開關）只在 DOM 真的有閃爍字時才掛。
-  //     切換 body class 會讓整棵樹做一次樣式失效，成本跟著節點數變大。
-  //     toggle(force) 狀態不變時是 no-op；querySelector 每兩拍只跑一次，而且找到第一個就停。
-  //     用整份 document 查，所以 InputHelperModal 的預覽也會閃。
+  // TermBuf.notify advances the phase without invalidating the whole document.
+  // The cursor owns its visibility class; each displayed rendering root owns
+  // its SGR 5 text phase. Parked lists retain layout but neither participate in
+  // blink detection nor receive phase changes. Keep the color-helper preview
+  // and revealed inert layers blinking independently of the foreground screen.
+  // Covered by blink_phase.test.js and blink_cursor.offline.spec.js.
   toggleBlinkPhase: function() {
     this._blinkPhase = !this._blinkPhase;
     this.bbsCursor.classList.toggle('cursor--blink-on', this._blinkPhase);
-    var want = this._blinkPhase && !!document.querySelector('[class*="qq"]');
-    document.body.classList.toggle('blink--active', want);
+    for (const root of document.querySelectorAll('.main:not([data-stack-parked]), .InputHelperModal__Preview')) {
+      const want = this._blinkPhase && !!root.querySelector('[class*="qq"]');
+      root.classList.toggle('blink--active', want);
+    }
   },
 
   setBuf: function(buf) {

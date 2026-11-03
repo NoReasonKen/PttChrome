@@ -2,7 +2,7 @@ import { readEffectivePrefs } from './pref_storage';
 import { mobileToolbarContext } from './mobile_toolbar';
 import { i18n } from './i18n';
 import { serializedOpHint } from './serialized_op_gate';
-import { ArticleHorizontalGesture, ARTICLE_GESTURE_SLOP } from './article_horizontal_gesture';
+import { ArticleHorizontalGesture, ARTICLE_TAP_SLOP } from './article_horizontal_gesture';
 import { NavigationStack } from './navigation_stack';
 import { PAGE } from './page_stack';
 import { StackEntry } from './stack_entry';
@@ -436,7 +436,11 @@ export class ArticleGestures {
     if (!this.exitUnderlay) return;
     this._stopMotion();
     this.backsDuringSlide = null;
-    if (!this.stack.handingOff) this.stack.revealable()?.hide();
+    if (!this.stack.handingOff) {
+      const layer = this.stack.revealable();
+      if (layer?.prepare) layer.prepare();
+      else layer?.hide();
+    }
     releaseSurfaces(this.exitSurfaces);
     this.exitUnderlay.remove();
     this.exitUnderlay = this.exitSurfaces = null;
@@ -467,7 +471,7 @@ export class ArticleGestures {
       const tap = this.tap;
       this.tap = null;
       if (!tap || tap.id !== event.pointerId) return;
-      if (Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > ARTICLE_GESTURE_SLOP) return;
+      if (Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > ARTICLE_TAP_SLOP) return;
       const button = tap.target.closest?.('[data-article-shortcut]');
       if (button ? !button.contains(event.target) : tap.target !== this.root || event.target !== this.root || this.settling) return;
       this._consume(event);

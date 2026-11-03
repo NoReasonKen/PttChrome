@@ -14,8 +14,9 @@ export function setUsable(el, usable) {
 
 // A second instance of the shared screen renderer that re-renders a page's
 // last presented frame over the real screen's box. It is rendered when the
-// page is left, so the reveal only attaches it; until then it stays out of the
-// document, so a page read has one screen surface.
+// page is left. A list layer may retain one hidden, connected copy after entry
+// so its next reveal can reuse layout; other retained copies stay detached
+// until they are revealed.
 export class ScreenCopyLayer {
   constructor(view, frame, kind) {
     const main = view.mainDisplay;

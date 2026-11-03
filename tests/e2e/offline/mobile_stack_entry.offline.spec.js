@@ -36,7 +36,7 @@ async function sampleEntryFrames(page) {
       const main = document.querySelector(MAIN);
       window.__frames.push({
         left: Math.round(main.getBoundingClientRect().left) - rest, shows: shown(main),
-        lower: visible(document.querySelector('[data-stack-layer]')),
+        lower: [...document.querySelectorAll('[data-stack-layer]:not([data-stack-parked])')].some(visible),
         home: visible(document.querySelector('#homeDashboard:not([data-stack-layer])')),
         loading: visible(document.querySelector('.ListLoadingHint'))
       });

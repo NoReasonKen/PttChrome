@@ -9,6 +9,11 @@ import { listEntryOf } from './split_reader';
 import { subjectKey, subjectMatches } from './long_push_anchor';
 import { i18n } from './i18n';
 import { PAGE } from './page_stack';
+import { mobileFillLayout, listRowSpan } from './mobile_layout';
+
+// Only one hidden list per terminal stays connected and laid out. Deeper
+// history keeps its detached renderer and the existing live-layer bound.
+const readyLists = new WeakMap();
 
 // Identity of a list card. An article is its author and title: its number can
 // move when earlier articles are deleted. A board is its name.
@@ -100,6 +105,9 @@ export class StackListLayer extends ScreenCopyLayer {
   constructor(view, rect, screen, frame) {
     const kind = frame.enhance.listScroll.kind;
     super(view, frame, kind === 'board' ? PAGE.BOARD_LIST : PAGE.ARTICLE_LIST);
+    // Keep this unchanged between parking and an inert drag reveal: changing
+    // an inherited property on reveal invalidates every descendant's style.
+    this.el.style.pointerEvents = 'none';
     this.kind = kind;
     this._render(rect, frame.forceWidth);
     this.scrollTop = screen.getListScrollTop();
@@ -110,10 +118,47 @@ export class StackListLayer extends ScreenCopyLayer {
   _render(rect, forceWidth) {
     this.rect = rect;
     this.forceWidth = forceWidth;
+    this.el.style.fontSize = this.el.style.lineHeight = forceWidth + 'px';
     const enhance = Object.assign({}, this.frame.enhance, {
       listScroll: Object.assign({}, this.frame.enhance.listScroll, { scrollable: true })
     });
+    if (enhance.listCards) {
+      enhance.listScroll.viewportPx = this.view.listCardViewportPx();
+      const count = Math.max(0, this.frame.lines.length - enhance.listScroll.bodyStart - 1);
+      enhance.listScroll.tailPx = Math.max(0, enhance.listScroll.viewportPx - count * listRowSpan(true) * forceWidth);
+    }
     this._renderOver(rect, forceWidth, false, enhance);
+    this._clipToAppBar(rect);
+  }
+
+  // The real App Bar covers a list shifted upward by the keyboard. Its lower
+  // copy lives behind this layer, so keep those same covered rows clipped.
+  _clipToAppBar(rect) {
+    const bottom = document.getElementById('mobileAppBar')?.getBoundingClientRect().bottom ?? rect.top;
+    const top = this.frame.enhance.listCards ? Math.max(0, bottom - rect.top) : 0;
+    this.el.style.clipPath = top ? `inset(${top}px 0 0)` : '';
+  }
+
+  // The list keeps its content height above a keyboard, unlike an article.
+  // Share the real list's layout rule without changing the foreground surface.
+  _viewportRect() {
+    const main = this.view.mainDisplay;
+    const box = main.getBoundingClientRect();
+    // A handoff can refit while the foreground is still sliding. The lower
+    // page follows its layout box, not the stack's horizontal animation.
+    const translateX = parseFloat(getComputedStyle(main).translate) || 0;
+    const rect = { left: box.left - translateX, top: box.top, width: box.width, height: box.height };
+    if (!this.frame.enhance.listCards) return rect;
+    const fill = mobileFillLayout({
+      innerHeight: this.view.innerBounds.height,
+      topInset: this.view.topInset,
+      bottomInset: this.view.keyboardInset,
+      contentPx: this.view.listCardViewportPx()
+    });
+    return {
+      left: rect.left, width: rect.width, height: fill.height,
+      top: rect.top - (parseFloat(main.style.marginTop) || 0) + fill.marginTop
+    };
   }
 
   // The card of frame row `row`, or null when the list does not show it.
@@ -126,6 +171,7 @@ export class StackListLayer extends ScreenCopyLayer {
   // was posted before that one, null when unknown; `first`: it is the first
   // article of the thread. Returns whether the list shows it.
   select(article, up, first = false) {
+    if (!this.screen) return false;
     const lines = this.frame.lines;
     const bodyStart = this.frame.enhance.listScroll.bodyStart;
     const from = lines.findIndex((line, r) => r >= bodyStart && r < lines.length - 1 && hasServerCursorMark(line, 0));
@@ -154,24 +200,104 @@ export class StackListLayer extends ScreenCopyLayer {
   // Ready to be revealed at the current width. A width change, such as a
   // rotation, re-lays out the list, so the stored frame is rendered again over
   // the list's box and the reading position is kept by entry (#35).
-  fitViewport() {
-    if (this.width === window.innerWidth) return true;
-    const rect = this.view.mainDisplay.getBoundingClientRect();
+  fitViewport(force = false) {
+    if (!this.screen) return false;
+    const rect = this._viewportRect();
     if (!rect.width || !rect.height) return false;
+    const viewportChanged = this.frame.enhance.listCards &&
+      this.screen.props.enhance.listScroll.viewportPx !== this.view.listCardViewportPx();
+    if (!force && this.width === window.innerWidth && rect.width === this.rect.width &&
+        this.forceWidth === this.view.chh && !viewportChanged) {
+      // Keyboard-only changes move the box, preserving the prepared rows.
+      if (rect.top !== this.rect.top || rect.height !== this.rect.height) {
+        Object.assign(this.el.style, { top: rect.top + 'px', height: rect.height + 'px' });
+        // The foreground can still be translated while canceling an exit.
+        // Cache only the geometry applied to this stationary lower page.
+        this.rect = { left: this.rect.left, width: this.rect.width, top: rect.top, height: rect.height };
+        this._clipToAppBar(rect);
+      }
+      return true;
+    }
+    if (this.el.isConnected) this.anchor = topCard(this.el, this.el.getBoundingClientRect().top);
     this._render(rect, this.view.chh);
     this.scrollTop = null;
+    if (this.el.isConnected) {
+      this._restoreAnchor();
+      this._revealSelection();
+    }
     return true;
   }
 
   // Visible, and usable when `usable`: it scrolls, and its input stays local.
   show(usable) {
+    if (!this.screen) return;
+    if (readyLists.get(this.view) === this) readyLists.delete(this.view);
+    this.viewportObserver?.disconnect();
+    this.el.removeAttribute('data-stack-parked');
+    this.el.style.opacity = '';
     if (!this.el.isConnected) {
       this.parent.appendChild(this.el);
       if (this.scrollTop != null) this.screen.setListScrollTop(this.scrollTop);
       else this._restoreAnchor();
       this._revealSelection();
     }
+    this.el.style.pointerEvents = usable ? '' : 'none';
     setUsable(this.el, usable);
+  }
+
+  // Preserve the layout already paid for during entry instead of reattaching
+  // and forcing a full list layout on the first pointer move. Opacity is not
+  // inherited, so revealing the root does not restyle every list descendant.
+  park() {
+    if (!this.screen) return;
+    const previous = readyLists.get(this.view);
+    if (previous && previous !== this) previous._detach();
+    readyLists.set(this.view, this);
+    this.el.setAttribute('data-stack-parked', '');
+    this.el.classList.remove('blink--active');
+    this.el.style.opacity = '0';
+    this.el.style.pointerEvents = 'none';
+    setUsable(this.el, false);
+    if (!this.el.isConnected) {
+      this.parent.appendChild(this.el);
+      if (this.scrollTop != null) this.screen.setListScrollTop(this.scrollTop);
+      else this._restoreAnchor();
+      this._revealSelection();
+    }
+    this.viewportObserver ||= new ResizeObserver(() => {
+      if (readyLists.get(this.view) !== this) return;
+      const rect = this.view.mainDisplay.getBoundingClientRect();
+      // An article shrinks for the keyboard; a list keeps its content height.
+      // Only width and font changes require preparing the list's layout again.
+      if (rect.width !== this.rect.width || this.view.chh !== this.forceWidth)
+        this.fitViewport(true);
+    });
+    this.viewportObserver.observe(this.view.mainDisplay);
+  }
+
+  // A deeper list becomes the next reveal after a nested Back completes.
+  prepare() {
+    if (readyLists.get(this.view) !== this) this.park();
+  }
+
+  // Taking a layer out of view does not make it the next prepared page.
+  hide() {
+    this._detach();
+  }
+
+  _detach() {
+    if (readyLists.get(this.view) === this) readyLists.delete(this.view);
+    this.viewportObserver?.disconnect();
+    super.hide();
+    this.el.removeAttribute('data-stack-parked');
+    this.el.style.opacity = '';
+  }
+
+  destroy() {
+    // Destruction must remove the prepared DOM, rather than park it again.
+    this._detach();
+    this.screen?.release();
+    this.screen = null;
   }
 
   // Put the entry that was at the top back at its offset.
@@ -185,6 +311,7 @@ export class StackListLayer extends ScreenCopyLayer {
   // Put the real list at this layer's reading position: the same entry at
   // the same offset from the top of the view.
   alignReal(core) {
+    if (!this.screen) return false;
     const realScreen = core.view.componentScreen;
     const shift = anchorShift(core.view.mainDisplay, topCard(this.el, this.el.getBoundingClientRect().top));
     if (shift == null) return false;
@@ -194,6 +321,7 @@ export class StackListLayer extends ScreenCopyLayer {
 
   // The entry a tap on this layer chose, or null.
   tapOf(event) {
+    if (!this.screen) return null;
     const card = event.type === 'click' && event.target.closest?.('.listCardBody') && event.target.closest('.listCard');
     return card ? cardIdentity(card) : null;
   }
@@ -201,6 +329,7 @@ export class StackListLayer extends ScreenCopyLayer {
   // Open the remembered entry on the refreshed list, found by identity, through
   // its list session's own open path.
   openTapped(core, id) {
+    if (!this.screen) return;
     const row = findCard(core.view.mainDisplay, id)?.querySelector('.listCardBody')?.closest('[data-row]')?.dataset.row;
     if (row == null) {
       core.view.flashListHint?.(i18n(this.kind === 'board' ? 'stack_boardGone' : 'stack_articleGone'), STACK_NOTICE_MS);

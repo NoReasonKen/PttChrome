@@ -19,11 +19,10 @@ const TWO_COLOR_BLINK_CHAR =
 const TWO_COLOR_PLAIN_CHAR =
   '\x1b[2J\x1b[5;1H\x1b[0;37m\xa4\x1b[0;33m\xa4\x1b[24;80H';
 
-// 閃爍相位每秒 toggle 一次，量之前先自己把 blink--active 掛上／拿掉，否則量到的是
-// 隨機相位（cursor_shape.offline.spec.js 也是這樣處理）。
+// Set the rendering-root phase before sampling instead of racing the timer.
 async function colorsWithBlink(page, active) {
   return page.evaluate((active) => {
-    document.body.classList.toggle('blink--active', active);
+    document.querySelector('.main:not([data-stack-layer])').classList.toggle('blink--active', active);
     const el = document.querySelector('#mainContainer .qq2');
     if (!el) return null;
     return {

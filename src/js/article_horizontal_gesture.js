@@ -1,5 +1,6 @@
 // Gesture constants are initial calibration values, pending Android feedback.
-export const ARTICLE_GESTURE_SLOP = 10;
+export const ARTICLE_GESTURE_SLOP = 0;
+export const ARTICLE_TAP_SLOP = 10;
 export const ARTICLE_FLING_WINDOW_MS = 100;
 export const ARTICLE_FLING_SPEED = 0.65;
 export const ARTICLE_LONG_PRESS_MS = 450;
@@ -25,7 +26,7 @@ export class ArticleHorizontalGesture {
     const dy = y - this.start.y;
     if (!this.axis) {
       if (t - this.start.t >= ARTICLE_LONG_PRESS_MS) this.axis = 'vertical';
-      else if (Math.max(Math.abs(dx), Math.abs(dy)) >= ARTICLE_GESTURE_SLOP) {
+      else if ((dx !== 0 || dy !== 0) && Math.max(Math.abs(dx), Math.abs(dy)) >= ARTICLE_GESTURE_SLOP) {
         this.axis = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
         if (this.axis === 'horizontal') {
           if (this.opened) this.operation = 'close';

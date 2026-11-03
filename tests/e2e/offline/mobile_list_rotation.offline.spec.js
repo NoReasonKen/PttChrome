@@ -150,7 +150,7 @@ test('shortcut results retain their search trail and source layer through rotati
   expect(await page.evaluate(() => window.__app.articleGestures.stack.stack.pages)).toEqual(stack);
   await ptt.sendKey(page, 'ArrowLeft');
   await waitArticle(page, 'Alpha');
-  await expect(page.locator('[data-stack-layer]')).toHaveCount(0);
+  await expect(page.locator('[data-stack-layer]:not([data-stack-parked])')).toHaveCount(0);
 });
 
 test('short lists retain a pinned selection without needing a numeric jump', async ({ page }) => {
@@ -239,14 +239,14 @@ test('rotation during Back waits for the revealed list handoff before redrawing 
   const rows = await page.evaluate(() => window.__app.buf.rows);
   await page.evaluate(() => { window.__shortcutServer.state.holdResponses = true; });
   await ptt.sendKey(page, 'ArrowLeft');
-  await expect(page.locator('[data-stack-layer="articleList"]')).toBeVisible();
+  await expect(page.locator('[data-stack-layer="articleList"]:not([data-stack-parked])')).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.__app.articleGestures.stack.handingOff)).toBe(true);
   await page.setViewportSize(LANDSCAPE);
   await expect.poll(() => page.evaluate(() => !!window.__app.listResize.pending)).toBe(true);
   expect(await page.evaluate(() => window.__app.buf.rows)).toBe(rows);
   await page.evaluate(() => window.__shortcutServer.releaseResponses());
   await stableList(page);
-  await expect(page.locator('[data-stack-layer]')).toHaveCount(0);
+  await expect(page.locator('[data-stack-layer]:not([data-stack-parked])')).toHaveCount(0);
   await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
   expect(await page.evaluate(() => window.__app.listSession._boardName)).toBe('Test');
   expect(await page.evaluate(() => window.__app.buf.rows)).toBeLessThan(rows);

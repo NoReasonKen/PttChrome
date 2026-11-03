@@ -78,7 +78,8 @@ export class StackEntry {
     this.underlay.remove();
     // The page opened from stays as the lower page, hidden, unless the open
     // was abandoned.
-    this.layer.hide();
+    if (!this.dropped && this.layer.prepare) this.layer.prepare();
+    else this.layer.hide();
     this.dropped?.destroy();
     this.onEnd(this);
   }

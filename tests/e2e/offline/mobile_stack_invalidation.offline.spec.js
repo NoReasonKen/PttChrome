@@ -52,7 +52,7 @@ test('Back from an article reopened by search backtracking reveals its list, not
   await waitList(page, RESULTS);
   await pressBack(page);
   await waitArticle(page, 'Alpha');
-  await expect(page.locator('[data-stack-layer]')).toHaveCount(0, { timeout: 10000 });
+  await expect(page.locator('[data-stack-layer]:not([data-stack-parked])')).toHaveCount(0, { timeout: 10000 });
   await articleRead(page);
   // Alpha stayed alive under its results and was reopened by its code (#49):
   // Back from it reveals the list it was opened from, and only that list.
@@ -129,12 +129,12 @@ test('after a width change, the revealed list fits the new width at the same ent
   await holdLeaves(page);
   await pressBack(page);
   await expect.poll(() => heldLeaves(page)).toBe(1);
-  const layer = page.locator('[data-stack-layer="articleList"]');
+  const layer = page.locator('[data-stack-layer="articleList"]:not([data-stack-parked])');
   await expect(layer).toBeVisible();
   const fit = await layer.evaluate(el => ({ width: el.getBoundingClientRect().width, overflow: el.scrollWidth - el.clientWidth }));
   expect(fit.width).toBeCloseTo(width - 60, 0);
   expect(fit.overflow).toBeLessThanOrEqual(0);
-  expect(await topCardTitle(page, '[data-stack-layer="articleList"]')).toBe(entry);
+  expect(await topCardTitle(page, '[data-stack-layer="articleList"]:not([data-stack-parked])')).toBe(entry);
 
   // The dashboard below follows the new width too.
   await releaseLeave(page);

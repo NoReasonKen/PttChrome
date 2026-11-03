@@ -12,7 +12,7 @@ const { bootScenario, loadCassette, waitFed } = require('../helpers/replay');
 const { MAIN, boardListEngaged, holdLeaves, heldLeaves, releaseLeave, recordHints, recordedHints } = require('../helpers/stack_routes');
 
 const folder = loadCassette('scn-stack-boardlist-folder.json');
-const BOARD_LAYER = '[data-stack-layer="boardList"]';
+const BOARD_LAYER = '[data-stack-layer="boardList"]:not([data-stack-parked])';
 const UNDERLAY = '[data-article-exit-underlay]';
 // The handoff's bound (page_stack.js#HANDOFF_TIMEOUT_MS).
 const HANDOFF_TIMEOUT_MS = 5000;
@@ -34,7 +34,7 @@ async function groupOverClassList(page) {
   await ptt.sendKey(page, 'Enter');
   await listShows(page, 'FPGinPTT');
   await boardListEngaged(page);
-  await expect(page.locator('[data-stack-layer]')).toHaveCount(0, { timeout: 10000 });
+  await expect(page.locator('[data-stack-layer]:not([data-stack-parked])')).toHaveCount(0, { timeout: 10000 });
   await holdLeaves(page);
   const main = await waitRectStable(page, MAIN);
   return { main, y: main.top + main.height / 2 };

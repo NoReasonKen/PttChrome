@@ -171,7 +171,7 @@ const holdLeaves = page => page.evaluate(() => {
   window.__leaves = [];
   window.__stubWSSent = data => {
     if (data.indexOf('\x1b[D') < 0) return send(data);
-    window.__leaves.push([...document.querySelectorAll('[data-stack-layer]')].map(el => el.dataset.stackLayer));
+    window.__leaves.push([...document.querySelectorAll('[data-stack-layer]:not([data-stack-parked])')].map(el => el.dataset.stackLayer));
     window.__heldLeaves.push(() => send(data));
   };
 });
@@ -224,8 +224,8 @@ const framesBringingBackArticle = frames =>
 const watchReveals = page => page.evaluate(() => {
   window.__revealed = false;
   new MutationObserver(() => {
-    if (document.querySelector('[data-stack-layer], [data-article-exit-underlay]')) window.__revealed = true;
-  }).observe(document.body, { childList: true, subtree: true });
+    if (document.querySelector('[data-stack-layer]:not([data-stack-parked]), [data-article-exit-underlay]')) window.__revealed = true;
+  }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-stack-parked'] });
 });
 const revealedSinceWatch = page => page.evaluate(() => window.__revealed);
 

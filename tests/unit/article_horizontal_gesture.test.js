@@ -47,10 +47,16 @@ describe('article horizontal gesture release', () => {
     expect(gesture.release(40).opened).toBe(false);
   });
 
-  it('preserves long press ownership and ignores contact jitter', () => {
+  it('keeps stationary contacts undecided and preserves long press ownership', () => {
     const gesture = start();
-    expect(gesture.move(345, 200, 10).operation).toBe(null);
+    expect(gesture.move(350, 200, 10).axis).toBe(null);
     expect(gesture.move(50, 200, 500).operation).toBe(null);
+  });
+
+  it('follows the first nonzero horizontal movement without accumulating a dead zone', () => {
+    const gesture = start();
+    expect(gesture.move(349, 200, 10)).toMatchObject({ axis: 'horizontal', operation: 'open', distance: 1, reveal: 1 });
+    expect(gesture.move(346, 200, 20).reveal).toBe(4);
   });
 
   it('restores the initial state on cancellation and cannot chain close into exit', () => {
