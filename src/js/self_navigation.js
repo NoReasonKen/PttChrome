@@ -15,8 +15,9 @@
 // 為什麼是「時間窗」而不是 begin/end 配對：same-document traversal 會派發
 // popstate **與** hashchange 兩個事件，規範沒保證我們讀得到的順序，在其中一個
 // handler 裡關掉旗標就可能剛好漏掉另一個。時間窗與順序無關。窗口長度＝
-// history_back_guard 的 RESTORE_CHECK_MS（120ms）：traversal 的事件是同一批
-// task，遠在窗內；而使用者要貼一條新連結至少得先點到網址列，不可能落在窗內。
+// history_back_guard 的 RESTORE_CHECK_MS（120ms），從 traversal 落地後再算一個窗：
+// 忙碌的裝置上 traversal 可能晚於 120ms 才落地，而 hashchange 是落地之後另一個
+// task（#112）；使用者要貼一條新連結至少得先點到網址列，不可能落在窗內。
 let depth = 0;
 
 // 進入自造導航。回傳「結束」函式——呼叫端負責在時間窗到期時呼叫它。
