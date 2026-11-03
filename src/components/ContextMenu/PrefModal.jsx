@@ -122,9 +122,10 @@ const setFlashKey = (key) => {
 };
 const useFlashKey = () => useSyncExternalStore(subscribeFlash, getFlashKey);
 
-// 窄螢幕（手機直向）版型：全螢幕＋頂端橫向分頁（PrefModal.css `.PrefModal--narrow`）。
-// 寬版的 160px 左欄在 ~400px 寬的手機上會把內容擠到只剩一半。看視窗寬而不是
-// App 的 mobile 旗標：桌機把視窗拉窄同樣需要。
+// Narrow Settings uses a full-screen category list with drill-down pages
+// (docs/mobile.md, narrow Settings; PrefModal.css `.PrefModal--narrow`).
+// Match viewport width, not the App's mobile flag: the wide layout's sidebar
+// would also crowd the content in a narrow desktop window.
 export const PREF_NARROW_QUERY = "(max-width: 640px)";
 const subscribeNarrow = (cb) => {
   const mq = window.matchMedia(PREF_NARROW_QUERY);

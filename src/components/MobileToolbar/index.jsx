@@ -51,7 +51,9 @@ import "./MobileToolbar.css";
 //         選取模式／全選／圖片上傳／設定／登出
 //         （全選與圖片上傳在桌機是右鍵選單項；手機長按選單不放，集中在這裡；主功能表不給，
 //         見 mobile_toolbar.js 的 contentTools）
-// 沒有返回：交給系統邊緣滑動／返回鍵（history_back_guard.js）。
+// No generic Back slot: system Back/edge navigation uses history_back_guard.js.
+// The keypad's ← still sends ArrowLeft through view.sendKeyAsUser; in easy
+// reading it reveals the page below when available (docs/article-swipe-drawer-spec.md).
 //
 // 三條不可以踩的線（同舊按鍵列，守護 tests/unit/mobile_toolbar.test.jsx）：
 //   1. 送鍵一律 view.sendKeyAsUser(keyName, mods)：走鍵盤同一條 onKeyDown 分派（文章好讀／
