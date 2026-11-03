@@ -3626,8 +3626,11 @@ TermView.prototype = {
     for (var j = BRD_HEADER_ROWS; j <= buf.rows - 2; ++j)
       if (nums[j] != null) pageEntries.push({ num: nums[j] });
     var grewDir = listGrowthDir(this._brdNumMap, pageEntries);
+    // A list shown again from its live layer keeps the rows it showed (#122).
+    var keepShown = !!(bs && bs.keepsShownRows && bs.keepsShownRows());
     for (var i = BRD_HEADER_ROWS; i <= buf.rows - 2; ++i) {
       if (nums[i] == null) continue;
+      if (keepShown && this._brdNumMap.has(nums[i])) continue;
       var row = cloneRow(buf.lines[i]);
       // 把 `%7d` 序號欄由解析出的編號重寫一次：server 的游標 `>` 蓋著 cell 0，
       // 存進 map 的列必須長得跟乾淨的原生列一模一樣（游標由 render 端自己畫）。
@@ -3711,6 +3714,21 @@ TermView.prototype = {
   _blankBoardListRow: function() {
     if (!this._brdBlankRow) this._brdBlankRow = blankRowLike(this._brdHeaderRows[0]);
     return this._brdBlankRow;
+  },
+
+  // Change the buffered row of board `num` with `edit(cells)`, which returns
+  // whether it changed them. The row is replaced by an edited copy: rows are
+  // shared with frames already rendered, such as a live layer's.
+  editBoardListRow: function(num, edit) {
+    var row = this._brdNumMap && this._brdNumMap.get(num);
+    if (!row) return false;
+    var copy = cloneRow(row);
+    if (!edit(copy)) return false;
+    this._brdNumMap.set(num, copy);
+    var flat = flattenListBuffer(this._brdNumMap, EMPTY_PINNED_MAP);
+    this.buf.brdListLines = flat.lines;
+    this.buf.brdListLineNums = flat.nums;
+    return true;
   },
 
   // 進入／離開看板列表、或整份重建時清掉累積（BoardListSession._resetBuffer）。

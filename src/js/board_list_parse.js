@@ -110,6 +110,31 @@ export function boardMarkReadTargetOfText(text) {
   return { num: num, name: name };
 }
 
+// The unread mark `unread[1]` (full-width ˇ, Big5 A3BE) or `unread[0]` (two
+// spaces) fills cells [8,10), right after `%7d%c` (board.c:1343).
+const UNREAD_COL = 8;
+const UNREAD_LEAD = '\xa3';
+const UNREAD_TRAIL = '\xbe';
+
+// Set the unread mark of a board row's cells (TermChar-like `{ ch, isLeadByte }`)
+// in place. Rows without a board, or whose mark cells hold anything but a mark,
+// are left as they are. Returns whether the row changed.
+export function setBoardListRowUnread(cells, unread) {
+  if (!cells || cells.length < UNREAD_COL + 2) return false;
+  const text = cells.map((c) => (c && c.ch) || ' ').join('');
+  if (!boardMarkReadTargetOfText(text)) return false;
+  const lead = cells[UNREAD_COL];
+  const trail = cells[UNREAD_COL + 1];
+  const marked = lead.ch === UNREAD_LEAD && trail.ch === UNREAD_TRAIL;
+  if (!marked && !(lead.ch === ' ' && trail.ch === ' ')) return false;
+  if (marked === !!unread) return false;
+  lead.ch = unread ? UNREAD_LEAD : ' ';
+  lead.isLeadByte = !!unread;
+  trail.ch = unread ? UNREAD_TRAIL : ' ';
+  trail.isLeadByte = false;
+  return true;
+}
+
 // 整頁逐列編號。與 comment_parse.pageArticleNums **刻意不共用**：那支為文章列表
 // 寫了「游標蓋住高位數字→從鄰居回推」與「單調修復」兩段補救，而看板列表的
 // `%7d` 是右對齊、`>` 只蓋前置空白 ⇒ 那些補救在這裡只會是憑空修改的風險。
