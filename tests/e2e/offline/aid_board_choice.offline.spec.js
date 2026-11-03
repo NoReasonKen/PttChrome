@@ -51,6 +51,15 @@ async function boardlessLink(page) {
 // 再發生時錯誤訊息直接帶出這份紀錄，不必再猜。
 async function chooseAid(page, which) {
   const sel = `[data-aid-choice="${which}"]`;
+  // The modal slides in, and it stands still for a frame before the slide
+  // starts, which passes Playwright's stability check: the press then lands on
+  // the button and the release beside it once it moved (#112). Click once the
+  // modal is fully in.
+  await page.waitForFunction((s) => {
+    const content = document.querySelector(s)?.closest('.mantine-Modal-content');
+    const root = content?.closest('.mantine-Modal-root');
+    return !!root && getComputedStyle(content).opacity === '1' && root.getAnimations({ subtree: true }).length === 0;
+  }, sel);
   await page.evaluate((s) => {
     const btn = document.querySelector(s);
     const trace = [];
