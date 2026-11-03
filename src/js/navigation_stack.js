@@ -473,6 +473,15 @@ export class NavigationStack {
     return !!this.handoff;
   }
 
+  // The live layer of `board`'s article list a Back has revealed and whose
+  // real page PTT has not presented yet, or null. The real page carries the
+  // layer's rows (#120), so the swap shows nothing new.
+  keptListLayer(board) {
+    const h = this.handoff;
+    if (!h || !h.layer || h.target !== PAGE.ARTICLE_LIST || h.presentedAt != null || !sameBoard(h.board, board)) return null;
+    return h.layer;
+  }
+
   // A Back made during the handoff runs after the swap (#34), when a page is
   // left to unwind. It replaces a remembered tap either way: the reader's last
   // choice wins.

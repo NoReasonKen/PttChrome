@@ -32,7 +32,11 @@ const NEAR_REPLY_BOARD = [...FAR_BOARD, { num: 1120, author: 'erin', title: 'Re:
 // `nextArticle`: the next-article card at the end of each article.
 // `legacy`: every list under the legacy caption 文章選讀, as PTT shows them
 // (cassette cchat-list-search); only the title row tells results apart.
-async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, fromList = false, nativeList = false, nextArticle = false, legacy = false, thread = FAR_BOARD } = {}) {
+// `beforeOpen`: runs on the list before `open` is opened from it.
+// An article of `thread` may carry its list row's read `mark` (default `+`,
+// unread; opening it reads it) and recommendation `score`, and `comments`
+// (pushes after its AID line, which `url` adds).
+async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, fromList = false, nativeList = false, nextArticle = false, legacy = false, thread = FAR_BOARD, beforeOpen = null } = {}) {
   await bootOffline(page, ptt, { nextArticle });
   await ptt.applyPrefs(page, {
     enableEasyReading: true, enableEasyReadingList: fromList, articleHorizontalGestures: true
@@ -84,8 +88,11 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
       if (jump <= 0 || ln <= 0 || ln > list.length) ln = amatch === -1 ? pos : amatch;
       return ln;
     };
+    // Reading an article marks it read (bbs.c readdoent's type character).
+    const READ_MARK = { '+': ' ', '~': ' ', M: 'm' };
     const openCursor = () => {
       state.open = view()[state.cursor - 1];
+      state.open.mark = READ_MARK[state.open.mark ?? '+'] ?? state.open.mark;
       state.currtitle = state.open.title;
       state.surface = 'article';
       state.line = 1;
@@ -106,7 +113,7 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
     const listRow = (article, index, cursor) => {
       const num = String(filtered() ? index : article.num).padStart(7);
       const glyph = article.title.startsWith('Re: ') ? 'R: ' + subject(article.title) : '□ ' + article.title;
-      const text = `${num} +  ${article.date.padStart(5)} ${article.author.padEnd(13)}${glyph}`;
+      const text = `${num} ${article.mark ?? '+'}${String(article.score ?? '').padStart(2)}${article.date.padStart(5)} ${article.author.padEnd(13)}${glyph}`;
       return cursor ? '>' + text.slice(1) : text;
     };
     const frame = () => {
@@ -127,6 +134,7 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
           2: `時間  ${postTime(a)} #${a.num}`,
           4: `Body of article ${a.num} by ${a.author}.`,
           ...(a.url && { 6: urlLine(a) }),
+          ...Object.fromEntries((a.comments || []).map((text, i) => [7 + i, text.padEnd(67) + ' 10/20 12:00'])),
           23: status
         };
         // Q: the post info box over the page (bbs.c view_postinfo).
@@ -151,10 +159,15 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
           rows[23] = '搜尋作者: ' + state.typed;
           cursor = [24, 11 + state.typed.length];
         }
+        // CompleteBoard (bbs.c do_select → namecomplete) asks on the second row.
+        if (state.surface === 'boardPrompt') {
+          rows[1] = '請輸入看板名稱(按空白鍵自動搜尋): ' + state.typed;
+          cursor = [2, 33 + state.typed.length];
+        }
       }
       let data = '\x1b[2J';
       for (const [index, text] of Object.entries(rows)) {
-        const inverse = ['list', 'authorPrompt'].includes(state.surface) && [0, 2].includes(Number(index));
+        const inverse = ['list', 'authorPrompt', 'boardPrompt'].includes(state.surface) && [0, 2].includes(Number(index));
         const encoded = encode(text);
         data += `\x1b[${Number(index) + 1};1H${inverse ? '\x1b[7m' + encoded.padEnd(80) : encoded}\x1b[0m`;
       }
@@ -175,6 +188,15 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
         state.typed = '';
         state.surface = 'list';
         state.cursor = view().length;
+        return;
+      }
+      // `s`, then the board's name: this board's full list, as PTT has it now,
+      // the cursor where it was.
+      if (state.surface === 'boardPrompt') {
+        if (!token.endsWith('\r')) return void (state.typed += token);
+        state.typed = '';
+        state.surface = 'list';
+        state.filter = state.byAuthor = null;
         return;
       }
       // `s<board>⏎` (the next-article card's route): this board's full list,
@@ -208,6 +230,8 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
         state.cursor = article.num;
       } else if (token === 'a') {
         state.surface = 'authorPrompt';
+      } else if (token === 's') {
+        state.surface = 'boardPrompt';
       } else if (/^#[\w-]{8}\r$/.test(token)) {
         const at = list.findIndex(a => aidOf(a) === token.slice(1, 9));
         if (at >= 0) state.cursor = at + 1;
@@ -229,12 +253,13 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
       for (const token of bytes.match(TOKEN) || []) if (token !== '\f') apply(token);
       setTimeout(() => app.onData(frame()), delay);
     };
-    window.__threadServer = { state, frame };
+    window.__threadServer = { state, frame, articles, aidOf };
     app.onData(frame());
   }, { thread, size, open, delay, fromList: onList, legacy });
   if (onList) {
     if (fromList) await listActive(page);
     else await waitScreenSettled(page, { 0: '看板《Test》' });
+    if (beforeOpen) await beforeOpen(page);
     await ptt.sendKey(page, 'Enter');
     await expect.poll(() => page.locator('.main').first().innerText()).toContain(`Body of article ${open} by`);
     await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);

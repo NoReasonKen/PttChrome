@@ -181,6 +181,15 @@ pin 1 只跑 `applyFunctionKeys`，而 `functionKeyRows(1,n) === functionKeyRows
    而它的落點是第 1 列（board.c:1985 `num = 0`），只比游標那一列的話「第 1 列剛好同名」
    就會把兩份清單 merge 進同一個緩衝（靜默錯誤）。
 
+**從活層回來（#122，手機頁堆疊）**：退板時看板列表若是從它的活層（live layer）顯示（`articleGestures.showsLayerOf(PAGE.BOARD_LIST)`），
+`_resumeShown` 不再把 PTT 的落地頁併進緩衝：`_keepShown` 打開後 `term_view.accumulateBoardListLines` 跳過緩衝已有的編號
+（未讀 ˇ、人氣、列序都維持離開時的樣子），只有緩衝沒有的編號才取 PTT 現在的資料；選取留在開過的那一列，落點只用來更新
+`_serverNum`（之後開別的板由既有的游標同步腿對齊）。唯一就地更新的是剛逛過那個板的 ˇ：suspended 期間每個文章列表 settle
+用首頁儀表板同一套 `newestArticleUnread` 記下「最新一篇讀了沒」，回來時以 `term_view.editBoardListRow` ＋
+`board_list_parse.setBoardListRowUnread` 改那一列（板名要對得上；看不出來就不動）。`_resetBuffer`（重新整理的 seed、
+rebuild、切原生）與 A 類鍵（`v`/`V`/`t`）會關掉 `_keepShown`，回到以 PTT 為準。沒有活層（桌面、超過活層上限、交接逾時）
+照舊合併。守護：`mobile_stack_board_reveal.offline.spec.js` 的 #122 那組（改寫 PTT 回覆模擬清單在板內時變了）。
+
 `parseBoardListName` **不用固定欄位**：未讀標記 `unread[1]` 是全形「ˇ」（board.c:1343），
 `rowToText` 會把它收成**一個**字元 ⇒ 板名的字串索引隨已讀/未讀位移一格；改抓「編號之後的
 第一個 ASCII 識別字」。守護：`board_list_parse.test.js` 的 `parseBoardListName` 那組、
@@ -199,7 +208,7 @@ pin 1 只跑 `applyFunctionKeys`，而 `functionKeyRows(1,n) === functionKeyRows
 | functionMode | **`resume-probe`**（靜置探針）| `holdReason==='passthrough'` ∧ 無 in-flight ∧ `ctx==='brdlist'` ∧ engageEligible → active：`seed`＋`start-fill`。**不可以走「回 idle 等下一個 settle」**——畫面靜止時不會再有 settle，那會卡死 |
 | functionMode（frozen） | 凍結落地交易的最後一步落地（`_beginLandingTransaction`，`resumeOnLanding`：重新整理 `/`→⏎）| 同探針的條件、不等靜置 → active：`seed`＋`start-fill`；認不出 → `_enterNative`（交給探針）。合約見 `docs/easy-reading-list.md`「落地即回好讀」 |
 | functionMode | 其他 settle | stay（繼續鏡像；settle 本身永不解除 hold）|
-| suspended | settle `brdlist` ∧ 同變體 ∧ `landedSameList` ∧ engageEligible | active：`resume-in-place`（採用落點游標，**捲動錨不動**） |
+| suspended | settle `brdlist` ∧ 同變體 ∧ `landedSameList` ∧ engageEligible | active：`resume-in-place`（採用落點游標，**捲動錨不動**；從活層顯示時見下方「從活層回來」） |
 | suspended | settle `brdlist`，但換了一份清單 | active：`seed`＋`start-fill`（整份重建） |
 | suspended | settle `brdlist`，但 !engageEligible | idle：`cleanup` |
 | suspended | settle `menu` | idle：`cleanup`（交易在飛時 stay，同 functionMode 的 AID 守門）|

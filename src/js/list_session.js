@@ -578,6 +578,10 @@ export function transitionListSession(state, event) {
             // 退文落點只剩置底文時同樣不能 re-seed（不變量 17）：停在原生鏡像
             //（_handoffArticle 已把 renderMode 設 native），等下一幀。
             if (!event.hasNumberedRow) return stay;
+            // Back revealed this list's live layer (#120): the real list keeps
+            // the layer's rows, selection and reading position instead of
+            // merging PTT's landing page; only the article read changes.
+            if (event.keepsLayer && event.boardNameMatch) return { next: 'active', actions: ['resume-layer'] };
             return event.landedNumInBuffer && event.boardNameMatch
               ? { next: 'active', actions: ['resume-in-place'] }
               : { next: 'active', actions: ['resume-buffer', 'rebuild'] };
@@ -731,6 +735,24 @@ export function paintLastReadListRow(row, fg) {
     c.bg = 0;
     c.fg = fg;
   }
+}
+
+// An article row's read-mark cell (pttbbs bbs.c#readdoent's type character)
+// once the reader has read it: unread `+`, updated `~`, unread marked `M`,
+// updated marked `=`, unread digest `#` and unread solved `S` turn read.
+// readdoent prints the type in default colours, except a gray `+`.
+const LIST_MARK_COL = 8;
+const READ_LIST_MARK = { '+': ' ', '~': ' ', '#': '*', M: 'm', '=': 'm', S: 's' };
+
+// A copy of `row` (TermChar[]) as PTT lists it once read, or null when it
+// already reads as read. Stored rows are never changed in place.
+export function readListRow(row) {
+  const cell = row && row[LIST_MARK_COL];
+  const read = cell && READ_LIST_MARK[cell.ch];
+  if (read == null || cell.isLeadByte) return null;
+  const copy = row.map(ch => Object.assign(Object.create(Object.getPrototypeOf(ch)), ch));
+  Object.assign(copy[LIST_MARK_COL], { ch: read, fg: 7, bg: 0, bright: false });
+  return copy;
 }
 
 // Pure "stop prefetching?" decision. We page until enough VISIBLE (non-blacklisted)
@@ -1100,8 +1122,15 @@ ListSession.prototype = {
       holdReason: this._holdReason,
       withinResumeGrace: performance.now() - this._resumedAt < RESUME_GRACE_MS,
       hasNumberedRow: hasNumberedEntryRow(facts),
-      engageEligible: this._engageEligible()
+      engageEligible: this._engageEligible(),
+      keepsLayer: this.state === 'suspended' && !!this._keptLayer()
     };
+  },
+
+  // The live layer a Back revealed over this list, while PTT's answer is on
+  // its way (NavigationStack.keptListLayer), or null.
+  _keptLayer: function() {
+    return this._core.articleGestures?.stack?.keptListLayer?.(boardNameFromKey(this._boardName)) || null;
   },
 
   // pref 開著＝本功能（L1 凍結交易 ＋ L2 自動回復）生效；關掉＝**逐位元回到
@@ -1244,6 +1273,9 @@ ListSession.prototype = {
         return this._presented();
       case 'resume-in-place':
         this._resumeInPlace(facts);
+        return this._presented();
+      case 'resume-layer':
+        this._resumeFromLayer(facts, this._keptLayer());
         return this._presented();
       case 'cleanup':
         return this._cleanup();
@@ -2212,6 +2244,9 @@ ListSession.prototype = {
   // _anchorOverride ⇒ 使用者自己捲出來的位置被 read.c 的分頁蓋掉，視野瞬間跳走。
   // 這裡只做兩件事：採用落點當選取／server 游標，然後把它帶進視野（不變量 N6）。
   _resumeInPlace: function(facts, opts) {
+    // PTT's page merges into the buffer again (a resize repaints the same
+    // page and keeps rows held for the reader).
+    if (!opts?.preserveSelection) this._view.releaseListRows?.();
     this._holdReason = null;
     this._cancelResumeProbe();
     this._resumedAt = performance.now();
@@ -2252,6 +2287,37 @@ ListSession.prototype = {
       this._scheduleReveal(pos, { block: 'nearest', behavior: 'auto' });
       this._forceRedraw();
     }
+  },
+
+  // Back from an article over this list's live layer (#120). The real list is
+  // the page the layer shows: its rows, selection and reading position stay
+  // as the reader left them, and PTT's landing page merges nothing. Only the
+  // articles read are shown read, as PTT lists them now. Rows loaded later
+  // and a refresh show PTT's current list (term_view holdListRows).
+  _resumeFromLayer: function(facts, layer) {
+    this._holdReason = null;
+    this._cancelResumeProbe();
+    this._resumedAt = performance.now();
+    this._breakChain();
+    this._renderMode = 'buffer';
+    this._setLoading(false);
+    this._view.hideCursor();
+    this._serverNum = facts ? facts.cursorRowNum : null;
+    const text = layer && layer.selectedText();
+    const num = text ? parseListArticleNumLoose(text) : null;
+    const pinnedKey = text && num == null && isPinnedListRow(text) ? pinnedRowKey(text) : null;
+    if (num != null && (this._termBuf.listLineNums || []).indexOf(num) !== -1) {
+      this._selectedNum = num;
+      this._selectedPinnedKey = null;
+    } else if (pinnedKey != null && this._pinnedIndexOf(pinnedKey) !== -1) {
+      this._selectedNum = null;
+      this._selectedPinnedKey = pinnedKey;
+    }
+    // The article opened and the one the reader ended on (#74) were read.
+    this._view.markListArticleRead(this._openedNum, null);
+    this._view.markListArticleRead(num, pinnedKey);
+    this._view.holdListRows(facts && facts.rowTexts);
+    this._forceRedraw();
   },
 
   _enqueueLeaveKey: function() {
@@ -3611,6 +3677,7 @@ ListSession.prototype = {
   },
 
   _resumeBuffer: function(facts) {
+    this._view.releaseListRows?.();
     this._holdReason = null;
     this._cancelResumeProbe();
     this._resumedAt = performance.now(); // 不變量 N4：殘餘幀不得打到 active 的 catch-all

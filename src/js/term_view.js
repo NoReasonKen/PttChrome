@@ -12,7 +12,7 @@ import { i18n } from './i18n';
 import { setTimer, TRACE } from './util';
 import { textCellWidth, parseStatusRow, statusSignature, normalizePasteText, parseStatusUserid } from './string_util';
 import { rowToText, articleContextFromScreen, findPageOverlap, resolvePageOverlap, decideAccumulateBranch, classifyPageTransition, decideReverseBranch, resolveJoinOverlap, locateScreenInPage, pageArticleNums, isPinnedListRow, parseListArticleNumLoose, hasServerCursorMark } from './comment_parse';
-import { mergeListPage, flattenListBuffer, evictListBuffer, listGrowthDir, listNumRange, isHiddenListRow, pinnedRowKey, MAX_LIST_ROWS, MAX_LIST_TOTAL_ROWS, isLastReadStyledListRow, normalizeLastReadListRow, paintLastReadListRow, subjectOfListRow } from './list_session';
+import { mergeListPage, flattenListBuffer, evictListBuffer, listGrowthDir, listNumRange, isHiddenListRow, pinnedRowKey, MAX_LIST_ROWS, MAX_LIST_TOTAL_ROWS, isLastReadStyledListRow, normalizeLastReadListRow, paintLastReadListRow, subjectOfListRow, readListRow } from './list_session';
 import { labelListCursor, pruneListToSegment, LIST_HEADER_ROWS } from './list_window';
 import { BRD_HEADER_ROWS, boardListRowNums } from './board_list_parse';
 import { BOARD_LIST, isArticleListTitleRow, rowHasTitle, parseBoardName } from './screen_titles';
@@ -3404,6 +3404,16 @@ TermView.prototype = {
         });
       }
     }
+    // Rows kept as the reader left them (holdListRows): PTT's landing page adds
+    // nothing, and any other page only adds the rows not shown yet.
+    var hold = this._listHold;
+    if (hold) {
+      var numMap = this._listNumMap;
+      var pinnedMap = this._listPinnedMap;
+      entries = rowTexts.join('\n') === hold.landing ? [] : entries.filter(function(e) {
+        return e.num != null ? !numMap.has(e.num) : !pinnedMap.has(e.key);
+      });
+    }
     // 合併前量「緩衝往哪端長」：evict 不砍剛長出來的那一端（evictListBuffer 註解）。
     var grewDir = listGrowthDir(this._listNumMap, entries);
     var prevRange = grewDir ? listNumRange(this._listNumMap) : null;
@@ -3564,8 +3574,35 @@ TermView.prototype = {
     return this._listBlankRow;
   },
 
+  // Keep the accumulated rows as the reader left them (#120): the list comes
+  // back from an article as its live layer showed it. `landing` is PTT's page
+  // on that return (row texts); it adds nothing, and later pages only add the
+  // rows not shown yet, until releaseListRows or a fresh accumulation.
+  holdListRows: function(landing) {
+    this._listHold = { landing: (landing || []).join('\n') };
+  },
+
+  releaseListRows: function() {
+    this._listHold = null;
+  },
+
+  // Show the kept row of article `num` (or of the pinned row `pinnedKey`) as
+  // read, as PTT lists it once it was read.
+  markListArticleRead: function(num, pinnedKey) {
+    var map = num != null ? this._listNumMap : this._listPinnedMap;
+    var key = num != null ? num : pinnedKey;
+    if (!map || key == null || !map.has(key)) return;
+    var read = readListRow(map.get(key));
+    if (!read) return;
+    map.set(key, read);
+    var flat = flattenListBuffer(this._listNumMap, this._listPinnedMap);
+    this.buf.listLines = flat.lines;
+    this.buf.listLineNums = flat.nums;
+  },
+
   // Clear the list-accumulation maps (fresh board entry / board switch rebuild).
   resetListAccumulation: function() {
+    this._listHold = null;
     this._listNumMap = null;
     this._listPinnedMap = null;
     this._listHeaderRows = null;
@@ -3596,8 +3633,11 @@ TermView.prototype = {
     for (var j = BRD_HEADER_ROWS; j <= buf.rows - 2; ++j)
       if (nums[j] != null) pageEntries.push({ num: nums[j] });
     var grewDir = listGrowthDir(this._brdNumMap, pageEntries);
+    // A list shown again from its live layer keeps the rows it showed (#122).
+    var keepShown = !!(bs && bs.keepsShownRows && bs.keepsShownRows());
     for (var i = BRD_HEADER_ROWS; i <= buf.rows - 2; ++i) {
       if (nums[i] == null) continue;
+      if (keepShown && this._brdNumMap.has(nums[i])) continue;
       var row = cloneRow(buf.lines[i]);
       // 把 `%7d` 序號欄由解析出的編號重寫一次：server 的游標 `>` 蓋著 cell 0，
       // 存進 map 的列必須長得跟乾淨的原生列一模一樣（游標由 render 端自己畫）。
@@ -3681,6 +3721,21 @@ TermView.prototype = {
   _blankBoardListRow: function() {
     if (!this._brdBlankRow) this._brdBlankRow = blankRowLike(this._brdHeaderRows[0]);
     return this._brdBlankRow;
+  },
+
+  // Change the buffered row of board `num` with `edit(cells)`, which returns
+  // whether it changed them. The row is replaced by an edited copy: rows are
+  // shared with frames already rendered, such as a live layer's.
+  editBoardListRow: function(num, edit) {
+    var row = this._brdNumMap && this._brdNumMap.get(num);
+    if (!row) return false;
+    var copy = cloneRow(row);
+    if (!edit(copy)) return false;
+    this._brdNumMap.set(num, copy);
+    var flat = flattenListBuffer(this._brdNumMap, EMPTY_PINNED_MAP);
+    this.buf.brdListLines = flat.lines;
+    this.buf.brdListLineNums = flat.nums;
+    return true;
   },
 
   // 進入／離開看板列表、或整份重建時清掉累積（BoardListSession._resetBuffer）。

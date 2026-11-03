@@ -321,6 +321,13 @@ export class ArticleGestures {
     if (!this.stack.queueBack() && this.backsDuringSlide != null) this.backsDuringSlide++;
   }
 
+  // Whether Back is showing the page of `kind` again from its live layer, and
+  // the real page has yet to take over.
+  showsLayerOf(kind) {
+    const h = this.stack.handoff;
+    return !!h?.layer && h.target === kind;
+  }
+
   // A session presented a real page: an article list, a board list or the
   // home dashboard. `another`: a board list other than the one shown before.
   pagePresented(kind, { another = false } = {}) {

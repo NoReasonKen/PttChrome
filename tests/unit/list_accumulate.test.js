@@ -7,7 +7,7 @@
 //       列」（无 ★）时仍须排除（避免 ● 列被误档成置底，v3 坑 4）。
 // 直接以 stub buf 呼叫真的 TermView.prototype.accumulateListLines（逻辑不碰 DOM）。
 import { TermView } from "../../src/js/term_view";
-import { articleIdentity, pinnedRowKey, subjectOfListRow, listRowMarkFg } from "../../src/js/list_session";
+import { articleIdentity, pinnedRowKey, subjectOfListRow, listRowMarkFg, readListRow } from "../../src/js/list_session";
 import { loadBig5Tables } from "./helpers/load_big5_tables";
 
 function chRow(text, cols = 80) {
@@ -937,5 +937,83 @@ describe("subjectOfListRow / listRowMarkFg / isonline 不误触", () => {
     v.buf.lines[3] = chRowAttrs(online, [{ from: 17, to: 29, fg: 7, bright: true }]);
     v.accumulateListLines();
     expect(ls.noteLastRead).not.toHaveBeenCalled();
+  });
+});
+
+// #120: Back over the list's live layer keeps the accumulated rows as the
+// reader left them; PTT's landing page adds nothing, later pages only add
+// rows not shown yet, and the article read reads as read.
+describe("held list rows (holdListRows)", () => {
+  const header = [
+    "【板主:abc】看板《Test》",
+    "[←]離開 [→]閱讀",
+    "   編號    日 期 作  者       文  章  標  題",
+  ];
+  const footer = " 文章列表  (y)回應 (X)推文            (h)說明";
+  const row = (num, mark, score, title) =>
+    `${String(num).padStart(7)} ${mark}${String(score).padStart(2)} 6/14 someone${num % 10}     □ ${title}`;
+  const frame = (rows) => header.concat(rows, [footer]);
+  const show = (v, texts, curY = 3) => {
+    v.buf.rows = texts.length;
+    v.buf.cur_y = curY;
+    v.buf.lines = texts.map((t) => chRowAttrs(t));
+    v.buf.getRowText = (r) => texts[r];
+    v.accumulateListLines();
+  };
+  const held = () => {
+    const v = fakeView(frame([row(11, "+", 1, "a"), row(12, "+", "", "b")]), 3, fakeListSession());
+    Object.assign(v, {
+      holdListRows: TermView.prototype.holdListRows,
+      releaseListRows: TermView.prototype.releaseListRows,
+      markListArticleRead: TermView.prototype.markListArticleRead,
+    });
+    show(v, frame([row(11, "+", 1, "a"), row(12, "+", "", "b")]));
+    return v;
+  };
+  const texts = (v) => v.buf.listLines.map(rowToStr);
+
+  test("PTT's landing page changes no kept row and adds none", () => {
+    const v = held();
+    const landing = frame([row(11, " ", 9, "a"), row(12, "+", 5, "edited"), row(13, "+", "", "new")]);
+    v.holdListRows(landing);
+    show(v, landing);
+    expect(texts(v)).toEqual([row(11, "+", 1, "a"), row(12, "+", "", "b")]);
+  });
+
+  test("another page adds only the rows not shown yet", () => {
+    const v = held();
+    v.holdListRows(frame([row(11, "+", 9, "a"), row(12, "+", 5, "b")]));
+    show(v, frame([row(10, "+", 7, "older"), row(11, "+", 9, "a")]), 4);
+    expect(texts(v)).toEqual([row(10, "+", 7, "older"), row(11, "+", 1, "a"), row(12, "+", "", "b")]);
+  });
+
+  test("released, PTT's page merges again", () => {
+    const v = held();
+    const landing = frame([row(11, "+", 9, "a"), row(12, "+", 5, "b")]);
+    v.holdListRows(landing);
+    v.releaseListRows();
+    show(v, landing);
+    expect(texts(v)).toEqual([row(11, "+", 9, "a"), row(12, "+", 5, "b")]);
+  });
+
+  test("the article read reads as read in default colours; its kept row is replaced, not changed", () => {
+    const v = held();
+    const kept = chRowAttrs(row(12, "+", "", "b"), [{ from: 8, to: 9, fg: 1, bright: true }]);
+    v._listNumMap.set(12, kept);
+    v.markListArticleRead(12, null);
+    expect(texts(v)).toEqual([row(11, "+", 1, "a"), row(12, " ", "", "b")]);
+    expect(v._listNumMap.get(12)[8]).toMatchObject({ fg: 7, bg: 0, bright: false });
+    expect(kept[8]).toMatchObject({ ch: "+", fg: 1, bright: true });
+  });
+
+  // pttbbs bbs.c#readdoent's type character, unread → read.
+  test.each([
+    ["+", " "], ["~", " "], ["#", "*"], ["M", "m"], ["=", "m"], ["S", "s"],
+  ])("read mark %s reads %s once read", (unread, read) => {
+    expect(readListRow(chRowAttrs(row(12, unread, 3, "b")))[8].ch).toBe(read);
+  });
+
+  test.each([" ", "*", "m", "s", "!", "D"])("read mark %s is already read", (mark) => {
+    expect(readListRow(chRowAttrs(row(12, mark, 3, "b")))).toBeNull();
   });
 });
