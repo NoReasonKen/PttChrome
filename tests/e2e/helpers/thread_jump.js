@@ -260,16 +260,18 @@ async function watchScreen(page) {
       const main = document.querySelector('.main');
       const box = main?.getBoundingClientRect();
       // A layer revealed under a sliding page and the underlay are inert, and
-      // the underlay takes no pointer, which hit testing passes through; both
-      // still cover what lies below them.
+      // both take no pointer, which hit testing passes through; both still
+      // cover what lies below them. A prepared list stays transparent, so it
+      // keeps passing hit testing through.
       const inert = [...document.querySelectorAll('[data-stack-layer][inert], .stackUnderlay[inert]')];
-      const underlays = [...document.querySelectorAll('.stackUnderlay')];
+      const covers = [...document.querySelectorAll('.stackUnderlay, [data-stack-layer]:not([data-stack-parked])')];
+      const pointer = covers.map(el => el.style.pointerEvents);
       inert.forEach(el => { el.inert = false; });
-      underlays.forEach(el => { el.style.pointerEvents = 'auto'; });
+      covers.forEach(el => { el.style.pointerEvents = 'auto'; });
       // The real screen slides sideways on its way out: the middle of the window.
       const top = box && document.elementFromPoint(window.innerWidth / 2, box.top + box.height / 2);
       inert.forEach(el => { el.inert = true; });
-      underlays.forEach(el => { el.style.pointerEvents = ''; });
+      covers.forEach((el, i) => { el.style.pointerEvents = pointer[i]; });
       // The drawer closing over the screen is not the screen.
       if (top?.closest('[data-article-drawer]')) return requestAnimationFrame(sample);
       const entry = {

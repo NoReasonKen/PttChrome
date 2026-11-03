@@ -111,7 +111,7 @@ async function bootShortcutSearch(page, options = {}) {
     app.onData(frame());
   }, options);
   await waitScreenSettled(page, { 1: 'Source article' });
-  await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
+  await expect(page.locator(MAIN)).toHaveClass(/articleHorizontalGestures/);
 }
 
 async function searchAuthor(page) {
@@ -135,7 +135,7 @@ async function nativeBack(page) {
 async function openSearchResult(page, { thread = false } = {}) {
   await ptt.sendKey(page, 'Enter');
   await expect.poll(() => visibleText(page)).toContain(thread ? 'Re: [Test] Source article' : 'Result article');
-  await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
+  await expect(page.locator(MAIN)).toHaveClass(/articleHorizontalGestures/);
 }
 
 // A small controlled board for chained searches. Same protocol sources as
@@ -177,7 +177,7 @@ async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = fal
   }
   // Easy reading pages a long Alpha on to its later pages.
   await waitScreenSettled(page, alphaLines ? {} : { 1: 'Alpha topic' });
-  await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
+  await expect(page.locator(MAIN)).toHaveClass(/articleHorizontalGestures/);
 }
 
 // A new PTT session on the same board data: it starts at the main menu after
@@ -536,13 +536,13 @@ const topLine = page => page.evaluate(() => {
   return row ? row.textContent.trim().slice(0, 16) : null;
 });
 
-const scrollTop = page => page.locator('.main').evaluate(el => el.scrollTop);
+const scrollTop = page => page.locator(MAIN).evaluate(el => el.scrollTop);
 
 // The reader scrolls the first nested article to its middle with a real touch
 // drag. Holding still before release leaves no fling, so the position is
 // deterministic once the browser's own scrolling settles.
 async function readToMiddle(page) {
-  const main = await page.locator('.main').boundingBox();
+  const main = await page.locator(MAIN).boundingBox();
   const x = main.x + main.width / 2;
   const from = main.y + main.height - 20;
   const to = main.y + 20;

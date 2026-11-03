@@ -4,6 +4,10 @@ const {
   bootNestedShortcutSearch, nativeBack, visibleText, waitArticle, waitList, readToMiddle, topLine, waitIdle, tapShortcut
 } = require('../helpers/article_shortcut_search');
 const ptt = require('../helpers/ptt');
+const { MAIN } = require('../helpers/stack_routes');
+
+// The real screen, not a prepared list layer kept underneath it.
+const SCREEN = `${MAIN} #mainContainer`;
 
 const bodyText = page => page.locator('body').innerText();
 
@@ -62,7 +66,7 @@ test('a deleted nested source stops on its board list and keeps the earlier orig
   await nativeBack(page);
   await expect.poll(() => bodyText(page), { timeout: 15000 }).toContain('The source article could not be verified or was deleted');
   await waitList(page, { has: ['Alpha topic', 'Re: [Talk] Beta topic'] });
-  await expect(page.locator('#mainContainer')).toContainText('文章列表');
+  await expect(page.locator(SCREEN)).toContainText('文章列表');
 
   await nativeBack(page);
   await waitList(page, { has: ['Alpha topic'], lacks: ['Re: [Talk] Beta topic', 'Delta topic'] });
@@ -105,12 +109,12 @@ test('a deleted author-search source still rebuilds its author results before st
   // The author query does not need its deleted source article.
   await nativeBack(page);
   await waitList(page, { has: ['□ [Talk] Beta topic'], lacks: ['Alpha topic', 'Delta topic'] });
-  await expect(page.locator('#mainContainer')).toContainText('系列文章');
+  await expect(page.locator(SCREEN)).toContainText('系列文章');
 
   await nativeBack(page);
   await expect.poll(() => bodyText(page), { timeout: 15000 }).toContain('The source article could not be verified or was deleted');
   await waitList(page, { has: ['Beta topic', 'Delta topic'] });
-  await expect(page.locator('#mainContainer')).toContainText('文章列表');
+  await expect(page.locator(SCREEN)).toContainText('文章列表');
 });
 
 test('an in-article search key in a result article keeps the route', async ({ page }) => {
@@ -133,8 +137,8 @@ test('an in-article search key in a result article keeps the route', async ({ pa
 // including search results and rebuilt results. Result articles open by tap.
 test.describe('with the easy-reading list', () => {
   const tapCard = async (page, title) => {
-    await expect(page.locator('#mainContainer .listBodyView')).toBeVisible();
-    await page.locator('#mainContainer .listCard', { hasText: title }).locator('.listCardBody').tap();
+    await expect(page.locator(`${SCREEN} .listBodyView`)).toBeVisible();
+    await page.locator(`${SCREEN} .listCard`, { hasText: title }).locator('.listCardBody').tap();
   };
 
   test('single-level author and thread searches return to the source position', async ({ page }) => {
@@ -142,7 +146,7 @@ test.describe('with the easy-reading list', () => {
     const position = await readToMiddle(page);
     await tapShortcut(page, 'author');
     await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
-    await expect(page.locator('#mainContainer .listBodyView')).toBeVisible();
+    await expect(page.locator(`${SCREEN} .listBodyView`)).toBeVisible();
     await tapCard(page, '[Talk] Beta topic');
     await waitArticle(page, 'Beta');
     await nativeBack(page);
@@ -180,7 +184,7 @@ test.describe('with the easy-reading list', () => {
     await waitArticle(page, 'Charlie');
     await nativeBack(page);
     await waitList(page, { has: ['Re: [Talk] Beta topic'], lacks: ['Alpha topic', 'Delta topic'] });
-    await expect(page.locator('#mainContainer .listBodyView')).toBeVisible();
+    await expect(page.locator(`${SCREEN} .listBodyView`)).toBeVisible();
     await nativeBack(page);
     await waitArticle(page, 'Beta');
     await nativeBack(page);
