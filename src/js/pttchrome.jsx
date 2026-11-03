@@ -1277,7 +1277,7 @@ App.prototype.showPasteUnimplemented = function() {
   renderInto(
     container,
     <MantineRoot>
-      <PasteShortcutAlert opened onClose={onDismiss} />
+      <PasteShortcutAlert opened onClose={onDismiss} pttchrome={this} />
     </MantineRoot>
   )
   this.setModalOpen('pasteAlert', true);
