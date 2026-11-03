@@ -565,6 +565,27 @@ describe("transitionListSession (full table)", () => {
       "active",
       ["resume-buffer", "rebuild"]
     );
+    // #120: Back revealed this list's live layer ⇒ the real list keeps the
+    // layer's rows, wherever PTT's cursor landed; another board rebuilds.
+    T("suspended", settle("clean-list", { keepsLayer: true }), "active", ["resume-layer"]);
+    T(
+      "suspended",
+      settle("clean-list", { keepsLayer: true, landedNumInBuffer: true }),
+      "active",
+      ["resume-layer"]
+    );
+    T(
+      "suspended",
+      settle("clean-list", { keepsLayer: true, boardNameMatch: false }),
+      "active",
+      ["resume-buffer", "rebuild"]
+    );
+    T(
+      "suspended",
+      settle("clean-list", { keepsLayer: true, hasNumberedRow: false }),
+      "suspended",
+      []
+    );
     // 不變量 17：退文落點只剩置底文 → 不 re-seed，停在原生鏡像等下一幀
     T(
       "suspended",

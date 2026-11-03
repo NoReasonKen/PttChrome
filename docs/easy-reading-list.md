@@ -257,7 +257,7 @@ states：`idle → active ⇄ functionMode`；`active → opening → suspended 
 - key（active）：nav（↑↓jk/PgUp/PgDn/Home/End → read.c op）；Enter/→＝opening（selectedNum 有值→begin-open；null＝pinned→begin-open-pinned）；數字＝jump-digit（overlay 收參）；`←`/q/e＝leave 交易（**先 sync-jump 同步 server 游標再送離板鍵**——pttbbs getkeep 記 REAL cursor，不 sync 則再進板落點錯；`_serverNum` 快路徑同 passthrough，共用 `_enqueueCursorSyncJump`）；**A 類鍵（`INPLACE_KEYS`）＝keyClass `native-inplace` → `_beginInplaceTransaction`：凍結交易，全程不切原生**；**其餘鍵（`v` `/` `s` `Z`…）＝keyClass `passthrough` → `_beginNativePassthrough`：一鍵切原生＋代送**（`term_keyboard.keyEventToBytes` 轉 bytes，非 ASCII 單字元 `u2b`）。pref `enableListNativeAutoResume` 關掉時 A 類整組落回 `passthrough`。
 - opening：settle 等 article；timeout→functionMode 自癒；期間吞所有鍵。
 - functionMode：新事件 **`resume-probe`**（靜置探針合成，見下）→ `holdReason==='passthrough'` ∧ 無 in-flight ∧ clean-list ∧ hasNumberedRow ∧ engageEligible 時 →active（`landedNumInBuffer ∧ 板名同`→resume；否則＋rebuild），其餘一律 stay。clean-list **settle**→**`holdReason` 非 null（passthrough/external）時 stay 鏡像**（settle 本身永不解除 hold——一個回應可能 settle 兩次，第一個 settle 內容已新、游標還在舊位置，在它上面 resume 會採用到錯的落點）；無 hold（leave/jump 交易）→active（landedNum∈buffer ∧ 板名同→resume；否則＋rebuild）；article→suspended；menu→idle cleanup。**enter-function-mode（passthrough/自癒/降級——原生 excursion）在 action 層清 `_boardName`** → 回 clean-list 必走 rebuild 分支（不變量 15）；只有保留 `_boardName` 的 frozen 交易（leave/jump）可走純 resume 快路徑；passthrough 屬原生 excursion → 黏性停原生；經 article/menu 回好讀時因 `_boardName` 已清必 rebuild。
-- suspended：clean-list ∧ 落點在緩衝 ∧ 板名同→**`resume-in-place`**（只採用落地幀的游標，**捲動錨一律不動**——文章期間視口不在 DOM 上，錨本來就是使用者離開前的那一個，不變量 N6）；否則 `resume-buffer`＋`rebuild`（畫面要換一份，重新錨定）；menu→idle。
+- suspended：clean-list ∧ 退出時揭開了這個列表的 live layer（`keepsLayer`，`NavigationStack.keptListLayer`）∧ 板名同→**`resume-layer`**（[#120](https://github.com/NoReasonKen/PttChrome/issues/120)，見不變量 N6c）；否則 clean-list ∧ 落點在緩衝 ∧ 板名同→**`resume-in-place`**（只採用落地幀的游標，**捲動錨一律不動**——文章期間視口不在 DOM 上，錨本來就是使用者離開前的那一個，不變量 N6）；否則 `resume-buffer`＋`rebuild`（畫面要換一份，重新錨定）；menu→idle。
 - 任意：pref-off/斷線→cleanup。
 
 ### 落地即回好讀（`resumeOnLanding`；pref `enableListNativeAutoResume`）
@@ -473,6 +473,17 @@ states：`idle → active ⇄ functionMode`；`active → opening → suspended 
   那篇跳回畫面中間（使用者回報）。守護：`list_session.test.js`
   「退文回列表：視野停在使用者自己捲到的位置」。**落點不在緩衝／板名異仍走 `resume-buffer`+`rebuild`**
   （畫面本來就要換一份，重新錨定才是對的）。
+- **N6c 退文揭開 live layer 時，列表保持讀者離開時的樣子**（[#120](https://github.com/NoReasonKen/PttChrome/issues/120)，
+  live layer 不在背景更新）：`resume-layer`（`_resumeFromLayer`）**不併入** PTT 的落地頁——
+  每一列的文字、順序、選取（取自 layer 的選取，#74 的換篇也算）與捲動位置都等於 layer 上看到的，
+  只有讀過的文章（開的那篇、#74 最後停的那篇）照 PTT 的規則改成已讀（`readListRow`：bbs.c#readdoent
+  的 type 字元 `+`/`~`→空白、`#`→`*`、`M`/`=`→`m`、`S`→`s`，預設色）。last-read 主題色開文時就學到
+  （`noteLastRead`），「+N」由讀完時的紀錄自己重算。之後由 term_view `holdListRows` 保住這批列：
+  PTT 的落地頁什麼都不加，其他頁（往上／往下補頁）**只加還沒顯示過的列**，已顯示的列永不被換掉。
+  `resetListAccumulation`（rebuild／重新整理／進板）、`_resumeBuffer`、非 resize 的 `_resumeInPlace`
+  （A 類交易、開文身分不符 `_openMismatched`）解除保留，PTT 那一頁照舊併入。開文前的身分檢查不變：
+  保留列與 PTT 現況不同時照樣停在列表並提示。守護：`mobile_stack_list_kept.offline.spec.js`、
+  `list_accumulate.test.js`「held list rows」。
 - **N6b 編號空間不變的原生交易回好讀時還原捲動錨**（2026-10 起泛化：由閱讀紀錄 `reading_record` 的決策表決定哪些交易還原，涵蓋設已讀、重新整理、`s` 取消、身後的列表——**模型與決策表見 `docs/reading-record.md`**；下面是執行端的細節）：
   落地一律 `resume-buffer`+`rebuild`（opt in 的序列是落地即回好讀，其餘是靜置探針），而 `_resumeBuffer`／`_seedAnchors` 會改採
   PTT 分頁頂端 ⇒ 閱讀進度丟失。閱讀紀錄在交易收尾時存 `_pendingViewport`；`rebuild` 之前

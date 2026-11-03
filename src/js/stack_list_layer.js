@@ -184,6 +184,14 @@ export class StackListLayer extends ScreenCopyLayer {
     return true;
   }
 
+  // The text of the entry this list shows selected, or null.
+  selectedText() {
+    const lines = this.frame.lines;
+    const bodyStart = this.frame.enhance.listScroll.bodyStart;
+    const row = lines.findIndex((line, r) => r >= bodyStart && r < lines.length - 1 && hasServerCursorMark(line, 0));
+    return row < 0 ? null : rowToText(lines[row]);
+  }
+
   // Scroll the selection chosen by `select` into view, the least distance.
   _revealSelection() {
     const card = this.selection != null && this._card(this.selection);

@@ -12,7 +12,7 @@ import { i18n } from './i18n';
 import { setTimer, TRACE } from './util';
 import { textCellWidth, parseStatusRow, statusSignature, normalizePasteText, parseStatusUserid } from './string_util';
 import { rowToText, articleContextFromScreen, findPageOverlap, resolvePageOverlap, decideAccumulateBranch, classifyPageTransition, decideReverseBranch, resolveJoinOverlap, locateScreenInPage, pageArticleNums, isPinnedListRow, parseListArticleNumLoose, hasServerCursorMark } from './comment_parse';
-import { mergeListPage, flattenListBuffer, evictListBuffer, listGrowthDir, listNumRange, isHiddenListRow, pinnedRowKey, MAX_LIST_ROWS, MAX_LIST_TOTAL_ROWS, isLastReadStyledListRow, normalizeLastReadListRow, paintLastReadListRow, subjectOfListRow } from './list_session';
+import { mergeListPage, flattenListBuffer, evictListBuffer, listGrowthDir, listNumRange, isHiddenListRow, pinnedRowKey, MAX_LIST_ROWS, MAX_LIST_TOTAL_ROWS, isLastReadStyledListRow, normalizeLastReadListRow, paintLastReadListRow, subjectOfListRow, readListRow } from './list_session';
 import { labelListCursor, pruneListToSegment, LIST_HEADER_ROWS } from './list_window';
 import { BRD_HEADER_ROWS, boardListRowNums } from './board_list_parse';
 import { BOARD_LIST, isArticleListTitleRow, rowHasTitle, parseBoardName } from './screen_titles';
@@ -3397,6 +3397,16 @@ TermView.prototype = {
         });
       }
     }
+    // Rows kept as the reader left them (holdListRows): PTT's landing page adds
+    // nothing, and any other page only adds the rows not shown yet.
+    var hold = this._listHold;
+    if (hold) {
+      var numMap = this._listNumMap;
+      var pinnedMap = this._listPinnedMap;
+      entries = rowTexts.join('\n') === hold.landing ? [] : entries.filter(function(e) {
+        return e.num != null ? !numMap.has(e.num) : !pinnedMap.has(e.key);
+      });
+    }
     // 合併前量「緩衝往哪端長」：evict 不砍剛長出來的那一端（evictListBuffer 註解）。
     var grewDir = listGrowthDir(this._listNumMap, entries);
     var prevRange = grewDir ? listNumRange(this._listNumMap) : null;
@@ -3557,8 +3567,35 @@ TermView.prototype = {
     return this._listBlankRow;
   },
 
+  // Keep the accumulated rows as the reader left them (#120): the list comes
+  // back from an article as its live layer showed it. `landing` is PTT's page
+  // on that return (row texts); it adds nothing, and later pages only add the
+  // rows not shown yet, until releaseListRows or a fresh accumulation.
+  holdListRows: function(landing) {
+    this._listHold = { landing: (landing || []).join('\n') };
+  },
+
+  releaseListRows: function() {
+    this._listHold = null;
+  },
+
+  // Show the kept row of article `num` (or of the pinned row `pinnedKey`) as
+  // read, as PTT lists it once it was read.
+  markListArticleRead: function(num, pinnedKey) {
+    var map = num != null ? this._listNumMap : this._listPinnedMap;
+    var key = num != null ? num : pinnedKey;
+    if (!map || key == null || !map.has(key)) return;
+    var read = readListRow(map.get(key));
+    if (!read) return;
+    map.set(key, read);
+    var flat = flattenListBuffer(this._listNumMap, this._listPinnedMap);
+    this.buf.listLines = flat.lines;
+    this.buf.listLineNums = flat.nums;
+  },
+
   // Clear the list-accumulation maps (fresh board entry / board switch rebuild).
   resetListAccumulation: function() {
+    this._listHold = null;
     this._listNumMap = null;
     this._listPinnedMap = null;
     this._listHeaderRows = null;
