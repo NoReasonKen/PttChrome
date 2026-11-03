@@ -6,7 +6,7 @@
 // `#cursor.cursor--blink-on` 的 visibility CSS 規則（main.css）。unit 只驗得到 inline
 // style 那層，驗不到「兩層疊起來使用者到底看不看得到」。
 //
-// 檔尾另有一組省電不變量（body.blink--active 只在畫面有閃爍字時才掛）的真 timer／真 CSS 版。
+// Root-local blink phases are checked with the real timer and CSS below.
 //
 // 畫面用 ANSI 直接餵，完全複製 pttbbs `mbbsd/stuff.c#cursor_show` 的序列：
 //     move(row, col); outs(">"); move(row, col);
@@ -133,22 +133,23 @@ test.describe('PTT 有游標時隱藏閃爍游標（離線）', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 省電不變量（真 timer／真 CSS）：閃爍只動 #cursor 自己；body.blink--active（會讓整棵樹
-// 做一次樣式失效）只在畫面上真的有 SGR 5 閃爍字時才掛。unit 守邏輯
-// （tests/unit/blink_phase.test.js），這裡守「真的每秒 tick 時也是這樣」。
+// The cursor and displayed rendering roots own their phases independently;
+// body never acquires a phase that would invalidate parked list descendants.
 const SCREEN_WITH_BLINK_TEXT =
   '\x1b[2J\x1b[1;1H  [test board]' +
   '\x1b[3;1H\x1b[5;31mBLINK\x1b[m' +
   '\x1b[10;20H';
 
-// 逐拍取樣，回傳 { cursor: 看過的 visibility, body: 看過的 body.blink--active }。
+// Sample both phases and verify that body stays outside the blink scope.
 async function observePhase(page, ticks = 4) {
   const samples = await sampleTicks(page, ticks, () => ({
     cursor: getComputedStyle(document.getElementById('cursor')).visibility,
+    surface: document.querySelector('.main:not([data-stack-layer])').classList.contains('blink--active'),
     body: document.body.classList.contains('blink--active'),
   }));
   return {
     cursor: [...new Set(samples.map((s) => s.cursor))].sort(),
+    surface: [...new Set(samples.map((s) => s.surface))].sort(),
     body: [...new Set(samples.map((s) => s.body))].sort(),
   };
 }
@@ -166,10 +167,11 @@ test.describe('閃爍相位的省電不變量（離線）', () => {
     await waitScreenSettled(page);
     const seen = await observePhase(page);
     expect(seen.cursor).toEqual(['hidden', 'visible']);
+    expect(seen.surface).toEqual([false]);
     expect(seen.body).toEqual([false]);
   });
 
-  test('有閃爍字：body.blink--active 照常交替（閃爍字仍會閃）', async ({ page }) => {
+  test('blink text alternates its rendering root while body stays unchanged', async ({ page }) => {
     test.setTimeout(90000);
     await bootWithClock(page);
     await ptt.applyPrefs(page, {
@@ -182,6 +184,7 @@ test.describe('閃爍相位的省電不變量（離線）', () => {
     // 前提：渲染鏈真的掛上了閃爍 class
     expect(await page.evaluate(() => !!document.querySelector('#mainContainer [class*="qq"]'))).toBe(true);
     const seen = await observePhase(page);
-    expect(seen.body).toEqual([false, true]);
+    expect(seen.surface).toEqual([false, true]);
+    expect(seen.body).toEqual([false]);
   });
 });

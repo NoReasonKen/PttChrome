@@ -57,7 +57,10 @@ export function scanE2E(src) {
   const code = stripComments(src);
   const out = [];
   for (const m of code.matchAll(E2E_CTOR)) out.push({ kind: "ctor", event: m[2] });
-  const dispatches = (code.match(/\.dispatchEvent\(/g) || []).length;
+  // App-owned CustomEvents are adapter notifications, not browser input.
+  // Exclude only direct construction; a dispatched variable stays unknown.
+  const customDispatches = (code.match(/\.dispatchEvent\(\s*new\s+(?:window\.)?CustomEvent\(/g) || []).length;
+  const dispatches = (code.match(/\.dispatchEvent\(/g) || []).length - customDispatches;
   // 每一次 dispatch 都要對得上一個看得出型別的建構子；多出來的（派發變數、
   // 派發別處建好的事件）型別不明 ⇒ 一律算違規。
   const ctorCount = out.length;
@@ -232,6 +235,16 @@ describe("掃描器自測", () => {
     expect(scanE2E("/* el.dispatchEvent(new MouseEvent('click')) */\n")).toEqual([]);
     expect(scanE2E("new CustomEvent('x-ours')")).toEqual([]);
     expect(scanE2E("await page.mouse.click(1, 2, { button: 'right' });")).toEqual([]);
+  });
+
+  test("direct custom-event dispatch is allowed without hiding unknown or browser input", () => {
+    expect(scanE2E("window.dispatchEvent(new CustomEvent('pttandroid:ime', { detail: { inset: 200 } }));")).toEqual([]);
+    expect(scanE2E("window.dispatchEvent(new window.CustomEvent('x-ours')); el.dispatchEvent(other);")).toEqual([
+      { kind: "dispatch", event: "?" },
+    ]);
+    expect(scanE2E("window.dispatchEvent(new CustomEvent('x-ours')); el.dispatchEvent(new MouseEvent('click'));")).toEqual([
+      { kind: "ctor", event: "click" },
+    ]);
   });
 
   test("unit：建構子與 fireEvent 兩種寫法都抓得到，自畫按鈕的 click 不算", () => {

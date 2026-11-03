@@ -6,12 +6,8 @@ const { bootNestedShortcutSearch, waitList, waitArticle, tapCard, tapShortcut, n
 const ptt = require('../helpers/ptt');
 
 for (const operation of ['drawer', 'article']) {
-  test(`${operation} records bounded startup timing and moves by the next painted frame`, async ({ page }) => {
+  test(`${operation} follows the first movement by the next painted frame`, async ({ page }) => {
     await bootGestureArticle(page);
-    await page.evaluate(() => {
-      window.__app.setDebugMode(true);
-      window.__app.toggleDebugRecording();
-    });
     const main = await waitRectStable(page, '.main');
     const width = page.viewportSize().width;
     await installPaintedFrameProbe(page);
@@ -35,20 +31,9 @@ for (const operation of ['drawer', 'article']) {
       await contact.move({ x: start.x + (operation === 'drawer' ? -distance : distance), y: start.y });
     }
     const samples = await page.evaluate(() => window.__gestureLatency);
-    const timing = await page.evaluate(() => JSON.parse(window.__app.debugRecorder.stop()).events
-      .filter(event => event.tag === '[DEBUG-69-latency]').map(event => event.info));
     await contact.release({ cancel: true });
     expect(samples).toHaveLength(4);
     for (const sample of samples) expect(sample.actual).toBeCloseTo(sample.expected, 1);
-    expect(timing.map(sample => sample.distance)).toEqual([4, 12, 20]);
-    expect(timing.map(sample => sample.move)).toEqual([1, 2, 3]);
-    for (const sample of timing) {
-      expect(sample.operation).toBe(operation === 'drawer' ? 'open' : 'exit');
-      for (const name of ['eventLagMs', 'contactMs', 'prepareMs', 'handlerMs', 'frameWaitMs']) {
-        expect(Number.isFinite(sample[name])).toBe(true);
-        expect(sample[name]).toBeGreaterThanOrEqual(0);
-      }
-    }
   });
 }
 

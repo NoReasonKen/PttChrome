@@ -166,15 +166,6 @@ export class ArticleGestures {
   _move(event) {
     const track = this.track;
     if (!track || event.pointerId !== track.id) return;
-    const timing = this.diag.beginMove(event, track);
-    try {
-      this._moveTracked(event, track, timing);
-    } finally {
-      this.diag.endMove(timing);
-    }
-  }
-
-  _moveTracked(event, track, timing) {
     if (this._swipeLevel() !== track.level || this._otherModalOpen()) return this._cancel();
     const snapshot = track.gesture.move(event.clientX, event.clientY, event.timeStamp);
     if (this.opened || snapshot.operation) {
@@ -182,9 +173,7 @@ export class ArticleGestures {
       if (snapshot.operation) {
         if (snapshot.operation === 'exit') {
           this.exitLevel = track.level;
-          const before = timing && performance.now();
           this._ensureExit();
-          if (timing) timing.prepareMs = performance.now() - before;
           this.exitDistance = snapshot.distance;
           if (!this.frame) this.frame = requestAnimationFrame(() => {
             this.frame = null;
@@ -192,9 +181,7 @@ export class ArticleGestures {
           });
           return;
         }
-        const before = timing && performance.now();
         this._ensurePanel();
-        if (timing) timing.prepareMs = performance.now() - before;
         this.core.setModalOpen(MODAL_SOURCE, true);
         this.reveal = snapshot.reveal;
         if (!this.frame) this.frame = requestAnimationFrame(() => {
@@ -449,7 +436,11 @@ export class ArticleGestures {
     if (!this.exitUnderlay) return;
     this._stopMotion();
     this.backsDuringSlide = null;
-    if (!this.stack.handingOff) this.stack.revealable()?.hide();
+    if (!this.stack.handingOff) {
+      const layer = this.stack.revealable();
+      if (layer?.prepare) layer.prepare();
+      else layer?.hide();
+    }
     releaseSurfaces(this.exitSurfaces);
     this.exitUnderlay.remove();
     this.exitUnderlay = this.exitSurfaces = null;
