@@ -1466,6 +1466,7 @@ export const ContextMenu = ({ pttchrome }) => {
         />
       </Suspense>
       <TitleBlacklistModal
+        pttchrome={pttchrome}
         show={showsTitleBlacklist}
         draft={titleBlacklistDraft}
         onHide={onTitleBlacklistHide}
@@ -1484,10 +1485,12 @@ export const ContextMenu = ({ pttchrome }) => {
         />
       </Suspense>
       <LongPushProgressModal
+        pttchrome={pttchrome}
         progress={longPushProgress}
         onCancel={onLongPushCancel}
       />
       <LongPushErrorModal
+        pttchrome={pttchrome}
         error={longPushError}
         onHide={onLongPushErrorHide}
         onCopy={onLongPushCopyRest}

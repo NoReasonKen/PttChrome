@@ -8,6 +8,7 @@ import {
   Stack,
 } from "@mantine/core";
 import { i18n } from "../../js/i18n";
+import { useDialogBack } from "../useDialogBack";
 
 // 長推文推不出去時的錯誤框（探路被擋、送出途中中止、取消）。
 //
@@ -36,7 +37,8 @@ const titleOf = (phase) => {
   return i18n("longPushError_title");
 };
 
-export const LongPushErrorModal = ({ error, onHide, onCopy }) => {
+export const LongPushErrorModal = ({ error, onHide, onCopy, pttchrome }) => {
+  useDialogBack(pttchrome, !!error, onHide);
   const rest = (error && error.rest) || "";
   const sent = (error && error.sent) || 0;
   return (

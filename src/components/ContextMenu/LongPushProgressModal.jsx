@@ -1,5 +1,6 @@
 import { Modal, Progress, Button, Group, Text, Stack } from "@mantine/core";
 import { i18n } from "../../js/i18n";
+import { useDialogBack } from "../useDialogBack";
 
 // 長推文送出中的全版遮罩。
 //
@@ -19,7 +20,8 @@ const replaceI18n = (id, replacements) =>
     )
     .join("");
 
-export const LongPushProgressModal = ({ progress, onCancel }) => {
+export const LongPushProgressModal = ({ progress, onCancel, pttchrome }) => {
+  useDialogBack(pttchrome, !!progress);
   const p = progress || { index: 0, total: 0, phase: "sending" };
   const percent = p.total ? Math.round(((p.index - 1) / p.total) * 100) : 0;
   // preflight ＝ 還在問 PTT「這篇推得了嗎」，一則都還沒有，沒有進度可以報。

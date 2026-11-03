@@ -1,13 +1,21 @@
 import { useState, useEffect, useCallback } from "react";
 import { Modal, TextInput, Button, Group } from "@mantine/core";
 import { i18n } from "../../js/i18n";
+import { useDialogBack } from "../useDialogBack";
 
 // Quick-add title blacklist prompt (right-click a board-list title → this modal,
 // prefilled with the FULL raw-case title so the user can trim it down to the
 // keyword they actually want). Confirm hands the edited keyword to the caller
 // (ContextMenu#onTitleBlacklistConfirm → quickAddBlacklist); empty input is a
 // no-op there, so no validation UI is needed here.
-export const TitleBlacklistModal = ({ show, draft, onHide, onConfirm }) => {
+export const TitleBlacklistModal = ({
+  show,
+  draft,
+  onHide,
+  onConfirm,
+  pttchrome,
+}) => {
+  useDialogBack(pttchrome, show, onHide);
   const [value, setValue] = useState("");
   // Re-seed from the clicked row's title on every open (the component stays
   // mounted across opens, so initial state alone would go stale).
