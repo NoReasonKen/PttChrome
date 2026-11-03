@@ -75,8 +75,16 @@ async function bootDashboard(page, cassette = homeBoard) {
 }
 
 // The board search the dashboard (or the search key) sent reached C_Chat.
+// The app skips the board's entry screen itself (skipBoardEntryScreen), so a
+// Space of our own is pressed only once that skip is over and left the screen
+// to us: one that lands after the list shows pages it down, moving the
+// selection off the recorded row (#112).
 async function boardOpened(page) {
-  await page.waitForFunction(() => window.__app.buf.isPassScreenNow() || window.__app.buf.pageState === 2);
+  await page.waitForFunction(() => {
+    const app = window.__app;
+    return !app.boardNoteSkip.active && app.commandQueue.idle && !app.buf._settleTimer &&
+      (app.buf.isPassScreenNow() || app.buf.pageState === 2);
+  });
   if (await page.evaluate(() => window.__app.buf.isPassScreenNow())) await ptt.sendKey(page, 'Space');
   await listActive(page);
 }

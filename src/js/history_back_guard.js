@@ -109,12 +109,16 @@ export function installHistoryBackGuard(app, win, opts) {
     // 保險：forward 沒把我們帶回 sentinel（stack 被別人動過）就補一層，否則
     // 下一次 back 直接離站。順便關掉上面的靜音窗口。
     later(() => {
-      endSelfNav();
       const st = w.history && w.history.state;
       if (st && st.pttchromeBackGuard) {
         myId = st.pttchromeBackGuard;
+        // Landed, but its hashchange is a task of its own that a busy device can
+        // still have queued behind this check (#112): keep the window open for
+        // one more window from now.
+        later(endSelfNav, RESTORE_CHECK_MS);
         return;
       }
+      endSelfNav();
       restoring = false;
       armed = pushSentinel();
     }, RESTORE_CHECK_MS);

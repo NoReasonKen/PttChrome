@@ -50,7 +50,8 @@ function makeWin(href) {
       },
       forward() {
         w.calls.push(["forward"]);
-        w._go(1);
+        if (w.slowTraversal) w.pending.push(() => w._go(1, { deferHash: true }));
+        else w._go(1);
       },
       back() {
         w.calls.push(["back"]);
@@ -62,7 +63,11 @@ function makeWin(href) {
       },
     },
     // 真實順序無關的寫法：popstate 與 hashchange 都發，測試不依賴誰先誰後。
-    _go(delta) {
+    // slowTraversal: forward() lands only when the test runs `pending`, and its
+    // hashchange is a later task of its own, as on a busy device.
+    slowTraversal: false,
+    pending: [],
+    _go(delta, { deferHash = false } = {}) {
       const from = w.stack[w.index];
       const next = w.index + delta;
       if (next < 0 || next >= w.stack.length) return;
@@ -70,7 +75,9 @@ function makeWin(href) {
       const to = w.stack[w.index];
       w.location.href = to.url;
       w.fire("popstate", { state: to.state });
-      if (frag(from.url) !== frag(to.url)) w.fire("hashchange", {});
+      if (frag(from.url) === frag(to.url)) return;
+      if (deferHash) w.pending.push(() => w.fire("hashchange", {}));
+      else w.fire("hashchange", {});
     },
     addEventListener(type, fn) {
       (listeners[type] = listeners[type] || []).push(fn);
@@ -132,12 +139,35 @@ test("返回之後補回 sentinel，不可以被自己的 traversal 當成新的
   expect(t.win.stack).toHaveLength(2);
 });
 
+// A busy device lands the traversal late, and the guard's check can run
+// between its popstate and its hashchange (#112): the window must still
+// cover that hashchange.
+test("a slow traversal's hashchange after the guard's check is not a new deep link", () => {
+  const t = setup();
+  t.win.fire("pointerdown", {});
+  t.win.history.replaceState(t.win.history.state, "", ARTICLE);
+  t.win.slowTraversal = true;
+  t.win.history.back();
+  expect(t.keys).toEqual(["ArrowLeft"]);
+
+  t.win.pending.shift()(); // the traversal lands: popstate
+  t.timers.splice(0).forEach((fn) => fn()); // the guard's check
+  t.win.pending.shift()(); // the traversal's hashchange
+
+  expect(t.requests).toEqual([]);
+  expect(t.win.history.state && t.win.history.state.pttchromeBackGuard).toBeTruthy();
+});
+
+const drain = (timers) => {
+  while (timers.length) timers.shift()();
+};
+
 test("靜音窗口關掉之後，使用者真的貼一條新連結照樣跳", () => {
   const t = setup();
   t.win.fire("pointerdown", {});
   t.win.history.replaceState(t.win.history.state, "", ARTICLE);
   t.win.history.back();
-  t.timers.splice(0).forEach((fn) => fn()); // 靜音窗口到期
+  drain(t.timers); // 靜音窗口到期
   t.requests.length = 0;
 
   // 使用者在網址列貼上另一篇 ⇒ hashchange（不是我們造成的）。
