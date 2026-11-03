@@ -13,7 +13,7 @@
   padding: 4px 6px;
   border-top: 1px solid #2a2a32;
   background: #101014;
-  color: #ddd;
+  color: var(--mobile-chrome-text-secondary);
   font:
     14px/1.2 system-ui,
     sans-serif;
@@ -62,7 +62,7 @@
   border: 1px solid #3a3a44;
   border-radius: 6px;
   background: #0b0b0e;
-  color: #eee;
+  color: var(--mobile-chrome-text);
   /* 手機 16px 以下 iOS／部分 Android 會在聚焦時自動放大頁面。 */
   font:
     16px/1.2 system-ui,

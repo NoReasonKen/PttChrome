@@ -9,7 +9,7 @@
   border: 1px solid #555;
   border-radius: 8px;
   background: #202025;
-  color: #eee;
+  color: var(--mobile-chrome-text);
   z-index: 2900;
 }
 .AppUpdateActions {

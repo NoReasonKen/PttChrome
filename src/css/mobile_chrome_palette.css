@@ -1,0 +1,43 @@
+/* Shared chrome colors stay independent of Mantine's selected color scheme.
+   Keep channels separate so translucent surfaces retain their original alpha. */
+:root {
+  --mobile-chrome-background-rgb: 20 20 24;
+  --mobile-chrome-background: rgb(var(--mobile-chrome-background-rgb));
+  --mobile-chrome-bar-background: rgb(var(--mobile-chrome-background-rgb) / 0.96);
+  --mobile-chrome-keypad-background: rgb(var(--mobile-chrome-background-rgb) / 0.94);
+  --mobile-chrome-inbox-background: rgb(var(--mobile-chrome-background-rgb) / 0.92);
+  --mobile-chrome-drawer-background: rgb(var(--mobile-chrome-background-rgb) / 0.5);
+  --mobile-chrome-sheet-background: #1d1d22;
+  --mobile-chrome-text: #eee;
+  --mobile-chrome-text-secondary: #ddd;
+  --mobile-chrome-text-button: #c8c8d0;
+  --mobile-chrome-text-disabled: #5c5c66;
+  --mobile-chrome-border: #333;
+  --mobile-chrome-border-strong: #444;
+  --mobile-chrome-control-border: #555;
+  --mobile-chrome-handle: #66666e;
+  --mobile-chrome-key-background: #2b2b30;
+  --mobile-chrome-key-pressed: #44444c;
+  --mobile-chrome-key-auxiliary: #1f2a3a;
+  --mobile-chrome-key-selected: #2f6fd0;
+  --mobile-chrome-key-selected-border: #5a8ee0;
+  --mobile-chrome-accent-rgb: 168 199 250;
+  --mobile-chrome-accent: rgb(var(--mobile-chrome-accent-rgb));
+  --mobile-chrome-accent-selected: rgb(var(--mobile-chrome-accent-rgb) / 0.18);
+  --mobile-chrome-accent-progress: rgb(var(--mobile-chrome-accent-rgb) / 0.2);
+  --mobile-chrome-accent-border: rgb(var(--mobile-chrome-accent-rgb) / 0.55);
+  --mobile-chrome-danger-text: #ffb4ab;
+  --mobile-chrome-danger-background: #8a2626;
+  --mobile-chrome-danger-border: #c04a4a;
+  --mobile-chrome-warning: #ffd27a;
+  --mobile-chrome-badge: #b3261e;
+  --mobile-chrome-white-rgb: 255 255 255;
+  --mobile-chrome-on-badge: rgb(var(--mobile-chrome-white-rgb));
+  --mobile-chrome-pressed: rgb(var(--mobile-chrome-white-rgb) / 0.08);
+  --mobile-chrome-pressed-strong: rgb(var(--mobile-chrome-white-rgb) / 0.12);
+  --mobile-chrome-drawer-divider: rgb(var(--mobile-chrome-white-rgb) / 0.15);
+  --mobile-chrome-drawer-text: #f1f1f3;
+  --mobile-chrome-drawer-underline: #66d9ef;
+  --mobile-chrome-shadow: rgb(0 0 0 / 0.5);
+  --mobile-chrome-drawer-shadow: rgb(0 0 0 / 0.25);
+}

@@ -20,10 +20,10 @@
   right: 0;
   display: flex;
   flex-direction: column;
-  background: rgb(20 20 24 / 50%);
-  color: #f1f1f3;
+  background: var(--mobile-chrome-drawer-background);
+  color: var(--mobile-chrome-drawer-text);
   border-radius: 12px 0 0 12px;
-  box-shadow: -4px 0 16px rgb(0 0 0 / 25%);
+  box-shadow: -4px 0 16px var(--mobile-chrome-drawer-shadow);
   will-change: transform;
 }
 
@@ -31,13 +31,13 @@
   flex: 1 1 0;
   min-height: 0;
   border: 0;
-  border-bottom: 1px solid rgb(255 255 255 / 15%);
+  border-bottom: 1px solid var(--mobile-chrome-drawer-divider);
   background: transparent;
   color: inherit;
   padding: 4px 12px;
   font: 500 16px/1.3 system-ui, sans-serif;
   text-decoration-line: underline;
-  text-decoration-color: #66d9ef;
+  text-decoration-color: var(--mobile-chrome-drawer-underline);
   text-decoration-thickness: 2px;
   text-underline-offset: 0.22em;
   white-space: normal;
@@ -51,7 +51,7 @@
 }
 
 .articleShortcutDrawer button:active {
-  background: rgb(255 255 255 / 12%);
+  background: var(--mobile-chrome-pressed-strong);
 }
 
 .stackUnderlay {
@@ -59,7 +59,7 @@
   inset: 0 0 auto;
   z-index: 1;
   overflow: hidden;
-  background: #141418;
+  background: var(--mobile-chrome-background);
   pointer-events: none;
 }
 
@@ -74,16 +74,16 @@
   display: flex;
   align-items: center;
   padding: calc(var(--safe-top, 0px) + 4px) 6px 0;
-  background: #141418;
-  border-bottom: 1px solid #333;
-  color: #eee;
+  background: var(--mobile-chrome-background);
+  border-bottom: 1px solid var(--mobile-chrome-border);
+  color: var(--mobile-chrome-text);
   font-family: system-ui, sans-serif;
   text-align: left;
 }
 
 .stackMoving {
   will-change: translate;
-  background-color: #141418;
+  background-color: var(--mobile-chrome-background);
 }
 
 /* A page being opened shows only the loading state until PTT answers (#36). */

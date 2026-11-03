@@ -6,6 +6,7 @@
 //  4. 不寫入列節點本身（outerHTML 不變 ⇒ 不打斷 screen.js 的節點沿用比對）；
 //  5. 標題含引號／反斜線也不會讓規則失效；
 //  6. 只畫外框，不閃爍（開關 highlightMenuTarget 的 e2e 在 list_mark_read.offline.spec.js）。
+import "../../src/css/mobile_chrome_palette.css";
 import { buildRow } from "../../src/render/row";
 import { buildListCard } from "../../src/render/list_card";
 import { listRow, row as charsRow, seg } from "./helpers/screen_fixtures";

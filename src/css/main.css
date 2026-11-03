@@ -1218,7 +1218,7 @@ span {
   border-radius: 6px;
   background: rgba(20, 20, 20, 0.92);
   box-shadow: 0 0 0 1px #444;
-  color: #eee;
+  color: var(--mobile-chrome-text);
   font: 14px/1.4 sans-serif;
 }
 #resumeLastPlace[hidden] {
@@ -1789,7 +1789,7 @@ body.mobile-layout {
   background: rgba(255, 255, 255, 0.06);
 }
 #nextArticleCard[data-pull="armed"] .nextArticleLabel {
-  color: #ddd;
+  color: var(--mobile-chrome-text-secondary);
 }
 #nextArticleCard[data-pending] {
   cursor: progress;

@@ -55,7 +55,7 @@ export function menuTargetSelector(t) {
 export function menuTargetCss(t) {
   const sel = menuTargetSelector(t);
   if (!sel) return "";
-  return `${sel}{box-shadow:inset 0 0 0 2px #a8c7fa;}`;
+  return `${sel}{box-shadow:inset 0 0 0 2px var(--mobile-chrome-accent);}`;
 }
 
 // null ＝ 清掉標示。
