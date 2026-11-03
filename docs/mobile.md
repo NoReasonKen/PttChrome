@@ -451,7 +451,15 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
 
 ## Phase 10：系統整合
 
-- `index.html`：`viewport-fit=cover`、`theme-color` #141418（＝manifest，`index_html_meta.test.js` 守；仍禁 interactive-widget／鎖縮放）。
+- `index.html` retains `viewport-fit=cover` and permits browser zoom. Its `theme-color` and
+  the generated `manifest.webmanifest` use the shared background channels from
+  `src/css/mobile_chrome_palette.css` through `scripts/mobile-chrome-assets.mjs`, in both
+  development and production (`index_html_meta.test.js`).
+- Shared chrome colors live in `src/css/mobile_chrome_palette.css`, loaded before component
+  styles by `src/entry.js`. Surface and accent alpha values remain independent; the palette
+  does not set a global color scheme. Settings keeps Mantine's scheme and PTT content keeps
+  its own colors. `mobile_chrome_palette.test.js` guards against repeated literal colors;
+  `mobile_chrome_palette.offline.spec.js` verifies dark and light schemes at narrow width.
 - safe-area：`App._readSafeInsets`（探針元素的 `env(safe-area-inset-*)` padding）→ `mobileChromeInsets` → CSS `--safe-top/--safe-bottom`
   ＋終端機 inset；`mobileRowsHeight(h, safe)` 扣掉。APK 原生已 padding ⇒ env＝0（`docs/android-app.md` 第 8 點）。
 - 等待進度條：`mobile_busy.busyNext`（action → 500ms 內真的 `conn.onDataSent` → pending → 300ms 後 shown → `screenSettled` 或 3s 逾時收）。A transaction of several round trips holds the bar from `App.holdBusy(true)` to `holdBusy(false)`, past settles and the timeout (far thread jumps, `docs/thread-jump.md`).

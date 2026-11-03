@@ -30,8 +30,8 @@
   padding: 0;
   border: 1px solid #3a3a44;
   border-radius: 50%;
-  background: rgba(20, 20, 24, 0.92);
-  color: #ddd;
+  background: var(--mobile-chrome-inbox-background);
+  color: var(--mobile-chrome-text-secondary);
   cursor: pointer;
 }
 
@@ -74,7 +74,7 @@
   border: 1px solid #3a3a44;
   border-radius: 8px;
   background: #16161b;
-  color: #ddd;
+  color: var(--mobile-chrome-text-secondary);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
   font-size: 14px;
 }

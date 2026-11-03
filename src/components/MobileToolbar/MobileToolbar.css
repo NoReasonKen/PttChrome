@@ -10,7 +10,7 @@
   bottom: var(--kb-inset, 0px);
   /* 下緣 safe-area（手勢列，viewport-fit=cover 時才不是 0；鍵盤升起時 App 寫成 0）。 */
   padding-bottom: var(--safe-bottom, 0px);
-  background: rgba(20, 20, 24, 0.96);
+  background: var(--mobile-chrome-bar-background);
   z-index: 2500;
   user-select: none;
   -webkit-user-select: none;
@@ -27,8 +27,8 @@
   box-sizing: border-box;
   height: 48px;
   padding: 0 4px;
-  background: rgba(20, 20, 24, 0.96);
-  border-top: 1px solid #333;
+  background: var(--mobile-chrome-bar-background);
+  border-top: 1px solid var(--mobile-chrome-border);
 }
 
 /* Material bottom navigation：icon 在上、小字 label 在下，無框。按下的回饋＝
@@ -45,7 +45,7 @@
   border: none;
   border-radius: 12px;
   background: transparent;
-  color: #c8c8d0;
+  color: var(--mobile-chrome-text-button);
   font-family: inherit;
   cursor: pointer;
 }
@@ -57,12 +57,12 @@
 }
 
 .mobileToolbarBtn:active {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--mobile-chrome-pressed);
 }
 
 /* 這個畫面不能用（或重整冷卻中）：反灰但不藏，格位才不會挪（mobile_toolbar.toolbarSlots）。 */
 .mobileToolbarBtn:disabled {
-  color: #5c5c66;
+  color: var(--mobile-chrome-text-disabled);
   cursor: default;
 }
 
@@ -82,18 +82,18 @@
 
 .mobileToolbarMenuItem:active,
 .mobileKeypadKey:active {
-  background: #44444c;
+  background: var(--mobile-chrome-key-pressed);
 }
 
 /* 展開中（按鍵／更多）：Material 的 active indicator 色。 */
 .mobileToolbarBtn.active {
-  color: #a8c7fa;
+  color: var(--mobile-chrome-accent);
 }
 
 .mobileToolbarBtn.active svg {
   border-radius: 10px;
-  background: rgba(168, 199, 250, 0.18);
-  box-shadow: 0 0 0 4px rgba(168, 199, 250, 0.18);
+  background: var(--mobile-chrome-accent-selected);
+  box-shadow: 0 0 0 4px var(--mobile-chrome-accent-selected);
 }
 
 /* 「更多」裡的文章導覽（同主題前／下／首篇、列表前／下篇）。 */
@@ -102,7 +102,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
   padding-bottom: 4px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--mobile-chrome-border);
 }
 
 /* 按鍵面板貼在工具列正上方，與工具列同一個 fixed 容器（常駐開著也能看終端機，所以不做成
@@ -112,30 +112,30 @@
   grid-template-columns: repeat(6, minmax(44px, 1fr));
   gap: 4px;
   padding: 4px;
-  background: rgba(20, 20, 24, 0.94);
-  border-top: 1px solid #444;
+  background: var(--mobile-chrome-keypad-background);
+  border-top: 1px solid var(--mobile-chrome-border-strong);
 }
 
 .mobileKeypadKey {
   min-height: 44px;
   padding: 0 6px;
-  border: 1px solid #555;
+  border: 1px solid var(--mobile-chrome-control-border);
   border-radius: 6px;
-  background: #2b2b30;
-  color: #eee;
+  background: var(--mobile-chrome-key-background);
+  color: var(--mobile-chrome-text);
   font-size: 15px;
   font-family: inherit;
   cursor: pointer;
 }
 
 .mobileKeypadAux {
-  background: #1f2a3a;
+  background: var(--mobile-chrome-key-auxiliary);
 }
 
 .mobileKeypadAux.active,
 .mobileToolbarMenuItem.active {
-  background: #2f6fd0;
-  border-color: #5a8ee0;
+  background: var(--mobile-chrome-key-selected);
+  border-color: var(--mobile-chrome-key-selected-border);
 }
 
 /* 第三列 Esc／Tab／Del 各佔兩格（6 欄＝2+2+2）。 */
@@ -147,10 +147,10 @@
 .mobileToolbarMenuItem {
   min-height: 44px;
   padding: 0 12px;
-  border: 1px solid #555;
+  border: 1px solid var(--mobile-chrome-control-border);
   border-radius: 6px;
-  background: #2b2b30;
-  color: #eee;
+  background: var(--mobile-chrome-key-background);
+  color: var(--mobile-chrome-text);
   font-size: 15px;
   font-family: inherit;
   text-align: left;
@@ -161,7 +161,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  color: #ffd27a;
+  color: var(--mobile-chrome-warning);
   font-size: 15px;
 }
 
@@ -171,6 +171,6 @@
 }
 
 .mobileKeypadDanger {
-  background: #8a2626;
-  border-color: #c04a4a;
+  background: var(--mobile-chrome-danger-background);
+  border-color: var(--mobile-chrome-danger-border);
 }

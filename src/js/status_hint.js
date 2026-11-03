@@ -24,5 +24,5 @@ export function shouldShowHint(level, showStatusHints) {
 export function hintColors(level) {
   return isErrorHint(level)
     ? { background: 'rgba(176,24,24,.94)', color: '#fff' }
-    : { background: 'rgba(20,20,20,.88)', color: '#eee' };
+    : { background: 'rgba(20,20,20,.88)', color: 'var(--mobile-chrome-text)' };
 }

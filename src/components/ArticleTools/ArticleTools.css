@@ -12,7 +12,7 @@
   box-sizing: border-box;
   border-left: 1px solid #2a2a32;
   background: #101014;
-  color: #ddd;
+  color: var(--mobile-chrome-text-secondary);
   font:
     13px/1.4 system-ui,
     sans-serif;
@@ -32,7 +32,7 @@
   border: 1px solid #3a3a44;
   border-radius: 6px;
   background: #1c1c22;
-  color: #ddd;
+  color: var(--mobile-chrome-text-secondary);
   padding: 2px 8px;
   font: inherit;
   cursor: pointer;

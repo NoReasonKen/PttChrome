@@ -1,5 +1,6 @@
-// Mantine 樣式先載（只載用到的元件，見 css/mantine.css），自家 main/color 在後面：
-// 同權重時後載的勝，保護終端機逐列渲染的像素契約。
+// Load the shared palette before component styles. Keep main/color after Mantine
+// so equal-specificity rules preserve the terminal's row rendering contract.
+import './css/mobile_chrome_palette.css';
 import './css/mantine.css';
 import './css/main.css';
 import './css/color.css';
