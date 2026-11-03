@@ -23,6 +23,30 @@ function scrollToRow(scroller, anchor) {
   return true;
 }
 
+// What the real article needs to show this article again as it was left
+// (#121): its accumulated rows and where accumulation stood, and the
+// new-comments scan that placed its marker. Only an article read to its end
+// is kept: rows past a partial read would have to come from PTT.
+function articleContent(view) {
+  const core = view.bbscore;
+  const buf = view.buf;
+  const reading = core?.easyReading;
+  if (!buf?.pageLines?.length || !reading?.easyReadingReachedPageEnd || reading._reverse || view._reverse) return null;
+  const marks = core.newComments;
+  return {
+    pageLines: buf.pageLines, accEndRow: view._accEndRow, lastSig: view._lastAccumulatedSig,
+    marks: marks && { _head: marks._head, _scanner: marks._scanner, _key: marks._key, _seen: marks._seen, _saved: marks._saved }
+  };
+}
+
+// PTT has reopened the article and easy reading paged it to its end, with
+// nothing in flight: a later page would not land on the adopted rows.
+function readIdle(core) {
+  const reading = core.easyReading;
+  return core.buf.pageState === 3 && !!reading?.easyReadingReachedPageEnd && reading._inFlightSig == null &&
+    !reading._reverse && !reading._functionMode && !core.buf.easyReadingHealInFlight;
+}
+
 export class StackArticleLayer extends ScreenCopyLayer {
   // Render `view`'s current article frame as a live copy over the article's
   // box. Returns null when the view shows no article frame.
@@ -46,6 +70,7 @@ export class StackArticleLayer extends ScreenCopyLayer {
     this.scrollHeight = main.scrollHeight;
     // The reading position by row, for a render at another width.
     this.anchor = topRow(main);
+    this.content = articleContent(view);
   }
 
   _render(rect, forceWidth) {
@@ -110,13 +135,39 @@ export class StackArticleLayer extends ScreenCopyLayer {
   }
 
   // Put the real article at this layer's reading position: the same row at
-  // the same offset from the top of the view.
+  // the same offset from the top of the view. The real article shows this
+  // layer's content, not PTT's reopened copy (#121).
   alignReal(core) {
+    this._adopt(core);
     return scrollToRow(core.view.mainDisplay, topRow(this.el));
   }
 
-  // The real article has that row: easy reading has paged that far.
+  // The real article takes over this layer's rows, in place of what PTT's
+  // reopened copy accumulated; PTT's pager stays where the reopen left it.
+  _adopt(core) {
+    const content = this.content;
+    if (!content || !readIdle(core)) return false;
+    const view = core.view;
+    core.buf.pageLines = content.pageLines;
+    view._accEndRow = content.accEndRow;
+    view._lastAccumulatedSig = content.lastSig;
+    if (content.marks && core.newComments) Object.assign(core.newComments, content.marks);
+    view._renderScreenLines(content.pageLines, true, true, false, view._pageRenderOverrides());
+    core.commentBar?.refresh();
+    return true;
+  }
+
+  // While PTT reopens the article, its copy must not record comments the
+  // reader has not seen as read: the shown article is this layer's.
+  holdsReading() {
+    return !!this.content;
+  }
+
+  // The real article can take over: with content to adopt, once PTT has
+  // reopened the article to its end; otherwise once easy reading has paged as
+  // far as the reading position.
   reaches(core) {
+    if (this.content) return readIdle(core);
     const anchor = topRow(this.el);
     return !anchor || !!core.view.mainDisplay.querySelector(`[type="bbsrow"][srow="${anchor.srow}"]`);
   }

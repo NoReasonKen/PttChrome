@@ -262,6 +262,9 @@ NewComments.prototype = {
     if (!prefs.markNewComments && !prefs.listNewPushCount) return;
     if (!buf || buf.pageState !== 3 || !er || !er._enabled || er._functionMode || this._reversing()) return;
     if (!er.easyReadingReachedPageEnd) return;
+    // An article shown again from its live layer keeps the layer's content;
+    // PTT's reopened copy behind it was not read (#121).
+    if (core.articleGestures?.stack?.handoff?.layer?.holdsReading?.()) return;
     const lines = buf.pageLines || [];
     if (!lines.length) return;
     this._sync(lines);

@@ -199,6 +199,38 @@ test('Back from the results shows a source read past its first page at its readi
   expect([...new Set(frames.slice(shown).map(f => f.srow))]).toEqual([reading]);
 });
 
+// The accumulated article as the reader sees it: its row count and its last
+// row's text.
+const shownArticle = page => page.evaluate(() => {
+  const app = window.__app;
+  const lines = app.buf.pageLines;
+  return { rows: lines.length, last: app.buf.getRowText(lines.length - 1, 0, app.buf.cols, lines).trim() };
+});
+
+test('Back from the results keeps the source as it was left when PTT\'s copy gained comments (#121)', async ({ page }) => {
+  const row = await longSourceFromList(page);
+  await expect.poll(() => page.evaluate(() => window.__app.easyReading.easyReadingReachedPageEnd)).toBe(true);
+  const before = await shownArticle(page);
+  // The article PTT will reopen; it gains rows at its end while the reader is
+  // in the results.
+  await page.evaluate(() => { window.__alpha = window.__shortcutServer.state.open; });
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await page.evaluate(() => { window.__alpha.lines = 110; });
+  await settled(page);
+  await nativeBack(page);
+  await waitArticle(page, 'Alpha');
+  await settled(page);
+  // PTT did reopen the longer copy, to its end.
+  await expect.poll(() => page.evaluate(() => window.__shortcutServer.state.line)).toBeGreaterThan(80);
+  expect(await shownArticle(page)).toEqual(before);
+  expect(await rowAtTop(page, MAIN)).toEqual(row);
+  // Nothing changes once PTT has reopened it.
+  await page.waitForTimeout(500); // sleep-ok: proves the absence of a later change; nothing to wait for
+  expect(await shownArticle(page)).toEqual(before);
+  expect(await rowAtTop(page, MAIN)).toEqual(row);
+});
+
 test('a source touched while it is revealed swipes again once it takes over', async ({ page }) => {
   await longSourceFromList(page);
   await tapShortcut(page, 'author');
