@@ -272,6 +272,8 @@ test('restoring defaults asks about the credential draft before changing any pre
   const { onReset } = await mountSettings({ autoLogin: false });
   typeCredentials();
   fireEvent.click(screen.getByRole('button', { name: i18n('options_reset') }));
+  const resetDialog = await screen.findByRole('dialog', { name: i18n('options_reset') });
+  fireEvent.click(within(resetDialog).getByRole('button', { name: i18n('options_reset') }));
   const confirmation = await screen.findByRole('dialog', { name: i18n('options_credentialsUnsaved') });
   expect(onReset).not.toHaveBeenCalled();
   expect(readValuesWithDefault().autoLogin).toBe(false);

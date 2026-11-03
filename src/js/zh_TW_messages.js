@@ -1438,6 +1438,12 @@
   "options_reset": {
     "message": "設回預設值"
   },
+  "options_resetConfirm": {
+    "message": "所有設定都會回到預設值，這個動作無法復原。"
+  },
+  "options_resetCancel": {
+    "message": "取消"
+  },
   "options_appearance": {
     "message": "介面"
   },

@@ -1439,6 +1439,12 @@ export const en_US = {
   "options_reset": {
     "message": "Restore defaults"
   },
+  "options_resetConfirm": {
+    "message": "Every setting returns to its default. This cannot be undone."
+  },
+  "options_resetCancel": {
+    "message": "Cancel"
+  },
   "options_appearance": {
     "message": "Appearance"
   },

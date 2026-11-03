@@ -144,11 +144,11 @@ describe("設定頁：窄螢幕（手機直向）", () => {
     expect(backBtn().textContent).toContain(i18n("options_mouse"));
   });
 
-  test("「重設」移到內容區最底", async () => {
+  test("「重設」只在「關於」的內容區最底", async () => {
     await page.viewport(390, 800);
     openModal();
     await mounted();
-    fireEvent.click(category("general"));
+    fireEvent.click(category("about"));
     const reset = await vi.waitFor(() =>
       screen.getByRole("button", { name: i18n("options_reset") }),
     );
