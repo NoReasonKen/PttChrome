@@ -1510,6 +1510,8 @@
   "stack_articleGone": { "message": "這篇文章已經不在列表中" },
   "stack_boardGone": { "message": "這個看板已經不在列表中" },
   "stack_handoffTimeout": { "message": "返回列表逾時，已停在 PTT 目前的畫面" },
+  "stack_commentSourceDeleted": { "message": "原文已刪除" },
+  "stack_commentNotSent": { "message": "PTT 尚未就緒，推文未送出" },
   "articleShortcutDrawer_title": {
     "message": "文章捷徑"
   },

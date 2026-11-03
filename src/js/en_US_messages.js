@@ -1511,6 +1511,8 @@ export const en_US = {
   "stack_articleGone": { "message": "That article is no longer in the list" },
   "stack_boardGone": { "message": "That board is no longer in the list" },
   "stack_handoffTimeout": { "message": "Returning to the list timed out; staying on the current PTT screen" },
+  "stack_commentSourceDeleted": { "message": "The original article was deleted" },
+  "stack_commentNotSent": { "message": "PTT was not ready; the comment was not sent" },
   "articleShortcutDrawer_title": {
     "message": "Article shortcuts"
   },

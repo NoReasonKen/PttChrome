@@ -346,10 +346,15 @@ export class ArticleShortcutSearch {
 
   _stopMissing(origin) {
     const missing = this.op.missing;
+    // A revealed source stays shown, deleted, over the list (#121).
+    const stop = () => {
+      this._fail('articleShortcutSearch_missing', missing);
+      this.core.articleGestures?.sourceGone();
+    };
     // Leave the known message before handing control back, never press Enter
     // on the replacement selection.
-    if (this._missingPause(origin)) this._dismissToList(origin, () => this._fail('articleShortcutSearch_missing', missing));
-    else this._fail('articleShortcutSearch_missing', missing);
+    if (this._missingPause(origin)) this._dismissToList(origin, stop);
+    else stop();
   }
 
   // The source could not be selected, but its query can still run from the

@@ -254,23 +254,113 @@ test('a source touched while it is revealed swipes again once it takes over', as
   await revealArticleDrawer(page);
 });
 
-test('a deleted source stops on its board list with today\'s notice, leaving no layer', async ({ page }) => {
+// The comment bar, folded into the toolbar's push button.
+const pushBtn = page => page.locator('[data-key="X"]');
+const commentInput = page => page.locator('#commentBar [name="commentBarText"]');
+const withCommentBar = page => ptt.applyPrefs(page, { enableLongPush: true, enableCommentBar: true, mobileCommentBarFold: true });
+const hinted = (page, text) => recordedHints(page).then(hints => hints.some(hint => hint.includes(text)));
+const pendingShown = page => page.evaluate(() => !!window.__app.view._listLoadingOwners?.has('stackPending'));
+
+// Each comment that reaches PTT starts with a preflight; it is only counted,
+// with whether an article layer was still shown at the time.
+const countPreflights = page => page.evaluate(() => {
+  window.__preflights = [];
+  window.__app.longPush.startPreflight = () => {
+    window.__preflights.push({ layer: !!document.querySelector('[data-stack-layer="article"]') });
+    return false;
+  };
+});
+const preflights = page => page.evaluate(() => window.__preflights);
+
+// Alpha revealed from the author results, its reopen held by PTT. A deleted
+// Alpha cannot be reopened.
+async function revealHeldSource(page, { deleted = false } = {}) {
   await sourceFromList(page);
+  await withCommentBar(page);
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  if (deleted) await page.evaluate(() => window.__shortcutServer.state.deleted.add('1gIeu-3A'));
+  await recordHints(page);
+  await countPreflights(page);
+  await settled(page);
+  const release = await holdBackReply(page);
+  await nativeBack(page);
+  await heldBack(page);
+  await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
+  return release;
+}
+
+async function commentOnLayer(page, text) {
+  await pushBtn(page).tap();
+  await expect(commentInput(page)).toBeFocused();
+  await commentInput(page).fill(text);
+  await commentInput(page).press('Enter');
+}
+
+test('a deleted source stays shown with today\'s notice, refuses a comment, and Back shows its board list (#121)', async ({ page }) => {
+  await sourceFromList(page);
+  await withCommentBar(page);
   await tapShortcut(page, 'author');
   await waitList(page, AUTHOR_RESULTS);
   await page.evaluate(() => window.__shortcutServer.state.deleted.add('1gIeu-3A'));
   await recordHints(page);
+  await countPreflights(page);
   await settled(page);
   const release = await holdBackReply(page);
   await nativeBack(page);
   await heldBack(page);
   await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
   await release();
-  const hinted = text => recordedHints(page).then(hints => hints.some(hint => hint.includes(text)));
-  await expect.poll(() => hinted('The source article could not be verified or was deleted'), { timeout: 10000 }).toBe(true);
-  await waitList(page, { has: ['Beta topic', 'Delta topic'] });
+  await expect.poll(() => hinted(page, 'The source article could not be verified or was deleted'), { timeout: 10000 }).toBe(true);
+  // PTT stopped on the board list; the article stays shown over it.
+  await page.waitForFunction(() => {
+    const app = window.__app;
+    return app.buf.pageState === 2 && !app.articleGestures.stack.handingOff && app.commandQueue.idle;
+  });
+  await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
+  expect(await hinted(page, 'Returning to the list timed out')).toBe(false);
+  // A comment is refused with a notice, from the toolbar and from the bar.
+  await pushBtn(page).tap();
+  await expect.poll(() => hinted(page, 'The original article was deleted')).toBe(true);
+  expect(await page.evaluate(() => window.__app.openQuickPush({ text: 'hello' }))).toBe(false);
+  expect(await preflights(page)).toEqual([]);
+  // Back leaves the article for the list PTT already shows, sending nothing.
+  await page.waitForFunction(() => !!window.history.state?.pttchromeBackGuard);
+  await page.evaluate(() => {
+    window.__sent = [];
+    const send = window.__stubWSSent;
+    window.__stubWSSent = data => { window.__sent.push(data); return send(data); };
+  });
+  await nativeBack(page);
   await expect(page.locator('[data-stack-layer]')).toHaveCount(0);
+  await waitList(page, { has: ['Beta topic', 'Delta topic'] });
   await expect(page.locator('[data-article-exit-underlay]')).toHaveCount(0);
-  // A handoff that waited out its bound would say so.
-  expect(await hinted('Returning to the list timed out')).toBe(false);
+  expect(await page.evaluate(() => window.__sent.join(''))).not.toContain('\x1b[D');
+});
+
+test('a comment made before PTT reopens the source waits, then goes out once the source takes over (#121)', async ({ page }) => {
+  const release = await revealHeldSource(page);
+  await commentOnLayer(page, 'first');
+  await expect.poll(() => pendingShown(page)).toBe(true);
+  // The last comment wins.
+  await commentOnLayer(page, 'second');
+  expect(await page.evaluate(() => window.__app.articleGestures.stack.handoff.action != null)).toBe(true);
+  expect(await preflights(page)).toEqual([]);
+  await release();
+  await waitArticle(page, 'Alpha');
+  await expect.poll(() => preflights(page)).toEqual([{ layer: false }]);
+  expect(await pendingShown(page)).toBe(false);
+  // The comment sent is the last one, kept as the draft until it is sent.
+  expect(await page.evaluate(() => localStorage.getItem('pttchrome.longPush.draft.v1'))).toBe('second');
+});
+
+test('a comment made before PTT reopens a deleted source is refused with a notice (#121)', async ({ page }) => {
+  const release = await revealHeldSource(page, { deleted: true });
+  await commentOnLayer(page, 'hello');
+  await expect.poll(() => pendingShown(page)).toBe(true);
+  await release();
+  await expect.poll(() => hinted(page, 'The original article was deleted'), { timeout: 10000 }).toBe(true);
+  await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
+  expect(await pendingShown(page)).toBe(false);
+  expect(await preflights(page)).toEqual([]);
 });
