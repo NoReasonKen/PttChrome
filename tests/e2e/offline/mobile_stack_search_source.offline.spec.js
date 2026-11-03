@@ -321,7 +321,7 @@ test('a deleted source stays shown with today\'s notice, refuses a comment, and 
   expect(await hinted(page, 'Returning to the list timed out')).toBe(false);
   // A comment is refused with a notice, from the toolbar and from the bar.
   await pushBtn(page).tap();
-  await expect.poll(() => hinted(page, 'The original article was deleted')).toBe(true);
+  await expect.poll(() => hinted(page, 'Could not verify the original article; the comment was not sent')).toBe(true);
   expect(await page.evaluate(() => window.__app.openQuickPush({ text: 'hello' }))).toBe(false);
   expect(await preflights(page)).toEqual([]);
   // Back leaves the article for the list PTT already shows, sending nothing.
@@ -359,7 +359,7 @@ test('a comment made before PTT reopens a deleted source is refused with a notic
   await commentOnLayer(page, 'hello');
   await expect.poll(() => pendingShown(page)).toBe(true);
   await release();
-  await expect.poll(() => hinted(page, 'The original article was deleted'), { timeout: 10000 }).toBe(true);
+  await expect.poll(() => hinted(page, 'Could not verify the original article; the comment was not sent'), { timeout: 10000 }).toBe(true);
   await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
   expect(await pendingShown(page)).toBe(false);
   expect(await preflights(page)).toEqual([]);

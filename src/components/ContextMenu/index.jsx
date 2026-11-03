@@ -824,7 +824,7 @@ export const ContextMenu = ({ pttchrome }) => {
       const body = String(text || "");
       if (!body.trim()) return false;
       writeDraft(body);
-      // 從頁層顯示的文章（#121）：原文已刪除就不送；PTT 還沒接手就記住，
+      // 從頁層顯示的文章（#121）：無法確認原文就不送；PTT 還沒接手就記住，
       // 接手後再送一次（最後一次為準），逾時則提示沒有送出。
       const held = pttchrome.articleGestures?.stack?.holdComment?.(() =>
         pttchrome.openQuickPush({ text: body, type }),

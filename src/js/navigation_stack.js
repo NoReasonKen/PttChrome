@@ -408,7 +408,7 @@ export class NavigationStack {
     return !!this.gone || (this.handoff?.target === PAGE.ARTICLE && !!this.handoff.layer);
   }
 
-  // A comment made on such an article: 'refused' when the article was deleted,
+  // A comment made on such an article: 'refused' when it could not be reopened,
   // 'held' when it is remembered until PTT is ready, or null to send it now.
   // `run` sends it.
   holdComment(run) {
@@ -418,10 +418,10 @@ export class NavigationStack {
     return 'held';
   }
 
-  // A comment on a deleted source is refused with a notice.
+  // A comment on a source that could not be reopened is refused with a notice.
   refusesComment() {
     if (!this.gone) return false;
-    this.core.view.flashListHint?.(i18n('stack_commentSourceDeleted'), STACK_NOTICE_MS);
+    this.core.view.flashListHint?.(i18n('stack_commentSourceUnverified'), STACK_NOTICE_MS);
     return true;
   }
 
