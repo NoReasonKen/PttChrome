@@ -192,6 +192,17 @@ describe('a page shown without an open', () => {
     expect(revealTarget(popPage(stack).stack)).toMatchObject({ kind: 'home' });
   });
 
+  // Each live layer is independent, like a tab the reader returns to (#123):
+  // thread jumps and next-article pulls above it leave its selection on the
+  // article it was left at, wherever PTT's selection moves.
+  test('a list keeps the article opened from it selected while other articles replace it in place', () => {
+    expect(route().pages[1]).toMatchObject({ kind: 'articleList', selected: 'A' });
+    let { stack } = pageShown(route(), opened('C_Chat', 'B'));
+    stack = pageShown(stack, opened('C_Chat', 'C')).stack;
+    expect(stack.pages[1]).toEqual(route().pages[1]);
+    expect(stack.pages[1].selected).toBe('A');
+  });
+
   test('a list search, or leaving its results for the list, starts a new base', () => {
     const onList = popPage(route()).stack;
     const searched = pageShown(onList, results('C_Chat'));

@@ -4,7 +4,6 @@
 // once, instead of a static copy.
 import { ScreenCopyLayer, setUsable, STACK_NOTICE_MS } from './stack_layer';
 import { LIST_TITLE_COL_START, hasServerCursorMark, rowToText } from './comment_parse';
-import { labelListCursor } from './list_window';
 import { listEntryOf } from './split_reader';
 import { subjectKey, subjectMatches } from './long_push_anchor';
 import { i18n } from './i18n';
@@ -73,18 +72,6 @@ export function articleRow(lines, bodyStart, article, { from = -1, up = null, fi
   const others = hits.filter(row => row !== from);
   if (others.length === 1) return others[0];
   return hits.length === 1 ? hits[0] : -1;
-}
-
-// The frame's lines with the selection mark on `row` alone. A changed row is a
-// copy: the rows are shared with the list's own buffer.
-function withSelection(lines, bodyStart, row) {
-  return lines.map((line, r) => {
-    if (r < bodyStart || r === lines.length - 1 || (r === row) === hasServerCursorMark(line, 0)) return line;
-    const copy = line.map(ch => Object.assign(Object.create(Object.getPrototypeOf(ch)), ch));
-    if (r === row) labelListCursor(copy);
-    else Object.assign(copy[0], { ch: ' ', isLeadByte: false });
-    return copy;
-  });
 }
 
 export class StackListLayer extends ScreenCopyLayer {
@@ -161,48 +148,42 @@ export class StackListLayer extends ScreenCopyLayer {
     };
   }
 
-  // The card of frame row `row`, or null when the list does not show it.
-  _card(row) {
-    return this.el.querySelector(`.listCardBody[data-row="${row}"]`)?.closest('.listCard') || null;
-  }
-
-  // Show `article` ({ author, title }) selected, as PTT's selection is once
-  // another article replaced the selected one in place (#74). `up`: whether it
-  // was posted before that one, null when unknown; `first`: it is the first
-  // article of the thread. Returns whether the list shows it.
-  select(article, up, first = false) {
-    if (!this.screen) return false;
+  // The frame row this list shows selected, or -1.
+  _selectedRow() {
     const lines = this.frame.lines;
     const bodyStart = this.frame.enhance.listScroll.bodyStart;
-    const from = lines.findIndex((line, r) => r >= bodyStart && r < lines.length - 1 && hasServerCursorMark(line, 0));
-    const row = articleRow(lines, bodyStart, article, { from, up, first });
-    if (row < 0 || !this._card(row)) return false;
-    this.frame = { ...this.frame, lines: withSelection(this.frame.lines, bodyStart, row) };
-    this._render(this.rect, this.forceWidth);
-    this.selection = row;
-    if (this.el.isConnected) this._revealSelection();
+    return lines.findIndex((line, r) => r >= bodyStart && r < lines.length - 1 && hasServerCursorMark(line, 0));
+  }
+
+  // Follow PTT's selection to `article` ({ author, title }), which replaced
+  // the open article in place (#74). The list keeps showing the article the
+  // reader opened from it selected (#123); PTT's selection is only tracked,
+  // to know which rows were read and to move PTT back on Back. `up`: whether
+  // it was posted before the previous one, null when unknown; `first`: it is
+  // the first article of the thread. Returns whether the list holds it.
+  follow(article, up, first = false) {
+    if (!this.screen) return false;
+    const lines = this.frame.lines;
+    const from = this.followed ?? this._selectedRow();
+    const row = articleRow(lines, this.frame.enhance.listScroll.bodyStart, article, { from, up, first });
+    if (row < 0) return false;
+    this.followed = row;
+    (this.read ||= new Set()).add(row);
     return true;
   }
 
   // The text of the entry this list shows selected, or null.
   selectedText() {
-    const lines = this.frame.lines;
-    const bodyStart = this.frame.enhance.listScroll.bodyStart;
-    const row = lines.findIndex((line, r) => r >= bodyStart && r < lines.length - 1 && hasServerCursorMark(line, 0));
-    return row < 0 ? null : rowToText(lines[row]);
+    const row = this._selectedRow();
+    return row < 0 ? null : rowToText(this.frame.lines[row]);
   }
 
-  // Scroll the selection chosen by `select` into view, the least distance.
-  _revealSelection() {
-    const card = this.selection != null && this._card(this.selection);
-    const view = card && this.el.querySelector('.listBodyView');
-    if (!view) return;
-    const box = card.getBoundingClientRect();
-    const port = view.getBoundingClientRect();
-    const shift = box.top < port.top ? box.top - port.top : box.bottom > port.bottom ? box.bottom - port.bottom : 0;
-    if (!shift) return;
-    this.screen.setListScrollTop(this.screen.getListScrollTop() + shift);
-    this.scrollTop = this.screen.getListScrollTop();
+  // The rows (TermChar[]) of the articles read since the list was left: the
+  // one it shows selected and each that PTT's selection followed, the one PTT's
+  // selection is on last.
+  readRows() {
+    const rows = [this._selectedRow(), ...(this.read || []), this.followed ?? -1].filter(row => row >= 0);
+    return [...new Set(rows.reverse())].reverse().map(row => this.frame.lines[row]);
   }
 
   // Ready to be revealed at the current width. A width change, such as a
@@ -229,10 +210,7 @@ export class StackListLayer extends ScreenCopyLayer {
     if (this.el.isConnected) this.anchor = topCard(this.el, this.el.getBoundingClientRect().top);
     this._render(rect, this.view.chh);
     this.scrollTop = null;
-    if (this.el.isConnected) {
-      this._restoreAnchor();
-      this._revealSelection();
-    }
+    if (this.el.isConnected) this._restoreAnchor();
     return true;
   }
 
@@ -247,7 +225,6 @@ export class StackListLayer extends ScreenCopyLayer {
       this.parent.appendChild(this.el);
       if (this.scrollTop != null) this.screen.setListScrollTop(this.scrollTop);
       else this._restoreAnchor();
-      this._revealSelection();
     }
     this.el.style.pointerEvents = usable ? '' : 'none';
     setUsable(this.el, usable);
@@ -270,7 +247,6 @@ export class StackListLayer extends ScreenCopyLayer {
       this.parent.appendChild(this.el);
       if (this.scrollTop != null) this.screen.setListScrollTop(this.scrollTop);
       else this._restoreAnchor();
-      this._revealSelection();
     }
     this.viewportObserver ||= new ResizeObserver(() => {
       if (readyLists.get(this.view) !== this) return;

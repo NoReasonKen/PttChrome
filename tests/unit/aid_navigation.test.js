@@ -2179,7 +2179,7 @@ describe("startResume（斷線重連後回到原處）", () => {
   test("文章：主功能表直接 s<板> → #<aid> → ⏎，落地回到斷線前那一列；列表 session 從 idle 也停泊", () => {
     const h = resumeHarness();
     expect(h.nav.startResume(articlePlan(ARTICLE))).toBe(true);
-    expect(h.core.listSession.beginExternalNavigation).toHaveBeenCalledWith({ fromIdle: true });
+    expect(h.core.listSession.beginExternalNavigation).toHaveBeenCalledWith(expect.objectContaining({ fromIdle: true }));
     expect(h.sent).toEqual(["sC_Chat\r\f"]);
     settle(h.queue, facts("clean-list", { boardName: "c_chat" }));
     expect(h.sent[1]).toBe("#1gIeu-3A\r\f");
@@ -2210,7 +2210,7 @@ describe("startResume（斷線重連後回到原處）", () => {
   test("一般跳文不會從 idle 停泊列表 session（fromIdle 只給回到原處）", () => {
     const h = resumeHarness();
     h.nav.startExternal("1gIeu-3A", "C_Chat");
-    expect(h.core.listSession.beginExternalNavigation).toHaveBeenCalledWith({ fromIdle: false });
+    expect(h.core.listSession.beginExternalNavigation).toHaveBeenCalledWith(expect.objectContaining({ fromIdle: false }));
   });
 
   test("文章：斷線前在文末 ⇒ 黏回文末（新推文在那裡）", () => {

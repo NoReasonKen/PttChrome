@@ -4,7 +4,8 @@
 //
 // A page is { kind, board, layer }: the kind of page, the board it shows (for
 // a board list, the board its selected row opens), and whether a live layer of
-// it exists underneath. A board list opened from a board list's row has that
+// it exists underneath. An article list an article was opened from has that
+// article's `id` as `selected`. A board list opened from a board list's row has that
 // row as its `folder`. An article list that shows
 // search results has `results`; an article has its `id` when known. `queued`
 // counts the Backs made while a handoff was under way, still to run.
@@ -23,7 +24,14 @@ export function createPageStack() {
 // A verified entry. `fromBelow`: opened from the current page; anything else
 // (search, article code, link, resume, board jump) starts a new base.
 export function pushPage(stack, page, { fromBelow = false } = {}) {
-  return { pages: fromBelow ? [...stack.pages, page] : [page] };
+  if (!fromBelow) return { pages: [page] };
+  const n = stack.pages.length;
+  const below = stack.pages[n - 1];
+  // An article list shows the article opened from it selected.
+  if (below?.kind === PAGE.ARTICLE_LIST && page.kind === PAGE.ARTICLE && page.id != null) {
+    return { pages: [...stack.pages.slice(0, n - 1), { ...below, selected: page.id }, page] };
+  }
+  return { pages: [...stack.pages, page] };
 }
 
 const samePage = (a, b) => a.kind === b.kind && sameBoard(a.board, b.board) &&
@@ -47,8 +55,10 @@ export function pageShown(stack, shown) {
   const fromList = top?.kind === PAGE.ARTICLE && below?.kind === PAGE.ARTICLE_LIST &&
     sameBoard(top.board, shown.board) && sameBoard(below.board, shown.board);
   // Another article in place of the current one (the next one, a thread
-  // move): PTT's selection in the list moved to it, and the list keeps its
-  // layer, to be revealed at that article (#74).
+  // move): PTT's selection in the list moved to it. The list keeps its layer
+  // as the reader left it, its selection still on the article opened from it
+  // (#123), as a tab the reader returns to; PTT's selection is moved back on
+  // Back.
   if (fromList && shown.kind === PAGE.ARTICLE) {
     const pages = [...stack.pages.slice(0, n - 1), shown];
     return { stack: { ...stack, pages }, kept: n - 1 };

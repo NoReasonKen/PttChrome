@@ -47,7 +47,7 @@ test('finishing entry after its list was destroyed never reconnects the layer', 
     layer.destroy();
   }).not.toThrow();
   expect(layer.fitViewport()).toBe(false);
-  expect(layer.select({})).toBe(false);
+  expect(layer.follow({}, false)).toBe(false);
   expect(layer.alignReal({})).toBe(false);
   expect(layer.tapOf({})).toBeNull();
   expect(() => layer.openTapped({}, {})).not.toThrow();
@@ -97,7 +97,7 @@ test('a width and font change prepares the list box instead of the article box',
   expect(captured.viewportPx).toBe(300);
 });
 
-test('a keyboard-only fit during a drag never shifts a later selection sideways', () => {
+test('a keyboard-only fit during a drag never shifts the layer sideways', () => {
   const { layer, view } = captureList({ cards: true });
   layer.show(false);
   const before = layer.el.getBoundingClientRect().left;
@@ -105,8 +105,6 @@ test('a keyboard-only fit during a drag never shifts a later selection sideways'
   view.mainDisplay.style.translate = '100px 0';
   view.keyboardInset = 200;
   expect(layer.fitViewport()).toBe(true);
-  expect(layer.el.getBoundingClientRect().left).toBe(before);
-  expect(layer.select({ author: 'reader', title: '[Talk] Article 0' }, null)).toBe(true);
   expect(layer.el.getBoundingClientRect().left).toBe(before);
 });
 

@@ -1,12 +1,15 @@
 // An article replaced in place by another one (#74): the article list below
-// keeps its live layer, and Back reveals it with the article now open
-// selected, where PTT's selection is; the real list then takes over with no
-// jump. A current article outside the layer's rows reveals the dark underlay.
+// keeps its live layer. Each layer is independent, like a tab the reader
+// returns to (#123): Back reveals the list with the article opened from it
+// still selected and its reading position unchanged, PTT's selection is moved
+// back to that article by its number, and every article read on the way shows
+// as read. A current article outside the layer's rows reveals the dark
+// underlay.
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { beginArticleTouch, revealArticleDrawer } = require('../helpers/article_gestures');
 const { waitRectStable } = require('../helpers/layout');
-const { THREAD, NEAR_REPLY_BOARD, bootThreadBoard, listActive } = require('../helpers/thread_jump');
+const { THREAD, NEAR_REPLY_BOARD, bootThreadBoard, listActive, sent } = require('../helpers/thread_jump');
 
 const MAIN = '.main:not([data-stack-layer])';
 const LIST_LAYER = '[data-stack-layer="articleList"]:not([data-stack-parked])';
@@ -55,18 +58,47 @@ async function backOverList(page, card) {
   expect(Math.abs(real.top - revealed.top)).toBeLessThanOrEqual(1);
 }
 
-test('Back after a next-in-thread jump in range reveals the list at the article now open', async ({ page }) => {
-  await bootThreadBoard(page, { open: 1120, fromList: true, thread: NEAR_REPLY_BOARD });
-  await jump(page, ']', 1150);
-  await backOverList(page, { author: 'dave' });
+// The card at the top of the real list's view and its offset from that top.
+const topEntry = page => page.locator(`${MAIN} .listBodyView`).evaluate(el => {
+  const top = el.getBoundingClientRect().top;
+  const card = [...el.querySelectorAll('.listCard')].find(c => c.getBoundingClientRect().bottom > top + 1);
+  return { num: card.querySelector('.listCardNum').textContent, offset: Math.round(card.getBoundingClientRect().top - top) };
 });
 
-test('Back after the next-article card reveals the list at the article now open', async ({ page }) => {
-  await bootThreadBoard(page, { open: 1110, fromList: true, nextArticle: true, thread: PAGE_THREAD });
-  await page.locator('#nextArticleCard').tap();
-  await expect.poll(() => page.locator(MAIN).innerText()).toContain('Body of article 1111 by');
-  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle && !window.__app.aidNavigation.active)).toBe(true);
-  await backOverList(page, { title: '□ [Talk] Filler 1111' });
+// The read mark the real list shows on article `num`.
+const markOf = (page, num) => page.locator(MAIN).evaluate((el, num) => {
+  const card = [...el.querySelectorAll('.listCard')].find(c => c.querySelector('.listCardNum')?.textContent === num);
+  return card ? card.querySelector('.listCardMark')?.textContent ?? '' : null;
+}, String(num));
+
+// Boots on the list and opens `open` from it, keeping where the list was.
+async function openFromList(page, options) {
+  let before = null;
+  await bootThreadBoard(page, {
+    fromList: true, ...options,
+    beforeOpen: async page => { before = { top: await topEntry(page), selected: await selected(page, MAIN) }; }
+  });
+  return before;
+}
+
+// PTT's selection ends on article `num`, moved there by its number.
+async function pttSelects(page, num, from) {
+  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
+  expect(await page.evaluate(() => window.__threadServer.state)).toMatchObject({ surface: 'list', cursor: num });
+  expect((await sent(page)).slice(from).some(bytes => bytes.startsWith(num + '\r'))).toBe(true);
+}
+
+test('Back after a next-in-thread jump shows the list as it was left, and PTT\'s selection moves back', async ({ page }) => {
+  const before = await openFromList(page, { open: 1120, thread: NEAR_REPLY_BOARD });
+  expect(before.selected).toMatchObject({ author: 'erin', visible: true });
+  await jump(page, ']', 1150);
+  const from = (await sent(page)).length;
+  await backOverList(page, { author: 'erin' });
+  expect(await topEntry(page)).toEqual(before.top);
+  expect((await selected(page, MAIN)).top).toBe(before.selected.top);
+  await pttSelects(page, 1120, from);
+  expect(await markOf(page, 1120)).toBe('');
+  expect(await markOf(page, 1150)).toBe('');
 });
 
 // A thread within one list page: the list holds the rows from the page of the
@@ -76,11 +108,70 @@ const PAGE_THREAD = [
   { num: 1110, author: 'bob', title: 'Re: ' + THREAD, date: '11/21' }
 ];
 
+// A thread of four articles on one list page.
+const CHAIN_THREAD = [
+  { num: 1101, author: 'alice', title: THREAD, date: '11/20' },
+  { num: 1105, author: 'bob', title: 'Re: ' + THREAD, date: '11/21' },
+  { num: 1110, author: 'carol', title: 'Re: ' + THREAD, date: '11/22' },
+  { num: 1115, author: 'dave', title: 'Re: ' + THREAD, date: '11/23' }
+];
+
+test('Back after several jumps keeps the article opened from the list selected, and every article read shows read', async ({ page }) => {
+  const before = await openFromList(page, { open: 1105, thread: CHAIN_THREAD });
+  await jump(page, ']', 1110);
+  await jump(page, ']', 1115);
+  await jump(page, '[', 1110);
+  const from = (await sent(page)).length;
+  await backOverList(page, { author: 'bob' });
+  expect(await topEntry(page)).toEqual(before.top);
+  await pttSelects(page, 1105, from);
+  for (const num of [1105, 1110, 1115]) expect(await markOf(page, num), String(num)).toBe('');
+  expect(await markOf(page, 1101)).toBe('+');
+});
+
+test('Back after several next-article pulls keeps the article opened from the list selected', async ({ page }) => {
+  const before = await openFromList(page, { open: 1110, nextArticle: true, thread: PAGE_THREAD });
+  for (const num of [1111, 1112]) {
+    await page.locator('#nextArticleCard').tap();
+    await expect.poll(() => page.locator(MAIN).innerText()).toContain(`Body of article ${num} by`);
+    await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle && !window.__app.aidNavigation.active)).toBe(true);
+  }
+  const from = (await sent(page)).length;
+  await backOverList(page, { author: 'bob' });
+  expect(await topEntry(page)).toEqual(before.top);
+  await pttSelects(page, 1110, from);
+  for (const num of [1110, 1111, 1112]) expect(await markOf(page, num), String(num)).toBe('');
+});
+
+// While the reader is in the thread, the article opened from the list is
+// deleted, so every later article is renumbered.
+test('when the article opened from the list was deleted meanwhile, the list stays and opening it says the list changed', async ({ page }) => {
+  const before = await openFromList(page, { open: 1110, thread: PAGE_THREAD });
+  await jump(page, '[', 1101);
+  await page.evaluate(() => {
+    const { articles } = window.__threadServer;
+    articles.splice(1110 - 1, 1);
+    articles.forEach((article, i) => { article.num = i + 1; });
+  });
+  await backOverList(page, { author: 'bob' });
+  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
+  await listActive(page);
+  expect(await topEntry(page)).toEqual(before.top);
+  expect(await selected(page, MAIN)).toMatchObject({ author: 'bob', top: before.selected.top });
+  await expect(page.locator('.ListHint')).toHaveCount(0);
+  await page.locator(`${MAIN} .listCard[data-list-author="bob"]`).tap();
+  await expect(page.locator('.ListHint')).toContainText('這個位置已經不是剛剛點的文章');
+  await listActive(page);
+  expect(await page.evaluate(() => window.__threadServer.state.surface)).toBe('list');
+});
+
 for (const key of ['[', '=']) {
-  test(`Back after a ${key === '[' ? 'previous' : 'first'}-in-thread jump in range reveals the list at the article now open`, async ({ page }) => {
+  test(`Back after a ${key === '[' ? 'previous' : 'first'}-in-thread jump keeps the article opened from the list selected`, async ({ page }) => {
     await bootThreadBoard(page, { open: 1110, fromList: true, thread: PAGE_THREAD });
     await jump(page, key, 1101);
-    await backOverList(page, { author: 'alice' });
+    const from = (await sent(page)).length;
+    await backOverList(page, { author: 'bob' });
+    await pttSelects(page, 1110, from);
   });
 }
 
@@ -248,13 +339,17 @@ test('a previous-in-thread jump with no earlier article in author results stays 
   await backToThreadResults(page);
 });
 
-// dave's replies share author and subject: the selection moves as PTT's does.
-for (const [key, num, date] of [['[', 1120, '11/29'], ['=', 1100, '11/28']]) {
-  test(`Back after a ${key === '[' ? 'previous' : 'first'}-in-thread jump in author results reveals them at the article now open`, async ({ page }) => {
+// dave's replies share author and subject: the results keep the reply opened
+// from them selected, and PTT's selection moves back to it.
+for (const [key, num] of [['[', 1120], ['=', 1100]]) {
+  test(`Back after a ${key === '[' ? 'previous' : 'first'}-in-thread jump in author results keeps the reply opened from them selected`, async ({ page }) => {
     await daveFromAuthorResults(page, 1150);
     await jump(page, key, num);
     await inAuthorResults(page, num);
-    await backOverList(page, { text: expect.stringContaining(date) });
+    await backOverList(page, { text: expect.stringContaining('11/30') });
+    await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
+    await inAuthorResults(page, num);
+    expect(await page.evaluate(() => window.__threadServer.state)).toMatchObject({ surface: 'list', cursor: 3 });
     await backToThreadResults(page);
   });
 }

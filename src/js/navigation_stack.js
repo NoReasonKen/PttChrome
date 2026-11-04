@@ -207,8 +207,8 @@ export class NavigationStack {
     const depth = this.stack.pages.length - 1;
     this.stack = withLayer(this.stack);
     this.captured[depth]?.layer?.destroy();
-    // An article list shows the article opened from it selected.
-    pending.selected = page.id;
+    // PTT's selection in an article list starts on the article opened from it.
+    pending.follows = page.id;
     pending.time = null;
     this.captured[depth] = pending;
     this.stack = pushPage(this.stack, page, { fromBelow: true });
@@ -285,9 +285,11 @@ export class NavigationStack {
     }
   }
 
-  // The article list below follows each article that replaces the open one in
-  // place (#74): its selection moves to it, as PTT's does, one move at a time.
-  // Once it loses PTT's selection it reveals nothing.
+  // PTT's selection in the article list below moves to each article that
+  // replaces the open one in place (#74), one move at a time. The list keeps
+  // its own selection as the reader left it (#123) and only tracks PTT's, to
+  // show the articles read and move PTT back on Back. Once it loses PTT's
+  // selection it reveals nothing.
   _follow() {
     // A same-thread jump has moved PTT's selection once it is over.
     if (this.core.threadJump?.active) return;
@@ -297,9 +299,9 @@ export class NavigationStack {
     const lower = this.captured[this.stack.pages.length - 2];
     if (!lower || lower.kind !== PAGE.ARTICLE_LIST || top?.kind !== PAGE.ARTICLE || this.article.id !== top.id) return;
     const { time } = this.article;
-    if (lower.selected !== top.id) {
-      lower.shows = lower.shows !== false && lower.layer.select(this.article, postedBefore(time, lower.time), first);
-      lower.selected = top.id;
+    if (lower.follows !== top.id) {
+      lower.shows = lower.shows !== false && lower.layer.follow(this.article, postedBefore(time, lower.time), first);
+      lower.follows = top.id;
     }
     lower.time = time;
   }
@@ -340,10 +342,10 @@ export class NavigationStack {
     return lower?.layer.fitViewport() && this._selects(lower) ? { page: target, ...lower } : null;
   }
 
-  // Whether a lower article list shows PTT's selection: the article now open,
+  // Whether a lower article list holds PTT's selection: the article now open,
   // followed through every replacement in place (#74).
   _selects(lower) {
-    return lower.kind !== PAGE.ARTICLE_LIST || (lower.selected === this._top().id && lower.shows !== false);
+    return lower.kind !== PAGE.ARTICLE_LIST || (lower.follows === this._top().id && lower.shows !== false);
   }
 
   // What PTT's Back from the shown article returns to, when the stack knows
