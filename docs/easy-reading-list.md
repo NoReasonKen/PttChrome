@@ -484,6 +484,11 @@ states：`idle → active ⇄ functionMode`；`active → opening → suspended 
   （A 類交易、開文身分不符 `_openMismatched`）解除保留，PTT 那一頁照舊併入。開文前的身分檢查不變：
   保留列與 PTT 現況不同時照樣停在列表並提示。守護：`mobile_stack_list_kept.offline.spec.js`、
   `list_accumulate.test.js`「held list rows」。
+  **有新文章提示**（[#128](https://github.com/NoReasonKen/PttChrome/issues/128)）：落地頁（PTT 本來就會送的那一幀，不另送鍵）
+  列出比緩衝最新編號還新的文章時，`_resumeFromLayer` 經 `NavigationStack.noticeNewContent` 閃一次「有新文章」
+  （`flashListHint`、純文字、`STACK_NOTICE_MS`）。保留列已到板尾時這些新文章捲動也載不到，只有重新整理會帶出來。
+  每個保留頁只提示一次（`_newArticlesNoticed`；保留解除後——重新整理、rebuild——算新的一頁）。
+  搜尋結果（handoff 的 `results`）不提示。
 - **N6b 編號空間不變的原生交易回好讀時還原捲動錨**（2026-10 起泛化：由閱讀紀錄 `reading_record` 的決策表決定哪些交易還原，涵蓋設已讀、重新整理、`s` 取消、身後的列表——**模型與決策表見 `docs/reading-record.md`**；下面是執行端的細節）：
   落地一律 `resume-buffer`+`rebuild`（opt in 的序列是落地即回好讀，其餘是靜置探針），而 `_resumeBuffer`／`_seedAnchors` 會改採
   PTT 分頁頂端 ⇒ 閱讀進度丟失。閱讀紀錄在交易收尾時存 `_pendingViewport`；`rebuild` 之前

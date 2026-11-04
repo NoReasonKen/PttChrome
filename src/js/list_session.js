@@ -978,6 +978,9 @@ export function ListSession(core, view, termBuf, queue) {
   // independent from the main list (protocol §8) — entering/leaving forces a
   // rebuild (via _boardName=null) so numbers never alias.
   this._selectMode = false;
+  // Whether the list kept from its live layer has shown the new-articles
+  // notice (#128): once per kept page, until PTT's rows replace it.
+  this._newArticlesNoticed = false;
   // Absolute frozen-render backstop (see _armFrozenWatchdog). null = disarmed.
   this._frozenWatchdog = null;
   // 這一次凍結裡在飛的那一步自帶的預算（hard + probe 窗，ms；0 ＝沒有）。比
@@ -2316,8 +2319,23 @@ ListSession.prototype = {
     // The article opened and the one the reader ended on (#74) were read.
     this._view.markListArticleRead(this._openedNum, null);
     this._view.markListArticleRead(num, pinnedKey);
+    // A list just shown from its layer is a page the reader has not been told
+    // of newer articles on yet.
+    if (!this._view.holdsListRows?.()) this._newArticlesNoticed = false;
+    const newer = this._landsNewerArticles(facts);
     this._view.holdListRows(facts && facts.rowTexts);
     this._forceRedraw();
+    if (newer && !this._newArticlesNoticed)
+      this._newArticlesNoticed = !!this._core.articleGestures?.stack?.noticeNewContent?.();
+  },
+
+  // Whether PTT's landing page lists an article newer than the newest the
+  // list holds (#128), which a refresh would show.
+  _landsNewerArticles: function(facts) {
+    const newest = bufferEdgeNum(this._termBuf.listLineNums, 1);
+    if (!facts || !facts.nums || newest == null) return false;
+    for (let r = 3; r <= facts.rows - 2; ++r) if (facts.nums[r] != null && facts.nums[r] > newest) return true;
+    return false;
   },
 
   _enqueueLeaveKey: function() {

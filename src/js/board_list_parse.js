@@ -135,6 +135,14 @@ export function setBoardListRowUnread(cells, unread) {
   return true;
 }
 
+// Whether a board row's text shows its unread mark ˇ, or null for a row
+// without a board. The mark sits between the number and the board's name.
+export function boardListRowUnread(text) {
+  if (!boardMarkReadTargetOfText(text)) return null;
+  const m = /^[\s>]*\d+([^A-Za-z0-9_]*)/.exec(text);
+  return !!m && m[1].indexOf('ˇ') >= 0;
+}
+
 // 整頁逐列編號。與 comment_parse.pageArticleNums **刻意不共用**：那支為文章列表
 // 寫了「游標蓋住高位數字→從鄰居回推」與「單調修復」兩段補救，而看板列表的
 // `%7d` 是右對齊、`>` 只蓋前置空白 ⇒ 那些補救在這裡只會是憑空修改的風險。

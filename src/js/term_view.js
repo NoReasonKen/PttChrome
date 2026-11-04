@@ -3579,6 +3579,10 @@ TermView.prototype = {
     this._listHold = null;
   },
 
+  holdsListRows: function() {
+    return !!this._listHold;
+  },
+
   // Show the kept row of article `num` (or of the pinned row `pinnedKey`) as
   // read, as PTT lists it once it was read.
   markListArticleRead: function(num, pinnedKey) {

@@ -1510,6 +1510,7 @@
   "stack_articleGone": { "message": "這篇文章已經不在列表中" },
   "stack_boardGone": { "message": "這個看板已經不在列表中" },
   "stack_handoffTimeout": { "message": "返回列表逾時，已停在 PTT 目前的畫面" },
+  "stack_newArticles": { "message": "有新文章" },
   "articleShortcutDrawer_title": {
     "message": "文章捷徑"
   },

@@ -23,6 +23,8 @@ import { EMPTY_TOOLBAR_CONTEXT } from './mobile_toolbar';
 import { searchGateFacts } from './article_search';
 import { isSearchResultsFrame, isFullBoardListFrame } from './search_results_screen';
 import { readSearchResultsContext } from './search_results_context';
+import { STACK_NOTICE_MS } from './stack_layer';
+import { i18n } from './i18n';
 
 // Input on a usable layer stays on the layer; nothing reaches the terminal.
 const LOCAL_INPUT = ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'click', 'contextmenu', 'dblclick'];
@@ -396,6 +398,16 @@ export class NavigationStack {
     return h.layer;
   }
 
+  // PTT's answer to Back shows content newer than the list a live layer shows
+  // again (#128): a brief notice, text only, that a refresh would show it.
+  // Search results and the home dashboard show none. Returns whether it shows.
+  noticeNewContent() {
+    const h = this.handoff;
+    if (!h?.layer || h.results || (h.target !== PAGE.ARTICLE_LIST && h.target !== PAGE.BOARD_LIST)) return false;
+    this.core.view.flashListHint?.(i18n('stack_newArticles'), STACK_NOTICE_MS);
+    return true;
+  }
+
   // A Back made during the handoff runs after the swap (#34), when a page is
   // left to unwind. It replaces a remembered tap either way: the reader's last
   // choice wins.
@@ -419,6 +431,7 @@ export class NavigationStack {
     const layer = revealed?.layer || null;
     const h = this.handoff = {
       layer, level, target: revealed?.page.kind || (level === PAGE.ARTICLE ? PAGE.ARTICLE_LIST : null), id: revealed?.page.id,
+      results: !!revealed?.page.results,
       board: this._top()?.board || core.view._articleBoard,
       identity: openArticleKey(core), appBar: revealed?.appBar || null,
       sentAt: performance.now(), presentedAt: null, touches: 0, lastScrollAt: -Infinity,
