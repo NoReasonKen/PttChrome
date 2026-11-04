@@ -2,8 +2,10 @@
 // (#49): a second instance of the shared screen renderer re-renders the
 // article's whole last presented frame over the article's box, scrollable at
 // its reading position, so revealing it shows the article at once.
-import { ScreenCopyLayer, setUsable } from './stack_layer';
+import { ScreenCopyLayer, setUsable, STACK_NOTICE_MS } from './stack_layer';
 import { PAGE } from './page_stack';
+import { rowToText } from './comment_parse';
+import { i18n } from './i18n';
 
 // The article row at the top of `scroller` and its offset from that top.
 function topRow(scroller) {
@@ -45,6 +47,24 @@ function readIdle(core) {
   const reading = core.easyReading;
   return core.buf.pageState === 3 && !!reading?.easyReadingReachedPageEnd && reading._inFlightSig == null &&
     !reading._reverse && !reading._functionMode && !core.buf.easyReadingHealInFlight;
+}
+
+const blank = text => !text.trim();
+
+// What PTT's reopened copy `reopened` adds to the rows `shown` (#126): the
+// rows past `shown`'s content, which `shown` keeps as a prefix, and how many
+// of `shown`'s rows they follow. Trailing blank rows hold no content: a short
+// article's last page pads with them. Null when the copy no longer starts with
+// `shown`'s content, as after the author edited it; no rows when it adds none.
+function reopenedTail(shown, reopened) {
+  const was = shown.map(rowToText);
+  const now = reopened.map(rowToText);
+  let keep = was.length;
+  while (keep && blank(was[keep - 1])) keep--;
+  if (now.length < keep) return null;
+  for (let i = 0; i < keep; i++) if (was[i] !== now[i]) return null;
+  const rows = now.slice(keep).some(text => !blank(text)) ? reopened.slice(keep) : [];
+  return { keep, rows };
 }
 
 export class StackArticleLayer extends ScreenCopyLayer {
@@ -144,16 +164,29 @@ export class StackArticleLayer extends ScreenCopyLayer {
 
   // The real article takes over this layer's rows, in place of what PTT's
   // reopened copy accumulated; PTT's pager stays where the reopen left it.
+  // Comments the copy gained are appended behind the new-comments marker,
+  // and accumulation continues from the copy's end, where PTT's pager is
+  // (#126). The handoff only swaps once no finger is down and scrolling has
+  // stopped, and rows added below the reading position leave it in place.
+  // A copy that no longer starts with this layer's content adds nothing.
   _adopt(core) {
     const content = this.content;
     if (!content || !readIdle(core)) return false;
     const view = core.view;
-    core.buf.pageLines = content.pageLines;
-    view._accEndRow = content.accEndRow;
-    view._lastAccumulatedSig = content.lastSig;
-    if (content.marks && core.newComments) Object.assign(core.newComments, content.marks);
-    view._renderScreenLines(content.pageLines, true, true, false, view._pageRenderOverrides());
+    const reopened = { pageLines: core.buf.pageLines, accEndRow: view._accEndRow, lastSig: view._lastAccumulatedSig };
+    const tail = reopenedTail(content.pageLines, reopened.pageLines);
+    const appends = !!tail?.rows.length;
+    const kept = appends ? { ...reopened, pageLines: content.pageLines.slice(0, tail.keep).concat(tail.rows) } : content;
+    core.buf.pageLines = kept.pageLines;
+    view._accEndRow = kept.accEndRow;
+    view._lastAccumulatedSig = kept.lastSig;
+    if (content.marks && core.newComments) {
+      Object.assign(core.newComments, content.marks);
+      if (appends) core.newComments.appended(kept.pageLines, tail.keep);
+    }
+    view._renderScreenLines(kept.pageLines, true, true, false, view._pageRenderOverrides());
     core.commentBar?.refresh();
+    if (!tail) view.flashListHint?.(i18n('stack_articleUpdated'), STACK_NOTICE_MS);
     return true;
   }
 

@@ -250,11 +250,13 @@ async function installNestedServer(page, session) {
       return rows;
     };
     // `lines`: an article that long, its header on the first page, paged a
-    // screen at a time from `state.line`.
+    // screen at a time from `state.line`. `text`: lines by number that read
+    // otherwise, such as its sign-off and comments.
     const longArticleRows = (article, termRows) => {
       const page = termRows - 1;
       const end = Math.min(article.lines, state.line + page - 1);
-      const line = n => n === 1 ? `作者  ${article.author} (${article.author}) 看板 Test`
+      const line = n => article.text?.[n] != null ? article.text[n]
+        : n === 1 ? `作者  ${article.author} (${article.author}) 看板 Test`
         : n === 2 ? '標題  ' + article.title : n === 3 ? '時間  Mon Sep  1 12:00:00 2025'
           : n === 4 ? '' : bodyLine(article, n - 1);
       const rows = {
