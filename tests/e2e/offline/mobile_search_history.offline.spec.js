@@ -62,17 +62,73 @@ async function closeSearch(page) {
 
 async function openManager(page) {
   const settings = page.locator('.PrefModal');
-  await byKey(page, '__more').tap();
-  await byKey(page, '__settings').tap();
-  await expect(settings).toBeVisible();
-  await settings.locator('[data-pref-category="local"]').tap();
-  await settings.locator('[data-pref-subpage="searchHistory"]').tap();
-  const manager = settings.locator('[data-search-history-manager]');
-  await expect(manager).toBeVisible();
-  // 主選單只記看板這一類。
-  const boardId = await manager.locator('input[value="board"]').getAttribute('id');
-  await manager.locator(`label[for="${boardId}"]`).tap();
-  return { settings, manager };
+  // Preserve the original input and assertions. If opening fails again, retain
+  // the actual touch targets and animation state rather than assuming a cause.
+  await page.evaluate(() => {
+    const events = [];
+    const types = ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'click'];
+    let firstButton = null;
+    const record = (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const button = document.querySelector('[data-key="__settings"]');
+      if (!firstButton && button) firstButton = button;
+      const content = button?.closest('.mantine-Drawer-content');
+      const rect = button?.getBoundingClientRect();
+      const point = event.changedTouches?.[0] || event;
+      events.push({
+        type: event.type,
+        at: performance.now(),
+        target: target?.tagName,
+        key: target?.closest('[data-key]')?.getAttribute('data-key'),
+        x: point.clientX,
+        y: point.clientY,
+        buttonPresent: !!button,
+        sameButton: !!button && button === firstButton,
+        firstButtonConnected: !!firstButton?.isConnected,
+        rect: rect && { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+        drawer: content && {
+          opacity: getComputedStyle(content).opacity,
+          transform: getComputedStyle(content).transform,
+          animations: content.getAnimations().map(animation => ({
+            property: animation.transitionProperty,
+            name: animation.animationName,
+            state: animation.playState,
+            time: animation.currentTime,
+          })),
+        },
+      });
+      if (events.length > 40) events.shift();
+    };
+    types.forEach(type => document.addEventListener(type, record, { capture: true, passive: true }));
+    window.__searchHistorySettingsTrace = () => {
+      record({ type: 'finished' });
+      types.forEach(type => document.removeEventListener(type, record, true));
+      delete window.__searchHistorySettingsTrace;
+      return events;
+    };
+  });
+  let failed = false;
+  try {
+    await byKey(page, '__more').tap();
+    await byKey(page, '__settings').tap();
+    await expect(settings).toBeVisible();
+    await settings.locator('[data-pref-category="local"]').tap();
+    await settings.locator('[data-pref-subpage="searchHistory"]').tap();
+    const manager = settings.locator('[data-search-history-manager]');
+    await expect(manager).toBeVisible();
+    // 主選單只記看板這一類。
+    const boardId = await manager.locator('input[value="board"]').getAttribute('id');
+    await manager.locator(`label[for="${boardId}"]`).tap();
+    return { settings, manager };
+  } catch (error) {
+    failed = true;
+    throw error;
+  } finally {
+    const events = await page.evaluate(() => window.__searchHistorySettingsTrace?.()).catch(() => null);
+    if (failed && events) await test.info().attach('settings-open-events', {
+      body: JSON.stringify(events, null, 2), contentType: 'application/json',
+    });
+  }
 }
 
 // 工具列、設定內容區（捲動的那一欄）與刪除鈕在畫面上的位置。

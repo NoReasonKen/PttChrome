@@ -14,20 +14,20 @@ const AUTHOR_RESULTS = { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topi
 const THREAD_RESULTS = { has: ['[Talk] Beta topic', 'Re: [Talk] Beta topic'], lacks: ['Alpha topic', 'Delta topic'] };
 const LEFT = '\x1b[D';
 
-// What the reader sees `ms` after the search's results are sent: whether the
-// easy-reading list has taken over and the source article still covers it.
-async function watchAfterResults(page, submit, ms) {
-  await page.evaluate(([submit, ms]) => {
-    const send = window.__stubWSSent;
-    window.__stubWSSent = bytes => {
-      send(bytes);
-      if (!bytes.includes(submit)) return;
-      setTimeout(() => {
-        const app = window.__app;
-        window.__afterResults = { list: app.listSession.state, covered: !!app.articleShortcutSearch.cover };
-      }, ms);
+// Observe the first settled result after the application's listeners. A fixed
+// deadline from submission can expire before rendering settles on a busy CPU.
+// Keep this first observation: waiting for eventual takeover would also pass
+// if the unwanted resume quiet wait were restored.
+async function watchFirstResults(page) {
+  await page.evaluate(() => {
+    const app = window.__app;
+    const observe = () => {
+      if (!app.buf.getRowText(app.buf.rows - 1).includes('系列文章')) return;
+      app.buf.removeEventListener('screenSettled', observe);
+      window.__firstSearchResult = { list: app.listSession.state, covered: !!app.articleShortcutSearch.cover };
     };
-  }, [submit, ms]);
+    app.buf.addEventListener('screenSettled', observe);
+  });
 }
 
 // The article with `title` and `body`, open as PTT's first screen (no list
@@ -68,11 +68,10 @@ const NEWEST = { mode: 'select', cursorNum: 2 };
 
 test('the results of a shortcut search take over as soon as the search lands', async ({ page }) => {
   await openArticle(page, { route: 'verified', title: '[Talk] Alpha topic', body: 'Alpha' });
-  // Well under the resume probe's quiet wait (250 ms).
-  await watchAfterResults(page, 'alice\r', 120);
+  await watchFirstResults(page);
   await tapShortcut(page, 'author');
   await waitList(page, AUTHOR_RESULTS);
-  await expect.poll(() => page.evaluate(() => window.__afterResults)).toEqual({ list: 'active', covered: false });
+  await expect.poll(() => page.evaluate(() => window.__firstSearchResult)).toEqual({ list: 'active', covered: false });
 });
 
 // Both keystroke routes land on the same results, the same selection and the same Back.
