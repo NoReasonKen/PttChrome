@@ -1084,6 +1084,8 @@ ListSession.prototype = {
     // race the cap once the per-command budgets got short).
     if (consumed === 'done' && (this._renderMode === 'frozen' || this.state === 'opening'))
       this._armFrozenWatchdog();
+    // While the layer Back revealed is still the page shown.
+    if (this._landsNewerArticles(facts)) this._noticeNewArticles(!this._view.holdsListRows?.());
     this._dispatch(this._settleEvent(facts, consumed), facts);
     this._scheduleResumeProbe();
     this._core.listResize?.pump();
@@ -2351,14 +2353,8 @@ ListSession.prototype = {
       this._view.markListArticleRead(readNum, readNum == null && isPinnedListRow(readText) ? pinnedRowKey(readText) : null);
     }
     if (read.length) this.noteLastRead(subjectOfListRow(read[read.length - 1]));
-    // A list just shown from its layer is a page the reader has not been told
-    // of newer articles on yet.
-    if (!this._view.holdsListRows?.()) this._newArticlesNoticed = false;
-    const newer = this._landsNewerArticles(facts);
     this._view.holdListRows(facts && facts.rowTexts);
     this._forceRedraw();
-    if (newer && !this._newArticlesNoticed)
-      this._newArticlesNoticed = !!this._core.articleGestures?.stack?.noticeNewContent?.();
     this._alignServerCursor();
   },
 
@@ -2373,13 +2369,25 @@ ListSession.prototype = {
     this._enqueueCursorSyncJump('align-sync-jump', noop, noop, noop);
   },
 
-  // Whether PTT's landing page lists an article newer than the newest the
-  // list holds (#128), which a refresh would show.
+  // Whether PTT's answer to Back lists an article newer than the newest the
+  // list's live layer shows (#128). The layer is the page the reader left,
+  // whether the real list then keeps its rows or, its own rows given up on
+  // the way (a search from the article read), rebuilds from PTT.
   _landsNewerArticles: function(facts) {
-    const newest = bufferEdgeNum(this._termBuf.listLineNums, 1);
-    if (!facts || !facts.nums || newest == null) return false;
+    if (this.state !== 'suspended' || facts.kind !== 'clean-list' || !facts.nums) return false;
+    const newest = this._keptLayer(facts.boardName)?.newestNum?.();
+    if (newest == null) return false;
     for (let r = 3; r <= facts.rows - 2; ++r) if (facts.nums[r] != null && facts.nums[r] > newest) return true;
     return false;
+  },
+
+  // The brief new-articles notice, once per page: `freshPage` is a list
+  // that had not kept its rows from a layer yet (a refresh or a rebuild
+  // makes a new page).
+  _noticeNewArticles: function(freshPage) {
+    if (freshPage) this._newArticlesNoticed = false;
+    if (!this._newArticlesNoticed)
+      this._newArticlesNoticed = !!this._core.articleGestures?.stack?.noticeNewContent?.();
   },
 
   _enqueueLeaveKey: function() {

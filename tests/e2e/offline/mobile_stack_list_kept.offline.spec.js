@@ -228,3 +228,43 @@ test('search results shown again from their layer show no new-articles notice', 
   await page.waitForTimeout(500); // sleep-ok: proves no notice follows the swap
   expect(await recordedHints(page)).not.toContain(NEW_ARTICLES);
 });
+
+// A search from the article read gives up the list's own rows; the list
+// rebuilt on Back still tells of articles newer than its layer showed.
+test('Back to the list through a search from the article read shows the new-articles notice', async ({ page }) => {
+  await bootThreadBoard(page, { open: OPEN, size: 1190, fromList: true, thread: THREAD });
+  await recordHints(page);
+  // hana's author results, from the article opened.
+  await revealArticleDrawer(page);
+  await page.locator('[data-article-shortcut="author"]').tap();
+  await expect.poll(() => page.evaluate(() => window.__threadServer.state.byAuthor)).toBe('hana');
+  await listActive(page);
+  await postArticles(page, 1191, 1195);
+  // Back to the article the search started from, then Back to the list.
+  for (const surface of ['article', 'list']) {
+    await page.goBack();
+    await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle && !window.__app.articleGestures.stack.handingOff &&
+      window.__threadServer.state.surface)).toBe(surface);
+  }
+  await listActive(page);
+  await expect.poll(() => recordedHints(page)).toContain(NEW_ARTICLES);
+});
+
+// The same route keeps no rows yet: the search results reuse the list
+// session and replace the list's rows and board, so Back rebuilds the list
+// from PTT. Keeping the list across in-board navigation is #127's.
+test.fixme('Back to the list through a search from the article read shows the list as it was left', async ({ page }) => {
+  const before = await readReply(page);
+  await revealArticleDrawer(page);
+  await page.locator('[data-article-shortcut="author"]').tap();
+  await expect.poll(() => page.evaluate(() => window.__threadServer.state.byAuthor)).toBe('hana');
+  await listActive(page);
+  for (const surface of ['article', 'list']) {
+    await page.goBack();
+    await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle && !window.__app.articleGestures.stack.handingOff &&
+      window.__threadServer.state.surface)).toBe(surface);
+  }
+  await listActive(page);
+  expect(await cards(page)).toEqual(asLeft(before.cards));
+  expect(await topEntry(page)).toEqual(before.top);
+});
