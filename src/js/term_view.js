@@ -1532,6 +1532,13 @@ TermView.prototype = {
       this.flashListHint(busyHint);
       return;
     }
+    // A deleted source kept shown over its board list (#121): PTT already
+    // shows that list, so Back only removes the article and no key reaches PTT.
+    if (this.bbscore.articleGestures?.holdsGoneArticle()) {
+      if (isPlainBack(e)) this.bbscore.articleGestures.leaveGoneArticle();
+      e.preventDefault();
+      return;
+    }
     // Leaving an article for its revealed list (#28, #30): only that leave may
     // reach PTT until the real list takes over. Toolbar keys come through here
     // too, past the modal gate that holds the hardware keyboard.
@@ -3577,6 +3584,10 @@ TermView.prototype = {
 
   releaseListRows: function() {
     this._listHold = null;
+  },
+
+  holdsListRows: function() {
+    return !!this._listHold;
   },
 
   // Show the kept row of article `num` (or of the pinned row `pinnedKey`) as

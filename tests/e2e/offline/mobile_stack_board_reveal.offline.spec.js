@@ -9,7 +9,7 @@ const ptt = require('../helpers/ptt');
 const { loadCassette, waitFed, bootScenario } = require('../helpers/replay');
 const {
   fedBefore, openNextArticle, holdBackReply, heldBack, homeBoard, boardList, listActive, dashboardVisible, bootDashboard, boardOpened,
-  MAIN, boardListEngaged, bootBoardList, watchReveals, revealedSinceWatch
+  MAIN, boardListEngaged, bootBoardList, watchReveals, revealedSinceWatch, recordHints, recordedHints
 } = require('../helpers/stack_routes');
 
 const HOME_LAYER = '[data-stack-layer="home"]';
@@ -390,4 +390,52 @@ test('refreshing the board list shown again replaces its rows with PTT\'s curren
   }, reloaded);
   await page.locator('[data-key="__refresh"]').tap();
   await expect.poll(async () => (await boardPage(page)).boards.find(b => b.board === 'NTUHI').unread).toBe(true);
+});
+
+// PTT's answer to Back lists boards whose unread marks differ from the board
+// list shown again: a brief notice says so (#128), without asking PTT for
+// anything more. The visited board's own mark follows what was read there.
+const NEW_ARTICLES = 'New articles';
+
+// Opens the selected board and goes back as openAndBack does; returns the
+// notices shown and what was sent to PTT from Back on.
+async function noticesOnBack(page, route) {
+  await bootBoardListOf(page, route);
+  await recordHints(page);
+  await ptt.sendKey(page, 'Enter');
+  await listActive(page);
+  const from = await sentCount(page);
+  const release = await holdBackReply(page);
+  await ptt.sendKey(page, 'ArrowLeft');
+  await heldBack(page);
+  await release();
+  await expect(page.locator(BOARD_LAYER)).toHaveCount(0, { timeout: 10000 });
+  await boardListEngaged(page);
+  await waitFed(page, route.steps.length);
+  await page.waitForTimeout(500); // sleep-ok: anything sent or shown after the swap is by now
+  return { hints: await recordedHints(page), sent: await sentSince(page, from) };
+}
+
+test('Back to a board list whose boards PTT now marks differently shows a brief notice, and sends nothing more', async ({ page }) => {
+  const { hints, sent } = await noticesOnBack(page, withReplies(boardList, { [BACK]: [markUnread(23, 'NTUHI')] }));
+  expect(hints.filter(text => text === NEW_ARTICLES)).toHaveLength(1);
+  await expect(page.locator('.ListHint')).toHaveText(NEW_ARTICLES);
+  expect(sent).toEqual(['\x1b[D']);
+});
+
+test('Back to a board list shows no notice when only the visited board is marked differently', async ({ page }) => {
+  const route = withReplies(boardList, { ...MAYCLASS_UNREAD, [BACK]: [markUnread(21, 'MayClass')] });
+  const { hints, sent } = await noticesOnBack(page, route);
+  expect(hints).not.toContain(NEW_ARTICLES);
+  expect(sent).toEqual(['\x1b[D']);
+});
+
+test('Back to the home dashboard shows no new-articles notice', async ({ page }) => {
+  await enterBoardFromDashboard(page);
+  await recordHints(page);
+  await ptt.sendKey(page, 'ArrowLeft');
+  await dashboardVisible(page);
+  await expect(page.locator(HOME_LAYER)).toHaveCount(0, { timeout: 10000 });
+  await waitFed(page, homeBoard.steps.length);
+  expect(await recordedHints(page)).not.toContain(NEW_ARTICLES);
 });

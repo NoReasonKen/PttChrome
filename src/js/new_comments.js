@@ -262,8 +262,31 @@ NewComments.prototype = {
     if (!prefs.markNewComments && !prefs.listNewPushCount) return;
     if (!buf || buf.pageState !== 3 || !er || !er._enabled || er._functionMode || this._reversing()) return;
     if (!er.easyReadingReachedPageEnd) return;
+    // An article shown again from its live layer keeps the layer's content;
+    // PTT's reopened copy behind it was not read (#121).
+    if (core.articleGestures?.stack?.handoff?.layer?.holdsReading?.()) return;
     const lines = buf.pageLines || [];
     if (!lines.length) return;
+    this._save(lines);
+  },
+
+  // An article shown again from its live layer gained the comments PTT's
+  // reopened copy has (#126). The comments in its first `shownRows` rows were
+  // seen, so the marker moves to the first appended one; `lines`, read to its
+  // end, is recorded as read the way a settle records it.
+  appended: function(lines, shownRows) {
+    const buf = this._core.buf;
+    const shown = new CommentScanner();
+    for (let r = 0; r < shownRows; ++r) shown.feed(buf.getRowText(r, 0, buf.cols, lines));
+    this._scanner = new CommentScanner();
+    this._seen = shown.count;
+    const prefs = readEffectivePrefs();
+    if (prefs.markNewComments || prefs.listNewPushCount) this._save(lines);
+  },
+
+  // Record the comment count of `lines`, an article read to its end.
+  _save: function(lines) {
+    const core = this._core;
     this._sync(lines);
     const count = this._scanner.count;
     if (!this._key || !count || count === this._saved) return;

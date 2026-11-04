@@ -192,6 +192,12 @@ export const MobileToolbar = ({
   const pushAction = useCallback(() => {
     const bar = pttchrome.commentBar;
     const s = bar && bar.state;
+    // 從頁層顯示、PTT 還沒接手（或無法確認原文）的文章：留言只走推文列（#121）。
+    const stack = pttchrome.articleGestures?.stack;
+    if (stack?.showsArticleLayer?.()) {
+      if (!stack.refusesComment() && s && s.available) bar.expand();
+      return;
+    }
     if (s && s.available && s.folded && bar.expand()) {
       setPanel(null);
       setConfirmLogout(false);

@@ -6,6 +6,8 @@
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { bootThreadBoard, listActive } = require('../helpers/thread_jump');
+const { recordHints, recordedHints } = require('../helpers/stack_routes');
+const { revealArticleDrawer } = require('../helpers/article_gestures');
 
 const MAIN = '.main:not([data-stack-layer])';
 const UNDERLAY = '[data-article-exit-underlay]';
@@ -153,4 +155,76 @@ test('opening a kept row whose article PTT lists differently now stays on the li
   await listActive(page);
   expect(await page.evaluate(() => window.__threadServer.state.surface)).toBe('list');
   expect((await cards(page)).find(c => c.num === '1184')).toMatchObject({ title: '□ [Talk] Edited title' });
+});
+
+// PTT's answer to Back already lists the page around the article read; when
+// it lists articles newer than the newest the list holds, a brief notice says
+// so (#128), without asking PTT for anything more.
+const NEW_ARTICLES = 'New articles';
+
+// Opens hana's reply again from the list shown after Back.
+async function openAgain(page) {
+  await page.locator(`${MAIN} .listCard`).filter({ has: page.locator('.listCardNum', { hasText: new RegExp(`^${OPEN}$`) }) }).tap();
+  await expect.poll(() => page.locator(MAIN).first().innerText()).toContain(`Body of article ${OPEN} by`);
+  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
+}
+
+// Back, then what was sent to PTT once it rests.
+async function sentOnBack(page) {
+  const from = await page.evaluate(() => window.__threadSent.length);
+  await back(page);
+  await page.waitForTimeout(500); // sleep-ok: anything sent after Back has been sent by now
+  await listActive(page);
+  return page.evaluate(from => window.__threadSent.slice(from), from);
+}
+
+// More articles posted on PTT from `from` to `to`.
+const postArticles = (page, from, to) => page.evaluate(({ from, to }) => {
+  const { articles } = window.__threadServer;
+  for (let num = from; num <= to; num++) articles.push({ num, author: 'newbie', title: '[Talk] New ' + num, date: '12/01' });
+}, { from, to });
+
+test('a landing page listing newer articles shows a brief notice once, and nothing more is sent to PTT', async ({ page }) => {
+  await bootThreadBoard(page, { open: OPEN, size: 1190, fromList: true, thread: THREAD });
+  await recordHints(page);
+  // Nothing changed on PTT: no notice.
+  const quiet = await sentOnBack(page);
+  expect(await recordedHints(page)).not.toContain(NEW_ARTICLES);
+  await openAgain(page);
+  await postArticles(page, 1191, 1195);
+  expect(await sentOnBack(page)).toEqual(quiet);
+  await expect(page.locator('.ListHint')).toHaveText(NEW_ARTICLES);
+  expect((await recordedHints(page)).filter(text => text === NEW_ARTICLES)).toHaveLength(1);
+  // The list still holds what it showed; more new articles say nothing again.
+  expect((await cards(page)).some(c => c.num === '1191')).toBe(false);
+  await openAgain(page);
+  await postArticles(page, 1196, 1198);
+  await sentOnBack(page);
+  expect((await recordedHints(page)).filter(text => text === NEW_ARTICLES)).toHaveLength(1);
+});
+
+test('search results shown again from their layer show no new-articles notice', async ({ page }) => {
+  const thread = [
+    { num: 1100, author: 'dave', title: 'Re: ' + SUBJECT, date: '11/28' },
+    { num: 1120, author: 'dave', title: 'Re: ' + SUBJECT, date: '11/29' },
+    { num: 1150, author: 'dave', title: 'Re: ' + SUBJECT, date: '11/30' }
+  ];
+  // Under the legacy caption, as an ordinary list can show: only the verified
+  // search tells the results apart.
+  await bootThreadBoard(page, { open: 1100, fromList: true, legacy: true, thread });
+  // dave's author results, from the article opened.
+  await revealArticleDrawer(page);
+  await page.locator('[data-article-shortcut="author"]').tap();
+  await expect.poll(() => page.evaluate(() => window.__threadServer.state.byAuthor)).toBe('dave');
+  await listActive(page);
+  await page.locator(`${MAIN} .listCard[data-list-author="dave"]`).nth(1).tap();
+  await expect.poll(() => page.locator(MAIN).first().innerText()).toContain('Body of article 1120 by');
+  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
+  await recordHints(page);
+  // dave posts again: PTT's results list more than the results shown.
+  await page.evaluate(() => window.__threadServer.articles.push({ num: 1201, author: 'dave', title: '[Talk] Later', date: '12/01' }));
+  await back(page);
+  await expect.poll(() => page.evaluate(() => window.__threadServer.state)).toMatchObject({ byAuthor: 'dave', surface: 'list' });
+  await page.waitForTimeout(500); // sleep-ok: proves no notice follows the swap
+  expect(await recordedHints(page)).not.toContain(NEW_ARTICLES);
 });

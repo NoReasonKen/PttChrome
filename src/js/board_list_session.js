@@ -34,7 +34,9 @@ import {
   isBoardListBlockedRow,
   parseBoardListName,
   boardMarkReadTargetOfText,
-  setBoardListRowUnread
+  setBoardListRowUnread,
+  boardListRowUnread,
+  boardListRowNums
 } from './board_list_parse';
 import { articleListBoard, newestArticleUnread } from './home_dashboard';
 import { bufferEdgeNum } from './list_session';
@@ -321,6 +323,9 @@ export function BoardListSession(core, view, termBuf, queue) {
   // While a board opened from the list is read: whether its newest article is
   // unread, as last shown on its article list ({ board, unread } / null).
   this._visited = null;
+  // Whether the list kept from its live layer has shown the new-articles
+  // notice (#128): once per kept page, until PTT's rows replace it.
+  this._newArticlesNoticed = false;
   // 採用原生落點時那一頁最後一列的編號。下一次 applyScrollAfterRender 用
   // landingTopPos 把視口調到游標可見（手機卡片一屏放不下原生一頁）後清掉。
   this._landingLastNum = null;
@@ -1169,12 +1174,38 @@ BoardListSession.prototype = {
     const fromLayer = !!this._core.articleGestures?.showsLayerOf?.(PAGE.BOARD_LIST);
     const visited = this._visited;
     this._visited = null;
+    // A list just shown from its layer is a page the reader has not been told
+    // of new articles on yet.
+    if (!this._keepShown) this._newArticlesNoticed = false;
     this._keepShown = fromLayer;
     const num = this._selectedNum;
     if (fromLayer && visited && num != null &&
         parseBoardListName(this._rowTextOf(num)).toLowerCase() === visited.board.toLowerCase())
       this._view.editBoardListRow?.(num, cells => setBoardListRowUnread(cells, visited.unread));
+    const newer = fromLayer && this._landsOtherUnreadMarks(facts, num);
     this._resumeInPlace(facts, { keepSelection: fromLayer });
+    if (newer && !this._newArticlesNoticed)
+      this._newArticlesNoticed = !!this._core.articleGestures?.stack?.noticeNewContent?.();
+  },
+
+  // Whether PTT's landing page marks a board the list holds unread or read
+  // other than the list shows it (#128), which a refresh would show. The
+  // board opened from the list (`openedNum`) follows the reader's own visit.
+  _landsOtherUnreadMarks: function(facts, openedNum) {
+    if (!facts || !facts.rowTexts) return false;
+    const nums = boardListRowNums(facts.rowTexts, facts.rows);
+    for (let r = 0; r < nums.length; ++r) {
+      const num = nums[r];
+      if (num == null || num === openedNum) continue;
+      const held = this._rowTextOf(num);
+      const landed = facts.rowTexts[r];
+      const name = parseBoardListName(held);
+      if (!name || name.toLowerCase() !== parseBoardListName(landed).toLowerCase()) continue;
+      const before = boardListRowUnread(held);
+      const now = boardListRowUnread(landed);
+      if (before != null && now != null && before !== now) return true;
+    }
+    return false;
   },
 
   // 貼上（App.onPasteDone）與 IME 送字（term_view.onTextInput）。回 true ＝接手了。
