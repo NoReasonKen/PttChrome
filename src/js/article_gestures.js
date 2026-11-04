@@ -296,6 +296,22 @@ export class ArticleGestures {
 
   // A leave is on its way to PTT, from the committed slide on: other input
   // waits for the swap.
+  // Search backtracking found its source deleted (#121).
+  sourceGone() {
+    this.stack.sourceGone();
+  }
+
+  // A deleted source is kept shown over its board list until Back.
+  holdsGoneArticle() {
+    return !!this.stack.gone;
+  }
+
+  leaveGoneArticle() {
+    if (!this.stack.leaveGone()) return false;
+    this.update();
+    return true;
+  }
+
   holdsInput() {
     return (this.stack.handingOff || this.backsDuringSlide != null) && !this.sendingBack;
   }
