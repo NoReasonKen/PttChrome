@@ -3,7 +3,7 @@
 // its own scroll viewport, so revealing it shows the real list, scrollable at
 // once, instead of a static copy.
 import { ScreenCopyLayer, setUsable, STACK_NOTICE_MS } from './stack_layer';
-import { LIST_TITLE_COL_START, hasServerCursorMark, rowToText } from './comment_parse';
+import { LIST_TITLE_COL_START, hasServerCursorMark, rowToText, parseListArticleNumLoose } from './comment_parse';
 import { listEntryOf } from './split_reader';
 import { subjectKey, subjectMatches } from './long_push_anchor';
 import { i18n } from './i18n';
@@ -170,6 +170,17 @@ export class StackListLayer extends ScreenCopyLayer {
     this.followed = row;
     (this.read ||= new Set()).add(row);
     return true;
+  }
+
+  // The newest article number this list shows, or null.
+  newestNum() {
+    const lines = this.frame.lines;
+    let newest = null;
+    for (let r = this.frame.enhance.listScroll.bodyStart; r < lines.length - 1; r++) {
+      const num = parseListArticleNumLoose(rowToText(lines[r]));
+      if (num != null && (newest == null || num > newest)) newest = num;
+    }
+    return newest;
   }
 
   // The text of the entry this list shows selected, or null.
