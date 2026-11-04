@@ -35,6 +35,7 @@ const rowAtTop = (page, root) => page.evaluate(root => {
   const view = document.querySelector(root);
   const top = view.getBoundingClientRect().top;
   const row = [...view.querySelectorAll('[type="bbsrow"][srow]')].find(r => r.getBoundingClientRect().bottom > top + 1);
+  if (!row) return null;
   return { srow: row.getAttribute('srow'), offset: Math.round(row.getBoundingClientRect().top - top) };
 }, root);
 
@@ -323,6 +324,51 @@ test('a source touched while it is revealed swipes again once it takes over', as
   await expect(page.locator(ARTICLE_LAYER)).toHaveCount(0);
   await expect(page.locator(MAIN)).toHaveClass(/articleHorizontalGestures/);
   await revealArticleDrawer(page);
+});
+
+// Alpha `lines` long, opened from the board's list and scrolled to its end
+// as a reader does. Its long page is split into chunks that the browser lays
+// out only near the view; the scrolling has laid out each one. Returns the row
+// at the top of the view.
+async function sourceScrolledToItsEnd(page, lines) {
+  await bootNestedShortcutSearch(page, { easyList: true, alphaLines: 80 });
+  // PTT's copy is this long when the list opens it.
+  await page.evaluate(lines => { window.__shortcutServer.state.open.lines = lines; }, lines);
+  await ptt.sendKey(page, 'ArrowLeft');
+  await waitList(page, FULL_LIST);
+  await tapCard(page, '[Talk] Alpha topic');
+  await waitArticle(page, 'Alpha');
+  await expect.poll(async () => {
+    await ptt.sendKey(page, 'PageDown');
+    return page.evaluate(() => window.__app.easyReading.easyReadingReachedPageEnd);
+  }, { timeout: 30000 }).toBe(true);
+  await settled(page);
+  await expect.poll(() => page.evaluate(async main => {
+    const view = document.querySelector(main);
+    view.scrollTop += view.clientHeight;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return view.scrollTop + view.clientHeight >= view.scrollHeight - 2;
+  }, MAIN), { timeout: 30000 }).toBe(true);
+  await settled(page);
+  return rowAtTop(page, MAIN);
+}
+
+test('half a swipe back from the results shows a long source scrolled to its end at its reading position', async ({ page }) => {
+  const row = await sourceScrolledToItsEnd(page, 320);
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+  const box = await page.locator(MAIN).boundingBox();
+  const y = box.y + box.height / 2;
+  const contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: 140, y });
+  await expect(page.locator('[data-article-exit-underlay]')).toHaveAttribute('data-preview', 'layer');
+  await expect.poll(() => rowAtTop(page, ARTICLE_LAYER)).toEqual(row);
+  await contact.move({ x: box.width - 20, y });
+  await contact.release();
+  await waitArticle(page, 'Alpha');
+  await settled(page);
+  expect(await rowAtTop(page, MAIN)).toEqual(row);
 });
 
 // The comment bar, folded into the toolbar's push button.

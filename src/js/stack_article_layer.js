@@ -17,6 +17,12 @@ function topRow(scroller) {
   return null;
 }
 
+// Where `anchor`'s row starts in `scroller`'s content, or null.
+function rowStart(scroller, anchor) {
+  const row = anchor && scroller.querySelector(`[type="bbsrow"][srow="${anchor.srow}"]`);
+  return row ? row.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop : null;
+}
+
 // Scroll `scroller` so that `anchor`'s row is back at its offset.
 function scrollToRow(scroller, anchor) {
   const row = anchor && scroller.querySelector(`[type="bbsrow"][srow="${anchor.srow}"]`);
@@ -86,10 +92,14 @@ export class StackArticleLayer extends ScreenCopyLayer {
       this.held = true;
     };
     this._render(rect, frame.forceWidth);
-    this.scrollTop = main.scrollTop;
-    this.scrollHeight = main.scrollHeight;
-    // The reading position by row, for a render at another width.
+    // The reading position by row. The copy lays out a long page's chunks
+    // afresh, each at an estimated height until it comes into view, so the
+    // real article's scroll offset would land elsewhere in it, or past its
+    // end; the offset only stands in when no row shows.
     this.anchor = topRow(main);
+    this.scrollTop = main.scrollTop;
+    // The real article's content from that row down.
+    this.tail = main.scrollHeight - (this.anchor ? main.scrollTop + this.anchor.offset : 0);
     this.content = articleContent(view);
   }
 
@@ -106,7 +116,7 @@ export class StackArticleLayer extends ScreenCopyLayer {
     if (this.el.isConnected) this.anchor = topRow(this.el);
     this._render(rect, this.view.chh);
     this.scrollTop = null;
-    this.scrollHeight = 0;
+    this.tail = 0;
     if (this.el.isConnected) scrollToRow(this.el, this.anchor);
     return true;
   }
@@ -130,12 +140,12 @@ export class StackArticleLayer extends ScreenCopyLayer {
 
   _place() {
     this._fitEnd();
-    if (this.scrollTop != null) this.el.scrollTop = this.scrollTop;
-    else scrollToRow(this.el, this.anchor);
+    if (!scrollToRow(this.el, this.anchor) && this.scrollTop != null) this.el.scrollTop = this.scrollTop;
   }
 
   // The real article ends with rows of its own below the screen (the last row
-  // bar): room for them keeps the reading position near the end reachable.
+  // bar): room for as much as it had below the reading position keeps that
+  // position near the end reachable.
   _fitEnd() {
     if (!this.spacer) {
       this.spacer = document.createElement('div');
@@ -143,7 +153,8 @@ export class StackArticleLayer extends ScreenCopyLayer {
     }
     this.spacer.style.height = '0';
     this.el.appendChild(this.spacer);
-    this.spacer.style.height = Math.max(0, this.scrollHeight - this.el.scrollHeight) + 'px';
+    const start = rowStart(this.el, this.anchor) ?? 0;
+    this.spacer.style.height = Math.max(0, start + this.tail - this.el.scrollHeight) + 'px';
   }
 
   hide() {

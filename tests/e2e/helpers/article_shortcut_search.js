@@ -235,7 +235,7 @@ async function installNestedServer(page, session) {
       return data + `\x1b[${Math.min(screen.cursor[0], state.terminalRows)};${screen.cursor[1]}H`;
     };
     // Long rows wrap on a phone, so the article scrolls and has a position.
-    const bodyLine = (article, row) => `${article.body} line ${String(row).padStart(2, '0')}: ` + 'reading text '.repeat(5);
+    const bodyLine = (article, row) => (`${article.body} line ${String(row).padStart(2, '0')}: ` + 'reading text '.repeat(5)).slice(0, 80);
     const articleRows = (article, termRows) => {
       if (article.lines) return longArticleRows(article, termRows);
       const rows = {
@@ -261,7 +261,9 @@ async function installNestedServer(page, session) {
           : n === 4 ? '' : bodyLine(article, n - 1);
       const rows = {
         [termRows - 1]: `  瀏覽 第 ${Math.ceil(end / page)}/${Math.ceil(article.lines / page)} 頁 (${Math.floor(end * 100 / article.lines)}%)  ` +
-          `目前顯示: 第 ${String(state.line).padStart(2, '0')}~${end} 行  (y)回應(X%)推文(h)說明(←)離開 `
+          `目前顯示: 第 ${String(state.line).padStart(2, '0')}~${end} 行  ` +
+          // Past line 99 the full hints no longer fit the row.
+          (state.line < 100 ? '(y)回應(X%)推文(h)說明(←)離開 ' : '(y)回應(h)說明(←)離開 ')
       };
       for (let n = state.line; n <= end; n++) rows[n - state.line] = line(n);
       return rows;
