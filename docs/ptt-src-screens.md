@@ -96,6 +96,9 @@ pfterm 只在阻塞讀鍵前 flush。鍵送早了會被 typeahead 吃掉中間�
   文章場景會測錯東西）。
 - 必須 clang＋`-finput-charset=big5`（gcc 把 Big5 尾碼 0x5C 當跳脫字元，字串壞掉）；upstream HEAD 在
   `-Werror` 下常編不過 ⇒ `-Wno-error`。
+- The generator supplies `sys/time.h` with `-include` because upstream `common/bbs/content.c` calls
+  `gettimeofday()` without declaring it. It loads upstream's `osdep.h` first so feature macros such
+  as `_GNU_SOURCE` take effect before system headers. Declaration diagnostics remain enabled.
 - 連結的物件檔：排除 `mbbsd.o`（用改名過的那份）、`vers.o`（重編）、`screen.o`（非 pfterm 畫面層），
   以及**任何自帶 `main` 的物件**（`nm` 偵測；upstream 的 `test_*.o`／`testsz.o` 這類小程式，新增的也自動排除）。
 - driver 要先 `init_io()`（否則 pfterm 沒輸出緩衝）、`currboard` 先清空再 `enter_board`（`brc_initial_board`
