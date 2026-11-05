@@ -65,6 +65,27 @@ export class DrawerDiagnostics {
     };
   }
 
+  // Capture the classifier's actual decision, before native scrolling can cancel
+  // the pointer. Raw touchmove samples continue in the detailed recorder after it.
+  move(event, track, previousAxis) {
+    const rec = this.gestures.core.debugRecorder;
+    if (!rec?.isRecording || !rec.detailedGestures) return;
+    const gesture = track.gesture;
+    const dx = event.clientX - gesture.start.x;
+    const dy = event.clientY - gesture.start.y;
+    this.log('move', event, {
+      eventTime: event.timeStamp, pointerId: event.pointerId, level: track.level,
+      x: event.clientX, y: event.clientY,
+      startX: gesture.start.x, startY: gesture.start.y, startTime: gesture.start.t, dx, dy,
+      angleFromHorizontal: Math.atan2(Math.abs(dy), Math.abs(dx)) * 180 / Math.PI,
+      axis: gesture.axis, lockedNow: !previousAxis && !!gesture.axis,
+      direction: gesture.axis === 'horizontal' ? dx < 0 ? 'left' : 'right'
+        : gesture.axis === 'vertical' ? dy < 0 ? 'up' : 'down' : null,
+      distance: gesture.distance,
+      motionStartX: gesture.motionStartX,
+    });
+  }
+
   log(name, event, info) {
     const g = this.gestures;
     const rec = g.core.debugRecorder;

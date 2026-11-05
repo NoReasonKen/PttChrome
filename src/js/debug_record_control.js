@@ -8,6 +8,11 @@ import { DebugRecorder } from './debug_recorder';
 import { downloadAsFile } from './util';
 import { readValuesWithDefault } from './pref_storage';
 
+// Opt in for a targeted development capture, then restore false afterwards.
+// Production builds always use standard recording.
+const DETAILED_GESTURE_CAPTURE = false;
+const RECORDING_OPTIONS = { detailedGestures: import.meta.env.DEV && DETAILED_GESTURE_CAPTURE };
+
 const pad2 = (n) => String(n).padStart(2, '0');
 
 export function debugRecordFileName(d) {
@@ -32,7 +37,7 @@ export function isDebugRecording(app) {
 export function startDebugRecording(app, deps) {
   if (isDebugRecording(app)) return;
   const Recorder = (deps && deps.Recorder) || DebugRecorder;
-  app.debugRecorder = new Recorder(app);
+  app.debugRecorder = new Recorder(app, RECORDING_OPTIONS);
   app.debugRecorder.start();
 }
 

@@ -1,5 +1,6 @@
 // @unit-env browser
 // real-input: tests/e2e/offline/debug_record.offline.spec.js
+// real-input: tests/e2e/offline/mobile_gesture_start.offline.spec.js
 //   （好讀長頁的真滾輪寫進錄製檔；本檔手捏事件只測分支邏輯，見 tests/unit/e2e_real_input.test.js）
 import { DebugRecorder, snapshotState, cursorGeomSample } from "../../src/js/debug_recorder";
 import { diag, diagActive } from "../../src/js/diag";
@@ -142,6 +143,152 @@ describe("cursorGeomSample", () => {
 });
 
 describe("DebugRecorder", () => {
+  describe("gesture tracing", () => {
+    function touchEvent(type, changedPoints, { activePoints = changedPoints, cancelable = true } = {}) {
+      const touch = ({ id, x, y }) => new window.Touch({
+        identifier: id, target: document.body, clientX: x, clientY: y,
+      });
+      return new window.TouchEvent(type, {
+        changedTouches: changedPoints.map(touch),
+        touches: activePoints.map(touch),
+        cancelable,
+      });
+    }
+
+    it("keeps standard touch boundaries rounded and does not subscribe to motion by default", () => {
+      const { app } = makeApp();
+      const recorder = new DebugRecorder(app);
+      const addListener = vi.spyOn(document, "addEventListener");
+      try {
+        recorder.start();
+        const points = [{ id: 7, x: 12.25, y: 43.75 }];
+        document.body.dispatchEvent(touchEvent("touchstart", points));
+        document.body.dispatchEvent(touchEvent("touchmove", [{ id: 7, x: 12.75, y: 42.25 }]));
+        document.body.dispatchEvent(touchEvent("touchend", points, { activePoints: [] }));
+        document.body.dispatchEvent(touchEvent("touchcancel", points, { activePoints: [] }));
+
+        const recording = JSON.parse(recorder.stop());
+        expect(recording.meta.detailedGestures).toBe(false);
+        const touches = recording.events.filter(event => event.tag === "touch");
+        expect(touches.map(event => event.info)).toEqual([
+          { type: "touchstart", n: 1, x: 12, y: 44, inList: false },
+          { type: "touchend", n: 0, x: 12, y: 44, inList: false },
+          { type: "touchcancel", n: 0, x: 12, y: 44, inList: false },
+        ]);
+        expect(addListener.mock.calls.some(([type]) => type === "touchmove")).toBe(false);
+      } finally {
+        recorder.stop();
+        addListener.mockRestore();
+      }
+    });
+
+    it("exports opt-in motion with precise changed contacts and the original event timestamp", () => {
+      const { app } = makeApp();
+      const recorder = new DebugRecorder(app, { detailedGestures: true });
+      try {
+        recorder.start();
+        const points = [{ id: 7, x: 12.125, y: 43.875 }, { id: 9, x: 50.625, y: 80.375 }];
+        const start = touchEvent("touchstart", points);
+        document.body.dispatchEvent(start);
+        const move = touchEvent("touchmove", points, { activePoints: [...points].reverse() });
+        Object.defineProperty(move, "timeStamp", { value: 1234.56789 });
+        move.preventDefault();
+        document.body.dispatchEvent(move);
+
+        const recording = JSON.parse(recorder.stop());
+        expect(recording.meta.detailedGestures).toBe(true);
+        const touches = recording.events.filter(event => event.tag === "touch");
+        expect(touches.map(event => event.info.type)).toEqual(["touchstart", "touchmove"]);
+        expect(touches[0].info).toMatchObject({
+          x: 12.125, y: 43.875, eventTime: start.timeStamp, cancelable: true, prevented: false,
+        });
+        expect(touches[1].info).toEqual({
+          type: "touchmove", n: 2, x: 12.125, y: 43.875, inList: false,
+          eventTime: 1234.56789, points, cancelable: true, prevented: true,
+        });
+        expect(start.defaultPrevented).toBe(false);
+      } finally {
+        recorder.stop();
+      }
+    });
+
+    it("retains the lifted or cancelled contact when no active contacts remain", () => {
+      const { app } = makeApp();
+      const recorder = new DebugRecorder(app, { detailedGestures: true });
+      try {
+        recorder.start();
+        const points = [{ id: 11, x: 120.125, y: 310.875 }];
+        const end = touchEvent("touchend", points, { activePoints: [] });
+        const cancel = touchEvent("touchcancel", points, { activePoints: [], cancelable: false });
+        document.body.dispatchEvent(end);
+        document.body.dispatchEvent(cancel);
+
+        const recording = JSON.parse(recorder.stop());
+        const touches = recording.events.filter(event => event.tag === "touch");
+        expect(touches.map(event => event.info)).toEqual([
+          {
+            type: "touchend", n: 0, x: 120.125, y: 310.875, inList: false,
+            eventTime: end.timeStamp, points, cancelable: true, prevented: false,
+          },
+          {
+            type: "touchcancel", n: 0, x: 120.125, y: 310.875, inList: false,
+            eventTime: cancel.timeStamp, points, cancelable: false, prevented: false,
+          },
+        ]);
+      } finally {
+        recorder.stop();
+      }
+    });
+
+    it("attaches passive capture listeners only while recording and does not duplicate them after restart", () => {
+      const { app } = makeApp();
+      const recorder = new DebugRecorder(app, { detailedGestures: true });
+      const addListener = vi.spyOn(document, "addEventListener");
+      const removeListener = vi.spyOn(document, "removeEventListener");
+      const types = ["touchstart", "touchmove", "touchend", "touchcancel"];
+      const dispatch = () => {
+        for (const type of types) {
+          document.body.dispatchEvent(touchEvent(type, [{ id: 7, x: 12.25, y: 43.75 }]));
+        }
+      };
+      try {
+        dispatch();
+        expect(recorder.events).toHaveLength(0);
+        expect(addListener.mock.calls.filter(([type]) => types.includes(type))).toHaveLength(0);
+
+        recorder.start();
+        recorder.start();
+        const registrations = addListener.mock.calls.filter(([type]) => types.includes(type));
+        expect(registrations.map(([type]) => type).sort()).toEqual([...types].sort());
+        for (const [, , options] of registrations) {
+          expect(options).toMatchObject({ passive: true, capture: true });
+        }
+        dispatch();
+        expect(recorder.events.filter(event => event.tag === "touch")).toHaveLength(4);
+        recorder.stop();
+        for (const [type, listener] of registrations) {
+          expect(removeListener).toHaveBeenCalledWith(type, listener, expect.objectContaining({ capture: true }));
+        }
+        const stoppedCount = recorder.events.length;
+        dispatch();
+        expect(recorder.events).toHaveLength(stoppedCount);
+
+        recorder.start();
+        const beforeRestartInput = recorder.events.filter(event => event.tag === "touch").length;
+        dispatch();
+        expect(recorder.events.filter(event => event.tag === "touch")).toHaveLength(beforeRestartInput + 4);
+        recorder.stop();
+        const restartedStopCount = recorder.events.length;
+        dispatch();
+        expect(recorder.events).toHaveLength(restartedStopCount);
+      } finally {
+        recorder.stop();
+        addListener.mockRestore();
+        removeListener.mockRestore();
+      }
+    });
+  });
+
   it("follows a replacement transport and restores both transports after recording", () => {
     const { app, calls } = makeApp();
     const old = app.conn;

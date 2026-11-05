@@ -43,7 +43,8 @@ async function groupOverClassList(page) {
 test('a right swipe past half the screen slides the board list over the list below and goes back on release', async ({ page }) => {
   const { main, y } = await groupOverClassList(page);
   const contact = await beginArticleTouch(page, { x: 20, y });
-  await contact.move({ x: 140, y });
+  await contact.move({ x: 36, y });
+  await contact.move({ x: 156, y });
   expect((await waitRectStable(page, MAIN)).left - main.left).toBeCloseTo(120, 0);
   await expect(page.locator(UNDERLAY)).toHaveAttribute('data-preview', 'layer');
   await expect(page.locator(BOARD_LAYER)).toBeVisible();
@@ -70,6 +71,7 @@ test('with no page below, the board list slides over the dark fallback and PTT\'
   // The class list itself was opened from 分類看板, which is no stacked page.
   await recordHints(page);
   const contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: 36, y });
   await contact.move({ x: 140, y });
   await expect(page.locator(UNDERLAY)).toHaveAttribute('data-preview', 'fallback');
   await contact.move({ x: page.viewportSize().width - 20, y });
@@ -104,8 +106,10 @@ test('a vertical drag, a swipe to half, a left swipe or the preference turned of
   await expect(page.locator(UNDERLAY)).toHaveCount(0);
   expect((await waitRectStable(page, MAIN)).left).toBeCloseTo(main.left, 0);
 
+  const anchorX = 36;
   let contact = await beginArticleTouch(page, { x: 20, y });
-  await contact.move({ x: 20 + width / 2, y });
+  await contact.move({ x: anchorX, y });
+  await contact.move({ x: anchorX + width / 2, y });
   await contact.release();
   await snappedBack(page, main);
   // Board lists have no shortcut drawer.

@@ -40,6 +40,7 @@ test('the article list keeps its reading position across an article when a copy 
   // Leave by the article swipe exit (the real mobile path).
   const main = await waitRectStable(page, MAIN);
   const exit = await beginArticleTouch(page, { x: 20, y: main.top + 100 });
+  await exit.move({ x: 36, y: main.top + 100 });
   await exit.move({ x: page.viewportSize().width - 20, y: main.top + 100 });
   await exit.release();
   await page.waitForFunction(() => window.__app.buf.pageState === 2 && window.__app.listSession.state === 'active');

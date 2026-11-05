@@ -13,7 +13,8 @@ test('right dragging retracts title and content together above a dark fallback w
   const toolbar = await waitRectStable(page, '#mobileToolbar');
   const y = main.top + 100;
   const contact = await beginArticleTouch(page, { x: 20, y });
-  await contact.move({ x: 140, y });
+  await contact.move({ x: 36, y });
+  await contact.move({ x: 156, y });
   expect((await waitRectStable(page, '.main')).left - main.left).toBeCloseTo(120, 0);
   expect((await waitRectStable(page, '#mobileAppBar')).left - title.left).toBeCloseTo(120, 0);
   expect((await waitRectStable(page, '#mobileToolbar')).left).toBe(toolbar.left);
@@ -32,6 +33,7 @@ test('a committed right drag sends one article exit only after release', async (
   const main = await waitRectStable(page, '.main');
   const y = main.top + 100;
   const contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: 36, y });
   await contact.move({ x: page.viewportSize().width - 20, y });
   expect(await gestureSent(page)).toBe('');
   await contact.release();
@@ -44,16 +46,19 @@ test('short retractions, a second contact and resizing never exit the article', 
   const main = await waitRectStable(page, '.main');
   const y = main.top + 100;
   let contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: 36, y });
   await contact.move({ x: 120, y });
   await contact.release();
   await expect(page.locator('[data-article-exit-underlay]')).toHaveCount(0);
   expect((await waitRectStable(page, '.main')).left).toBeCloseTo(main.left, 0);
   contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: 36, y });
   await contact.move({ x: page.viewportSize().width - 20, y });
   await contact.second({ x: 80, y });
   await contact.release();
   await expect(page.locator('[data-article-exit-underlay]')).toHaveCount(0);
   contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: 36, y });
   await contact.move({ x: page.viewportSize().width - 20, y });
   await page.setViewportSize({ width: 360, height: 480 });
   await contact.release();
@@ -66,6 +71,7 @@ test('resizing during the accepted exit animation cancels navigation and restore
   const main = await waitRectStable(page, '.main');
   const y = main.top + 100;
   const contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: 36, y });
   await contact.move({ x: page.viewportSize().width - 20, y });
   await contact.release();
   await page.setViewportSize({ width: 360, height: 480 });
@@ -133,6 +139,7 @@ test('the revealed list layer preserves the original rendered text size', async 
   });
   const main = await waitRectStable(page, '.main');
   const contact = await beginArticleTouch(page, { x: 20, y: main.top + 100 });
+  await contact.move({ x: 36, y: main.top + 100 });
   await contact.move({ x: page.viewportSize().width - 20, y: main.top + 100 });
   const preview = await visibleTextMetrics(page, '[data-stack-layer]');
   await testInfo.attach('text-metrics', { body: JSON.stringify({ original, preview }, null, 2), contentType: 'application/json' });
@@ -159,6 +166,7 @@ test('entering from a real list keeps that list as an inert layer while dragging
   const main = await waitRectStable(page, '.main');
   const y = main.top + 100;
   const contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: 36, y });
   await contact.move({ x: page.viewportSize().width - 20, y });
   const underlay = page.locator('[data-article-exit-underlay]');
   await expect(underlay).toHaveAttribute('data-preview', 'layer');
@@ -182,6 +190,7 @@ test('browser bar height changes and a width change both keep the list layer', a
     const main = await waitRectStable(page, '.main');
     const y = main.top + 100;
     const contact = await beginArticleTouch(page, { x: 20, y });
+    await contact.move({ x: 36, y });
     await contact.move({ x: 200, y });
     return contact;
   };

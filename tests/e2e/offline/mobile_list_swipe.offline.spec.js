@@ -52,7 +52,8 @@ async function snappedBack(page, main) {
 test('a right swipe past half the screen slides the list over the dashboard and goes back on release', async ({ page }) => {
   const { main, y } = await listOverDashboard(page);
   const contact = await beginArticleTouch(page, { x: 20, y });
-  await contact.move({ x: 140, y });
+  await contact.move({ x: 36, y });
+  await contact.move({ x: 156, y });
   expect((await waitRectStable(page, MAIN)).left - main.left).toBeCloseTo(120, 0);
   await expect(page.locator(UNDERLAY)).toHaveAttribute('data-preview', 'layer');
   await expect(page.locator(HOME_LAYER)).toBeVisible();
@@ -69,13 +70,16 @@ test('a right swipe past half the screen slides the list over the dashboard and 
 test('a slow swipe to exactly half the screen snaps back and sends nothing; just past half goes back', async ({ page }) => {
   const { main, y } = await listOverDashboard(page);
   const half = page.viewportSize().width / 2;
+  const anchorX = 36;
   let contact = await beginArticleTouch(page, { x: 20, y });
-  await contact.move({ x: 20 + half, y });
+  await contact.move({ x: anchorX, y });
+  await contact.move({ x: anchorX + half, y });
   await contact.release();
   await snappedBack(page, main);
   expect(await heldLeaves(page)).toBe(0);
   contact = await beginArticleTouch(page, { x: 20, y });
-  await contact.move({ x: 22 + half, y });
+  await contact.move({ x: anchorX, y });
+  await contact.move({ x: anchorX + half + 2, y });
   await contact.release();
   await expect.poll(() => heldLeaves(page)).toBe(1);
 });
@@ -96,6 +100,7 @@ test('with no page below, the list slides over the dark fallback and PTT\'s page
   await page.evaluate(() => window.__app.articleGestures.stack.clear());
   await recordHints(page);
   const contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: 36, y });
   await contact.move({ x: 140, y });
   await expect(page.locator(UNDERLAY)).toHaveAttribute('data-preview', 'fallback');
   await contact.move({ x: page.viewportSize().width - 20, y });
@@ -120,6 +125,7 @@ test('with no page below a list opened from a board list, the board list replace
   const main = await waitRectStable(page, MAIN);
   const y = main.top + main.height / 2;
   const contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: 36, y });
   await contact.move({ x: page.viewportSize().width - 20, y });
   await contact.release();
   await expect.poll(() => heldLeaves(page)).toBe(1);
@@ -161,6 +167,7 @@ test('vertical scrolling and taps keep working; a held contact and a tap ending 
 
   // A drag that ends on a card opens nothing.
   contact = await beginArticleTouch(page, { x: 30, y });
+  await contact.move({ x: 46, y });
   await contact.move({ x: 130, y });
   await contact.release();
   await snappedBack(page, main);
@@ -183,6 +190,7 @@ test('a left swipe, a second contact and the preference turned off never go back
   await contact.release();
   await snappedBack(page, main);
   contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: 36, y });
   await contact.move({ x: width - 20, y });
   await contact.second({ x: width - 20, y });
   await contact.release();

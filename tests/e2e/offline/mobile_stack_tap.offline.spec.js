@@ -43,6 +43,7 @@ async function leaveWithHeldReply(page) {
   const release = await holdBackReply(page);
   const main = await waitRectStable(page, MAIN);
   const contact = await beginArticleTouch(page, { x: 20, y: main.top + 100 });
+  await contact.move({ x: 36, y: main.top + 100 });
   await contact.move({ x: page.viewportSize().width - 20, y: main.top + 100 });
   await contact.release();
   await heldBack(page);
@@ -166,6 +167,7 @@ test('the release that ends the swipe over an article opens nothing', async ({ p
   // The swipe ends in the middle of the list, over an article card.
   const y = main.top + main.height / 2;
   const contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: 36, y });
   await contact.move({ x: page.viewportSize().width / 2, y });
   await contact.move({ x: page.viewportSize().width - 20, y });
   await contact.release();

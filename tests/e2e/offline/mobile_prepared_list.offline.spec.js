@@ -71,6 +71,7 @@ test('keyboard changes keep a prepared list intact and reveal it at the real lis
   expect((await page.locator(PREPARED).boundingBox()).height).toBe(before.height);
   await page.screenshot({ path: testInfo.outputPath('keyboard-article.png') });
   const contact = await beginArticleTouch(page, { x: 20, y: article.top + 50 });
+  await contact.move({ x: 36, y: article.top + 50 });
   await contact.move({ x: page.viewportSize().width - 12, y: article.top + 50 });
   const revealed = await waitRectStable(page, SHOWN_LIST, { fullRect: true });
   const heading = await page.locator('.stackUnderlayTitle').boundingBox();
@@ -103,7 +104,8 @@ test('rotation prepares the list viewport at its new width before the next drag'
   });
   const article = await waitRectStable(page, MAIN, { fullRect: true });
   const contact = await beginArticleTouch(page, { x: 100, y: article.top + 50 });
-  await contact.move({ x: 104, y: article.top + 50 });
+  await contact.move({ x: 116, y: article.top + 50 });
+  await contact.move({ x: 120, y: article.top + 50 });
   const revealed = await waitRectStable(page, SHOWN_LIST, { fullRect: true });
   expect(revealed.width).toBeCloseTo(height, 0);
   await contact.release({ cancel: true });

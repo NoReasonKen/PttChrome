@@ -90,6 +90,7 @@ test('a swipe back after a jump to an article outside the layer reveals the dark
   await jump(page, '[', 40);
   const main = await waitRectStable(page, MAIN);
   const contact = await beginArticleTouch(page, { x: 20, y: main.top + 100 });
+  await contact.move({ x: 36, y: main.top + 100 });
   await contact.move({ x: page.viewportSize().width - 20, y: main.top + 100 });
   await expect(page.locator(UNDERLAY)).toHaveAttribute('data-preview', 'fallback');
   await contact.release();

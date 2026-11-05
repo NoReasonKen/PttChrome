@@ -149,8 +149,10 @@ const LIST_VIEW_SEL = '.listBodyView';
 const TOUCH_TYPES = ['touchstart', 'touchend', 'touchcancel'];
 
 export class DebugRecorder {
-  constructor(app) {
+  constructor(app, { detailedGestures = false } = {}) {
     this.app = app;
+    this.detailedGestures = detailedGestures;
+    this._touchTypes = detailedGestures ? [...TOUCH_TYPES, 'touchmove'] : TOUCH_TYPES;
     this.events = [];
     this.isRecording = false;
     this._t0 = 0;
@@ -205,7 +207,7 @@ export class DebugRecorder {
     this._watchScroller(app.view && app.view.mainDisplay);
     this._watchList();
 
-    this.log('record.start', { url: app.connectedUrl && app.connectedUrl.url });
+    this.log('record.start', { url: app.connectedUrl && app.connectedUrl.url, detailedGestures: this.detailedGestures });
     app.reconnectResume?.recordingStarted?.();
     if (app.reconnectResume?.diagnostics)
       this.log('reconnectResume.diagnostics', app.reconnectResume.diagnostics());
@@ -273,17 +275,24 @@ export class DebugRecorder {
       const info = {
         type: e.type,
         n: e.touches ? e.touches.length : 0,
-        x: p ? Math.round(p.clientX) : null,
-        y: p ? Math.round(p.clientY) : null,
+        x: p ? this.detailedGestures ? p.clientX : Math.round(p.clientX) : null,
+        y: p ? this.detailedGestures ? p.clientY : Math.round(p.clientY) : null,
         inList: !!v,
       };
-      if (v) Object.assign(info, listViewSample(app, v));
+      if (this.detailedGestures) Object.assign(info, {
+        eventTime: e.timeStamp,
+        points: Array.from(e.changedTouches || [], point => ({ id: point.identifier, x: point.clientX, y: point.clientY })),
+        cancelable: e.cancelable,
+        prevented: e.defaultPrevented,
+      });
+      // Movement traces read coordinates only, avoiding a layout on every sample.
+      if (v && e.type !== 'touchmove') Object.assign(info, listViewSample(app, v));
       this.log('touch', info);
     };
     const opt = { capture: true, passive: true };
     document.addEventListener('scroll', this._onListScroll, opt);
     document.addEventListener('wheel', this._onListWheel, opt);
-    for (const type of TOUCH_TYPES) document.addEventListener(type, this._onTouch, opt);
+    for (const type of this._touchTypes) document.addEventListener(type, this._onTouch, opt);
   }
 
   _unwatchList() {
@@ -291,7 +300,7 @@ export class DebugRecorder {
     const opt = { capture: true, passive: true };
     document.removeEventListener('scroll', this._onListScroll, opt);
     document.removeEventListener('wheel', this._onListWheel, opt);
-    for (const type of TOUCH_TYPES) document.removeEventListener(type, this._onTouch, opt);
+    for (const type of this._touchTypes) document.removeEventListener(type, this._onTouch, opt);
     this._onListScroll = null;
     this._onListWheel = null;
     this._onTouch = null;
@@ -335,6 +344,7 @@ export class DebugRecorder {
         url: app.connectedUrl && app.connectedUrl.url,
         build: process.env.GIT_COMMIT,
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+        detailedGestures: this.detailedGestures,
       },
       redact: {
         ids: [...knownCredentials.ids, prefs?.autoLoginUser].filter(Boolean),

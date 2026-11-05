@@ -167,7 +167,9 @@ export class ArticleGestures {
     const track = this.track;
     if (!track || event.pointerId !== track.id) return;
     if (this._swipeLevel() !== track.level || this._otherModalOpen()) return this._cancel();
+    const previousAxis = track.gesture.axis;
     const snapshot = track.gesture.move(event.clientX, event.clientY, event.timeStamp);
+    this.diag.move(event, track, previousAxis);
     if (this.opened || snapshot.operation) {
       this._consume(event);
       if (snapshot.operation) {
