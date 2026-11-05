@@ -18,11 +18,12 @@
 // Needs GH_TOKEN or a logged-in gh CLI. exit code: 0 all green / 1 failure / 2 tool or configuration problem
 // （**刻意分開**，這樣「查不到」不會被誤讀成「沒問題」）。
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 import path from "node:path";
 import { redactCredentials } from "./credential-patterns.mjs";
-import { createCiObserver } from "./ci-watch-state.mjs";
+import { createCiObserver, saveState } from "./ci-watch-state.mjs";
 
 let observer;
 
@@ -224,7 +225,7 @@ async function api(p, { raw = false, method = "GET" } = {}) {
       "X-GitHub-Api-Version": "2022-11-28",
     },
   });
-  if (!res.ok && !(raw && res.status === 404)) {
+  if (!res.ok) {
     throw new Error(`${method} ${p} → ${res.status} ${res.statusText}`);
   }
   return raw ? res.text() : res.json();
@@ -261,14 +262,52 @@ export function summarizeJobLog(text) {
   return output.join("\n");
 }
 
-// Keep failure details readable without printing the complete job log.
-async function tailJobLog(repo, jobId) {
-  try {
-    const text = await api(`/repos/${repo}/actions/jobs/${jobId}/logs`, { raw: true });
-    return summarizeJobLog(text);
-  } catch (e) {
-    return `（抓不到 log：${e.message}）`;
+// Report failed jobs independently of the polling loop so real API boundaries
+// can be exercised without contacting GitHub.
+export async function reportFailedJobs(runs, { repo, cacheFile, request = api, write = console.log }) {
+  let reported = {};
+  if (cacheFile) {
+    try {
+      const cached = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+      if (cached?.schemaVersion === 1 && cached.reported &&
+          typeof cached.reported === "object" && !Array.isArray(cached.reported) &&
+          Object.values(cached.reported).every(value => typeof value === "boolean")) {
+        reported = cached.reported;
+      }
+    } catch (error) {
+      // Missing or invalid metadata must leave failures visible. Other I/O
+      // failures remain tool errors instead of silently disabling persistence.
+      if (error.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error;
+    }
   }
+  const flakyJobs = [];
+  for (const run of runs) {
+    const { jobs } = await request(`/repos/${repo}/actions/runs/${run.id}/jobs`);
+    for (const failure of pickFailures(jobs)) {
+      const key = JSON.stringify([repo, run.head_sha, run.id, run.run_attempt ?? 1, failure.id]);
+      if (Object.hasOwn(reported, key)) {
+        if (reported[key]) flakyJobs.push({ runId: run.id, name: failure.name });
+        continue;
+      }
+      write(`\n--- ${run.name} / ${failure.name} → ${failure.conclusion}（step: ${failure.step || "?"}）`);
+      let log;
+      try {
+        log = summarizeJobLog(await request(`/repos/${repo}/actions/jobs/${failure.id}/logs`, { raw: true }));
+      } catch (error) {
+        write(`（抓不到 log：${error.message}）`);
+        continue;
+      }
+      write(log);
+      const knownFlaky = isKnownFlaky(failure.name, log);
+      if (knownFlaky) flakyJobs.push({ runId: run.id, name: failure.name });
+      if (cacheFile) {
+        // Persist only identity and classification, never log contents.
+        reported[key] = knownFlaky;
+        saveState(cacheFile, { schemaVersion: 1, reported });
+      }
+    }
+  }
+  return flakyJobs;
 }
 
 // Print root-cause hints for a missing run. A failed diagnosis must not mask the original exit 2.
@@ -410,16 +449,10 @@ async function main() {
   }
 
   // 失敗 → 逐 run 挖失敗 job / step / log 尾巴。
-  const flakyJobs = [];
-  for (const r of runs) {
-    const { jobs } = await api(`/repos/${repo}/actions/runs/${r.id}/jobs`);
-    for (const f of pickFailures(jobs)) {
-      console.log(`\n--- ${r.name} / ${f.name} → ${f.conclusion}（step: ${f.step || "?"}）`);
-      const log = await tailJobLog(repo, f.id);
-      console.log(log);
-      if (isKnownFlaky(f.name, log)) flakyJobs.push({ runId: r.id, name: f.name });
-    }
-  }
+  const flakyJobs = await reportFailedJobs(runs, {
+    repo,
+    cacheFile: arg("state-file") ? `${arg("state-file")}.failures.json` : undefined,
+  });
 
   if (flakyJobs.length) {
     console.log(
