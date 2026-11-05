@@ -110,6 +110,12 @@ async function openManager(page) {
   let failed = false;
   try {
     await byKey(page, '__more').tap();
+    // A stationary animation frame is not the final position. Native touch can
+    // start on Settings but synthesize its click on Log out after the sheet moves.
+    // These manager-layout tests need the fully opened menu, not an entrance tap.
+    const moreContent = page.locator('.mobileSheetContent:has([data-sheet="more"])');
+    await expect(moreContent).toHaveCSS('transform', /^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+    await expect(moreContent).toHaveCSS('opacity', '1');
     await byKey(page, '__settings').tap();
     await expect(settings).toBeVisible();
     await settings.locator('[data-pref-category="local"]').tap();
@@ -242,6 +248,51 @@ test.describe('手機：搜尋紀錄', () => {
     expect(Math.abs(box.toolbar.bottom - box.column.bottom)).toBeLessThanOrEqual(1);
     expect(box.lastEntry.bottom).toBeLessThanOrEqual(box.toolbar.top);
     await page.screenshot({ path: test.info().outputPath('search-history-manager-scrolled.png') });
+  });
+
+  test('opens Settings after the More entrance settles without activating Log out', async ({ page }) => {
+    await bootMenu(page, ['Gossiping']);
+    // Keep the real transition available for the pause probe even on slow runners.
+    await page.addStyleTag({ content: '.mobileSheetContent { transition-duration: 5s !important; }' });
+    await page.evaluate(() => {
+      const probe = { paused: false, earlyTouches: 0, clicks: [] };
+      window.__settingsEntranceProbe = probe;
+      let entrance = null;
+      const finish = () => {
+        if (entrance?.playState === 'paused') entrance.finish();
+      };
+      // Hold a real entrance frame still, then finish it during an early touch.
+      // This reproduces native touchstart on Settings followed by click on Log out.
+      document.addEventListener('transitionrun', event => {
+        if (probe.paused || event.propertyName !== 'transform' ||
+            !event.target.matches('.mobileSheetContent') ||
+            !event.target.querySelector('[data-sheet="more"]')) return;
+        entrance = event.target.getAnimations().find(a => a.transitionProperty === 'transform');
+        if (!entrance) return;
+        entrance.pause();
+        entrance.currentTime = entrance.effect.getTiming().duration / 2;
+        probe.paused = true;
+        setTimeout(finish, 800); // sleep-ok: controlled release of the held entrance, not a readiness wait
+      }, { capture: true });
+      document.addEventListener('pointerdown', event => {
+        if (event.target.closest('[data-key="__settings"]') && entrance?.playState === 'paused') {
+          probe.earlyTouches++;
+          finish();
+        }
+      }, { capture: true });
+      document.addEventListener('click', event => {
+        probe.clicks.push(event.target.closest('[data-key]')?.dataset.key);
+      }, { capture: true });
+    });
+
+    const { settings, manager } = await openManager(page);
+    await expect(settings).toBeVisible();
+    await expect(manager).toBeVisible();
+    const probe = await page.evaluate(() => window.__settingsEntranceProbe);
+    expect(probe.paused).toBe(true);
+    expect(probe.earlyTouches).toBe(0);
+    expect(probe.clicks.filter(key => key === '__settings')).toHaveLength(1);
+    expect(probe.clicks).not.toContain('__logout');
   });
 
   test('紀錄少、不用捲：工具列一樣在畫面底部', async ({ page }) => {
