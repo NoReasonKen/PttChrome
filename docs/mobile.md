@@ -420,6 +420,15 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
 
 ## Phase 9：Bottom sheet（`components/MobileSheet`，Mantine Drawer position bottom）
 
+Menu-item touches keep the action pressed initially, even if an entrance animation
+moves another item under the finger before Chromium synthesizes its click.
+`MobileSheet` preserves ordinary native activation and redirects only a mismatched
+touch click to the original connected, enabled item. Movement beyond 10 CSS pixels,
+pointer cancellation or another contact cancels the action; a later contact starts
+fresh. It never activates on pointerup, so native scrolling and long-press suppression
+remain in charge. Mouse, keyboard, editable fields and non-menu buttons keep their
+existing behavior. Real-input coverage lives in `mobile_sheet_tap.offline.spec.js`.
+
 - 用在：「更多」（`MobileToolbar` 自己持有，`panel==='more'`）、長按選單（`ContextMenu` 在 `useMobile` 時畫 `ContextSheet`，
   項目清單 `ContextMenu/context_menu_entries.js` 與桌機 `DropdownMenu` 共用）、搜尋（`SearchModal` 的 `mobile` prop 換外殼）、
   長推文（`LongPushModal` 的 `mobile` prop）。
