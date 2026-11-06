@@ -257,10 +257,7 @@ async function backRevealsDashboard(page, cassette) {
   await waitFed(page, cassette.steps.length);
 }
 
-// Needs re-recording: since #123 the next-article alignment jump sends
-// `354048\r\f`, which scn-stack-home-next never recorded (as in
-// stack_scenarios.offline.spec.js).
-test.fixme('after switching to the next article, its list still reveals the dashboard', async ({ page }) => {
+test('after switching to the next article, its list still reveals the dashboard', async ({ page }) => {
   await enterBoardFromDashboard(page, homeNext);
   for (let i = 0; i < 2; i++) await ptt.sendKey(page, 'ArrowUp');
   await ptt.sendKey(page, 'Enter');
