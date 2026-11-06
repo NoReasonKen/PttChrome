@@ -9,6 +9,7 @@ import { subjectKey, subjectMatches } from './long_push_anchor';
 import { i18n } from './i18n';
 import { PAGE } from './page_stack';
 import { mobileFillLayout, listRowSpan } from './mobile_layout';
+import { boardMarkReadTargetOfText } from './board_list_parse';
 
 // Only one hidden list per terminal stays connected and laid out. Deeper
 // history keeps its detached renderer and the existing live-layer bound.
@@ -321,17 +322,40 @@ export class StackListLayer extends ScreenCopyLayer {
     return card ? cardIdentity(card) : null;
   }
 
-  // Open the remembered entry on the refreshed list, found by identity, through
-  // its list session's own open path.
+  // Open the remembered entry on the real list PTT now shows. It runs after
+  // the swap, when this layer may already be released.
   openTapped(core, id) {
-    if (!this.screen) return;
-    const row = findCard(core.view.mainDisplay, id)?.querySelector('.listCardBody')?.closest('[data-row]')?.dataset.row;
-    if (row == null) {
-      core.view.flashListHint?.(i18n(this.kind === 'board' ? 'stack_boardGone' : 'stack_articleGone'), STACK_NOTICE_MS);
-      return;
-    }
-    core.noteUserAction?.();
-    const session = this.kind === 'board' ? core.boardListSession : core.listSession;
-    session.onMouseClick(Number(row), LIST_TITLE_COL_START);
+    openListEntry(core, { kind: this.kind, id });
   }
+
+  // The entry of this list under `target`, for the context menu, or null: its
+  // kind and identity, and the number marking it read would use.
+  entryAt(target) {
+    if (!this.screen) return null;
+    const card = target?.closest?.('.listCard');
+    if (!card || !this.el.contains(card)) return null;
+    const line = this.frame.lines[Number(card.querySelector('.listCardBody')?.dataset.row)];
+    const text = line ? rowToText(line) : '';
+    if (this.kind === 'board') return { kind: 'board', id: cardIdentity(card), boardMarkRead: boardMarkReadTargetOfText(text) };
+    const entry = listEntryOf(text);
+    return { kind: 'article', id: cardIdentity(card), markRead: entry ? { num: entry.num } : null };
+  }
+}
+
+// The row of `entry` ({ kind, id }) on the real list PTT now shows, or null
+// with a notice when that list no longer has it.
+export function realEntryRow(core, entry) {
+  const row = findCard(core.view.mainDisplay, entry.id)?.querySelector('.listCardBody')?.dataset.row;
+  if (row != null) return Number(row);
+  core.view.flashListHint?.(i18n(entry.kind === 'board' ? 'stack_boardGone' : 'stack_articleGone'), STACK_NOTICE_MS);
+  return null;
+}
+
+// Open `entry` on the real list through its list session's own open path.
+export function openListEntry(core, entry) {
+  const row = realEntryRow(core, entry);
+  if (row == null) return;
+  core.noteUserAction?.();
+  const session = entry.kind === 'board' ? core.boardListSession : core.listSession;
+  session.onMouseClick(row, LIST_TITLE_COL_START);
 }

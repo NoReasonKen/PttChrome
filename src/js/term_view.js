@@ -645,6 +645,13 @@ export function TermView() {
       this.bbscore.articleGestures.queueBack();
       return;
     }
+    // A refresh key then refreshes a revealed list once PTT shows it (#124).
+    if (this.bbscore.articleGestures?.holdsInput() && isRefreshKeyEvent(e) &&
+        readEffectivePrefs().refreshKeyIntercept && this.bbscore.screenRefresh?.target()?.kind === 'revealed') {
+      e.preventDefault();
+      this.bbscore.screenRefresh.refresh('key');
+      return;
+    }
     if (!shouldAcceptInput() || belongsToClosedModal(e) || !keyEventFilter(e))
       return;
 

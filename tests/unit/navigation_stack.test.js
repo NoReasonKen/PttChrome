@@ -3,6 +3,9 @@
 // Also the post-time order a list layer's selection follows (#74).
 import { NavigationStack, postedBefore } from '../../src/js/navigation_stack';
 import { PAGE } from '../../src/js/page_stack';
+import { setupI18n, i18n } from '../../src/js/i18n';
+
+beforeAll(() => setupI18n());
 
 function fakeCore() {
   const ends = [];
@@ -83,6 +86,31 @@ test('an action remembered during a handoff that times out is dropped', () => {
     expect(ends).toEqual(['timeout']);
     expect(done).toEqual(['dropped second timeout']);
     expect(loading.at(-1)).toEqual([false, 'stackPending']);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+// An action on a revealed page (#124) runs at once when nothing is handed
+// off; during a handoff it is remembered, and dropping it says it did not run.
+test('an action made when ready runs at once, and one dropped by a timeout gives a notice', () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+  try {
+    const { core, ends } = fakeCore();
+    const hints = [];
+    core.view.flashListHint = text => hints.push(text);
+    const stack = new NavigationStack(core);
+    const done = [];
+    stack.whenReady(() => done.push('now'));
+    expect(done).toEqual(['now']);
+    stack.begin({ level: PAGE.BOARD_LIST, send: () => true, finish: () => {}, cancel: () => {} });
+    stack.whenReady(() => done.push('later'));
+    expect(done).toEqual(['now']);
+    vi.advanceTimersByTime(6000);
+    expect(ends).toEqual(['timeout']);
+    expect(done).toEqual(['now']);
+    expect(hints).toEqual([i18n('stack_actionNotRun')]);
+    expect(hints[0]).toBeTruthy();
   } finally {
     vi.useRealTimers();
   }
