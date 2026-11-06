@@ -303,6 +303,29 @@ test('an article edited while the reader was away stays as it was left, with a n
   await expect(marker(page)).toHaveCount(0);
 });
 
+test('the next page PTT sends for an article kept over its edited copy rebuilds it from that copy (#126)', async ({ page }) => {
+  const { before } = await readSourceThenSearch(page, async () => {
+    await withComments(page, 83);
+    await page.evaluate(() => { window.__alpha.text[10] = 'Alpha line 09: rewritten by its author'; });
+  });
+  await nativeBack(page);
+  await waitArticle(page, 'Alpha');
+  await settled(page);
+  expect(await shownArticle(page)).toEqual(before);
+  // A comment arrives and PTT redraws its last page, as after the reader's own.
+  await withComments(page, 84);
+  await page.evaluate(() => window.__stubWSSent('\x1b[4~'));
+  await expect.poll(() => shownArticle(page)).toEqual({ rows: before.rows + 4, last: expect.stringContaining(commentText(84)) });
+  const texts = await page.evaluate(() => {
+    const app = window.__app;
+    const lines = app.buf.pageLines;
+    return lines.map((_, i) => app.buf.getRowText(i, 0, app.buf.cols, lines).trim());
+  });
+  expect(texts).toContain('Alpha line 09: rewritten by its author');
+  // Each comment once: nothing of the kept rows is spliced against PTT's copy.
+  for (const n of [80, 81, 84]) expect(texts.filter(text => text.includes(commentText(n)))).toHaveLength(1);
+});
+
 test('a source touched while it is revealed swipes again once it takes over', async ({ page }) => {
   await longSourceFromList(page);
   await tapShortcut(page, 'author');

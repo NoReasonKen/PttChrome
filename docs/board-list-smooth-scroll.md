@@ -182,16 +182,20 @@ only looks at `IS_LISTING_FAV`/`IN_CLASS`). So resuming must pass **two** guards
    would merge the two lists into one buffer (a silent error).
 
 **Coming back from the live layer (#122, mobile page stack)**: when, on leaving a board, the board list is shown from its live layer (`articleGestures.showsLayerOf(PAGE.BOARD_LIST)`),
-`_resumeShown` no longer merges PTT's landing page into the buffer: once `_keepShown` is on, `term_view.accumulateBoardListLines` skips numbers already in the buffer
+`_resumeShown` no longer merges PTT's landing page into the buffer: it holds the board list's rows (`term_view.holdListRows(null, 'board')`, one hold per list, shared with the article list's),
+and `term_view.accumulateBoardListLines` then skips numbers already in the buffer
 (unread ˇ, popularity and row order all stay as they were when the reader left), and only numbers the buffer lacks take PTT's current data; the selection stays on the row opened, and the landing only updates
 `_serverNum` (opening another board later is aligned by the existing cursor-sync leg). The only in-place update is the ˇ of the board just visited: while suspended, every article-list settle
 records "was the newest article read" with the home dashboard's `newestArticleUnread`, and on return that row is changed with `term_view.editBoardListRow` plus
-`board_list_parse.setBoardListRowUnread` (the board name must match; when it cannot tell, it leaves the row alone). `_resetBuffer` (refresh's seed,
-rebuild, switching to native) and the A-class keys (`v`/`V`/`t`) turn `_keepShown` off, returning to PTT as the source of truth. Without a live layer (desktop, beyond the live-layer bound, handoff timeout)
+`board_list_parse.setBoardListRowUnread` (the board name must match; when it cannot tell, it leaves the row alone). Releasing the hold returns to PTT as the source of truth: `_resetBuffer` (refresh's seed, rebuild) and `NavigationStack.spend` on the board list
+(refresh, native passthrough: `spend(action, 'board')`) release it. The A-class keys (`v`/`V`/`t`) do not: they retake only the row acted on
+(`retakeListRow(num, null, 'board')`), so that row takes PTT's new look while the other rows stay put. The landing check is also looser here (#122, rebuild only on a confirmed mismatch):
+when the cursor row cannot be checked (no cursor number, a number outside the buffer, an unreadable board name), a list shown from its layer is kept unless another row of the landing page contradicts it
+(`_listContradicts`); a readable cursor-row board name that differs still rebuilds. Without a live layer (desktop, beyond the live-layer bound, handoff timeout)
 it merges as before. Guarded by the #122 group in `mobile_stack_board_reveal.offline.spec.js` (rewriting PTT's replies to simulate the list changing while inside a board).
 When a board on the landing page with the same number and board name has a different unread ˇ from the buffer's (the board just visited excepted, since it follows the reader's own reading),
 「有新文章」 ("new articles") flashes once through `NavigationStack.noticeNewContent` ([#128](https://github.com/NoReasonKen/PttChrome/issues/128);
-it only looks at the landing frame PTT sends anyway, without sending keys; once per kept page, and after `_keepShown` turns off it counts as a new page).
+it only looks at the landing frame PTT sends anyway, without sending keys; once per kept page, and after the hold is released it counts as a new page).
 
 `parseBoardListName` **does not use fixed columns**: the unread mark `unread[1]` is the full-width 「ˇ」 (board.c:1343),
 which `rowToText` collapses into **one** character, so the board name's string index shifts by one between read and unread; it takes "the first ASCII identifier after the number"

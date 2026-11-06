@@ -2936,6 +2936,19 @@ TermView.prototype = {
     // (easy_reading.nextEasyReadingRowState), so both agree on what "settled" means.
     var complete = this.buf.cur_y === this.buf.rows - 1 &&
                    this.buf.cur_x === this.buf.cols - 1;
+    // An article kept over PTT's edited copy (StackArticleLayer._adopt, #126):
+    // the shown rows are not what PTT's pager accumulated. The page PTT already
+    // accounted for adds nothing; any other page rebuilds from PTT's copy first.
+    var over = this._showsOverCopy;
+    if (over && this.buf.pageLines !== over.shown) over = this._showsOverCopy = null;
+    if (over && complete && result) {
+      if (statusSignature(result) === this._lastAccumulatedSig) {
+        this._mirrorStatusRowToFooter();
+        return;
+      }
+      this.buf.pageLines = over.copy;
+      this._showsOverCopy = null;
+    }
     var newRows = this.buf.lines.slice(0, -1); // drop the status row
     // Only the last `newRows.length` accumulated rows can overlap, so map just
     // the tail to text (keeps it O(screen), not O(article)).
@@ -3848,6 +3861,7 @@ TermView.prototype = {
     // article's first page-down (see accumulatePageLines / resolvePageOverlap).
     this._accEndRow = null;
     this._lastAccumulatedSig = null;
+    this._showsOverCopy = null;
     // 反向讀取的 head/tail 事實跟著累積頁一起丟（同 clearReverse('dropped')；這裡
     // 內聯是因為本函式也被當成獨立函式呼叫，見 easy_reading_overlay_reset.test.js）。
     if (this._reverse) {

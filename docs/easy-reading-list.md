@@ -474,14 +474,19 @@ On resuming, `flashListHint('操作完成，已回到好讀列表')` ("done, bac
 - **N6c When leaving an article reveals the live layer, the list stays as the reader left it** ([#120](https://github.com/NoReasonKen/PttChrome/issues/120);
   the live layer is not updated in the background): `resume-layer` (`_resumeFromLayer`) **does not merge in** PTT's landing page.
   Every row's text, the order, the selection (staying on the article opened from this list; switching articles does not carry it along, #123) and the scroll position all equal what was seen on the layer,
-  and only the articles read (the one opened, plus every article read along the way through same-thread jumps / next article: `StackListLayer.follow` tracks PTT's cursor on the layer's rows by direction, `readRows`) are changed to read by PTT's rules (`readListRow`: bbs.c#readdoent's
-  type characters `+`/`~`→blank, `#`→`*`, `M`/`=`→`m`, `S`→`s`, default colour). The last-read subject colour is learned when the article opens
-  (`noteLastRead`), and 「+N」 (the new-recommendation badge) is recomputed from the record made when reading finished. After that, term_view's `holdListRows` holds this batch of rows:
+  and only the articles read (the one opened, plus every article read along the way through same-thread jumps / next article, `readRows`) are changed to read by PTT's rules (`readListRow`: bbs.c#readdoent's
+  type characters `+`/`~`→blank, `#`→`*`, `M`/`=`→`m`, `S`→`s`, default colour). The layer marks them itself as they are read, so a revealed layer already shows them read
+  ([#128](https://github.com/NoReasonKen/PttChrome/issues/128)): `StackListLayer.follow` tracks PTT's cursor on the layer's rows by direction, and once following is lost
+  (`noteRead`) each article read is matched by identity (`identityRows`: author and subject, then reply or not, then the header's date). One matching row is marked read;
+  several matching rows are left as they are and retaken from PTT on return (`unsureRows` → `retakeListRow`), so a read mark is never put on the wrong row.
+  The last-read subject colour follows the subject read last (`lastReadSubject` → `noteLastRead`), as PTT does: every row of that subject takes it, and when the subject read last is not on the list, no row does.
+  「+N」 (the new-recommendation badge) is recomputed from the record made when reading finished. After that, term_view's `holdListRows` holds this batch of rows
+  (one hold per list: the article list's and the board list's are separate, and `NavigationStack.spend` releases only the hold of the list it acts on):
   PTT's landing page adds nothing, and other pages (page fills upward / downward) **only add rows not yet shown**; shown rows are never replaced.
   `resetListAccumulation` (rebuild / refresh / entering a board), `_resumeBuffer` and a non-resize `_resumeInPlace`
   (identity mismatch on opening, `_openMismatched`) release the hold, and PTT's page is merged in as before. **Which actions "spend" the layer**
   ([#125](https://github.com/NoReasonKen/PttChrome/issues/125), `page_stack.js#spendsLayer`,
-  `NavigationStack.spend`): refresh, mark read (前已讀後未讀 ("read up to here") / 全部已讀 ("mark all read")), number jumps beyond the loaded rows (including A-class key landings outside the buffer),
+  `NavigationStack.spend`): refresh, mark read (前已讀後未讀 ("read up to here") / 全部已讀 ("mark all read")), number jumps beyond the loaded rows (including A-class key landings outside the buffer; a number jump within the loaded rows only moves the selection, `_selectLoaded`, and sends nothing),
   native passthrough keys: these ask PTT for fresh data, drop what the layer had not finished and release the hold; scroll page fills, opening an article and
   A-class keys (`_resumeInPlace(…, { keepRows: true })`) do **not** spend the layer, and the held rows stay put. Exception: a `t` tag changes the row the user
   acted on (`retakeListRow`), so that row takes PTT's new look while the other rows stay put. The identity check before opening an article is unchanged:

@@ -59,8 +59,8 @@ so its budget is `aid_navigation.SLOW_STEP_BUDGET` (as the board entry of an AID
   keydown). This refresh is recorded as the handoff's pending action (`refreshWhenReady`, replacing any click or menu action remembered before), with the progress bar showing;
   once the real screen takes over, `refresh()` runs again (cooldown and busy checks as usual), and the real screen is not aligned to the layer's reading position but stays where PTT is.
   When the handoff times out, the action is dropped with the notice 「PTT 尚未就緒，操作未執行」 ("PTT is not ready; the action was not run").
-- Once a list refresh (article list or board list) is sent, it spends that list's live layer (`NavigationStack.spend('refresh')`,
-  [#125](https://github.com/NoReasonKen/PttChrome/issues/125)): actions remembered during the handoff are void, rows kept (#120) are released,
+- Once a list refresh (article list or board list) is sent, it spends that list's live layer (`NavigationStack.spend('refresh', list)`,
+  [#125](https://github.com/NoReasonKen/PttChrome/issues/125)): actions remembered during the handoff are void, the rows kept for that list (#120, #122) are released,
   and every row afterwards is PTT's current data. A refresh during a handoff takes the pending-action path above, and only the `refresh()` after the real screen takes over spends the layer.
   The home dashboard shares its state with its layer, so it does not count as spending it.
 

@@ -179,7 +179,10 @@ export class StackArticleLayer extends ScreenCopyLayer {
   // and accumulation continues from the copy's end, where PTT's pager is
   // (#126). The handoff only swaps once no finger is down and scrolling has
   // stopped, and rows added below the reading position leave it in place.
-  // A copy that no longer starts with this layer's content adds nothing.
+  // A copy that no longer starts with this layer's content adds nothing: the
+  // layer's rows stay shown, while the accumulation state keeps describing
+  // PTT's copy, so the next page PTT sends rebuilds from that copy rather than
+  // appending to rows it no longer has (story 29).
   _adopt(core) {
     const content = this.content;
     if (!content || !readIdle(core)) return false;
@@ -189,8 +192,9 @@ export class StackArticleLayer extends ScreenCopyLayer {
     const appends = !!tail?.rows.length;
     const kept = appends ? { ...reopened, pageLines: content.pageLines.slice(0, tail.keep).concat(tail.rows) } : content;
     core.buf.pageLines = kept.pageLines;
-    view._accEndRow = kept.accEndRow;
-    view._lastAccumulatedSig = kept.lastSig;
+    view._accEndRow = tail ? kept.accEndRow : reopened.accEndRow;
+    view._lastAccumulatedSig = tail ? kept.lastSig : reopened.lastSig;
+    view._showsOverCopy = tail ? null : { shown: content.pageLines, copy: reopened.pageLines };
     if (content.marks && core.newComments) {
       Object.assign(core.newComments, content.marks);
       if (appends) core.newComments.appended(kept.pageLines, tail.keep);
