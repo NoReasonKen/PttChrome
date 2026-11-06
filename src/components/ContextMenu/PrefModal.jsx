@@ -44,6 +44,7 @@ import {
 import { deepEqual } from "../../js/pref_sync_logic";
 import { isSignInCancelled } from "../../js/google_sign_in";
 import { ensureNotifyPermission } from "../../js/notification_gate";
+import { pixivLookupAvailable } from "../../js/pixiv_lookup";
 import {
   buildExportPayload,
   parseImportPayload,
@@ -2116,6 +2117,21 @@ export const PrefModal = ({
                 >
                   {i18n("options_enableXMentionLink")}
                 </PrefCheckbox>
+                <PrefCheckbox
+                  name="enablePixivLookup"
+                  checked={values.enablePixivLookup}
+                  disabled={!pixivLookupAvailable()}
+                  onChange={onCheckboxChange}
+                >
+                  {i18n("options_enablePixivLookup")}
+                </PrefCheckbox>
+                <Text size="xs" c="dimmed" mb="xs">
+                  {i18n(
+                    pixivLookupAvailable()
+                      ? "tooltip_enablePixivLookup"
+                      : "pixiv_unsupported",
+                  )}
+                </Text>
                 <PrefCheckbox
                   name="enableBareDomainLink"
                   checked={values.enableBareDomainLink}

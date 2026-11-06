@@ -92,6 +92,7 @@ export function buildCommentCard({
   newCommentsStart,
   fixedUrls,
   mentions,
+  pixivIds,
   aids,
   giveaways,
   bareDomains,
@@ -120,7 +121,8 @@ export function buildCommentCard({
         3,
         idEnd,
         cx("commentCardId", {
-          commentByAuthor: authorIdStart !== undefined && authorIdKind !== "self",
+          commentByAuthor:
+            authorIdStart !== undefined && authorIdKind !== "self",
           commentBySelf: authorIdKind === "self",
         }),
       ),
@@ -148,6 +150,9 @@ export function buildCommentCard({
     giveaways,
     bareDomains,
     sizeMode,
+    undefined,
+    undefined,
+    pixivIds,
   );
   for (let i = r.contentStart; i < r.contentEnd; ++i)
     builder.readChar(chars[i], i);
@@ -160,8 +165,14 @@ export function buildCommentCard({
         srow: row,
         "data-pusher": pusher,
         "data-pusher-col": pusherContentCol,
-        class: cx("commentCard", { pusherHighlight, mentionsSelf, newCommentsStart }),
-        "data-new-comments": newCommentsStart ? i18n("new_comments_divider") : undefined,
+        class: cx("commentCard", {
+          pusherHighlight,
+          mentionsSelf,
+          newCommentsStart,
+        }),
+        "data-new-comments": newCommentsStart
+          ? i18n("new_comments_divider")
+          : undefined,
       },
       [head, el("span", { class: "commentCardText" }, builder.build())],
     ),
@@ -177,12 +188,10 @@ export function buildCommentCard({
 //   all   整張卡片的內容，每則一行
 //   count 則數（>1 ＝合併塊，選單多給「複製整段」）
 // 不在推文卡片上 ⇒ null（桌機沒有卡片，這個選項永遠不出現）。
-const cardLineText = (node) =>
-  node.textContent.replace(/ /g, " ").trim();
+const cardLineText = (node) => node.textContent.replace(/ /g, " ").trim();
 
 export function commentCardCopyText(target) {
-  const card =
-    target && target.closest ? target.closest(".commentCard") : null;
+  const card = target && target.closest ? target.closest(".commentCard") : null;
   if (!card) return null;
   const body = card.querySelector(":scope > .commentCardText");
   if (!body) return null;

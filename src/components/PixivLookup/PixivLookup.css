@@ -1,0 +1,181 @@
+.PixivLookupModal,
+.PixivLookupModal__Header {
+  background: #1a1b1e;
+  color: #e9ecef;
+}
+
+.PixivLookupModal {
+  display: flex;
+  flex-direction: column;
+  max-height: 50dvh;
+  overflow: hidden;
+}
+
+.PixivLookupModal__Header {
+  flex: none;
+  min-height: 0;
+  padding: 4px 6px;
+}
+
+.PixivLookupModal__Title {
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 600;
+}
+
+.PixivLookupModal__Body {
+  min-height: 0;
+  padding: 0 6px 6px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.mobileSheet[data-sheet="pixivLookup"] {
+  max-height: min(50dvh, calc(100dvh - 48px - var(--vv-kb-inset, 0px)));
+  padding: 0 6px 6px;
+}
+
+.mobileSheet[data-sheet="pixivLookup"] .mobileSheetHandle {
+  padding: 4px 0 6px;
+}
+
+.mobileSheet[data-sheet="pixivLookup"] .mobileSheetTitle {
+  padding: 0 0 4px;
+  font-size: 17px;
+  line-height: 22px;
+}
+
+.PixivLookup {
+  min-width: 0;
+  color: #e9ecef;
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.PixivLookup__Cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  align-items: start;
+}
+
+.PixivLookup__Cards > :only-child {
+  grid-column: 1 / -1;
+}
+
+.PixivLookup__Empty {
+  margin: 0;
+  color: #adb5bd;
+  overflow-wrap: anywhere;
+}
+
+.PixivLookupCard {
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid #495057;
+  border-radius: 4px;
+  background: #25262b;
+}
+
+.PixivLookupCard__Kind {
+  margin: 0;
+  color: #adb5bd;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+
+.PixivLookupCard__Name,
+.PixivLookupCard__Author,
+.PixivLookupCard__Description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+}
+
+.PixivLookupCard__Name {
+  -webkit-line-clamp: 2;
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 600;
+}
+
+.PixivLookupCard__Author {
+  -webkit-line-clamp: 1;
+  color: #ced4da;
+}
+
+.PixivLookupCard__Description {
+  -webkit-line-clamp: 3;
+  margin: 2px 0 4px;
+  white-space: normal;
+  color: #ced4da;
+}
+
+.PixivLookupCard__Heading {
+  display: block;
+  min-height: 44px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.PixivLookupCard__Heading .PixivLookupCard__Name {
+  text-decoration: underline;
+  text-decoration-color: #74c0fc;
+  text-underline-offset: 2px;
+}
+
+.PixivLookupCard__Image {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-inline: auto;
+  overflow: hidden;
+  background: #1a1b1e;
+  border-radius: 4px;
+  color: #adb5bd;
+  text-align: center;
+  font-size: 12px;
+}
+
+.PixivLookupCard__Image img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 50dvh;
+  object-fit: contain;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.PixivLookupCard[data-pixiv-kind="user"] img {
+  max-width: min(170px, 100%);
+}
+
+.PixivLookupCard__Image span {
+  padding: 4px 6px;
+  overflow-wrap: anywhere;
+}
+
+.PixivLookupCard__Image:not([data-pixiv-image-state="ready"]) {
+  min-height: 32px;
+}
+
+.PixivLookupCard__Status {
+  margin: 0;
+  color: #adb5bd;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .PixivLookup__Cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

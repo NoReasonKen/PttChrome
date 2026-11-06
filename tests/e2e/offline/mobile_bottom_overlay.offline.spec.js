@@ -9,6 +9,7 @@ const { bootOffline, waitScreenSettled } = require('../helpers/replay');
 const { bottomOverlayViolations } = require('../helpers/overlay_guard');
 const { openPreviewViewer, VIEWER } = require('../helpers/image_viewer');
 const { revealArticleDrawer, DRAWER } = require('../helpers/article_gestures');
+const { expectPixivOverlayClosed } = require('../helpers/pixiv_lookup');
 
 async function feed(page, map, cursor, col) {
   await page.evaluate(
@@ -79,6 +80,7 @@ const COMBOS = [
   [], ['nextArticle'], ['commentBar', 'nextArticle'], ['commentBarFold', 'nextArticle'],
   ['commentBarFold', 'nextArticle', 'imageViewer'],
   ['commentBar', 'nextArticle', 'articleGestures'],
+  ['commentBar', 'nextArticle', 'pixivLookup'],
 ];
 
 test.describe('手機：浮層不蓋住文末', () => {
@@ -92,6 +94,7 @@ test.describe('手機：浮層不蓋住文末', () => {
         await bootOffline(page, ptt, opts);
         await ptt.applyPrefs(page, { enableEasyReadingList: false });
         await openArticle(page, { full, imageViewer: combo.includes('imageViewer') });
+        if (combo.includes('pixivLookup')) await expectPixivOverlayClosed(page);
         if (combo.includes('commentBarFold')) {
           await expect.poll(() => page.evaluate(() => window.__app.commentBar.state.available)).toBe(true);
           await page.locator('[data-key="X"]').tap();
