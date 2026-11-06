@@ -74,6 +74,8 @@ export default defineConfig(({ command, mode }) => {
       // Set ALLOW_SITE_IN_QUERY=yes to re-enable the query override.
       'process.env.ALLOW_SITE_IN_QUERY': JSON.stringify(process.env.ALLOW_SITE_IN_QUERY === 'yes'),
       'process.env.DEVELOPER_MODE': JSON.stringify(DEVELOPER_MODE),
+      // Explicit local acceptance mode; production builds always remove it.
+      'process.env.PIXIV_TEST_ARTICLE': JSON.stringify(DEVELOPER_MODE && env.PIXIV_TEST_ARTICLE === '1'),
       // This browser identifier is intentionally present in the built client.
       // Never use this mechanism for service-account keys or other credentials.
       'process.env.FIREBASE_API_KEY': JSON.stringify(firebaseApiKey),

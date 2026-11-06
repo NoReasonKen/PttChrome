@@ -2,6 +2,7 @@
 
 import { TermKeyboard, isAltRemapEvent, isPlainBack } from './term_keyboard';
 import { cursorColorForBg } from './cursor_color';
+import { pixivLookupAvailable } from './pixiv_lookup';
 import { DEFAULT_HIGHLIGHT_BG, cursorHighlightClasses, highlightColStart, resolveHighlightRow } from './cursor_highlight';
 import { clickableColStart, DEFAULT_LIST_CLICK_START, DEFAULT_PUSH_CLICK_START, DEFAULT_PUSH_CLICK_END, cursorCss, CUR_BACK, CUR_POINTER, CUR_AUTO, EXIT_COL_END, resolveMouseGates, resolveMouseRegion, visibleHintBand } from './mouse_regions';
 import { functionKeyRows, parseFunctionKeys } from './footer_keys';
@@ -412,6 +413,7 @@ export function TermView() {
   // Auto-link X(Twitter) @handles (format-valid ones) in article body/comments.
   // Existence verification is currently off — see Screen.js / docs/enhanced-addon.md.
   this.enableXMention = true;
+  this.enablePixivLookup = false;
   this._articleAuthor = null;
   // 自己的推文標示：登入者帳號（小寫）取自選單底部狀態列（string_util.parseStatusUserid，
   // 只在 pageState＝選單時讀 ⇒ 手動登入也拿得到）；換連線由 App 呼叫 resetSelfId 清掉。
@@ -1265,6 +1267,8 @@ TermView.prototype = {
           fixAiEnabled:
             this.enableAi && this.enableAutoFixUrl && this.enableUrlAi,
           enableXMention: this.enableXMention,
+          enablePixivLookup: this.enablePixivLookup && pixivLookupAvailable(),
+          onPixivClick: this.onPixivClick,
           pageState: this.buf.pageState,
           // Floor numbers only count correctly across page-downs in easy reading
           // (its FloorCounter persists). The native per-page counter resets every

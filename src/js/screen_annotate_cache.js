@@ -118,6 +118,7 @@ export function annotationsKey(input) {
     stable(e.bareDomainLink),
     stable(e.easyReading),
     stable(e.enableXMention),
+    stable(e.enablePixivLookup),
     stable(e.mergeSameAuthorComments),
     stable(e.inListContext),
     stable(e.listEasyReading),
@@ -156,6 +157,7 @@ export function annotationsKey(input) {
     sig: sig,
     refs: [
       e.onAidClick,
+      e.onPixivClick,
       e.onFunctionKey,
       input.onHyperLinkMouseOver,
       input.onHyperLinkMouseOut

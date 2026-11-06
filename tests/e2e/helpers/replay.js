@@ -794,6 +794,9 @@ function offlineImageProfile(explicit) {
 // 第三個參數 opts.imageProfile：強制指定圖片載入情境（`image_load_conditions.offline.spec.js`
 // 用它逐條驗各情境的產品行為）。不給就依 project 名／env 推導。
 async function bootOffline(page, ptt, opts = {}) {  // eslint-disable-line no-unused-vars
+  if (opts.pixivLookup) {
+    await require('./pixiv_lookup').installPixivBridge(page, { automatic: true });
+  }
   await installReplay(page, {
     homeDashboard: !!opts.homeDashboard,
     splitReader: !!opts.splitReader,

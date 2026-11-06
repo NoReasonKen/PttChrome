@@ -11,6 +11,7 @@ const ptt = require('../helpers/ptt');
 const { bootOffline, waitScreenSettled } = require('../helpers/replay');
 const { bottomOverlayViolations } = require('../helpers/overlay_guard');
 const { openPreviewViewer, VIEWER } = require('../helpers/image_viewer');
+const { expectPixivOverlayClosed } = require('../helpers/pixiv_lookup');
 
 async function onData(page, map, cursor, col) {
   await page.evaluate(
@@ -87,6 +88,7 @@ const COMBOS = [
   ['commentBar', 'nextArticle', 'articleTools', 'splitReader'],
   ['commentBar', 'nextArticle', 'articleTools', 'splitReader', 'imageViewer'],
   ['commentBar', 'nextArticle', 'articleTools', 'splitReader', 'articleGestures'],
+  ['commentBar', 'nextArticle', 'pixivLookup'],
 ];
 
 // 視窗大小也是一維：終端機字級跟著視窗高度走，em 寫的間距與 px 寫的浮層高度在某些尺寸才
@@ -115,6 +117,7 @@ test.describe('浮層不蓋住文末', () => {
           await bootOffline(page, ptt, opts);
           await ptt.applyPrefs(page, { enableEasyReadingList: false });
           await openArticle(page, { full, imageViewer: combo.includes('imageViewer') });
+          if (combo.includes('pixivLookup')) await expectPixivOverlayClosed(page);
           if (combo.includes('nextArticle')) await expect(page.locator('#nextArticleCard')).toBeVisible();
           if (combo.includes('commentBar')) await expect(page.locator('#commentBar')).toBeVisible();
           // 側欄真的出現了（不然這個組合等於沒測）。

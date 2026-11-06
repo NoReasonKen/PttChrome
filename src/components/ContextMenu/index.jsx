@@ -15,6 +15,7 @@ import TitleBlacklistModal from "./TitleBlacklistModal";
 import LongPushProgressModal from "./LongPushProgressModal";
 import LongPushErrorModal from "./LongPushErrorModal";
 import AidBoardChoiceModal from "./AidBoardChoiceModal";
+import PixivLookup from "../PixivLookup";
 
 // 用到才開的大彈窗拆成獨立 chunk，不進主 bundle（手機冷啟動少解析一截）。
 // 仍在 ContextMenu 掛載時就 render ⇒ chunk 在開站時背景載入、元件照舊常駐，
@@ -28,6 +29,7 @@ const SearchModal = lazy(() => import("./SearchModal"));
 const InputHelperModal = lazy(() => import("./InputHelperModal"));
 const LiveHelperModal = lazy(() => import("./LiveHelperModal"));
 const LongPushModal = lazy(() => import("./LongPushModal"));
+import { pixivLookupAvailable } from "../../js/pixiv_lookup";
 import { currentBoardOption } from "../../js/aid_board_choice";
 import DebugRecordNotice from "../DebugRecordNotice";
 import MobileToolbar from "../MobileToolbar";
@@ -291,6 +293,24 @@ const initialState = {
 
 export const ContextMenu = ({ pttchrome }) => {
   const [state, setState] = useState(initialState);
+  const [pixivQuery, setPixivQuery] = useState(null);
+  const closePixiv = useCallback(() => setPixivQuery(null), []);
+  useEffect(() => {
+    pttchrome.openPixivLookup = (query) => {
+      if (
+        pttchrome.modalShown ||
+        !pixivLookupAvailable() ||
+        !pttchrome.view?.enablePixivLookup ||
+        !/^[1-9][0-9]{0,14}$/.test(query)
+      )
+        return false;
+      setPixivQuery(query);
+      return true;
+    };
+    return () => {
+      pttchrome.openPixivLookup = noop;
+    };
+  }, [pttchrome]);
   // Debug 模式（設定→關於）：獨立 useState、不進 initialState —— onMenuSelect 等
   // 路徑會 update(initialState) 全量 reset，混進去會被誤關。runtime-only：不進
   // pref_storage/pref_sync，重新整理即重設為關閉。
@@ -346,6 +366,7 @@ export const ContextMenu = ({ pttchrome }) => {
   // 是**必須**——整段序列都在程式化地按 PTT 的鍵，使用者這時打字會插進 X → 型別
   // → 內容 的中間，pttbbs 的 typeahead 會把中間那幀吞掉（command_queue.js 檔頭）。
   const modalOpen =
+    !!pixivQuery ||
     state.showsSettings ||
     state.showsTitleBlacklist ||
     state.showsLongPush ||
@@ -477,7 +498,11 @@ export const ContextMenu = ({ pttchrome }) => {
       // 不是一條真的網址 —— 當成 URL 的話「複製連結網址」會複製到一個孤零零的
       // '#'，而且 urlEnabled 變 true 會讓整組 normalEnabled 項目（含「複製本篇
       // 文章連結」）全部消失。改由 contextArticle 那兩個專用項目服務它。
-      if (aElement && !isAidLinkAnchor(aElement))
+      if (
+        aElement &&
+        !isAidLinkAnchor(aElement) &&
+        !aElement.hasAttribute("data-pixiv-id")
+      )
         contextOnUrl = aElement.getAttribute("href");
       // 游標下的連結指向哪一篇（文章代碼連結 or 內文裡的 ptt.cc 文章網址）。
       // 沒寫看板的 #AID 用目前文章的看板遞補 —— 與 pttchrome.jsx 的點擊路徑同一套。
@@ -1540,6 +1565,14 @@ export const ContextMenu = ({ pttchrome }) => {
       </Suspense>
       <DebugRecordNotice pttchrome={pttchrome} />
       <AppUpdates pttchrome={pttchrome} />
+      {pixivQuery && (
+        <PixivLookup
+          core={pttchrome}
+          query={pixivQuery}
+          onClose={closePixiv}
+          mobile={mobile}
+        />
+      )}
       <HomeDashboard pttchrome={pttchrome} />
       <SplitReader pttchrome={pttchrome} />
       <ArticleTools pttchrome={pttchrome} />

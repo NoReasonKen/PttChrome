@@ -64,6 +64,7 @@ export class LinkSegmentBuilder {
     sizeMode,
     fnKeys,
     wrapUrls,
+    pixivIds,
   ) {
     this.row = row;
     this.forceWidth = forceWidth;
@@ -112,6 +113,10 @@ export class LinkSegmentBuilder {
       }
     }
     this._mention = null;
+    this._pixivStart = pixivIds?.length
+      ? new Map(pixivIds.map((item) => [item.startCol, item]))
+      : null;
+    this._pixiv = null;
     // PTT article-code (AID) links: cols [startCol, endCol) of each #XXXXXXXX
     // token (src/js/aid_parse.js). Same boundary mechanics as mentions, but the
     // click navigates in-app (aid.onClick) instead of opening a new tab.
@@ -268,6 +273,18 @@ export class LinkSegmentBuilder {
           element,
         ),
       );
+    } else if (this._pixiv) {
+      const candidate = this._pixiv;
+      const a = el(
+        "a",
+        { class: "pixivIdLink", href: "#", "data-pixiv-id": candidate.query },
+        element,
+      );
+      a.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (candidate.onClick) candidate.onClick();
+      });
+      this._pushSeg(a);
     } else if (this._aid) {
       // AID → in-app navigation link; preventDefault keeps the # href inert.
       // data-aid / data-board 是給右鍵選單用的：那個 href="#" 只是佔位，右鍵端
@@ -411,6 +428,7 @@ export class LinkSegmentBuilder {
       // 上面的 saveSegment() 之後才清：那一段仍要用當下的狀態包成正確的 <a>。
       // 這些候選的字元類都不含 '\n'，範圍不可能跨越換行 ⇒ 無條件清空是安全的。
       this._mention = null;
+      this._pixiv = null;
       this._aid = null;
       this._giveaway = null;
       this._bareDomain = null;
@@ -472,6 +490,14 @@ export class LinkSegmentBuilder {
     if (this._mentionStart !== null && this._mentionStart.has(i)) {
       if (this.colorSegBuilder !== null) this.saveSegment();
       this._mention = this._mentionStart.get(i);
+    }
+    if (this._pixiv && i === this._pixiv.endCol) {
+      if (this.colorSegBuilder !== null) this.saveSegment();
+      this._pixiv = null;
+    }
+    if (this._pixivStart?.has(i)) {
+      if (this.colorSegBuilder !== null) this.saveSegment();
+      this._pixiv = this._pixivStart.get(i);
     }
     // AID link boundaries — same open/close dance as mentions above.
     if (this._aid && i === this._aid.endCol) {

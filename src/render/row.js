@@ -110,6 +110,7 @@ export function buildRow({
   newCommentsStart,
   fixedUrls,
   mentions,
+  pixivIds,
   aids,
   giveaways,
   bareDomains,
@@ -158,6 +159,7 @@ export function buildRow({
     sizeMode,
     fnKeys,
     wrapUrls,
+    pixivIds,
   );
   if (authorIdKind === "self") builder.authorIdClass = "commentBySelf";
   for (let i = 0; i < chars.length; ++i) builder.readChar(chars[i], i);

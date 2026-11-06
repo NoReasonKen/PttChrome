@@ -17,7 +17,7 @@ import { setBootStage, failBootLoading, finishBootLoading } from './boot_loading
 import b2uTableUrl from '../conv/b2u_table.bin?url';
 import u2bTableUrl from '../conv/u2b_table.bin?url';
 
-function startApp() {
+async function startApp() {
   // Build identity first thing: lets a user/console dump prove which bundle
   // is actually running (stale deploy / cached JS debugging).
   console.info(
@@ -33,6 +33,13 @@ function startApp() {
   // 焦點框只在鍵盤操作時畫（點／觸控打開對話框不該出現焦點框）。
   installFocusRing();
 
+  // A local acceptance article must isolate storage before App constructs its
+  // recovery controllers, and must never reach normal connection/bootstrap.
+  let pixivTestArticle;
+  if (process.env.DEVELOPER_MODE && process.env.PIXIV_TEST_ARTICLE) {
+    pixivTestArticle = await import('../dev/pixiv_test_article');
+    pixivTestArticle.installPixivTestStorage();
+  }
   const app = new App();
   // AI agent 工具（CDP 的 window.pttAgent＋有 WebMCP 時註冊），見 docs/agent-tools.md。
   installAgentTools(app);
@@ -53,6 +60,13 @@ function startApp() {
     // DEVELOPER_MODE 剪掉，不進 bundle。
     window.__loadDebugRecorder = () =>
       import('./debug_recorder').then((m) => m.DebugRecorder);
+  }
+
+  if (pixivTestArticle) {
+    finishBootLoading();
+    installHistoryBackGuard(app);
+    await pixivTestArticle.startPixivTestArticle(app);
+    return;
   }
 
   // 外部連結（#<Board>/<AID>）進來的話，先問問看有沒有已經登入好的分頁可以

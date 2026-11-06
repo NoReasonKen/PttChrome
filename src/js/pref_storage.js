@@ -323,6 +323,7 @@ export const DEFAULT_PREFS = {
   // 裸網域（無 scheme、無路徑，如 indiegametw.com）原位變成可點連結。
   enableBareDomainLink: true,
   enableXMentionLink: true, // auto-link @handle to x.com when the X account exists
+  enablePixivLookup: false,
   // 圖片上傳（urusai 圖床）：拖放／貼上／右鍵選單上傳，成功後把直連網址送進
   // 推文列或編輯器。預設開——只有真的拖檔案進來才會作用，不會干擾既有操作。
   // token 是**本機專屬**（見 pref_sync_logic.js 的 LOCAL_ONLY_PREF_KEYS）：它是

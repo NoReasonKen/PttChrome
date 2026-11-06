@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
     private val credentials by lazy { CredentialBridge(this) }
     private val settings by lazy { AppSettings(this) }
     private val updater by lazy { ApkUpdater.get(this) }
+    private var pixiv: PixivBridge? = null
     /** 目前 WebView 載入的來源；注入規則跟著 WebView 建立時決定，換來源＝重建 WebView。 */
     private var pageSource = PageSource.PRODUCTION
     private var fileCallback: ValueCallback<Array<Uri>>? = null
@@ -233,6 +234,7 @@ class MainActivity : ComponentActivity() {
             .put("credentialSave", true)
             .put("encryptedCredentials", true)
             .put("credentialDeletion", true)
+            .put("pixivLookup", true)
             .put("updateBlocking", updater.blocking())
             .put("openUpdate", intent.getBooleanExtra("open_update", false))
             .put("site", site)
@@ -241,10 +243,16 @@ class MainActivity : ComponentActivity() {
         WebViewCompat.addDocumentStartJavaScript(
             wv, "window.__PTT_ANDROID__ = Object.freeze($config);", origins
         )
+        val pagePixiv = PixivBridge(lifecycleScope, assets, wv.settings.userAgentString)
+        pixiv = pagePixiv
         WebViewCompat.addWebMessageListener(wv, "PttAndroid", origins) { _, message, sourceOrigin, isMainFrame, reply ->
             if (!isMainFrame || sourceOrigin.toString() != page.origin) return@addWebMessageListener
             val request = try { JSONObject(message.data ?: return@addWebMessageListener) } catch (_: Exception) { return@addWebMessageListener }
             when (request.optString("op")) {
+                "pixivLookup", "pixivCancel" -> {
+                    pagePixiv.handle(request) { if (webView === wv) reply.postMessage(it.toString()) }
+                    return@addWebMessageListener
+                }
                 "update" -> {
                     lifecycleScope.launch { reply.postMessage(updater.handle(request).toString()) }
                     return@addWebMessageListener
@@ -273,7 +281,10 @@ class MainActivity : ComponentActivity() {
         }
 
         wv.webViewClient = object : WebViewClient() {
-            override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) = BootTrace.mark("pageStarted")
+            override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                pagePixiv.cancel()
+                BootTrace.mark("pageStarted")
+            }
             override fun onPageCommitVisible(view: WebView, url: String?) = BootTrace.mark("pageCommitVisible")
             // 網頁的 history sentinel（history_back_guard.js）每次 pushState／back 都會再觸發
             // onPageFinished ⇒ Resource Timing 每個 WebView 只排一次；10 秒內 WebView 可能已被換掉
@@ -608,6 +619,8 @@ class MainActivity : ComponentActivity() {
 
     private fun recreateWebView() {
         val old = webView ?: return
+        pixiv?.cancel()
+        pixiv = null
         webView = null
         root.removeView(old)
         old.destroy()
@@ -631,6 +644,8 @@ class MainActivity : ComponentActivity() {
     // 保活、畫面更新），暫停 JS 等於讓連線在網頁那端卡住。
 
     override fun onDestroy() {
+        pixiv?.cancel()
+        pixiv = null
         service?.onQuitRequested = null
         if (bound) unbindService(connection)
         if (isFinishing) stopService(Intent(this, ConnectionService::class.java))

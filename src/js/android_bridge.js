@@ -7,6 +7,9 @@
 //   window.PttAndroid       androidx.webkit WebMessageListener 物件：postMessage(string)／onmessage
 //
 // 訊息合約（JSON 字串）：
+//   pixivLookup:true enables pixivLookup {lookupId,query,kind}. Streaming replies
+//   carry complete:false for metadata and complete:true for the final image.
+//   pixivCancel {lookupId} cancels that chooser's native jobs; no arbitrary URLs.
 //   encryptedCredentials:true enables the installed app's selected-source API:
 //   → { id, op: 'getCredentialStatus' }
 //     ← { id, ok:true, source:'local'|'manager', local:{presence,error?}, manager:{presence,error?} }
@@ -106,10 +109,14 @@ function onMessage(event) {
     return;
   }
   if (!msg || !pending.has(msg.id)) return;
-  const { resolve, timer } = pending.get(msg.id);
-  pending.delete(msg.id);
-  clearTimeout(timer);
-  resolve(msg);
+  const entry = pending.get(msg.id);
+  if (msg.complete === false && entry.onProgress) {
+    try { entry.onProgress(msg); }
+    catch (error) { entry.cleanup(); entry.reject(error); }
+    return;
+  }
+  entry.cleanup();
+  entry.resolve(msg);
 }
 
 function ensureListening(ch) {
@@ -123,7 +130,7 @@ function ensureListening(ch) {
 }
 
 // 回傳原生的回覆物件；bridge 不存在／逾時 → reject。
-export function requestAndroid(op, payload = {}) {
+export function requestAndroid(op, payload = {}, options = {}) {
   const ch = channel();
   if (!androidBridgeAvailable()) {
     return Promise.reject(new Error('android bridge unavailable'));
@@ -131,16 +138,30 @@ export function requestAndroid(op, payload = {}) {
   ensureListening(ch);
   const id = nextId++;
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
+    const signal = options.signal;
+    const cleanup = () => {
       pending.delete(id);
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+    };
+    const abort = () => {
+      cleanup();
+      reject(new DOMException('Android request cancelled', 'AbortError'));
+    };
+    const timeout = Number.isFinite(options.timeoutMs)
+      ? Math.max(1, Math.min(REQUEST_TIMEOUT_MS, options.timeoutMs))
+      : REQUEST_TIMEOUT_MS;
+    const timer = setTimeout(() => {
+      cleanup();
       reject(new Error('android bridge timeout: ' + op));
-    }, REQUEST_TIMEOUT_MS);
-    pending.set(id, { resolve, timer });
+    }, timeout);
+    pending.set(id, { resolve, reject, cleanup, onProgress: options.onProgress });
+    if (signal?.aborted) { abort(); return; }
+    signal?.addEventListener('abort', abort, { once: true });
     try {
       ch.postMessage(JSON.stringify({ ...payload, id, op }));
     } catch (e) {
-      pending.delete(id);
-      clearTimeout(timer);
+      cleanup();
       reject(e);
     }
   });
