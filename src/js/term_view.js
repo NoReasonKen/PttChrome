@@ -11,7 +11,7 @@ import { renderOverlayRow, renderScreen } from './term_ui';
 import { i18n } from './i18n';
 import { setTimer, TRACE } from './util';
 import { textCellWidth, parseStatusRow, statusSignature, normalizePasteText, parseStatusUserid } from './string_util';
-import { rowToText, articleContextFromScreen, findPageOverlap, resolvePageOverlap, decideAccumulateBranch, classifyPageTransition, decideReverseBranch, resolveJoinOverlap, locateScreenInPage, pageArticleNums, isPinnedListRow, parseListArticleNumLoose, hasServerCursorMark } from './comment_parse';
+import { rowToText, cloneRow, articleContextFromScreen, findPageOverlap, resolvePageOverlap, decideAccumulateBranch, classifyPageTransition, decideReverseBranch, resolveJoinOverlap, locateScreenInPage, pageArticleNums, isPinnedListRow, parseListArticleNumLoose, hasServerCursorMark } from './comment_parse';
 import { mergeListPage, flattenListBuffer, evictListBuffer, listGrowthDir, listNumRange, isHiddenListRow, pinnedRowKey, MAX_LIST_ROWS, MAX_LIST_TOTAL_ROWS, isLastReadStyledListRow, normalizeLastReadListRow, paintLastReadListRow, subjectOfListRow, readListRow } from './list_session';
 import { labelListCursor, pruneListToSegment, LIST_HEADER_ROWS } from './list_window';
 import { BRD_HEADER_ROWS, boardListRowNums } from './board_list_parse';
@@ -135,19 +135,6 @@ function blankRowLike(src) {
     row[i].resetAttr();
   }
   return row;
-}
-
-// Snapshot-clone a screen row (TermChar[]) for retention in buf.pageLines. The live
-// 24-row buffer is overwritten as PTT repaints, so accumulated rows must be copied.
-// A JSON clone would strip the TermChar PROTOTYPE methods (isStartOfURL / getColor /
-// getFg…) that <Row>/LinkSegmentBuilder call at render time — the easy-reading page
-// is now drawn through <Screen>, so those methods must survive. Copy each char's own
-// (primitive) data props onto a fresh object that keeps the same prototype: a real
-// content snapshot that is still a method-bearing TermChar.
-function cloneRow(row) {
-  return row.map(function(ch) {
-    return Object.assign(Object.create(Object.getPrototypeOf(ch)), ch);
-  });
 }
 
 // How many cells the SERVER's cursor mark covers on this row. Two generations
@@ -3412,15 +3399,16 @@ TermView.prototype = {
       }
     }
     // Rows kept as the reader left them (holdListRows): PTT's landing page adds
-    // nothing, and any other page only adds the rows not shown yet, and the
-    // rows the reader's own in-place action changed (retakeListRow).
+    // only the rows marked to retake, and any other page also adds the rows
+    // not shown yet (retakeListRow).
     var hold = this._listHold;
     if (hold) {
       var numMap = this._listNumMap;
       var pinnedMap = this._listPinnedMap;
-      entries = rowTexts.join('\n') === hold.landing ? [] : entries.filter(function(e) {
-        return e.num != null ? !numMap.has(e.num) || hold.retakeNums.has(e.num)
-          : !pinnedMap.has(e.key) || hold.retakeKeys.has(e.key);
+      var landing = rowTexts.join('\n') === hold.landing;
+      entries = entries.filter(function(e) {
+        var retake = e.num != null ? hold.retakeNums.has(e.num) : hold.retakeKeys.has(e.key);
+        return retake || (!landing && !(e.num != null ? numMap.has(e.num) : pinnedMap.has(e.key)));
       });
     }
     // 合併前量「緩衝往哪端長」：evict 不砍剛長出來的那一端（evictListBuffer 註解）。
@@ -3585,15 +3573,17 @@ TermView.prototype = {
 
   // Keep the accumulated rows as the reader left them (#120): the list comes
   // back from an article as its live layer showed it. `landing` is PTT's page
-  // on that return (row texts); it adds nothing, and later pages only add the
-  // rows not shown yet, until releaseListRows or a fresh accumulation.
+  // on that return (row texts); it adds only the rows marked to retake, and
+  // later pages also add the rows not shown yet, until releaseListRows or a
+  // fresh accumulation.
   holdListRows: function(landing) {
     this._listHold = { landing: (landing || []).join('\n'), retakeNums: new Set(), retakeKeys: new Set() };
   },
 
-  // The reader's own in-place action, such as tagging (`t`), changes the row
-  // of article `num` (or of the pinned row `pinnedKey`) on PTT: while the rows
-  // are held, that row still takes PTT's rendering (#125).
+  // The row of article `num` (or of the pinned row `pinnedKey`) takes PTT's
+  // rendering while the rows are held: the reader's own in-place action, such
+  // as tagging (`t`), changed it on PTT (#125), or the list cannot tell
+  // whether it is an article just read (#128).
   retakeListRow: function(num, pinnedKey) {
     var hold = this._listHold;
     if (!hold) return;

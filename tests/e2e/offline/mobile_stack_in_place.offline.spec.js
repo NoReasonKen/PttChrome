@@ -141,6 +141,62 @@ test('Back after several next-article pulls keeps the article opened from the li
   for (const num of [1110, 1111, 1112]) expect(await markOf(page, num), String(num)).toBe('');
 });
 
+// The read mark a list card in `root` shows on article `num`.
+const layerMarkOf = (page, num) => page.locator(LIST_LAYER).evaluate((el, num) => {
+  const card = [...el.querySelectorAll('.listCard')].find(c => c.querySelector('.listCardNum')?.textContent === num);
+  return card ? card.querySelector('.listCardMark')?.textContent ?? '' : null;
+}, String(num));
+
+// The title colour the real list shows on article `num`.
+const titleColor = (page, num) => page.locator(MAIN).evaluate((el, num) => {
+  const card = [...el.querySelectorAll('.listCard')].find(c => c.querySelector('.listCardNum')?.textContent === num);
+  return getComputedStyle(card.querySelector('.listCardTitleText [class^="q"]')).color;
+}, String(num));
+
+// A thread whose first replies are far above the list's rows, and whose last
+// two are on them.
+const OFF_AND_BACK_THREAD = [
+  { num: 1, author: 'alice', title: THREAD, date: '9/01' },
+  { num: 40, author: 'bob', title: 'Re: ' + THREAD, date: '9/10' },
+  { num: 590, author: 'carol', title: 'Re: ' + THREAD, date: '10/19' },
+  { num: 600, author: 'dave', title: 'Re: ' + THREAD, date: '10/20' }
+];
+
+// PTT's selection leaves the layer's rows, then comes back onto them (#128):
+// each article read there is found by its author and title.
+test('an article on the list read after a jump off its rows shows read, on the revealed list and after it', async ({ page }) => {
+  await openFromList(page, { open: 600, thread: OFF_AND_BACK_THREAD });
+  await jump(page, '=', 1);
+  await jump(page, ']', 40);
+  await jump(page, ']', 590);
+  await delayBack(page, 1500);
+  await ptt.sendKey(page, 'ArrowLeft');
+  await expect(page.locator(UNDERLAY)).toHaveAttribute('data-preview', 'layer');
+  expect(await layerMarkOf(page, 590)).toBe('');
+  expect(await layerMarkOf(page, 600)).toBe('');
+  expect(await layerMarkOf(page, 599)).toBe('+');
+  await expect(page.locator(UNDERLAY)).toHaveCount(0, { timeout: 10000 });
+  await listActive(page);
+  expect(await markOf(page, 590)).toBe('');
+  expect(await markOf(page, 600)).toBe('');
+  expect(await markOf(page, 599)).toBe('+');
+});
+
+// The last-read colour is on the subject read last (bbs.c currtitle): an
+// article off the layer's rows leaves no row of the list coloured (story 6).
+test('after reading an article off the list\'s rows last, no row of the list shows the last-read colour', async ({ page }) => {
+  await openFromList(page, { open: 600, nextArticle: true, thread: OFF_AND_BACK_THREAD });
+  await jump(page, '=', 1);
+  await page.locator('#nextArticleCard').tap();
+  await expect.poll(() => page.locator(MAIN).innerText()).toContain('Body of article 2 by');
+  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle && !window.__app.aidNavigation.active)).toBe(true);
+  await backOverList(page, { author: 'dave' });
+  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
+  const plain = await titleColor(page, 599);
+  expect(await titleColor(page, 600)).toBe(plain);
+  expect(await titleColor(page, 590)).toBe(plain);
+});
+
 // While the reader is in the thread, the article opened from the list is
 // deleted, so every later article is renumbered.
 test('when the article opened from the list was deleted meanwhile, the list stays and opening it says the list changed', async ({ page }) => {

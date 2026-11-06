@@ -189,6 +189,25 @@ test('a number jump beyond the rows loaded shows PTT\'s list now', async ({ page
   expect(await shownNow(page, 100)).toMatchObject({ selected: true });
 });
 
+// A number on the rows loaded moves the selection there: the list asks PTT
+// for nothing, and every row stays as it was.
+test('a number jump within the rows loaded keeps every row as it was and selects that row', async ({ page }) => {
+  const before = await readReply(page);
+  await back(page);
+  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
+  const from = await page.evaluate(() => window.__threadSent.length);
+  await ptt.sendKey(page, '1');
+  await page.locator('[data-list-input]').fill('1182');
+  await page.locator('[data-list-input]').press('Enter');
+  await expect.poll(async () => (await shownNow(page, 1182))?.selected).toBe(true);
+  await listActive(page);
+  expect(await page.evaluate(from => window.__threadSent.slice(from), from)).toEqual([]);
+  const now = await cards(page);
+  for (const card of asLeft(before.cards)) {
+    expect(now.find(c => c.num === card.num)).toEqual({ ...card, selected: card.num === '1182' });
+  }
+});
+
 test('a key sent in native mode shows PTT\'s list now once the list takes over again', async ({ page }) => {
   await readReply(page);
   await back(page);

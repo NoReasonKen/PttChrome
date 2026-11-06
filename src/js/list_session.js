@@ -26,6 +26,7 @@ import {
   parseListTitleRaw,
   subjectOfListRow,
   subjectOfListText,
+  readListRow,
   articleContextFromListRow,
   LIST_AUTHOR_COL_START,
   LIST_AUTHOR_COL_END,
@@ -688,7 +689,7 @@ export function isLastReadStyledListRow(row) {
 // long-push cursor anchor needs the same key and must not pull this DOM-coupled
 // module in. Re-exported here so the existing consumers (term_view, the
 // accumulate tests, aid_navigation) keep their import site unchanged.
-export { subjectOfListRow, subjectOfListText };
+export { subjectOfListRow, subjectOfListText, readListRow };
 
 const LIST_MARK_FG = { 'R': 3, '轉': 6, '鎖': 5, 'ˇ': 2 };
 
@@ -735,24 +736,6 @@ export function paintLastReadListRow(row, fg) {
     c.bg = 0;
     c.fg = fg;
   }
-}
-
-// An article row's read-mark cell (pttbbs bbs.c#readdoent's type character)
-// once the reader has read it: unread `+`, updated `~`, unread marked `M`,
-// updated marked `=`, unread digest `#` and unread solved `S` turn read.
-// readdoent prints the type in default colours, except a gray `+`.
-const LIST_MARK_COL = 8;
-const READ_LIST_MARK = { '+': ' ', '~': ' ', '#': '*', M: 'm', '=': 'm', S: 's' };
-
-// A copy of `row` (TermChar[]) as PTT lists it once read, or null when it
-// already reads as read. Stored rows are never changed in place.
-export function readListRow(row) {
-  const cell = row && row[LIST_MARK_COL];
-  const read = cell && READ_LIST_MARK[cell.ch];
-  if (read == null || cell.isLeadByte) return null;
-  const copy = row.map(ch => Object.assign(Object.create(Object.getPrototypeOf(ch)), ch));
-  Object.assign(copy[LIST_MARK_COL], { ch: read, fg: 7, bg: 0, bright: false });
-  return copy;
 }
 
 // Pure "stop prefetching?" decision. We page until enough VISIBLE (non-blacklisted)
@@ -2372,16 +2355,26 @@ ListSession.prototype = {
       this._selectedNum = null;
       this._selectedPinnedKey = pinnedKey;
     }
-    // The article opened from the list and each one PTT's selection moved to
-    // above it were read; PTT now colours the last one's subject.
-    const read = layer ? layer.readRows() : [];
-    for (const row of read) {
-      const readText = rowToText(row);
-      const readNum = parseListArticleNumLoose(readText);
-      this._view.markListArticleRead(readNum, readNum == null && isPinnedListRow(readText) ? pinnedRowKey(readText) : null);
+    // The article opened from the list and each one read above it that the
+    // layer shows were read; PTT now colours the subject read last, whether
+    // the list shows it or not (#128). Rows an article read may be, which the
+    // layer could not tell apart, show PTT's own data once it lists them.
+    const rowKey = function(row) {
+      const text = rowToText(row);
+      const num = parseListArticleNumLoose(text);
+      return { num: num, pinnedKey: num == null && isPinnedListRow(text) ? pinnedRowKey(text) : null };
+    };
+    for (const row of layer ? layer.readRows() : []) {
+      const key = rowKey(row);
+      this._view.markListArticleRead(key.num, key.pinnedKey);
     }
-    if (read.length) this.noteLastRead(subjectOfListRow(read[read.length - 1]));
+    const lastRead = layer && layer.lastReadSubject();
+    if (lastRead) this.noteLastRead(lastRead);
     this._view.holdListRows(facts && facts.rowTexts);
+    for (const row of layer ? layer.unsureRows() : []) {
+      const key = rowKey(row);
+      this._view.retakeListRow(key.num, key.pinnedKey);
+    }
     this._forceRedraw();
     this._alignServerCursor();
   },
@@ -2558,12 +2551,28 @@ ListSession.prototype = {
     this._view.promptListInput('跳至第幾項：', firstDigit, function(val) {
       const num = val ? parseInt(val, 10) : NaN;
       if (!num || num <= 0) return; // cancelled / not a number: zero server
+      if (self._selectLoaded(num)) return;
       const r = transitionListSession(self.state, { type: 'key', keyClass: 'transact' });
       self.state = r.next;
       // A number beyond the rows loaded asks PTT for another part of the list.
       if ((self._termBuf.listLineNums || []).indexOf(num) === -1) self._spendLayer('jumpBeyondRows');
       self._beginJumpNumber(num);
     });
+  },
+
+  // A number jump to a row the list shows moves the selection there and asks
+  // PTT for nothing: the rows stay as they are (#125), and PTT's selection
+  // follows before anything acts on it, as after any local move. Returns
+  // whether the row was shown.
+  _selectLoaded: function(num) {
+    const seq = this._sequence();
+    const pos = seq.indexOf((this._termBuf.listLineNums || []).indexOf(num));
+    if (pos === -1) return false;
+    const wasVisible = this._isPosVisible(seq, pos);
+    this._setCursorPos(seq, pos);
+    this._scheduleReveal(pos, revealPlan('down', { wasVisible: wasVisible, reducedMotion: prefersReducedMotion() }));
+    this._forceRedraw();
+    return true;
   },
 
   _beginJumpNumber: function(num) {

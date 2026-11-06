@@ -229,6 +229,7 @@ export class NavigationStack {
     // PTT's selection in an article list starts on the article opened from it.
     pending.follows = page.id;
     pending.time = null;
+    if (pending.kind === PAGE.ARTICLE_LIST && page.kind === PAGE.ARTICLE) pending.layer?.opened?.();
     this.captured[depth] = pending;
     this.stack = pushPage(this.stack, page, { fromBelow: true });
     const bounded = boundLayers(this.stack);
@@ -309,7 +310,8 @@ export class NavigationStack {
   // its own selection as the reader left it (#123) and only tracks PTT's, to
   // show the articles read and move PTT back on Back. Once it loses PTT's
   // selection (an article off its rows) it stops following, and is still
-  // revealed: the list is the one left (#127).
+  // revealed: the list is the one left (#127). Each article read after that
+  // still shows read where the list names it by its own identity (#128).
   _follow() {
     // A same-thread jump has moved PTT's selection once it is over.
     if (this.core.threadJump?.active) return;
@@ -321,6 +323,7 @@ export class NavigationStack {
     const { time } = this.article;
     if (lower.follows !== top.id) {
       lower.shows = lower.shows !== false && lower.layer.follow(this.article, postedBefore(time, lower.time), first);
+      if (!lower.shows) lower.layer.noteRead(this.article);
       lower.follows = top.id;
     }
     lower.time = time;

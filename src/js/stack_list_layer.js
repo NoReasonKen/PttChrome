@@ -3,7 +3,7 @@
 // its own scroll viewport, so revealing it shows the real list, scrollable at
 // once, instead of a static copy.
 import { ScreenCopyLayer, setUsable, STACK_NOTICE_MS } from './stack_layer';
-import { LIST_TITLE_COL_START, hasServerCursorMark, rowToText, parseListArticleNumLoose } from './comment_parse';
+import { LIST_TITLE_COL_START, hasServerCursorMark, rowToText, parseListArticleNumLoose, readListRow, subjectOfListRow } from './comment_parse';
 import { listEntryOf } from './split_reader';
 import { subjectKey, subjectMatches } from './long_push_anchor';
 import { i18n } from './i18n';
@@ -73,6 +73,40 @@ export function articleRow(lines, bodyStart, article, { from = -1, up = null, fi
   const others = hits.filter(row => row !== from);
   if (others.length === 1) return others[0];
   return hits.length === 1 ? hits[0] : -1;
+}
+
+// A header's post date ("Mon Sep  1 12:00:00 2025") as a list shows it
+// ("9/01"), or null.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function listDate(time) {
+  const m = /([A-Z][a-z]{2}) +(\d{1,2}) \d\d:\d\d:\d\d \d{4}/.exec(time || '');
+  const month = m ? MONTHS.indexOf(m[1]) + 1 : 0;
+  return month ? `${month}/${m[2].padStart(2, '0')}` : null;
+}
+
+// The rows of a list frame's `lines` that may list `article` ({ author,
+// title, time }) by what the article itself says, with no selection to go by:
+// its author and subject, then whether it is a reply and its post date, as
+// far as those tell the rows apart. One row is the article; several are
+// rows it cannot be told from.
+export function identityRows(lines, bodyStart, article) {
+  const author = String(article.author || '').toLowerCase();
+  const subject = subjectKey(article.title);
+  if (!author || !subject) return [];
+  let hits = [];
+  for (let row = bodyStart; row < lines.length - 1; row++) {
+    const entry = listEntryOf(rowToText(lines[row]));
+    if (entry && !entry.deleted && entry.subject && String(entry.author).toLowerCase() === author &&
+        subjectMatches(entry.subject, subject)) hits.push({ row, entry });
+  }
+  const reply = /^Re:/i.test(String(article.title || '').trim());
+  const date = listDate(article.time);
+  for (const keep of [hit => /^R:/.test(hit.entry.title) === reply, hit => hit.entry.date === date]) {
+    if (hits.length < 2) break;
+    const narrowed = hits.filter(keep);
+    if (narrowed.length) hits = narrowed;
+  }
+  return hits.map(hit => hit.row);
 }
 
 export class StackListLayer extends ScreenCopyLayer {
@@ -169,8 +203,50 @@ export class StackListLayer extends ScreenCopyLayer {
     const row = articleRow(lines, this.frame.enhance.listScroll.bodyStart, article, { from, up, first });
     if (row < 0) return false;
     this.followed = row;
-    (this.read ||= new Set()).add(row);
+    this._read(row, article);
     return true;
+  }
+
+  // `article` was read with PTT's selection no longer followed: it shows read
+  // when the list names it by its own identity (identityRows). Rows it cannot
+  // be told from stay as they are, and are listed by `unsureRows`, so the
+  // real list takes them from PTT rather than guess (#128).
+  noteRead(article) {
+    if (!this.screen) return;
+    const rows = identityRows(this.frame.lines, this.frame.enhance.listScroll.bodyStart, article);
+    if (rows.length === 1) return this._read(rows[0], article);
+    rows.forEach(row => (this.unsure ||= new Set()).add(row));
+    this.lastRead = { row: rows[0] ?? -1, title: article.title };
+  }
+
+  // The article opened from this list was entered: it reads as read.
+  opened() {
+    const row = this.screen ? this._selectedRow() : -1;
+    if (row >= 0) this._read(row, null);
+  }
+
+  // Show `row` read as PTT lists it once read, and remember it as the last
+  // article read, `article` when known.
+  _read(row, article) {
+    (this.read ||= new Set()).add(row);
+    this.unsure?.delete(row);
+    this.lastRead = { row, title: article?.title ?? null };
+    const read = readListRow(this.frame.lines[row]);
+    if (!read) return;
+    const lines = this.frame.lines.slice();
+    lines[row] = read;
+    // The frame was the real screen's; it is replaced, never changed.
+    this.frame = { ...this.frame, lines };
+    this.screen.update({ ...this.screen.props, lines });
+  }
+
+  // The subject PTT colours as last read (bbs.c currtitle), as this list
+  // keys it: the subject of the last article read, or null when none was.
+  lastReadSubject() {
+    const last = this.lastRead;
+    if (!last) return null;
+    if (last.row >= 0) return subjectOfListRow(this.frame.lines[last.row]);
+    return subjectKey(last.title);
   }
 
   // The newest article number this list shows, or null.
@@ -190,12 +266,17 @@ export class StackListLayer extends ScreenCopyLayer {
     return row < 0 ? null : rowToText(this.frame.lines[row]);
   }
 
-  // The rows (TermChar[]) of the articles read since the list was left: the
-  // one it shows selected and each that PTT's selection followed, the one PTT's
-  // selection is on last.
+  // The rows (TermChar[]) of the articles read since the list was left, each
+  // as this list now shows it: the one it shows selected, and each that PTT's
+  // selection followed or that was found by its identity.
   readRows() {
-    const rows = [this._selectedRow(), ...(this.read || []), this.followed ?? -1].filter(row => row >= 0);
-    return [...new Set(rows.reverse())].reverse().map(row => this.frame.lines[row]);
+    const rows = [this._selectedRow(), ...(this.read || [])].filter(row => row >= 0);
+    return [...new Set(rows)].map(row => this.frame.lines[row]);
+  }
+
+  // The rows (TermChar[]) an article read may be, which none tells apart.
+  unsureRows() {
+    return [...(this.unsure || [])].map(row => this.frame.lines[row]);
   }
 
   // Ready to be revealed at the current width. A width change, such as a
