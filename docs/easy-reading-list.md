@@ -481,11 +481,16 @@ states：`idle → active ⇄ functionMode`；`active → opening → suspended 
   （`noteLastRead`），「+N」由讀完時的紀錄自己重算。之後由 term_view `holdListRows` 保住這批列：
   PTT 的落地頁什麼都不加，其他頁（往上／往下補頁）**只加還沒顯示過的列**，已顯示的列永不被換掉。
   `resetListAccumulation`（rebuild／重新整理／進板）、`_resumeBuffer`、非 resize 的 `_resumeInPlace`
-  （A 類交易、開文身分不符 `_openMismatched`）解除保留，PTT 那一頁照舊併入。開文前的身分檢查不變：
+  （開文身分不符 `_openMismatched`）解除保留，PTT 那一頁照舊併入。**哪些動作「用掉」layer**
+  （[#125](https://github.com/NoReasonKen/PttChrome/issues/125)，`page_stack.js#spendsLayer`，
+  `NavigationStack.spend`）：重新整理、設已讀（前已讀後未讀／全部已讀）、跳號超出已載入的列（含 A 類鍵落點不在緩衝）、
+  原生 passthrough 鍵——這些向 PTT 重新要資料，丟掉 layer 還沒做完的事並解除保留；捲動補頁、開文、
+  A 類鍵（`_resumeInPlace(…, { keepRows: true })`）**不**用掉 layer，保留的列不動。例外：`t` 標記改的是使用者
+  自己動作的那一列（`retakeListRow`），那一列照收 PTT 的新樣子，其餘列不動。開文前的身分檢查不變：
   保留列與 PTT 現況不同時照樣停在列表並提示。PTT 的游標若停在別篇（換篇過），`_alignServerCursor` 以編號跳回選取的那篇（`align-sync-jump`，落地以作者＋主題驗證）；那篇被改號／刪除時畫面不動，`_serverNum` 記為未對齊，之後開文照舊走身分檢查與提示。下一篇（`beginExternalNavigation`）會清掉 `_boardName`，`_settleEvent` 改以落地幀的板名找 kept layer，`_resumeFromLayer` 補回板名。
   **PTT 的游標在哪裡不影響**（[#127](https://github.com/NoReasonKen/PttChrome/issues/127)）：遠距同串跳轉（`hidden_article_route`）、
   跳到／拉到 layer 沒列出的文章、重新整理讀的那篇（`aid_navigation.refresh`）、從讀的那篇做搜尋（結果沿用同一個 session）
-  都照樣揭開 layer（`NavigationStack._revealed` 不再要求 `_selects`，`follow` 追丟之後只是不再追），退回時走 `resume-layer`：
+  都照樣揭開 layer（`NavigationStack._revealIn` 不再要求 `_selects`，`follow` 追丟之後只是不再追），退回時走 `resume-layer`：
   這些路徑都經 `beginExternalNavigation` 清掉板名，suspended 時 `_settleEvent` 以落地幀的板名找 kept layer。
   開文前 `NavigationStack.captureList` 把這一頁（`ListSession.listPage`：term_view `snapshotListBuffer` 的列 map
   複本＋header／footer、板名、編號空間、補頁邊界、錨與選取）跟 layer 放在一起，`_resumeFromLayer` 先還原它

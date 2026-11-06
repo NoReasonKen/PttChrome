@@ -1514,6 +1514,7 @@
   "stack_newArticles": { "message": "有新文章" },
   "stack_commentSourceUnverified": { "message": "無法確認原文，推文未送出" },
   "stack_commentNotSent": { "message": "PTT 尚未就緒，推文未送出" },
+  "stack_actionNotRun": { "message": "PTT 尚未就緒，操作未執行" },
   "articleShortcutDrawer_title": {
     "message": "文章捷徑"
   },

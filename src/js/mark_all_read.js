@@ -105,6 +105,8 @@ MarkAllRead.prototype = {
       this._hint('指令處理中，請稍候再試');
       return false;
     }
+    // Marking every article read asks PTT for the list anew (#125).
+    core.articleGestures?.stack?.spend('markRead');
     return true;
   }
 };

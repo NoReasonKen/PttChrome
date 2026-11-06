@@ -35,7 +35,8 @@ const NEAR_REPLY_BOARD = [...FAR_BOARD, { num: 1120, author: 'erin', title: 'Re:
 // `beforeOpen`: runs on the list before `open` is opened from it.
 // An article of `thread` may carry its list row's read `mark` (default `+`,
 // unread; opening it reads it) and recommendation `score`, and `comments`
-// (pushes after its AID line, which `url` adds).
+// (pushes after its AID line, which `url` adds). A tagged article (`t`) shows
+// the tag mark `D` in place of its read mark.
 async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, fromList = false, nativeList = false, nextArticle = false, legacy = false, thread = FAR_BOARD, beforeOpen = null } = {}) {
   await bootOffline(page, ptt, { nextArticle });
   await ptt.applyPrefs(page, {
@@ -113,7 +114,7 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
     const listRow = (article, index, cursor) => {
       const num = String(filtered() ? index : article.num).padStart(7);
       const glyph = article.title.startsWith('Re: ') ? 'R: ' + subject(article.title) : '□ ' + article.title;
-      const text = `${num} ${article.mark ?? '+'}${String(article.score ?? '').padStart(2)}${article.date.padStart(5)} ${article.author.padEnd(13)}${glyph}`;
+      const text = `${num} ${article.tagged ? 'D' : article.mark ?? '+'}${String(article.score ?? '').padStart(2)}${article.date.padStart(5)} ${article.author.padEnd(13)}${glyph}`;
       return cursor ? '>' + text.slice(1) : text;
     };
     const frame = () => {
@@ -241,6 +242,12 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
       } else if (/^\d+\r$/.test(token)) {
         state.cursor = Math.min(Math.max(1, parseInt(token, 10)), list.length);
       } else if ('[]='.includes(token)) state.cursor = threadMove(token);
+      // `t` tags the selected article, or untags it, and moves to the next.
+      else if (token === 't') {
+        const article = view()[state.cursor - 1];
+        article.tagged = !article.tagged;
+        state.cursor = Math.min(view().length, state.cursor + 1);
+      }
       else if (token === '\r' || token === '\x1b[C') openCursor();
       else if (token === '\x1b[5~') state.cursor = Math.max(1, state.cursor - PAGE);
       else if (token === '\x1b[6~') state.cursor = Math.min(list.length, state.cursor + PAGE);

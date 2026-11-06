@@ -217,6 +217,8 @@ ScreenRefresh.prototype = {
   target: function() {
     const core = this._core;
     if (!core.conn || !core.conn.isConnected) return null;
+    // A page revealed from its live layer before PTT has caught up (#124).
+    if (core.articleGestures?.stack?.refreshesRevealed?.()) return { kind: 'revealed' };
     return refreshTargetOf(core);
   },
 
@@ -248,6 +250,14 @@ ScreenRefresh.prototype = {
       if (source !== 'key') this._hint('這個畫面不支援重新整理');
       return false;
     }
+    // It is refreshed once PTT shows it, through this same path.
+    if (target.kind === 'revealed') {
+      const self = this;
+      core.articleGestures.stack.refreshWhenReady(function() {
+        self.refresh(source);
+      });
+      return true;
+    }
     const busy = serializedOpHint(core);
     if (busy) {
       this._hint(busy);
@@ -259,6 +269,10 @@ ScreenRefresh.prototype = {
       return true;
     }
     if (this._dispatch(target)) {
+      // A refresh replaces a list's content with PTT's current data: the live
+      // layer it was shown from is spent (#125). The home dashboard keeps
+      // sharing its state with its layer.
+      if (target.kind === 'article-list' || target.kind === 'board-list') core.articleGestures?.stack?.spend('refresh');
       this._lastAt = this._now();
       const next = this.cooldownLeftMs();
       this._listeners.forEach(function(fn) {

@@ -645,6 +645,13 @@ export function TermView() {
       this.bbscore.articleGestures.queueBack();
       return;
     }
+    // A refresh key then refreshes a revealed list once PTT shows it (#124).
+    if (this.bbscore.articleGestures?.holdsInput() && isRefreshKeyEvent(e) &&
+        readEffectivePrefs().refreshKeyIntercept && this.bbscore.screenRefresh?.target()?.kind === 'revealed') {
+      e.preventDefault();
+      this.bbscore.screenRefresh.refresh('key');
+      return;
+    }
     if (!shouldAcceptInput() || belongsToClosedModal(e) || !keyEventFilter(e))
       return;
 
@@ -3405,13 +3412,15 @@ TermView.prototype = {
       }
     }
     // Rows kept as the reader left them (holdListRows): PTT's landing page adds
-    // nothing, and any other page only adds the rows not shown yet.
+    // nothing, and any other page only adds the rows not shown yet, and the
+    // rows the reader's own in-place action changed (retakeListRow).
     var hold = this._listHold;
     if (hold) {
       var numMap = this._listNumMap;
       var pinnedMap = this._listPinnedMap;
       entries = rowTexts.join('\n') === hold.landing ? [] : entries.filter(function(e) {
-        return e.num != null ? !numMap.has(e.num) : !pinnedMap.has(e.key);
+        return e.num != null ? !numMap.has(e.num) || hold.retakeNums.has(e.num)
+          : !pinnedMap.has(e.key) || hold.retakeKeys.has(e.key);
       });
     }
     // 合併前量「緩衝往哪端長」：evict 不砍剛長出來的那一端（evictListBuffer 註解）。
@@ -3579,7 +3588,17 @@ TermView.prototype = {
   // on that return (row texts); it adds nothing, and later pages only add the
   // rows not shown yet, until releaseListRows or a fresh accumulation.
   holdListRows: function(landing) {
-    this._listHold = { landing: (landing || []).join('\n') };
+    this._listHold = { landing: (landing || []).join('\n'), retakeNums: new Set(), retakeKeys: new Set() };
+  },
+
+  // The reader's own in-place action, such as tagging (`t`), changes the row
+  // of article `num` (or of the pinned row `pinnedKey`) on PTT: while the rows
+  // are held, that row still takes PTT's rendering (#125).
+  retakeListRow: function(num, pinnedKey) {
+    var hold = this._listHold;
+    if (!hold) return;
+    if (num != null) hold.retakeNums.add(num);
+    else if (pinnedKey != null) hold.retakeKeys.add(pinnedKey);
   },
 
   releaseListRows: function() {

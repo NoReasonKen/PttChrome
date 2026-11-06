@@ -316,7 +316,8 @@ export class ArticleGestures {
     return (this.stack.handingOff || this.backsDuringSlide != null) && !this.sendingBack;
   }
 
-  // A Back made meanwhile unwinds further after the swap (#34).
+  // A Back made meanwhile reveals the next lower page at once, and PTT follows
+  // it (#125); one made during the slide does so once the leave is sent.
   queueBack() {
     if (!this.stack.queueBack() && this.backsDuringSlide != null) this.backsDuringSlide++;
   }
@@ -324,8 +325,7 @@ export class ArticleGestures {
   // Whether Back is showing the page of `kind` again from its live layer, and
   // the real page has yet to take over.
   showsLayerOf(kind) {
-    const h = this.stack.handoff;
-    return !!h?.layer && h.target === kind;
+    return this.stack.showsLayerOf(kind);
   }
 
   // A session presented a real page: an article list, a board list or the
@@ -397,33 +397,48 @@ export class ArticleGestures {
 
   // The article stays off screen over the revealed list, or the dark fallback,
   // until the real list is presented (#20, #28). `backsDuringSlide` made during the
-  // slide are queued once the handoff is under way.
+  // slide reveal further once the handoff is under way (#125).
   _handoff(backsDuringSlide) {
     const core = this.core;
+    // PTT's Back from a page of kind `level`, sent past the exit's modal gate.
+    const sendBack = level => {
+      const record = recordFor(core);
+      const bookmark = record.begin(level === PAGE.ARTICLE ? 'article-swipe-exit' : 'list-back-reveal');
+      core.noteUserAction();
+      // The exit surfaces hold the modal gate; release it only for the send.
+      core.setModalOpen(MODAL_SOURCE, false);
+      this.sendingBack = true;
+      let sent = false;
+      try {
+        sent = core.sendNavKeyAsUser('ArrowLeft');
+      } finally {
+        this.sendingBack = false;
+        record.end(bookmark, sent ? 'done' : 'cancel');
+        // A Back not sent either retries or cancels the exit, which releases it.
+        core.setModalOpen(MODAL_SOURCE, true);
+      }
+      return sent;
+    };
     const sent = this.stack.begin({
       level: this.exitLevel,
-      send: () => {
-        const record = recordFor(core);
-        const bookmark = record.begin(this.exitLevel === PAGE.ARTICLE ? 'article-swipe-exit' : 'list-back-reveal');
-        core.noteUserAction();
-        // The exit surfaces hold the modal gate; release it only for the send.
-        core.setModalOpen(MODAL_SOURCE, false);
-        this.sendingBack = true;
-        let sent = false;
-        try {
-          sent = core.sendNavKeyAsUser('ArrowLeft');
-        } finally {
-          this.sendingBack = false;
-          record.end(bookmark, sent ? 'done' : 'cancel');
-          if (sent) core.setModalOpen(MODAL_SOURCE, true);
-        }
-        return sent;
-      },
+      send: () => sendBack(this.exitLevel),
+      follow: sendBack,
+      reveal: (layer, title, appBar) => this._revealUnder(layer, title, appBar),
       finish: () => this._removeExit(),
       cancel: () => this._settleExit(false),
       hint: () => core.view.flashListHint?.(i18n('stack_handoffTimeout'), STACK_NOTICE_MS)
     });
     for (let i = 0; sent && i < backsDuringSlide; i++) this.stack.queueBack();
+  }
+
+  // A later Back's lower page replaces the one shown under the page left.
+  _revealUnder(layer, title, appBar) {
+    const old = this.exitUnderlay;
+    if (!old) return;
+    this.exitUnderlay = createUnderlay(this.core, layer, title, appBar);
+    this.exitUnderlay.setAttribute('data-article-exit-underlay', '');
+    this.exitUnderlay.dataset.preview = layer ? 'layer' : 'fallback';
+    old.remove();
   }
 
   // The current page can be left now, by any Back.

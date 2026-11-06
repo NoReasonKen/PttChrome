@@ -1515,6 +1515,7 @@ export const en_US = {
   "stack_newArticles": { "message": "New articles" },
   "stack_commentSourceUnverified": { "message": "Could not verify the original article; the comment was not sent" },
   "stack_commentNotSent": { "message": "PTT was not ready; the comment was not sent" },
+  "stack_actionNotRun": { "message": "PTT was not ready; the action was not run" },
   "articleShortcutDrawer_title": {
     "message": "Article shortcuts"
   },

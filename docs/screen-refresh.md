@@ -54,6 +54,15 @@
 - 首頁儀表板：`home_dashboard` 的 `state.visible`（它自己認主功能表）。最先判定；抓最愛途中畫面在我的最愛上也算首頁 ⇒ 送出被忙碌提示擋下。
 - 其他（面板收起後的原生主功能表、信箱列表、prompt 開著、編輯器…）：不接。F5 交還瀏覽器（連線中 beforeunload 會先問），
   工具列不顯示「重整」。
+- 返回時從 live layer 先秀出來、PTT 還沒跟上的列表或首頁（`NavigationStack.refreshesRevealed`，[#124](https://github.com/NoReasonKen/PttChrome/issues/124)）：
+  `target()` 回 `{ kind: 'revealed' }`，三個入口照常可用（交接期間的 modal 閘門擋不住下拉、F5 由 `term_view` 的
+  keydown 先接）。這次重整記成交接的待辦動作（`refreshWhenReady`，蓋掉之前記住的點擊／選單動作），進度條顯示；
+  真畫面接手後再走一次 `refresh()`（冷卻、忙碌照常判），而且不把真畫面對齊 layer 的閱讀位置，停在 PTT 的位置。
+  交接逾時就丟掉，提示「PTT 尚未就緒，操作未執行」。
+- 列表（文章列表、看板列表）重整送出後用掉它的 live layer（`NavigationStack.spend('refresh')`，
+  [#125](https://github.com/NoReasonKen/PttChrome/issues/125)）：交接期間記住的動作作廢、保留的列（#120）解除，
+  之後的列都是 PTT 現在的資料。交接中的重整走上面那條待辦路徑，真畫面接手後那次 `refresh()` 才用掉 layer。
+  首頁儀表板與它的 layer 共用狀態，不算用掉。
 
 ## 鍵盤（F5 攔截）
 
@@ -100,4 +109,5 @@ pref `refreshMinIntervalSec`（預設 5 秒，0 ＝不限制），只在**真的
   （序列、免費路徑、站內信不接、位置還原、無 AID 退路、失敗訊息）、`mobile_toolbar.test.js(x)`、`pull_refresh.test.js`。
 - offline e2e：`screen_refresh.offline.spec.js`（真 F5：預設動作被擋、冷卻提示、關 pref 交還）、
   `mobile_refresh.offline.spec.js`（工具列鈕、CDP 觸控下拉）、`mobile_toolbar.offline.spec.js`（分享在更多裡）、
-  `home_dashboard.offline.spec.js`「F5」、`mobile_home_dashboard.offline.spec.js`（首頁的下拉與工具列重整）。
+  `home_dashboard.offline.spec.js`「F5」、`mobile_home_dashboard.offline.spec.js`（首頁的下拉與工具列重整）、
+  `mobile_stack_layer_actions.offline.spec.js`（PTT 跟上之前在秀出的列表上用工具列、F5、下拉重整）。

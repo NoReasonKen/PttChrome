@@ -50,7 +50,6 @@ test('finishing entry after its list was destroyed never reconnects the layer', 
   expect(layer.follow({}, false)).toBe(false);
   expect(layer.alignReal({})).toBe(false);
   expect(layer.tapOf({})).toBeNull();
-  expect(() => layer.openTapped({}, {})).not.toThrow();
   expect(layer.el.isConnected).toBe(false);
 });
 
