@@ -259,9 +259,23 @@ export class ArticleGestures {
   }
 
   // An article shortcut search keeps its source article alive under the
-  // results (#49); it slides nothing in.
+  // results (#49); its results slide in once they present (slideInOver).
   captureArticleLayer() {
     this.stack.captureArticle();
+  }
+
+  // The real screen, which PTT has already answered, slides in from the right
+  // over `cover`, a copy of the page it was opened from shown over it, with
+  // that page's `title` and `appBar` beside it. The cover goes with the
+  // motion.
+  slideInOver(cover, title, appBar) {
+    this.entry?.end();
+    if (this.exitUnderlay || this.stack.handingOff) return void cover.destroy();
+    this.entry = new StackEntry(this.core, { kind: PAGE.ARTICLE, layer: cover, title, appBar }, entry => {
+      cover.destroy();
+      if (this.entry === entry) this.entry = null;
+    });
+    this.entry.answered();
   }
 
   // Whether the shown article was opened from its board's full list (#86).

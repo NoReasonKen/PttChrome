@@ -187,6 +187,44 @@ test('starting a shortcut search keeps the article on screen until its results s
   expect(frames.filter(f => f.native).length).toBe(0);
 });
 
+// Every painted frame from now on: how far the real screen is from where it
+// rests, whether it shows a list, and whether an article shows beside it.
+async function sampleSlide(page) {
+  await installPaintedFrameProbe(page);
+  await page.evaluate(MAIN => {
+    window.__frames = [];
+    const rest = Math.round(document.querySelector(MAIN).getBoundingClientRect().left);
+    const visible = el => !!el && el.checkVisibility({ visibilityProperty: true, opacityProperty: true });
+    const sample = () => {
+      const main = document.querySelector(MAIN);
+      window.__frames.push({
+        left: Math.round(main.getBoundingClientRect().left) - rest,
+        list: visible(main.querySelector('.listBodyView')),
+        article: [...document.querySelectorAll('[data-stack-layer="article"]')].some(visible)
+      });
+      if (window.__frames.length >= 600) window.__paintedFrame.remove(sample);
+    };
+    window.__paintedFrame.add(sample);
+  }, MAIN);
+}
+
+test('the results of a shortcut search slide in from the right over the source article', async ({ page }) => {
+  await sourceFromList(page);
+  const width = page.viewportSize().width;
+  await sampleSlide(page);
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+  const frames = await sampledFrames(page);
+  const start = frames.findIndex(f => f.left > 3);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const moving = frames.slice(start);
+  expect(moving[0].left).toBeGreaterThan(width / 2);
+  expect(moving.filter((f, i) => i > 0 && f.left > moving[i - 1].left + 3)).toEqual([]);
+  expect(moving.filter(f => f.left > 3 && !(f.list && f.article))).toEqual([]);
+  expect(frames.at(-1).left).toBeLessThanOrEqual(3);
+});
+
 test('Back from the results shows a source read past its first page at its reading position throughout', async ({ page }) => {
   const row = await longSourceFromList(page);
   const reading = (await readingArea(page)).srow;

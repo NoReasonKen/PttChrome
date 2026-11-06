@@ -378,6 +378,7 @@ export class ArticleShortcutSearch {
   _cover() {
     this._uncover();
     this.coverAppBar = this.core._screenContext?.appBar || null;
+    this.coverTitle = document.querySelector('#mobileAppBar .mobileAppBarTitle')?.textContent || '';
     this.cover = coverWithArticle(this.core.view);
     this.core._refreshScreenContext?.();
   }
@@ -399,9 +400,18 @@ export class ArticleShortcutSearch {
     this._uncoverTimer = setTimeout(() => this._uncover(), COVER_BOUND_MS);
   }
 
-  // The easy-reading list presented a page.
+  // The easy-reading list presented a page: the results slide in from the
+  // right over the cover, the way an opened page does (#36).
   listPresented() {
-    if (!this.active) this._uncover();
+    if (this.active) return;
+    const gestures = this.core.articleGestures;
+    if (!this.cover || !gestures) return this._uncover();
+    clearTimeout(this._uncoverTimer);
+    this._uncoverTimer = null;
+    const cover = this.cover;
+    this.cover = null;
+    this.core._refreshScreenContext?.();
+    gestures.slideInOver(cover, this.coverTitle, this.coverAppBar);
   }
 
   // While the cover is up, the toolbar and App Bar stay those of the article
