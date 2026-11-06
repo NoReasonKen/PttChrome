@@ -320,10 +320,12 @@ export class ArticleShortcutSearch {
     return boardList(facts, board) ? 'full' : null;
   }
 
+  // Reopens the source by its code. This is no resume after a disconnect: the
+  // notices are this search's own.
   _reopen(origin, notice, transition) {
     const bookmark = { ...origin.position, feature: 'article-shortcut-return' };
     if (!this.core.aidNavigation.startResume({
-      kind: 'article', board: origin.board, aid: origin.aid, bookmark
+      kind: 'article', board: origin.board, aid: origin.aid, bookmark, quiet: true
     }, result => {
       if (!result.ok) return this._stopMissing(origin);
       this.trail = transition(this.trail);

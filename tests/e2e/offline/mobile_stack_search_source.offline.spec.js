@@ -683,3 +683,18 @@ test('the source revealed by Back from the results shows the image previews the 
   await release();
   await waitArticle(page, 'Alpha');
 });
+
+test('Back from the results to the source never tells the reader the connection was restored', async ({ page }) => {
+  await sourceFromList(page);
+  for (let round = 0; round < 2; round++) {
+    await tapShortcut(page, 'author');
+    await waitList(page, AUTHOR_RESULTS);
+    await settled(page);
+    await recordHints(page);
+    await nativeBack(page);
+    await waitArticle(page, 'Alpha');
+    await settled(page);
+    // Reopening the source is search backtracking, not a reconnect.
+    expect((await recordedHints(page)).filter(hint => /斷線|reconnect/i.test(hint))).toEqual([]);
+  }
+});

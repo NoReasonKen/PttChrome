@@ -331,7 +331,8 @@ export function AidNavigation(core, view, termBuf, queue, history) {
   this.opHint = null;
   // 目前這一輪是 refresh()（失敗訊息與收尾不同於跳文）。
   this._refreshing = false;
-  // 目前這一輪是 startResume()（斷線重連後回到原處）。
+  // The startResume() run under way (resuming after a disconnect): { quiet },
+  // or false.
   this._resuming = false;
   // One-shot: swallow the leaveCurrentPost our own landing causes (noteLeftPost).
   this._ownedLeave = false;
@@ -367,10 +368,11 @@ AidNavigation.prototype = {
       return;
     }
     if (this._resuming) {
+      const quiet = this._resuming.quiet;
       this._resuming = false;
       this._history.abort();
       this._updateBackButton();
-      this._hint('回到斷線前的位置失敗：' + msg + '（已停在原生畫面）', 0, HINT_ERROR);
+      if (!quiet) this._hint('回到斷線前的位置失敗：' + msg + '（已停在原生畫面）', 0, HINT_ERROR);
       this._endRun({ ok: false, error: msg });
       return;
     }
@@ -705,6 +707,9 @@ AidNavigation.prototype = {
   //   列表（plan.num 可省）：s<板> → `<編號>⏎`（游標回到斷線前那篇）→ 停在列表，
   //     列表好讀 rebuild 時還原視野。
   // dir 'resume'：不碰返回堆疊（斷線時 reset 已經清空，重放錨的 getkeep 也跟著死了）。
+  // plan.quiet: the caller is not resuming after a disconnect, such as search
+  // backtracking reopening its source; it gives its own notices, and none of
+  // these hints, which speak of a disconnect, show.
   startResume: function(plan, onEnd) {
     if (this.active || !plan || !plan.board) return false;
     this._onRunEnd = onEnd || null;
@@ -714,10 +719,11 @@ AidNavigation.prototype = {
     );
     run.external = true;
     run.bookmark = plan.bookmark || { feature: 'reconnect-resume' };
-    this._resuming = true;
+    run.quiet = !!plan.quiet;
+    this._resuming = { quiet: run.quiet };
     const label = plan.fromOpen ? '回到上次的地方' : '回到斷線前的位置';
-    this.opHint = label + '，請稍候…';
-    this._hint(label + '：' + plan.board + (plan.aid ? ' #' + plan.aid : ' 看板') + '…', PROGRESS_HINT_MS);
+    this.opHint = run.quiet ? null : label + '，請稍候…';
+    if (!run.quiet) this._hint(label + '：' + plan.board + (plan.aid ? ' #' + plan.aid : ' 看板') + '…', PROGRESS_HINT_MS);
     this._begin(run);
     return true;
   },
@@ -750,7 +756,7 @@ AidNavigation.prototype = {
       });
     rr.releaseExternal();
     this._updateBackButton();
-    this._hint(msg || '已回到斷線前的位置：' + run.target.board + ' 看板', msg ? 6000 : 2000, level);
+    if (!run.quiet) this._hint(msg || '已回到斷線前的位置：' + run.target.board + ' 看板', msg ? 6000 : 2000, level);
     this._endRun({ ok: outcome === 'done' });
   },
 
@@ -1931,7 +1937,7 @@ AidNavigation.prototype = {
           // 原列）。好讀的還原是請求，累積到位才套用。
           recordFor(self._core).end(run.bookmark, 'done', { only: 'article' });
           self._updateBackButton();
-          self._hint('已回到斷線前的文章', 1500);
+          if (!run.quiet) self._hint('已回到斷線前的文章', 1500);
         } else if (run.dir === 'reopen') {
           self.opHint = null;
           // 決策表 'aid-board-pick' cancel：回原列（好讀的還原是請求，累積到位才套用）。
