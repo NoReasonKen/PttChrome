@@ -33,16 +33,19 @@ function scrollToRow(scroller, anchor) {
 
 // What the real article needs to show this article again as it was left
 // (#121): its accumulated rows and where accumulation stood, and the
-// new-comments scan that placed its marker. Only an article read to its end
-// is kept: rows past a partial read would have to come from PTT.
+// new-comments scan that placed its marker. `whole`: the article was read to
+// its end. Rows past a partial read come from PTT, paged on from the line
+// where that read stopped, so a partial read is kept only with that line.
 function articleContent(view) {
   const core = view.bbscore;
   const buf = view.buf;
   const reading = core?.easyReading;
-  if (!buf?.pageLines?.length || !reading?.easyReadingReachedPageEnd || reading._reverse || view._reverse) return null;
+  if (!buf?.pageLines?.length || !reading || reading._reverse || view._reverse) return null;
+  const whole = !!reading.easyReadingReachedPageEnd;
+  if (!whole && (reading._functionMode || view._accEndRow == null)) return null;
   const marks = core.newComments;
   return {
-    pageLines: buf.pageLines, accEndRow: view._accEndRow, lastSig: view._lastAccumulatedSig,
+    whole, pageLines: buf.pageLines, accEndRow: view._accEndRow, lastSig: view._lastAccumulatedSig,
     marks: marks && { _head: marks._head, _scanner: marks._scanner, _key: marks._key, _seen: marks._seen, _saved: marks._saved }
   };
 }
@@ -170,7 +173,34 @@ export class StackArticleLayer extends ScreenCopyLayer {
   // layer's content, not PTT's reopened copy (#121).
   alignReal(core) {
     this._adopt(core);
+    if (this.edited) core.view.flashListHint?.(i18n('stack_articleUpdated'), STACK_NOTICE_MS);
     return scrollToRow(core.view.mainDisplay, topRow(this.el));
+  }
+
+  // A source read only partly goes on from where that read stopped (#121).
+  // Once PTT's reopened copy has accumulated the screen PTT shows, and the
+  // layer's content starts with that copy, the real article takes the
+  // layer's rows and where their accumulation stood. The next screen PTT
+  // sends then falls inside those rows, so easy reading seeks PTT's pager to
+  // their end, as after a seek back (`seekBack`), and pages on from there. A
+  // copy that starts otherwise was edited: PTT's copy takes over, with a
+  // notice. Nothing is done once PTT's copy reaches as far by itself.
+  _resume(core) {
+    const content = this.content;
+    const view = core.view;
+    const reading = core.easyReading;
+    const buf = core.buf;
+    if (view._accEndRow == null || view._accEndRow >= content.accEndRow) return;
+    if (buf.pageState !== 3 || !buf.pageLines?.length || reading._reverse || reading._functionMode ||
+      buf.easyReadingHealInFlight || view._lastAccumulatedSig !== reading._currentPageSignature()) return;
+    if (!reopenedTail(buf.pageLines, content.pageLines)) {
+      this.content = null;
+      this.edited = true;
+      return;
+    }
+    buf.pageLines = content.pageLines;
+    view._accEndRow = content.accEndRow;
+    view._lastAccumulatedSig = content.lastSig;
   }
 
   // The real article takes over this layer's rows, in place of what PTT's
@@ -182,13 +212,21 @@ export class StackArticleLayer extends ScreenCopyLayer {
   // A copy that no longer starts with this layer's content adds nothing: the
   // layer's rows stay shown, while the accumulation state keeps describing
   // PTT's copy, so the next page PTT sends rebuilds from that copy rather than
-  // appending to rows it no longer has (story 29).
+  // appending to rows it no longer has (story 29). A partial read cannot stay
+  // shown that way: PTT's copy takes over, with the same notice. The rows
+  // past a partial read were never read, so the new-comments marker stays
+  // where that read had it.
   _adopt(core) {
     const content = this.content;
     if (!content || !readIdle(core)) return false;
     const view = core.view;
     const reopened = { pageLines: core.buf.pageLines, accEndRow: view._accEndRow, lastSig: view._lastAccumulatedSig };
     const tail = reopenedTail(content.pageLines, reopened.pageLines);
+    if (!tail && !content.whole) {
+      this.content = null;
+      this.edited = true;
+      return false;
+    }
     const appends = !!tail?.rows.length;
     const kept = appends ? { ...reopened, pageLines: content.pageLines.slice(0, tail.keep).concat(tail.rows) } : content;
     core.buf.pageLines = kept.pageLines;
@@ -197,7 +235,8 @@ export class StackArticleLayer extends ScreenCopyLayer {
     view._showsOverCopy = tail ? null : { shown: content.pageLines, copy: reopened.pageLines };
     if (content.marks && core.newComments) {
       Object.assign(core.newComments, content.marks);
-      if (appends) core.newComments.appended(kept.pageLines, tail.keep);
+      if (!content.whole) core.newComments.readToEnd(kept.pageLines);
+      else if (appends) core.newComments.appended(kept.pageLines, tail.keep);
     }
     view._renderScreenLines(kept.pageLines, true, true, false, view._pageRenderOverrides());
     core.commentBar?.refresh();
@@ -212,9 +251,11 @@ export class StackArticleLayer extends ScreenCopyLayer {
   }
 
   // The real article can take over: with content to adopt, once PTT has
-  // reopened the article to its end; otherwise once easy reading has paged as
-  // far as the reading position.
+  // reopened the article to its end, a partial read paged on from where it
+  // stopped; otherwise once easy reading has paged as far as the reading
+  // position.
   reaches(core) {
+    if (this.content && !this.content.whole) this._resume(core);
     if (this.content) return readIdle(core);
     const anchor = topRow(this.el);
     return !anchor || !!core.view.mainDisplay.querySelector(`[type="bbsrow"][srow="${anchor.srow}"]`);

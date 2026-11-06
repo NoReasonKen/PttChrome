@@ -280,6 +280,12 @@ NewComments.prototype = {
     for (let r = 0; r < shownRows; ++r) shown.feed(buf.getRowText(r, 0, buf.cols, lines));
     this._scanner = new CommentScanner();
     this._seen = shown.count;
+    this.readToEnd(lines);
+  },
+
+  // `lines`, an article paged to its end behind its live layer (#121), is
+  // recorded as read the way a settle records it.
+  readToEnd: function(lines) {
     const prefs = readEffectivePrefs();
     if (prefs.markNewComments || prefs.listNewPushCount) this._save(lines);
   },

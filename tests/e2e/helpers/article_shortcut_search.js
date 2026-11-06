@@ -392,6 +392,13 @@ async function installNestedServer(page, session) {
       }
       const nav = ['\x1b[1~', '\x1b[4~', '\x1b[5~', '\x1b[6~', '\x1b[A', '\x1b[B'].find(key => rest.startsWith(key));
       const lines = state.surface === 'article' && state.open.lines;
+      // pmore's goto line (`:N`): line N at the top, at most the last page.
+      const goto = /^:(\d+)\r/.exec(rest);
+      if (goto && lines) {
+        const page = (session.dynamicRows ? state.applicationRows : 24) - 1;
+        state.line = Math.min(Math.max(1, Number(goto[1])), Math.max(1, lines - page + 1));
+        return rest.slice(goto[0].length);
+      }
       if ((nav || rest[0] === ' ') && lines) {
         const page = (session.dynamicRows ? state.applicationRows : 24) - 1;
         const last = Math.max(1, lines - page + 1);

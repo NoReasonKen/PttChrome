@@ -326,6 +326,93 @@ test('the next page PTT sends for an article kept over its edited copy rebuilds 
   for (const n of [80, 81, 84]) expect(texts.filter(text => text.includes(commentText(n)))).toHaveLength(1);
 });
 
+// A long Alpha opened from the board's list whose reading stopped partway, as
+// a search started before easy reading reached its end leaves it: PTT
+// answers no page past line `stop` until paging resumes. Returns the row at
+// the top of the view and the line the reading stopped at.
+async function partlyReadSource(page, { lines, stop }) {
+  await bootNestedShortcutSearch(page, { easyList: true, alphaLines: lines });
+  await page.evaluate(stop => {
+    const state = window.__shortcutServer.state;
+    window.__alpha = state.open;
+    window.__pagingStops = true;
+    const send = window.__stubWSSent;
+    window.__stubWSSent = bytes => {
+      if (window.__pagingStops && bytes === '\x1b[6~' && state.surface === 'article' && state.line >= stop) return;
+      send(bytes);
+    };
+  }, stop);
+  await ptt.sendKey(page, 'ArrowLeft');
+  await waitList(page, FULL_LIST);
+  await tapCard(page, '[Talk] Alpha topic');
+  await waitArticle(page, 'Alpha');
+  await expect.poll(() => page.evaluate(() => window.__app.view._accEndRow)).toBe(stop + 22);
+  await expect.poll(async () => {
+    await ptt.sendKey(page, 'PageDown');
+    return page.evaluate(() => window.__app.view.currentLineIndex());
+  }).toBeGreaterThan(40);
+  await settled(page);
+  expect(await page.evaluate(() => window.__app.easyReading.easyReadingReachedPageEnd)).toBe(false);
+  return { row: await rowAtTop(page, MAIN), stopped: stop + 22 };
+}
+
+// Back from the author results of a partly read Alpha, with paging resumed;
+// `whileAway` changes what PTT will reopen. Returns what was sent from Back on.
+async function backToPartlyRead(page, whileAway = () => {}) {
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+  await whileAway();
+  await recordHints(page);
+  await page.evaluate(() => {
+    window.__pagingStops = false;
+    window.__sentFrom = window.__gestureSent.length;
+  });
+  await nativeBack(page);
+  await waitArticle(page, 'Alpha');
+  await settled(page);
+  return page.evaluate(() => window.__gestureSent.slice(window.__sentFrom));
+}
+
+// The numbers of Alpha's body lines the real article shows, in order.
+const bodyLineNumbers = page => page.evaluate(() => {
+  const app = window.__app;
+  const lines = app.buf.pageLines;
+  return lines.map((_, i) => /^Alpha line (\d+):/.exec(app.buf.getRowText(i, 0, app.buf.cols, lines).trim())?.[1])
+    .filter(Boolean).map(Number);
+});
+const ALL_BODY_LINES = lines => Array.from({ length: lines - 4 }, (_, i) => i + 4);
+
+test('Back from the results to a partly read source keeps it and pages PTT on from where the reading stopped (#121)', async ({ page }) => {
+  const lines = 200;
+  const { row, stopped } = await partlyReadSource(page, { lines, stop: 70 });
+  const sent = await backToPartlyRead(page);
+  // PTT's pager was sought to the line the reading stopped at, not paged
+  // there from the top.
+  expect(sent).toContain(`:${stopped}\r`);
+  expect(sent.filter(bytes => bytes === '\x1b[6~').length).toBeLessThan(Math.ceil((lines - 23) / 23));
+  await expect.poll(() => bodyLineNumbers(page)).toEqual(ALL_BODY_LINES(lines));
+  expect(await rowAtTop(page, MAIN)).toEqual(row);
+  expect(await recordedHints(page)).not.toContain(UPDATED);
+});
+
+test('a partly read source whose start was edited while the reader was away gives way to PTT\'s copy, with a notice (#121)', async ({ page }) => {
+  const lines = 200;
+  await partlyReadSource(page, { lines, stop: 70 });
+  const sent = await backToPartlyRead(page, () => page.evaluate(() => {
+    window.__alpha.text = { ...window.__alpha.text, 10: 'Alpha line 09: rewritten by its author' };
+  }));
+  await expect.poll(async () => (await recordedHints(page)).at(-1)).toBe(UPDATED);
+  expect(sent.some(bytes => bytes.startsWith(':'))).toBe(false);
+  await expect.poll(() => bodyLineNumbers(page)).toEqual(ALL_BODY_LINES(lines));
+  const texts = await page.evaluate(() => {
+    const app = window.__app;
+    const lines = app.buf.pageLines;
+    return lines.map((_, i) => app.buf.getRowText(i, 0, app.buf.cols, lines).trim());
+  });
+  expect(texts).toContain('Alpha line 09: rewritten by its author');
+});
+
 test('a source touched while it is revealed swipes again once it takes over', async ({ page }) => {
   await longSourceFromList(page);
   await tapShortcut(page, 'author');
