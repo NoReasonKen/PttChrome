@@ -4,11 +4,9 @@ const IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAw
 
 async function installPixivBridge(page, { supported = true, automatic = false } = {}) {
   await page.addInitScript(({ supported, automatic, image }) => {
-    // This transport mock has no enrolled credentials; keep login outside the
-    // preview/layout experiment instead of creating unrelated login hints.
-    const saved = JSON.parse(localStorage.getItem('pttchrome.pref.v1') || '{}');
-    saved.values = { ...saved.values, autoLogin: false };
-    localStorage.setItem('pttchrome.pref.v1', JSON.stringify(saved));
+    // Start this isolated preview fixture with non-sensitive preferences only.
+    // Never read and rewrite a complete preference record containing credentials.
+    localStorage.setItem('pttchrome.pref.v1', JSON.stringify({ values: { autoLogin: false } }));
     window.__PTT_ANDROID__ = { pixivLookup: supported, encryptedCredentials: true,
       credentialSave: true, credentialDeletion: true };
     const listeners = [];
