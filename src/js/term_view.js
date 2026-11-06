@@ -1034,6 +1034,7 @@ TermView.prototype = {
         // appendRows(showsLinkPreview=true) behaviour. Hover preview off (inline
         // already shows them; avoids a duplicate floating popup).
         var wasReverse = !!this._reverse;
+        var previousArticleInstanceId = this._articleInstanceId;
         this.accumulatePageLines();
         if (!this.buf.pageLines.length) {
           // 防黑守門：累積頁是空的（accumulatePageLines 判這幀 incomplete → 'skip'，
@@ -1056,6 +1057,11 @@ TermView.prototype = {
           var stitchAnchor = wasReverse && !this._reverse && this._reverseResult === 'stitched'
             ? this._captureRowAnchor() : null;
           this._renderScreenLines(this.buf.pageLines, /* dropHidden */ true, /* inlinePreview */ true, /* hoverPreview */ false, this._pageRenderOverrides());
+          // A rebuilt article owns a fresh scroll origin. Reset after rendering;
+          // wrapping can keep the new first page tall enough to retain the old top.
+          // Explicit reading-record restoration runs after this initial render.
+          if (previousArticleInstanceId !== this._articleInstanceId)
+            this.mainDisplay.scrollTop = 0;
           if (stitchAnchor) this._restoreRowAnchor(stitchAnchor);
         }
       } else if (

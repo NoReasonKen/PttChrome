@@ -90,8 +90,8 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
       state.surface = 'article';
       state.line = 1;
     };
-    // `lines`: a headerless article that long, over pages of 23 lines.
-    const BODY = 23;
+    // `lines`: a long article, optionally with its normal header and wrapping rows.
+    const BODY = app.buf.rows - 1;
     // Article `num` was posted at 1790000000 + num hours (its file name); its
     // header shows that time as ctime in Taipei time.
     const postTime = a => {
@@ -101,8 +101,17 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
     };
     const urlLine = a => `※ 文章網址: https://www.ptt.cc/bbs/Test/M.${1790000000 + a.num * 3600}.A.${a.num.toString(16).toUpperCase().padStart(3, '0')}.html`;
     // `url`: the article ends with its AID line, as ptt.cc's do.
-    const bodyLine = (a, n) => a.url && n === a.lines ? urlLine(a)
-      : n === 1 ? `Body of article ${a.num} by ${a.author}.` : `Line ${n} of article ${a.num}.`;
+    const bodyLine = (a, n) => {
+      if (a.withHeader) {
+        if (n === 1) return `作者  ${a.author} (${a.author}) 看板 Test`;
+        if (n === 2) return `標題  ${a.title}`;
+        if (n === 3) return `時間  ${postTime(a)} #${a.num}`;
+        if (n === 4) return '';
+      }
+      if (a.wrapBody && n > 5 && n < a.lines) return `Line ${n} of article ${a.num}.`.padEnd(78, ' wrapped text');
+      return a.url && n === a.lines ? urlLine(a)
+        : n === (a.withHeader ? 5 : 1) ? `Body of article ${a.num} by ${a.author}.` : `Line ${n} of article ${a.num}.`;
+    };
     const listRow = (article, index, cursor) => {
       const num = String(filtered() ? index : article.num).padStart(7);
       const glyph = article.title.startsWith('Re: ') ? 'R: ' + subject(article.title) : '□ ' + article.title;
@@ -110,7 +119,7 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
       return cursor ? '>' + text.slice(1) : text;
     };
     const frame = () => {
-      let rows, cursor = [24, 80];
+      let rows, cursor = [app.buf.rows, 80];
       if (state.surface === 'article' || state.surface === 'info') {
         const a = state.open;
         const status = '  瀏覽 第 1/1 頁 (100%)  目前顯示: 第 01~23 行  (y)回應(X%)推文(h)說明(←)離開 ';
@@ -119,20 +128,20 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
           const end = Math.min(a.lines, state.line + BODY - 1);
           const pages = Math.ceil(a.lines / BODY);
           const pageNo = Math.ceil(end / BODY);
-          rows = { 23: `  瀏覽 第 ${pageNo}/${pages} 頁 (${Math.floor(end * 100 / a.lines)}%)  目前顯示: 第 ${String(state.line).padStart(2, '0')}~${end} 行  (y)回應(X%)推文(h)說明(←)離開 ` };
+          rows = { [BODY]: `  瀏覽 第 ${pageNo}/${pages} 頁 (${Math.floor(end * 100 / a.lines)}%)  目前顯示: 第 ${String(state.line).padStart(2, '0')}~${end} 行  (y)回應(X%)推文(h)說明(←)離開 ` };
           for (let n = state.line; n <= end; n++) rows[n - state.line] = bodyLine(a, n);
-        } else rows = a.headerless ? { 0: `Body of article ${a.num} by ${a.author}.`, ...(a.url && { 2: urlLine(a) }), 23: status } : {
+        } else rows = a.headerless ? { 0: `Body of article ${a.num} by ${a.author}.`, ...(a.url && { 2: urlLine(a) }), [BODY]: status } : {
           0: `作者  ${a.author} (${a.author}) 看板 Test`,
           1: `標題  ${a.title}`,
           2: `時間  ${postTime(a)} #${a.num}`,
           4: `Body of article ${a.num} by ${a.author}.`,
           ...(a.url && { 6: urlLine(a) }),
-          23: status
+          [BODY]: status
         };
         // Q: the post info box over the page (bbs.c view_postinfo).
         if (state.surface === 'info') {
           rows[10] = '│ ' + urlLine(a).slice(2);
-          rows[23] = '請按任意鍵繼續';
+          rows[BODY] = '請按任意鍵繼續';
         }
       } else {
         const list = view();
@@ -141,15 +150,15 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
           0: '【板主：test】' + (filtered() ? '系列《Test》' : '看板《Test》'),
           1: '[←]離開 [→]閱讀 [^P]發表文章 [b]備忘錄',
           2: '  編號    日 期 作  者       文  章  標  題',
-          23: (legacy ? ' 文章選讀 ' : filtered() ? ' 系列文章 ' : ' 文章列表 ') + ' (y)回應 (X)推文 (←)離開 '
+          [BODY]: (legacy ? ' 文章選讀 ' : filtered() ? ' 系列文章 ' : ' 文章列表 ') + ' (y)回應 (X)推文 (←)離開 '
         };
         for (let i = 0; i < PAGE && top + i <= list.length; i++) {
           rows[3 + i] = listRow(list[top + i - 1], top + i, top + i === state.cursor);
         }
         cursor = [4 + state.cursor - top, 1];
         if (state.surface === 'authorPrompt') {
-          rows[23] = '搜尋作者: ' + state.typed;
-          cursor = [24, 11 + state.typed.length];
+          rows[BODY] = '搜尋作者: ' + state.typed;
+          cursor = [app.buf.rows, 11 + state.typed.length];
         }
       }
       let data = '\x1b[2J';
