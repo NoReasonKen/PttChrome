@@ -135,6 +135,9 @@ function disposeNode(node) {
 export class ScreenController {
   constructor(screenRoot) {
     this.screenRoot = screenRoot;
+    // The scroll container its inline previews load against: its own `.main`,
+    // also while a stacked-page layer's copy is still detached.
+    this._previewRoot = screenRoot.closest?.(".main") || null;
     this.container = el("div", { id: "mainContainer" });
     screenRoot.appendChild(this.container);
 
@@ -1223,6 +1226,7 @@ export class ScreenController {
     node.__slots = slots;
     for (let i = 0; i < slots.length; ++i) {
       const slot = slots[i];
+      if (this._previewRoot) slot.observeIn?.(this._previewRoot);
       this._liveSlots.add(slot);
       const origDestroy = slot.destroy;
       slot.destroy = () => {

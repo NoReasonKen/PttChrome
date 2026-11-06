@@ -161,12 +161,13 @@ const NESTED_ARTICLES = [
 // `alphaLines`: Alpha runs that many lines, over several PTT pages.
 // `urls`: articles end with their URL line, so the app knows an article's
 //   AID without asking PTT.
-async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false, legacyCaptions = false, extraArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false } = {}) {
+// `images`: short articles show an image link near their top, previewed inline.
+async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false, legacyCaptions = false, extraArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false, images = false } = {}) {
   await bootGestureArticle(page, { resumeLastPlace });
   // The image-article boot disables the easy-reading list; the reader's
   // default enables it before any list from this server is seen.
   if (easyList) await ptt.applyPrefs(page, { enableEasyReadingList: true });
-  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article', legacyCaptions, extraArticles, homeMenu, dynamicRows, pinned, alphaLines, urls });
+  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article', legacyCaptions, extraArticles, homeMenu, dynamicRows, pinned, alphaLines, urls, images });
   if (loggedIn) {
     await waitScreenSettled(page, { 0: '主功能表' });
     await page.evaluate(() => {
@@ -246,6 +247,7 @@ async function installNestedServer(page, session) {
           (state.squeezedFooter ? '(h)說明 (←/q)離開 ' : '(y)回應(X%)推文(h)說明(←)離開 ')
       };
       for (let row = 4; row < Math.min(22, termRows - 1); row++) rows[row] = bodyLine(article, row);
+      if (session.images) rows[5] = `https://i.urusai.cc/viewer-${article.body.toLowerCase()}.png`;
       if (session.urls && article.fn) rows[Math.min(21, termRows - 2)] = `※ 文章網址: https://www.ptt.cc/bbs/Test/${article.fn}.html`;
       return rows;
     };

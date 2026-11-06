@@ -183,9 +183,10 @@ function measureIntrinsic(node) {
 }
 
 // 好讀長頁的捲動容器。slot 建立當下還沒接進 DOM（closest 找不到），所以直接查文件；
-// If the slot ends up outside it (another `.main`, such as a stacked-page layer, comes
-// first), onIntersect rebinds to the slot's own `.main`, or to the implicit root when
-// the slot is in none (see rebindIfOutsideRoot).
+// The renderer names its own `.main` through observeIn. If the slot still ends up
+// outside its root (another `.main`, such as a stacked-page layer, comes first),
+// onIntersect rebinds to the slot's own `.main`, or to the implicit root when the slot
+// is in none (see rebindIfOutsideRoot).
 function scrollRoot() {
   return document.querySelector(".main");
 }
@@ -602,6 +603,16 @@ export function createInlinePreviewSlot(href, sizeMode = "normal") {
       if (state.destroyed || !supported || chunkFar === !!far) return;
       chunkFar = !!far;
       decide();
+    },
+    // The renderer names its own `.main` while the slot is still detached. A
+    // screen copied into a stacked-page layer before it is attached is not the
+    // first `.main`, and its first callback comes before it is connected, so
+    // rebindIfOutsideRoot never sees it: observed against the real screen, it
+    // would never intersect and its preview would never mount.
+    observeIn(root) {
+      if (state.destroyed || !pair || pair.root === root) return;
+      unobserve();
+      observe(observersFor(root));
     },
     setSizeMode(mode) {
       if (state.sizeMode === mode || state.destroyed) return;

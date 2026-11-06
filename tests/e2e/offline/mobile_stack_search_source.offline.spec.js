@@ -625,3 +625,23 @@ test('a comment made before PTT reopens a deleted source is refused with a notic
   expect(await pendingShown(page)).toBe(false);
   expect(await preflights(page)).toEqual([]);
 });
+
+// Loaded inline image previews under `root`: shown, not their placeholders.
+const loadedPreviews = (page, root) => page.evaluate(root => [...document.querySelectorAll(`${root} img.easyReadingImg`)]
+  .filter(img => !img.classList.contains('inlinePreviewGhost') && img.complete && img.naturalWidth > 0 &&
+    img.getBoundingClientRect().height > 0).length, root);
+
+test('the source revealed by Back from the results shows the image previews the reader saw', async ({ page }) => {
+  await bootNestedShortcutSearch(page, { easyList: true, images: true });
+  await expect.poll(() => loadedPreviews(page, MAIN)).toBe(1);
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+  const release = await holdBackReply(page);
+  await nativeBack(page);
+  await heldBack(page);
+  await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
+  await expect.poll(() => loadedPreviews(page, ARTICLE_LAYER)).toBe(1);
+  await release();
+  await waitArticle(page, 'Alpha');
+});
