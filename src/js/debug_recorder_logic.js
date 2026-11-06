@@ -120,6 +120,7 @@ export function serializeRecording({ events, meta = {}, cols = 80, rows = 24, re
     if (ev.state) o.state = ev.state;
     return o;
   });
+  const environment = outEvents.find(ev => ev.dir === 'log' && ev.tag === 'record.environment')?.info;
 
   const cassetteSteps = eventsToCassetteSteps(
     events
@@ -141,9 +142,9 @@ export function serializeRecording({ events, meta = {}, cols = 80, rows = 24, re
     ),
     events: outEvents,
     cassette: {
-      meta: { mode: 'debug-derived', recordedAt: new Date().toISOString() },
-      cols,
-      rows,
+      meta: { mode: 'debug-derived', recordedAt: new Date().toISOString(), ...(environment && { environment }) },
+      cols: environment?.terminal?.cols || cols,
+      rows: environment?.terminal?.rows || rows,
       steps: cassetteSteps,
     },
   };
