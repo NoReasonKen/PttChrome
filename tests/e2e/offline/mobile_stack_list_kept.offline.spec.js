@@ -154,3 +154,57 @@ test('opening a kept row whose article PTT lists differently now stays on the li
   expect(await page.evaluate(() => window.__threadServer.state.surface)).toBe('list');
   expect((await cards(page)).find(c => c.num === '1184')).toMatchObject({ title: '□ [Talk] Edited title' });
 });
+
+// Which actions spend the live layer the list was shown from (#125): asking
+// PTT for the list anew does, and its rows then show PTT's list now; using
+// the list as it is does not.
+const shownNow = async (page, num) => (await cards(page)).find(c => c.num === String(num));
+
+test('a number jump beyond the rows loaded shows PTT\'s list now', async ({ page }) => {
+  await readReply(page);
+  await back(page);
+  await ptt.sendKey(page, '1');
+  await page.locator('[data-list-input]').fill('100');
+  await page.locator('[data-list-input]').press('Enter');
+  await expect.poll(async () => (await shownNow(page, 100))?.push).toBe('20');
+  await listActive(page);
+  expect(await shownNow(page, 100)).toMatchObject({ selected: true });
+});
+
+test('a key sent in native mode shows PTT\'s list now once the list takes over again', async ({ page }) => {
+  await readReply(page);
+  await back(page);
+  // `Z`, a key the list sends PTT as it is; the controlled PTT redraws the list.
+  await ptt.sendKey(page, 'Z');
+  await expect.poll(async () => (await shownNow(page, 1181))?.mark, { timeout: 15000 }).toBe('M');
+  await listActive(page);
+  expect(await shownNow(page, 1181)).toMatchObject({ push: '20' });
+});
+
+test('tagging keeps the rows as they were, except the row tagged', async ({ page }) => {
+  const before = await readReply(page);
+  await back(page);
+  await ptt.sendKey(page, 't');
+  await expect.poll(async () => (await shownNow(page, OPEN))?.mark).toBe('D');
+  await listActive(page);
+  const now = await cards(page);
+  // The tagged row is PTT's now; its score came with it.
+  expect(now.find(c => c.num === String(OPEN))).toMatchObject({ push: '15' });
+  for (const card of asLeft(before.cards).filter(c => c.num !== String(OPEN))) {
+    expect(now.find(c => c.num === card.num)).toEqual({ ...card, selected: expect.any(Boolean) });
+  }
+});
+
+test('opening another article from the list and coming back keeps the rows as they were', async ({ page }) => {
+  const before = await readReply(page);
+  await back(page);
+  await page.locator(`${MAIN} .listCard`).filter({ has: page.locator('.listCardNum', { hasText: /^1182$/ }) }).tap();
+  await expect.poll(() => page.locator('.main').first().innerText()).toContain('Body of article 1182 by');
+  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
+  await back(page);
+  const now = await cards(page);
+  for (const card of asLeft(before.cards).filter(c => !['1182', String(OPEN)].includes(c.num))) {
+    expect(now.find(c => c.num === card.num)).toEqual({ ...card, selected: expect.any(Boolean) });
+  }
+  expect(await shownNow(page, 1182)).toMatchObject({ push: '3', selected: true });
+});

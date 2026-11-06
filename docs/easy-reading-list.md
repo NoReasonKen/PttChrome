@@ -481,7 +481,12 @@ states：`idle → active ⇄ functionMode`；`active → opening → suspended 
   （`noteLastRead`），「+N」由讀完時的紀錄自己重算。之後由 term_view `holdListRows` 保住這批列：
   PTT 的落地頁什麼都不加，其他頁（往上／往下補頁）**只加還沒顯示過的列**，已顯示的列永不被換掉。
   `resetListAccumulation`（rebuild／重新整理／進板）、`_resumeBuffer`、非 resize 的 `_resumeInPlace`
-  （A 類交易、開文身分不符 `_openMismatched`）解除保留，PTT 那一頁照舊併入。開文前的身分檢查不變：
+  （開文身分不符 `_openMismatched`）解除保留，PTT 那一頁照舊併入。**哪些動作「用掉」layer**
+  （[#125](https://github.com/NoReasonKen/PttChrome/issues/125)，`page_stack.js#spendsLayer`，
+  `NavigationStack.spend`）：重新整理、設已讀（前已讀後未讀／全部已讀）、跳號超出已載入的列（含 A 類鍵落點不在緩衝）、
+  原生 passthrough 鍵——這些向 PTT 重新要資料，丟掉 layer 還沒做完的事並解除保留；捲動補頁、開文、
+  A 類鍵（`_resumeInPlace(…, { keepRows: true })`）**不**用掉 layer，保留的列不動。例外：`t` 標記改的是使用者
+  自己動作的那一列（`retakeListRow`），那一列照收 PTT 的新樣子，其餘列不動。開文前的身分檢查不變：
   保留列與 PTT 現況不同時照樣停在列表並提示。守護：`mobile_stack_list_kept.offline.spec.js`、
   `list_accumulate.test.js`「held list rows」。
 - **N6b 編號空間不變的原生交易回好讀時還原捲動錨**（2026-10 起泛化：由閱讀紀錄 `reading_record` 的決策表決定哪些交易還原，涵蓋設已讀、重新整理、`s` 取消、身後的列表——**模型與決策表見 `docs/reading-record.md`**；下面是執行端的細節）：

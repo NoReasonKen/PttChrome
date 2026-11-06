@@ -5,7 +5,8 @@
 // an article shortcut search started from it. Back reveals the layer, PTT's
 // real Back is sent through the usual path, and once the owning session has
 // presented the real page and the reader is idle, the real page takes over at
-// the layer's reading position.
+// the layer's reading position. A Back made meanwhile reveals the next lower
+// page at once, and PTT follows the Backs in order (#125).
 //
 // ArticleGestures owns the surfaces that slide away; this module owns the
 // stack, the layers and the handoff.
@@ -13,8 +14,8 @@ import { readEffectivePrefs } from './pref_storage';
 import { OWNER_ARTICLE_LIST, OWNER_BOARD_LIST } from './list_render_owner';
 import { sameBoard } from './screen_titles';
 import {
-  createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, queueBack, takeQueuedBack, dropQueuedBacks, boundLayers,
-  pageShown, PAGE
+  createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, backPastRevealed, spendsLayer, boundLayers,
+  pageShown, PAGE, HANDOFF_TIMEOUT_MS, HANDOFF_REACH_POLL_MS
 } from './page_stack';
 import { StackListLayer } from './stack_list_layer';
 import { StackHomeLayer } from './stack_home_layer';
@@ -334,16 +335,22 @@ export class NavigationStack {
     // backtracking, not the page below (#33).
     const top = this._top();
     if (top?.kind === PAGE.ARTICLE_LIST && !top.results && this._showsSearchResults()) return null;
-    const target = revealTarget(this.stack);
-    const lower = target && this.captured[this.stack.pages.length - 2];
+    return this._revealIn(this.stack);
+  }
+
+  // The live lower page Back from the top of `stack` reveals, or null.
+  _revealIn(stack) {
+    const target = revealTarget(stack);
+    const n = stack.pages.length;
+    const lower = target && this.captured[n - 2];
     // Fitting a list layer to a changed width renders it again.
-    return lower?.layer.fitViewport() && this._selects(lower) ? { page: target, ...lower } : null;
+    return lower?.layer.fitViewport() && this._selects(lower, stack.pages[n - 1]) ? { page: target, ...lower } : null;
   }
 
   // Whether a lower article list shows PTT's selection: the article now open,
   // followed through every replacement in place (#74).
-  _selects(lower) {
-    return lower.kind !== PAGE.ARTICLE_LIST || (lower.selected === this._top().id && lower.shows !== false);
+  _selects(lower, top = this._top()) {
+    return lower.kind !== PAGE.ARTICLE_LIST || (lower.selected === top.id && lower.shows !== false);
   }
 
   // What PTT's Back from the shown article returns to, when the stack knows
@@ -392,18 +399,68 @@ export class NavigationStack {
   // layer's rows (#120), so the swap shows nothing new.
   keptListLayer(board) {
     const h = this.handoff;
-    if (!h || !h.layer || h.target !== PAGE.ARTICLE_LIST || h.presentedAt != null || !sameBoard(h.board, board)) return null;
+    if (!h || !h.layer || h.legs.length || h.target !== PAGE.ARTICLE_LIST || h.presentedAt != null ||
+        !sameBoard(h.board, board)) return null;
     return h.layer;
   }
 
-  // A Back made during the handoff runs after the swap (#34), when a page is
-  // left to unwind. It replaces a remembered tap either way: the reader's last
-  // choice wins.
+  // Whether Back is showing the page of `kind` again from its live layer, and
+  // PTT is answering the Back to that page.
+  showsLayerOf(kind) {
+    const h = this.handoff;
+    return !!h?.layer && !h.legs.length && h.target === kind;
+  }
+
+  // A Back made during the handoff (#125): the revealed page is left too, and
+  // the page below it shows at once, its live layer or the dark fallback. PTT
+  // follows this Back once it has answered the earlier ones; nothing waits for
+  // a swap. It replaces a remembered tap: the reader's last choice wins.
   queueBack() {
     const h = this.handoff;
     if (!h) return false;
-    this.stack = queueBack(this.stack);
     h.tap = null;
+    const last = h.legs[h.legs.length - 1] || h;
+    // The dark fallback waits for whatever PTT shows; nothing is known below.
+    const next = last.target && backPastRevealed(this.stack);
+    if (!next) return true;
+    const left = this.stack.pages[this.stack.pages.length - 2];
+    this._unbindLayer(h);
+    h.layer?.hide();
+    h.layer?.destroy();
+    this.stack = next.stack;
+    this.captured.length = Math.min(this.captured.length, this.stack.pages.length - 1);
+    const revealed = next.revealed && this._revealIn(this.stack);
+    h.legs.push({
+      level: left.kind, target: revealed?.page.kind || null, id: revealed?.page.id, board: left.board,
+      identity: left.kind === PAGE.ARTICLE ? last.id : null
+    });
+    h.layer = revealed?.layer || null;
+    h.appBar = revealed?.appBar || null;
+    h.reveal?.(h.layer, revealed?.title || '', h.appBar);
+    if (h.layer) {
+      h.layer.show(true);
+      this._bindLayer(h);
+    }
+    this.core._refreshScreenContext?.();
+    this._mark('back', { level: left.kind, target: revealed?.page.kind || null, layer: !!h.layer });
+    // PTT already shows the page just left: it follows at once.
+    if (h.presentedAt != null) {
+      h.presentedAt = null;
+      this._followNext();
+    }
+    return true;
+  }
+
+  // The reader acted on the page shown (#125). An action that asks PTT for the
+  // page's data anew spends the live layer the page was shown from: what the
+  // layer still had to do, such as a remembered tap, no longer affects the
+  // page, and its rows no longer stay as the reader left them. Returns whether
+  // `action` spends it.
+  spend(action) {
+    if (!spendsLayer(action)) return false;
+    if (this.handoff) this.handoff.tap = null;
+    this.core.view.releaseListRows?.();
+    this._mark('spent', { action });
     return true;
   }
 
@@ -412,8 +469,10 @@ export class NavigationStack {
   // takes over; `cancel` brings the current page back when Back was not sent.
   // `level` is the kind of page left: an article, an article list or a board
   // list. A list with nothing revealed below waits for whatever page PTT shows
-  // next (#32, #53).
-  begin({ level = PAGE.ARTICLE, send, finish, cancel, hint }) {
+  // next (#32, #53). `follow(level)` sends PTT the Back from the page of kind
+  // `level` that a later Back revealed past, and `reveal(layer, title, appBar)`
+  // shows that Back's lower page under its own App Bar (#125).
+  begin({ level = PAGE.ARTICLE, send, follow, reveal, finish, cancel, hint }) {
     const core = this.core;
     const revealed = this._revealed();
     const layer = revealed?.layer || null;
@@ -422,7 +481,10 @@ export class NavigationStack {
       board: this._top()?.board || core.view._articleBoard,
       identity: openArticleKey(core), appBar: revealed?.appBar || null,
       sentAt: performance.now(), presentedAt: null, touches: 0, lastScrollAt: -Infinity,
-      timer: null, listeners: [], finish, hint, tap: null
+      timer: null, followTimer: null, listeners: [], layerListeners: [], finish, follow, reveal, hint, tap: null,
+      // The Backs PTT is still to follow after this one, in order: the page each
+      // leaves and what it is expected to show.
+      legs: []
     };
     const listen = (target, type, fn, options) => {
       target.addEventListener(type, fn, options);
@@ -430,34 +492,7 @@ export class NavigationStack {
     };
     if (layer) {
       layer.show(true);
-      const local = event => {
-        event.stopPropagation();
-        if (event.type === 'click' || event.type === 'contextmenu') event.preventDefault();
-        // A tap on an entry is remembered by identity; the last tap wins.
-        const id = layer.tapOf(event);
-        if (id) {
-          h.tap = id;
-          this.stack = dropQueuedBacks(this.stack);
-        }
-      };
-      for (const type of LOCAL_INPUT) listen(layer.el, type, local);
-      const touches = event => {
-        h.touches = event.touches.length;
-        this._step();
-      };
-      // A finger's later events go to its first target, which a re-render may
-      // have removed from the layer by then.
-      listen(layer.el, 'touchstart', event => {
-        touches(event);
-        listen(event.target, 'touchend', touches);
-        listen(event.target, 'touchcancel', touches);
-      }, true);
-      listen(layer.el, 'touchend', touches, true);
-      listen(layer.el, 'touchcancel', touches, true);
-      listen(layer.el, 'scroll', () => {
-        h.lastScrollAt = performance.now();
-        this._step();
-      }, { capture: true, passive: true });
+      this._bindLayer(h);
     }
     listen(core.conn, 'close', () => this._end('disconnected'));
     listen(core.buf, 'viewUpdate', () => h.presentedAt == null && this._mark('view'));
@@ -484,6 +519,80 @@ export class NavigationStack {
       this._step();
     }
     return sent;
+  }
+
+  // Input on the revealed layer stays on it: a tap is remembered for after the
+  // swap, and touches and scrolling defer the swap.
+  _bindLayer(h) {
+    const layer = h.layer;
+    const listen = (target, type, fn, options) => {
+      target.addEventListener(type, fn, options);
+      h.layerListeners.push(() => target.removeEventListener(type, fn, options));
+    };
+    const local = event => {
+      event.stopPropagation();
+      if (event.type === 'click' || event.type === 'contextmenu') event.preventDefault();
+      // A tap on an entry is remembered by identity; the last tap wins.
+      const id = layer.tapOf(event);
+      if (id) h.tap = id;
+    };
+    for (const type of LOCAL_INPUT) listen(layer.el, type, local);
+    const touches = event => {
+      h.touches = event.touches.length;
+      this._step();
+    };
+    // A finger's later events go to its first target, which a re-render may
+    // have removed from the layer by then.
+    listen(layer.el, 'touchstart', event => {
+      touches(event);
+      listen(event.target, 'touchend', touches);
+      listen(event.target, 'touchcancel', touches);
+    }, true);
+    listen(layer.el, 'touchend', touches, true);
+    listen(layer.el, 'touchcancel', touches, true);
+    listen(layer.el, 'scroll', () => {
+      h.lastScrollAt = performance.now();
+      this._step();
+    }, { capture: true, passive: true });
+  }
+
+  _unbindLayer(h) {
+    h.layerListeners?.forEach(remove => remove());
+    h.layerListeners = [];
+    h.touches = 0;
+  }
+
+  // PTT shows the page a later Back left (#125): it is sent that Back, and
+  // the handoff waits for what that Back shows.
+  _followNext() {
+    const h = this.handoff;
+    clearTimeout(h.timer);
+    Object.assign(h, h.legs.shift(), { sentAt: performance.now(), presentedAt: null });
+    this._mark('follow', { level: h.level, target: h.target });
+    // From its own task: the page PTT shows may still be presenting itself.
+    h.followTimer = setTimeout(() => this._sendFollow());
+    this._step();
+  }
+
+  _sendFollow() {
+    const h = this.handoff;
+    if (!h) return;
+    h.followTimer = null;
+    if (h.follow?.(h.level)) return this._mark('sent', { level: h.level, target: h.target });
+    // Another operation owns the line for now: the Back waits for it, within
+    // the handoff bound.
+    if (performance.now() - h.sentAt >= HANDOFF_TIMEOUT_MS) return this._end('timeout');
+    h.followTimer = setTimeout(() => this._sendFollow(), HANDOFF_REACH_POLL_MS);
+  }
+
+  // PTT shows the page the current Back expects: a later Back is sent next,
+  // or the real page takes over once the reader is idle.
+  _answered(info) {
+    const h = this.handoff;
+    if (h.legs.length) return this._followNext();
+    h.presentedAt = performance.now();
+    this._mark('presented', info);
+    this._step();
   }
 
   // The owning session presented a real page of `kind`: an article list
@@ -519,9 +628,7 @@ export class NavigationStack {
       if (!board) return;
       if (!sameBoard(board, h.board)) return this._end('unexpected');
     }
-    h.presentedAt = performance.now();
-    this._mark('presented', { kind });
-    this._step();
+    this._answered({ kind });
   }
 
   // A screen settled during the handoff: it ends the handoff when it is PTT's
@@ -532,8 +639,9 @@ export class NavigationStack {
     if (!h || h.presentedAt != null) return;
     const pageState = core.buf.pageState;
     if (!h.target) {
-      // The list being left until a session presents its page; any other
+      // The page being left until a session presents its page; any other
       // screen is PTT's answer.
+      if (h.level === PAGE.ARTICLE && pageState === 3 && openArticleKey(core) === h.identity) return;
       const leaving = h.level === PAGE.BOARD_LIST ? OWNER_BOARD_LIST : OWNER_ARTICLE_LIST;
       if (pageState === 2 && core.buf.listRenderOwner === leaving) return;
       return this._end('presented');
@@ -568,6 +676,8 @@ export class NavigationStack {
     const h = this.handoff;
     if (!h) return;
     clearTimeout(h.timer);
+    clearTimeout(h.followTimer);
+    this._unbindLayer(h);
     h.listeners.forEach(remove => remove());
     this.handoff = null;
   }
@@ -586,10 +696,6 @@ export class NavigationStack {
     // PTT left the route the stack describes, or never confirmed it: nothing
     // below is known to be the way back.
     if (how === 'unexpected' || how === 'timeout') this._discard();
-    // Backs queued for a page PTT did not show have nothing left to unwind.
-    if (how !== 'presented') this.stack = dropQueuedBacks(this.stack);
-    const queued = takeQueuedBack(this.stack);
-    this.stack = queued.stack;
     h.finish();
     core._refreshScreenContext?.();
     if (how === 'timeout' && h.hint) h.hint();
@@ -598,18 +704,9 @@ export class NavigationStack {
     // Prepare the next list outside a new contact, after the spent layer is
     // removed. Only that list remains connected below the real page.
     if (how === 'presented') this._revealed()?.layer.prepare?.();
-    // Through the usual path: it reveals the next lower page, or waits for PTT.
-    // Sent from its own task, since the swap can run inside the owning
-    // session's presentation.
-    if (queued.back) setTimeout(() => {
-      core.sendNavKeyAsUser('ArrowLeft');
-      // Without a live layer below, that Back waits for PTT outside any
-      // handoff: the Backs still queued have no swap to run after.
-      if (!this.handoff) this.stack = dropQueuedBacks(this.stack);
-    });
     // A size change made during Back waits until the revealed page has
-    // handed over its reading position. A queued Back keeps priority.
-    if (!queued.back) core.listResize?.pump();
+    // handed over its reading position.
+    core.listResize?.pump();
     // The swipes follow the page now shown: a swap held by the reader's finger
     // can come after the last screen settles (#83).
     core.articleGestures?.update();

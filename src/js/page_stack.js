@@ -6,8 +6,7 @@
 // a board list, the board its selected row opens), and whether a live layer of
 // it exists underneath. A board list opened from a board list's row has that
 // row as its `folder`. An article list that shows
-// search results has `results`; an article has its `id` when known. `queued`
-// counts the Backs made while a handoff was under way, still to run.
+// search results has `results`; an article has its `id` when known.
 import { sameBoard } from './screen_titles';
 
 // The kinds of stacked page. A layer's element carries its kind as
@@ -71,24 +70,29 @@ export function popPage(stack) {
   return { stack: { ...stack, pages }, revealed: revealTarget(stack) };
 }
 
-// A Back made while the current page is sliding away to reveal the one below.
-// It runs after the swap, so the reader can unwind quickly; it is kept only
-// while a page is left below the revealed one to go back to.
-export function queueBack(stack) {
-  const queued = stack.queued || 0;
-  return queued < stack.pages.length - 2 ? { ...stack, queued: queued + 1 } : stack;
+// A Back made while PTT still answers an earlier Back (#125). The revealed
+// page is left too, so its layer is spent, and the page below it shows at once:
+// its live layer, or the dark fallback without one (`revealed` null). PTT
+// follows the Backs in order; no Back waits for a swap. Null when nothing is
+// known below the revealed page.
+export function backPastRevealed(stack) {
+  if (stack.pages.length < 3) return null;
+  const left = popPage(stack).stack;
+  return { stack: left, revealed: revealTarget(left) };
 }
 
-// After the swap: whether a queued Back runs now.
-export function takeQueuedBack(stack) {
-  const queued = stack.queued || 0;
-  return { stack: { ...stack, queued: Math.max(0, queued - 1) }, back: queued > 0 };
-}
+// What a reader can do on a page shown from its live layer, and whether it
+// spends the layer: asking PTT for the page's data anew does, and the layer's
+// pending work is dropped; using the page as it is does not. Leaving the page
+// by Back spends it too (popPage).
+const SPENDS_LAYER = {
+  refresh: true, markRead: true, jumpBeyondRows: true, nativePassthrough: true,
+  loadMoreRows: false, openEntry: false, inPlaceKey: false
+};
 
-// The handoff did not end on the expected page: what the queued Backs were
-// meant to unwind no longer holds.
-export function dropQueuedBacks(stack) {
-  return { ...stack, queued: 0 };
+export function spendsLayer(action) {
+  if (!(action in SPENDS_LAYER)) throw new Error('unknown page action: ' + action);
+  return SPENDS_LAYER[action];
 }
 
 // Live layers kept at once. Pages deeper than this keep only their identity,

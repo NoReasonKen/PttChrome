@@ -1133,6 +1133,12 @@ ListSession.prototype = {
     return this._core.articleGestures?.stack?.keptListLayer?.(boardNameFromKey(this._boardName)) || null;
   },
 
+  // The reader's `action` on this list may spend the live layer it was shown
+  // from (#125, page_stack.js#spendsLayer).
+  _spendLayer: function(action) {
+    this._core.articleGestures?.stack?.spend(action);
+  },
+
   // pref 開著＝本功能（L1 凍結交易 ＋ L2 自動回復）生效；關掉＝**逐位元回到
   // 2026-09-03 之前**：A 類鍵一律走 passthrough、探針一次都不排。
   // 這是使用者拍板的逃生門（三階梯見 docs/easy-reading-list.md）：判定類功能的
@@ -1663,6 +1669,8 @@ ListSession.prototype = {
   // 'ignore' (they would take the same branch and hand over to a native path that
   // also sends nothing).
   _beginNativePassthrough: function(e) {
+    // Keys sent in native mode ask PTT for the list anew (#125).
+    this._spendLayer('nativePassthrough');
     let bytes = keyEventToBytes(e);
     // A printable non-ASCII char must go out as Big5 (raw UTF-16 = mojibake).
     // **Ctrl 組合一律不過 u2b**：它們是控制碼（CtrlShiftMap 全 < 0x80），原生鍵盤路徑
@@ -2188,6 +2196,10 @@ ListSession.prototype = {
   _enqueueInplaceKey: function(bytes) {
     const self = this;
     let landed = null;
+    // Tagging changes the row it acts on, the selected one PTT's cursor was
+    // synced to: that row takes PTT's rendering even while the rows the reader
+    // left are kept (#125).
+    if (bytes === 't') this._view.retakeListRow?.(this._selectedNum, this._selectedPinnedKey);
     this._queue.enqueue({
       keys: bytes,
       kind: 'native-inplace',
@@ -2223,8 +2235,12 @@ ListSession.prototype = {
         // 落點不在緩衝（`[` 跳到很遠的舊文）＝畫面本來就要換一份 ⇒ 走既有的
         // resume+rebuild（那時視野跳一下是合理的）。落在緩衝裡已有的置底列（對置底列
         // 按 t 之類）算在緩衝內：錨不動（不變量 N6）。
-        if (inBuf) self._resumeInPlace(landed);
+        // An in-place key does not spend the live layer the list was shown
+        // from (#125): the rows the reader left stay as they were.
+        if (inBuf) self._resumeInPlace(landed, { keepRows: true });
         else {
+          // Landing beyond the rows loaded rebuilds the list from PTT.
+          self._spendLayer('jumpBeyondRows');
           self._resumeBuffer(landed);
           self._rebuild(landed);
         }
@@ -2244,9 +2260,10 @@ ListSession.prototype = {
   // _anchorOverride ⇒ 使用者自己捲出來的位置被 read.c 的分頁蓋掉，視野瞬間跳走。
   // 這裡只做兩件事：採用落點當選取／server 游標，然後把它帶進視野（不變量 N6）。
   _resumeInPlace: function(facts, opts) {
-    // PTT's page merges into the buffer again (a resize repaints the same
-    // page and keeps rows held for the reader).
-    if (!opts?.preserveSelection) this._view.releaseListRows?.();
+    // PTT's page merges into the buffer again. A resize repaints the same
+    // page, and an in-place key leaves the rows as they were (#125): both keep
+    // rows held for the reader.
+    if (!opts?.preserveSelection && !opts?.keepRows) this._view.releaseListRows?.();
     this._holdReason = null;
     this._cancelResumeProbe();
     this._resumedAt = performance.now();
@@ -2417,6 +2434,8 @@ ListSession.prototype = {
       if (!num || num <= 0) return; // cancelled / not a number: zero server
       const r = transitionListSession(self.state, { type: 'key', keyClass: 'transact' });
       self.state = r.next;
+      // A number beyond the rows loaded asks PTT for another part of the list.
+      if ((self._termBuf.listLineNums || []).indexOf(num) === -1) self._spendLayer('jumpBeyondRows');
       self._beginJumpNumber(num);
     });
   },
@@ -2735,6 +2754,7 @@ ListSession.prototype = {
     }
     if (this.state !== 'active') return false;
     if (num == null) return false;
+    this._spendLayer('markRead');
 
     // 先把選取移到目標並**同步重畫**：_beginPassthroughBytes 會立刻凍住畫面，
     // 少了這一步凍住的是點擊前的游標位置（看起來像點錯列）。同 onMouseClick。
