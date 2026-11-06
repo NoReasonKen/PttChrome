@@ -294,8 +294,6 @@ export class ArticleGestures {
     });
   }
 
-  // A leave is on its way to PTT, from the committed slide on: other input
-  // waits for the swap.
   // Search backtracking found its source deleted (#121).
   sourceGone() {
     this.stack.sourceGone();
@@ -312,6 +310,8 @@ export class ArticleGestures {
     return true;
   }
 
+  // A leave is on its way to PTT, from the committed slide on: other input
+  // waits for the swap.
   holdsInput() {
     return (this.stack.handingOff || this.backsDuringSlide != null) && !this.sendingBack;
   }

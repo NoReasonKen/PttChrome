@@ -910,6 +910,7 @@ export function ListSession(core, view, termBuf, queue) {
   this._fillPages = 0;
   this._edgeUp = false;
   this._edgeDown = false;
+  this._newerBelow = false;
   this._stallUp = false;
   this._stallDown = false;
   // Contiguity-prune pivot override while a far jump is in flight (End/Home):
@@ -2333,6 +2334,16 @@ ListSession.prototype = {
   // wherever PTT's selection landed (#127). A route that reused the session
   // for another list (search results from the article) replaced its rows too;
   // the list page kept with the layer gives them back.
+  // Whether the page `facts` lists an article newer than every row the
+  // buffer holds: PTT's landing page is held out of a list shown again from
+  // its layer, and those articles load as the reader scrolls down to them.
+  _listsNewerThanBuffer: function(facts) {
+    const newest = bufferEdgeNum(this._termBuf.listLineNums, 1);
+    if (!facts || !facts.nums || newest == null) return false;
+    for (let r = 3; r <= facts.rows - 2; ++r) if (facts.nums[r] != null && facts.nums[r] > newest) return true;
+    return false;
+  },
+
   _resumeFromLayer: function(facts, layer) {
     if (layer && layer.listPage) this._restoreListPage(layer.listPage);
     if (this._boardName == null) {
@@ -2375,6 +2386,7 @@ ListSession.prototype = {
     const lastRead = layer && layer.lastReadSubject();
     if (lastRead) this.noteLastRead(lastRead);
     this._view.holdListRows(facts && facts.rowTexts);
+    this._newerBelow = this._listsNewerThanBuffer(facts);
     for (const row of layer ? layer.unsureRows() : []) {
       const key = rowKey(row);
       this._view.retakeListRow(key.num, key.pinnedKey);
@@ -2704,7 +2716,7 @@ ListSession.prototype = {
     const atEdge = dir < 0 ? px <= 0 : px >= this._maxScrollTop() - 1;
     if (!atEdge) return; // 還捲得動 ⇒ scroll 事件會處理
     this._maybeDemand(dir);
-    const moreExpected = dir > 0 ? !this._edgeDown : !this._edgeUp;
+    const moreExpected = dir > 0 ? this._moreBelow() : !this._edgeUp;
     if (moreExpected && !this._queue.idle) this._setLoading(true);
   },
 
@@ -2745,7 +2757,7 @@ ListSession.prototype = {
       dir > 0
         ? px >= this._maxScrollTop() - 1
         : px <= 0;
-    const moreExpected = dir > 0 ? !this._edgeDown : !this._edgeUp;
+    const moreExpected = dir > 0 ? this._moreBelow() : !this._edgeUp;
     if (atEdge && moreExpected && !this._queue.idle) this._setLoading(true);
   },
 
@@ -2971,6 +2983,7 @@ ListSession.prototype = {
     this._selectMode = listModeOf(facts) === 'select';
     this._edgeUp = false;
     this._edgeDown = false;
+    this._newerBelow = false;
     this._stallUp = false;
     this._stallDown = false;
     this._fillPages = 0;
@@ -3028,6 +3041,7 @@ ListSession.prototype = {
     if (facts) this._selectMode = listModeOf(facts) === 'select';
     this._edgeUp = false;
     this._edgeDown = false;
+    this._newerBelow = false;
     this._stallUp = false;
     this._stallDown = false;
     this._fillPages = 0;
@@ -3131,6 +3145,13 @@ ListSession.prototype = {
     this._enqueuePrefetch(true, 'fill');
   },
 
+  // Whether PTT may list rows below the buffer: no bottom edge confirmed, or
+  // the landing page of a list shown again from its live layer listed
+  // articles newer than the rows kept (story 14).
+  _moreBelow: function() {
+    return !this._edgeDown || !!this._newerBelow;
+  },
+
   // Demand prefetch: keep TWO full pages of rows buffered beyond the window in
   // the direction of travel (one page was too late — the fetch only started
   // once the user was about to hit the edge, so every boundary crossing waited
@@ -3152,7 +3173,7 @@ ListSession.prototype = {
     else if (
       direction > 0 &&
       seq.length - (top + B) < 2 * B &&
-      !this._edgeDown &&
+      this._moreBelow() &&
       !this._stallDown
     )
       this._enqueuePrefetch(false, 'key');
@@ -3259,6 +3280,9 @@ ListSession.prototype = {
   //   'key'  → _maybeDemand (stops once the headroom margin is buffered)
   _enqueuePrefetch: function(up, origin) {
     const dir = up ? -1 : 1;
+    // One page past a confirmed bottom edge answers whether PTT still lists
+    // articles there (_moreBelow).
+    if (!up) this._newerBelow = false;
     const chained = this._chainState !== null && this._chainState.dir === dir;
     const base = chained
       ? this._chainState.lastLanded
@@ -3946,6 +3970,7 @@ ListSession.prototype = {
     this._seqCache = null;
     this._edgeUp = false;
     this._edgeDown = false;
+    this._newerBelow = false;
     this._stallUp = false;
     this._stallDown = false;
     this._fillPages = 0;
@@ -4536,7 +4561,7 @@ ListSession.prototype = {
     // an earlier chain) — show the loading indicator until rows arrive
     // (prefetch onDone/markEdge clear it).
     const atEdge = direction > 0 ? next === len - 1 : next === 0;
-    const moreExpected = direction > 0 ? !this._edgeDown : !this._edgeUp;
+    const moreExpected = direction > 0 ? this._moreBelow() : !this._edgeUp;
     if (atEdge && moreExpected && !this._queue.idle) this._setLoading(true);
   },
 

@@ -478,6 +478,40 @@ test('a deleted source stays shown with today\'s notice, refuses a comment, and 
   expect(await page.evaluate(() => window.__sent.join(''))).not.toContain('\x1b[D');
 });
 
+// A second Back before PTT reopens the source already left it (#125): when
+// the source turns out deleted, PTT's board list takes over the list shown,
+// and the source is not shown again over it.
+test('a deleted source left by a later Back gives way to PTT\'s board list (#121, #125)', async ({ page }) => {
+  await sourceFromList(page);
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await page.evaluate(() => window.__shortcutServer.state.deleted.add('1gIeu-3A'));
+  await settled(page);
+  const release = await holdBackReply(page);
+  await nativeBack(page);
+  await heldBack(page);
+  await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
+  await nativeBack(page);
+  await expect(page.locator(ARTICLE_LAYER)).toHaveCount(0);
+  // How the handoff ends: the source found deleted, with a later Back made.
+  await page.evaluate(() => {
+    const stack = window.__app.articleGestures.stack;
+    const end = stack._end.bind(stack);
+    window.__ends = [];
+    stack._end = how => { window.__ends.push(how); return end(how); };
+  });
+  await release();
+  await expect.poll(() => page.evaluate(() => window.__ends)).toEqual(['unexpected']);
+  await page.waitForFunction(() => {
+    const app = window.__app;
+    return app.buf.pageState === 2 && !app.articleGestures.stack.handingOff && app.commandQueue.idle;
+  }, null, { timeout: 10000 });
+  await waitList(page, { has: ['Beta topic', 'Delta topic'] });
+  await expect(page.locator('[data-stack-layer]:not([data-stack-parked])')).toHaveCount(0);
+  await expect(page.locator(ARTICLE_LAYER)).toHaveCount(0);
+  expect(await page.evaluate(() => window.__app.articleGestures.stack.gone)).toBeNull();
+});
+
 test('a comment made before PTT reopens the source waits, then goes out once the source takes over (#121)', async ({ page }) => {
   const release = await revealHeldSource(page);
   await commentOnLayer(page, 'first');

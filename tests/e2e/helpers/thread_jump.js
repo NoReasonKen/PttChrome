@@ -56,7 +56,7 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
     }
     const subject = title => title.replace(/^(?:Re: )+/, '');
     const PAGE = 20;
-    // surface: article | info | list | authorPrompt; `filter`: the subject the
+    // surface: article | info | list | authorPrompt | markReadPrompt; `filter`: the subject the
     // results show, `byAuthor`: the author they show (`a`).
     const state = {
       surface: fromList ? 'list' : 'article', filter: null, byAuthor: null, typed: '', cursor: open,
@@ -160,6 +160,11 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
           rows[23] = '搜尋作者: ' + state.typed;
           cursor = [24, 11 + state.typed.length];
         }
+        // `v` (bbs.c b_mark_read_unread) asks on the last rows.
+        if (state.surface === 'markReadPrompt') {
+          rows[22] = '設定所有文章 (U)未讀 (V)已讀 (W)前已讀後未讀 (Q)取消？[Q] ' + state.typed;
+          cursor = [23, 52 + state.typed.length];
+        }
         // CompleteBoard (bbs.c do_select → namecomplete) asks on the second row.
         if (state.surface === 'boardPrompt') {
           rows[1] = '請輸入看板名稱(按空白鍵自動搜尋): ' + state.typed;
@@ -189,6 +194,17 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
         state.typed = '';
         state.surface = 'list';
         state.cursor = view().length;
+        return;
+      }
+      // `v` then V marks every article read, W those up to the cursor; the
+      // list is drawn again either way.
+      if (state.surface === 'markReadPrompt') {
+        if (token !== '\r') return void (state.typed += token);
+        const answer = state.typed.toLowerCase();
+        state.typed = '';
+        state.surface = 'list';
+        const upTo = answer === 'v' ? list.length : answer === 'w' ? list[state.cursor - 1].num : 0;
+        for (const article of list) if (article.num <= upTo) article.mark = READ_MARK[article.mark ?? '+'] ?? article.mark;
         return;
       }
       // `s`, then the board's name: this board's full list, as PTT has it now,
@@ -231,6 +247,8 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
         state.cursor = article.num;
       } else if (token === 'a') {
         state.surface = 'authorPrompt';
+      } else if (token === 'v') {
+        state.surface = 'markReadPrompt';
       } else if (token === 's') {
         state.surface = 'boardPrompt';
       } else if (/^#[\w-]{8}\r$/.test(token)) {

@@ -8,6 +8,7 @@ const ptt = require('../helpers/ptt');
 const { bootThreadBoard, listActive } = require('../helpers/thread_jump');
 const { recordHints, recordedHints } = require('../helpers/stack_routes');
 const { revealArticleDrawer } = require('../helpers/article_gestures');
+const { touchDrag } = require('../helpers/real_input');
 
 const MAIN = '.main:not([data-stack-layer])';
 const UNDERLAY = '[data-article-exit-underlay]';
@@ -161,6 +162,98 @@ test('a refresh after Back shows PTT\'s list now', async ({ page }) => {
   expect(now.find(c => c.num === '1184')).toMatchObject({ title: '□ [Talk] Edited title' });
   expect(now.find(c => c.num === '1181')).toMatchObject({ mark: 'M', push: '20' });
   expect(now.some(c => c.num === '1195')).toBe(true);
+});
+
+// Scrolling up past the rows kept keeps two pages loaded above the view, as
+// on any list (list_session `_maybeDemand`), and those rows are PTT's now.
+test('scrolling up past the rows kept loads PTT\'s list now with two pages above the view, and the rows kept stay as they were', async ({ page }) => {
+  const before = await readReply(page);
+  await back(page);
+  const kept = new Set(before.cards.map(c => c.num));
+  const view = page.locator(`${MAIN} .listBodyView`);
+  const loaded = async () => (await cards(page)).filter(c => !kept.has(c.num));
+  for (let i = 0; i < 10 && !(await loaded()).length; i++) {
+    await view.evaluate(el => { el.scrollTop = Math.max(0, el.scrollTop - el.clientHeight); });
+    await listActive(page);
+  }
+  await listActive(page);
+  expect(await page.evaluate(() => {
+    const session = window.__app.listSession;
+    return session._viewportTopPos(session._sequence()) - 2 * session._bodyRows();
+  })).toBeGreaterThanOrEqual(0);
+  const fresh = await loaded();
+  expect(fresh.length).toBeGreaterThan(0);
+  for (const card of fresh) expect(card.push).toBe('20');
+  const now = await cards(page);
+  for (const card of asLeft(before.cards)) {
+    expect(now.find(c => c.num === card.num)).toEqual({ ...card, selected: expect.any(Boolean) });
+  }
+});
+
+// Story 14: the articles posted meanwhile, which PTT's landing page listed,
+// load below the rows kept as the reader scrolls down to them.
+test('scrolling down past the rows kept loads the articles posted meanwhile, and the rows kept stay as they were', async ({ page }) => {
+  const before = await readReply(page);
+  await back(page);
+  const view = page.locator(`${MAIN} .listBodyView`);
+  // The reader scrolls up a little, then down past the rows kept: a list
+  // already at its end gives no scroll to act on.
+  await view.evaluate(el => { el.scrollTop = Math.max(0, el.scrollTop - el.clientHeight / 2); });
+  await listActive(page);
+  await expect.poll(async () => {
+    await view.evaluate(el => { el.scrollTop = el.scrollHeight; });
+    return (await shownNow(page, 1195))?.author;
+  }, { timeout: 10000 }).toBe('newbie');
+  await listActive(page);
+  const now = await cards(page);
+  for (const card of asLeft(before.cards)) {
+    expect(now.find(c => c.num === card.num)).toEqual({ ...card, selected: expect.any(Boolean) });
+  }
+});
+
+test('F5 on the list shown again shows PTT\'s list now', async ({ page }) => {
+  await readReply(page);
+  await back(page);
+  await ptt.applyPrefs(page, { refreshMinIntervalSec: 0 });
+  await page.evaluate(() => { window.__notReloaded = true; });
+  await page.keyboard.press('F5');
+  await expect.poll(async () => (await shownNow(page, OPEN))?.push).toBe('15');
+  await listActive(page);
+  expect(await page.evaluate(() => window.__notReloaded)).toBe(true);
+  expect(await shownNow(page, 1184)).toMatchObject({ title: '□ [Talk] Edited title' });
+});
+
+// A short board, so that the list shown again can be scrolled to its top.
+test('a pull on the list shown again shows PTT\'s list now', async ({ page }) => {
+  await bootThreadBoard(page, { open: 20, size: 25, fromList: true });
+  await page.evaluate(() => { for (const article of window.__threadServer.articles) article.score = 20; });
+  await back(page);
+  expect((await shownNow(page, 3))?.push).not.toBe('20');
+  const view = page.locator(`${MAIN} .listBodyView`);
+  await expect.poll(async () => {
+    await view.evaluate(el => { el.scrollTop = 0; });
+    await listActive(page);
+    return view.evaluate(el => el.scrollTop);
+  }).toBe(0);
+  await ptt.applyPrefs(page, { refreshMinIntervalSec: 0 });
+  const r = await view.boundingBox();
+  const x = r.x + r.width / 2;
+  await touchDrag(page, { x, y: r.y + 40 }, { x, y: r.y + 300 });
+  await expect.poll(async () => (await shownNow(page, 3))?.push).toBe('20');
+  await listActive(page);
+});
+
+// Marking every article read asks PTT for the list anew (#125).
+test('marking every article read on the list shown again shows PTT\'s list now', async ({ page }) => {
+  await readReply(page);
+  await back(page);
+  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
+  expect(await page.evaluate(() => window.__app.markAllRead.start())).toBe(true);
+  await expect.poll(async () => (await shownNow(page, OPEN))?.push).toBe('15');
+  await listActive(page);
+  const now = await cards(page);
+  expect(now.find(c => c.num === '1184')).toMatchObject({ title: '□ [Talk] Edited title' });
+  expect(now.filter(c => c.mark === '+')).toEqual([]);
 });
 
 test('opening a kept row whose article PTT lists differently now stays on the list and says so', async ({ page }) => {
@@ -356,4 +449,25 @@ test('Back to the list through a search from the article read shows the list as 
   await listActive(page);
   expect(await cards(page)).toEqual(asLeft(before.cards));
   expect(await topEntry(page)).toEqual(before.top);
+});
+
+// A refresh on the list restored through that route asks PTT anew (#127).
+test('a refresh on the list restored through a search from the article read shows PTT\'s list now', async ({ page }) => {
+  await readReply(page);
+  await revealArticleDrawer(page);
+  await page.locator('[data-article-shortcut="author"]').tap();
+  await expect.poll(() => page.evaluate(() => window.__threadServer.state.byAuthor)).toBe('hana');
+  await listActive(page);
+  for (const surface of ['article', 'list']) {
+    await page.goBack();
+    await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle && !window.__app.articleGestures.stack.handingOff &&
+      window.__threadServer.state.surface)).toBe(surface);
+  }
+  await listActive(page);
+  expect(await shownNow(page, 1184)).not.toMatchObject({ title: '□ [Talk] Edited title' });
+  await ptt.applyPrefs(page, { refreshMinIntervalSec: 0 });
+  await page.locator('#mobileToolbar [data-key="__refresh"]').tap();
+  await expect.poll(async () => (await shownNow(page, OPEN))?.push).toBe('15');
+  await listActive(page);
+  expect(await shownNow(page, 1184)).toMatchObject({ title: '□ [Talk] Edited title' });
 });

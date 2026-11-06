@@ -483,6 +483,8 @@ On resuming, `flashListHint('操作完成，已回到好讀列表')` ("done, bac
   「+N」 (the new-recommendation badge) is recomputed from the record made when reading finished. After that, term_view's `holdListRows` holds this batch of rows
   (one hold per list: the article list's and the board list's are separate, and `NavigationStack.spend` releases only the hold of the list it acts on):
   PTT's landing page adds nothing, and other pages (page fills upward / downward) **only add rows not yet shown**; shown rows are never replaced.
+  When the landing page lists articles newer than every row kept, scrolling down past the rows kept loads them, even after the list had confirmed its bottom edge
+  (`_newerBelow`, story 14); nothing is sent until the reader scrolls down. A list already scrolled to its end gives no scroll event, so on a phone they load only after the reader scrolls up and down again (a wheel at the edge still asks).
   `resetListAccumulation` (rebuild / refresh / entering a board), `_resumeBuffer` and a non-resize `_resumeInPlace`
   (identity mismatch on opening, `_openMismatched`) release the hold, and PTT's page is merged in as before. **Which actions "spend" the layer**
   ([#125](https://github.com/NoReasonKen/PttChrome/issues/125), `page_stack.js#spendsLayer`,
