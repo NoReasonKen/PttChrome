@@ -2616,7 +2616,7 @@ ListSession.prototype = {
   },
 
   // Key → whitelist class (the enumeration IS the contract —
-  // docs/easy-reading-list.md §操作分類). Whitelist = navigation / open /
+  // docs/easy-reading-list.md §Operation classes). Whitelist = navigation / open /
   // number jump / leave; anything else is 'passthrough' (one-key switch to
   // native + resend, _beginNativePassthrough) — never a SILENT passthrough,
   // and never a swallowed dead key (the retired noop/airlock pair).
@@ -3003,7 +3003,7 @@ ListSession.prototype = {
   // intentional: an unconditional demand would probe past a FULL landing page — at
   // a board end that is a zero-response PgDn whose timeout→\f probe races the hard
   // timeout into an ownerless settle (spurious functionMode banner). See
-  // docs/easy-reading-list.md 已知限制「滿版落點不得探測」.
+  // docs/easy-reading-list.md Known limitations「a full-page landing must not probe」.
   _demandDownIfWindowShort: function() {
     const seq = this._sequence();
     if (!seq.length) return;
@@ -3023,7 +3023,7 @@ ListSession.prototype = {
   // `edge`（選用）＝'up'／'down'，落點已經**確定**是那一端的邊界時帶。
   // 必須在這裡套而不是讓呼叫端事後補：下面的 _demandDownIfWindowShort 就看
   // `_edgeDown`，板上沒有置底文時 _seedAnchors 確認不了邊界 ⇒ 會在真板尾送一個
-  // 零回應的 PgDn（docs/easy-reading-list.md「滿版落點不得探測」那條已知限制）。
+  // 零回應的 PgDn（docs/easy-reading-list.md「a full-page landing must not probe」那條 Known limitations）。
   _rebuild: function(facts, edge) {
     this._breakChain();
     // _lastReadTitle kept: title keys are number-space independent (see _seed).

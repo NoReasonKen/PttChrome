@@ -1,5 +1,5 @@
 // 桌機「讀到文末、停一下、再往下捲 ⇒ 開下一篇」的判準（src/js/pull_next_article.js#wheelPullStep、
-// docs/next-article.md「桌機：停一下再往下捲」）。WheelEvent 沒有相位 ⇒ 用「相隔夠久才算新
+// docs/next-article.md「Desktop: scroll to the bottom, pause, scroll on」）。WheelEvent 沒有相位 ⇒ 用「相隔夠久才算新
 // 手勢」切開，只有起手時就停在底部的手勢累積位移：捲到底那一串（連同觸控板慣性）永遠不算。
 import {
   wheelPullStep,

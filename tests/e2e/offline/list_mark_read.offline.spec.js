@@ -7,7 +7,7 @@
 //   2) 第一步永遠是把 server 真游標搬到目標列的序號跳轉。
 // cchat-list-mark cassette 剛好錄了 jump → 'v' → prompt 畫面，兩步都餵得動；
 // `w\r` 沒有對應的門控（真 server 才會回應），所以只驗它**被送出**、不驗結果。
-// 另外守「全程凍結」：兩步都在凍結交易裡跑（docs/easy-reading-list.md「落地即回好讀」），
+// 另外守「全程凍結」：兩步都在凍結交易裡跑（docs/easy-reading-list.md「Resume on landing」），
 // 使用者看不到原生鏡像、也看不到 PTT 的 prompt——送出第二步那一刻量畫面。
 //
 // live e2e 刻意不加：這個操作會真的改寫測試帳號的看板已讀記錄且不可逆

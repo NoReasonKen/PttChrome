@@ -1694,7 +1694,7 @@ describe("遠跳落點頁被丟掉時改成重建", () => {
 
   // _rebuild 的 `edge` 必須在 _demandDownIfWindowShort **之前**生效：板上沒有置底文時
   // _seedAnchors 確認不了邊界 ⇒ 會在真板尾送一個零回應的 PgDn
-  //（docs/easy-reading-list.md「滿版落點不得探測」）。
+  //（docs/easy-reading-list.md「a full-page landing must not probe」）。
   describe("_rebuild 的 edge 參數", () => {
     // 讓 stub 的 notify 模擬 accumulate：重建清掉緩衝後把「落點短頁」填回去。
     function shortLandingSession(lo) {

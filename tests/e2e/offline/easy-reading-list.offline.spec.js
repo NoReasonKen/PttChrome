@@ -235,7 +235,7 @@ test.describe('文章列表好读模式（离线）', () => {
   test.skip(!nav, '缺 cchat-list-nav cassette（yarn record:cassette 先录一次）');
 
   // 双模 engage 逐行比对案已退役（v5/M5）：parity 合约废弃，隐藏功能（黑名单/
-  // 删除文）与逐行相同本质冲突（docs/easy-reading-list.md 核心原则 v5 版）。
+  // 删除文）与逐行相同本质冲突（docs/easy-reading-list.md Core principles v5 版）。
 
   test('进板启用：固定 24 行视窗、预读累积、序号严格递增、游标 > 单一、实体游标隐藏', async ({ page }) => {
     test.setTimeout(60000);
