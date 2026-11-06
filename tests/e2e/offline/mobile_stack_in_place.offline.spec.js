@@ -3,12 +3,10 @@
 // returns to (#123): Back reveals the list with the article opened from it
 // still selected and its reading position unchanged, PTT's selection is moved
 // back to that article by its number, and every article read on the way shows
-// as read. A current article outside the layer's rows reveals the dark
-// underlay.
+// as read, even when the current article is outside the layer's rows (#127).
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
-const { beginArticleTouch, revealArticleDrawer } = require('../helpers/article_gestures');
-const { waitRectStable } = require('../helpers/layout');
+const { revealArticleDrawer } = require('../helpers/article_gestures');
 const { THREAD, NEAR_REPLY_BOARD, bootThreadBoard, listActive, sent } = require('../helpers/thread_jump');
 
 const MAIN = '.main:not([data-stack-layer])';
@@ -175,19 +173,33 @@ for (const key of ['[', '=']) {
   });
 }
 
-// A far jump lands with PTT's selection hundreds of rows from the layer's.
-test('a swipe back after a jump to an article outside the layer reveals the dark underlay, and the list lands on PTT\'s selection', async ({ page }) => {
-  await bootThreadBoard(page, { open: 600, fromList: true });
+// A far jump lands with PTT's selection hundreds of rows from the layer's
+// (#127): the list is still the one left, and only PTT's selection moves.
+test('Back after a jump to an article outside the layer shows the list as it was left, and PTT\'s selection moves back', async ({ page }) => {
+  const before = await openFromList(page, { open: 600 });
   await jump(page, '[', 40);
-  const main = await waitRectStable(page, MAIN);
-  const contact = await beginArticleTouch(page, { x: 20, y: main.top + 100 });
-  await contact.move({ x: page.viewportSize().width - 20, y: main.top + 100 });
-  await expect(page.locator(UNDERLAY)).toHaveAttribute('data-preview', 'fallback');
-  await contact.release();
-  await expect(page.locator(UNDERLAY)).toHaveCount(0, { timeout: 10000 });
-  await listActive(page);
-  await expect.poll(() => page.evaluate(() => window.__app.listSession._selectedNum)).toBe(40);
-  expect(await selected(page, MAIN)).toMatchObject({ author: 'bob', visible: true });
+  const from = (await sent(page)).length;
+  await backOverList(page, { author: 'carol' });
+  expect(await topEntry(page)).toEqual(before.top);
+  expect((await selected(page, MAIN)).top).toBe(before.selected.top);
+  await pttSelects(page, 600, from);
+  expect(await markOf(page, 600)).toBe('');
+  // Paging up past the kept rows still loads older ones from PTT.
+  const oldest = () => page.locator(MAIN).evaluate(el =>
+    Math.min(...[...el.querySelectorAll('.listCardNum')].map(n => Number(n.textContent)).filter(Number.isFinite)));
+  const kept = await oldest();
+  for (let i = 0; i < 5; i++) await ptt.sendKey(page, 'PageUp');
+  await expect.poll(oldest).toBeLessThan(kept);
+});
+
+// The next reply in the thread, hundreds of rows below the layer's (#123).
+test('Back after a next-in-thread jump to an article outside the layer shows the list as it was left', async ({ page }) => {
+  const before = await openFromList(page, { open: 600 });
+  await jump(page, ']', 1150);
+  const from = (await sent(page)).length;
+  await backOverList(page, { author: 'carol' });
+  expect(await topEntry(page)).toEqual(before.top);
+  await pttSelects(page, 600, from);
 });
 
 // A thread whose replies by dave also show in his author search results,

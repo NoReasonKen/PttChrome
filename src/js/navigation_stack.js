@@ -158,7 +158,10 @@ export class NavigationStack {
     if (!core.mobile || !board) return this.dropPending();
     const fullList = isFullBoardListFrame(searchGateFacts(core), board);
     this._capture(PAGE.ARTICLE_LIST, board, () => StackListLayer.capture(core.view, 'article'));
-    if (this.pending) this.pending.fullList = fullList;
+    if (!this.pending) return;
+    this.pending.fullList = fullList;
+    // The list page the real list takes over again on Back (#127).
+    this.pending.layer.listPage = core.listSession?.listPage?.() || null;
   }
 
   // An article shortcut search is about to start from the shown article
@@ -304,7 +307,8 @@ export class NavigationStack {
   // replaces the open one in place (#74), one move at a time. The list keeps
   // its own selection as the reader left it (#123) and only tracks PTT's, to
   // show the articles read and move PTT back on Back. Once it loses PTT's
-  // selection it reveals nothing.
+  // selection (an article off its rows) it stops following, and is still
+  // revealed: the list is the one left (#127).
   _follow() {
     // A same-thread jump has moved PTT's selection once it is over.
     if (this.core.threadJump?.active) return;
@@ -354,12 +358,15 @@ export class NavigationStack {
     if (top?.kind === PAGE.ARTICLE_LIST && !top.results && this._showsSearchResults()) return null;
     const target = revealTarget(this.stack);
     const lower = target && this.captured[this.stack.pages.length - 2];
-    // Fitting a list layer to a changed width renders it again.
-    return lower?.layer.fitViewport() && this._selects(lower) ? { page: target, ...lower } : null;
+    // Fitting a list layer to a changed width renders it again. Where PTT's
+    // selection is does not matter: the real list takes over from the layer
+    // and moves it back (#127).
+    return lower?.layer.fitViewport() ? { page: target, ...lower } : null;
   }
 
   // Whether a lower article list holds PTT's selection: the article now open,
-  // followed through every replacement in place (#74).
+  // followed through every replacement in place (#74). Only fullListBelow
+  // asks; a reveal does not need it (#127).
   _selects(lower) {
     return lower.kind !== PAGE.ARTICLE_LIST || (lower.follows === this._top().id && lower.shows !== false);
   }

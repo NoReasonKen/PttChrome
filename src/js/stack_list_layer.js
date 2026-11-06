@@ -218,7 +218,11 @@ export class StackListLayer extends ScreenCopyLayer {
       }
       return true;
     }
-    if (this.el.isConnected) this.anchor = topCard(this.el, this.el.getBoundingClientRect().top);
+    // A parked layer still shows the reading position it was captured with.
+    // Measuring it again would carry over wherever a render at another width
+    // had to clamp it, as while PTT's own list is mirrored (#127).
+    if (this.el.isConnected && !this.el.hasAttribute('data-stack-parked'))
+      this.anchor = topCard(this.el, this.el.getBoundingClientRect().top);
     this._render(rect, this.view.chh);
     this.scrollTop = null;
     if (this.el.isConnected) this._restoreAnchor();

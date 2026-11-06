@@ -1118,8 +1118,15 @@ ListSession.prototype = {
   },
 
   _settleEvent: function(facts, consumed) {
-    const board = this._boardName ?? this._layerBoard;
-    const layer = this.state === 'suspended' && this._keptLayer(board);
+    let board = this._boardName ?? this._layerBoard;
+    let layer = this.state === 'suspended' && this._keptLayer(board);
+    // A route through PTT's own keys (a far jump, an article refresh, a search
+    // from the article) cleared the list's board; the layer Back revealed
+    // still says which list PTT's answer is (#127).
+    if (this.state === 'suspended' && board == null && facts.boardName != null) {
+      layer = this._keptLayer(facts.boardName);
+      if (layer) board = facts.boardName;
+    }
     return {
       type: 'settle',
       kind: facts.kind,
@@ -1286,7 +1293,7 @@ ListSession.prototype = {
         this._resumeInPlace(facts);
         return this._presented();
       case 'resume-layer':
-        this._resumeFromLayer(facts, this._keptLayer(this._boardName ?? this._layerBoard));
+        this._resumeFromLayer(facts, this._keptLayer(this._boardName ?? this._layerBoard ?? facts.boardName));
         return this._presented();
       case 'cleanup':
         return this._cleanup();
@@ -2317,11 +2324,15 @@ ListSession.prototype = {
   // pulls above it, the selection stays on the article opened from it, every
   // article read on the way shows read, and PTT's selection is moved back to
   // that article in the background (_alignServerCursor). An in-board external
-  // route above it (the next-article pull) cleared the board identity; the
-  // layer of this board's list restores it.
+  // route above it (the next-article pull, a far jump, an article refresh)
+  // cleared the board identity; the layer of this board's list restores it,
+  // wherever PTT's selection landed (#127). A route that reused the session
+  // for another list (search results from the article) replaced its rows too;
+  // the list page kept with the layer gives them back.
   _resumeFromLayer: function(facts, layer) {
+    if (layer && layer.listPage) this._restoreListPage(layer.listPage);
     if (this._boardName == null) {
-      this._boardName = this._layerBoard;
+      this._boardName = this._layerBoard ?? (facts && facts.boardName);
       this._layerBoard = null;
       // The list behind that route is the layer itself, not a record to restore.
       recordFor(this._core).takeBehindList();
@@ -2356,6 +2367,50 @@ ListSession.prototype = {
     this._view.holdListRows(facts && facts.rowTexts);
     this._forceRedraw();
     this._alignServerCursor();
+  },
+
+  // The list page as it is now: its rows and what the session knows of them
+  // (board, number space, fill edges, reading position, selection). Kept with
+  // the list's live layer when an article is opened from it (#127).
+  listPage: function() {
+    const buffer = this._view.snapshotListBuffer && this._view.snapshotListBuffer();
+    if (!buffer || this._boardName == null) return null;
+    return {
+      buffer: buffer,
+      boardName: this._boardName,
+      selectMode: this._selectMode,
+      edgeUp: this._edgeUp,
+      edgeDown: this._edgeDown,
+      stallUp: this._stallUp,
+      stallDown: this._stallDown,
+      fillPages: this._fillPages,
+      topNum: this._topNum,
+      topPinnedKey: this._topPinnedKey,
+      scrollFrac: this._scrollFrac,
+      selectedNum: this._selectedNum,
+      selectedPinnedKey: this._selectedPinnedKey,
+      landingFit: this._landingFit
+    };
+  },
+
+  _restoreListPage: function(page) {
+    this._view.restoreListBuffer(page.buffer);
+    this._boardName = page.boardName;
+    this._layerBoard = null;
+    // The list behind the route is this page, not a record to restore.
+    recordFor(this._core).takeBehindList();
+    this._selectMode = page.selectMode;
+    this._edgeUp = page.edgeUp;
+    this._edgeDown = page.edgeDown;
+    this._stallUp = page.stallUp;
+    this._stallDown = page.stallDown;
+    this._fillPages = page.fillPages;
+    this._topNum = page.topNum;
+    this._topPinnedKey = page.topPinnedKey;
+    this._scrollFrac = page.scrollFrac;
+    this._selectedNum = page.selectedNum;
+    this._selectedPinnedKey = page.selectedPinnedKey;
+    this._landingFit = page.landingFit;
   },
 
   // Move PTT's selection back to the article the list shows selected, by its

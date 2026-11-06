@@ -78,7 +78,9 @@ test('Back from a far target returns to the full article list on the target', as
   await expect.poll(() => server(page)).toMatchObject({ surface: 'list', filter: null, cursor: 40 });
 });
 
-test('an article opened from the easy-reading list returns to that list on the far target', async ({ page }) => {
+// The list is a page of its own (#127): Back shows it as it was left, with
+// the article opened from it selected, and PTT's selection moves back there.
+test('an article opened from the easy-reading list returns to that list as it was left after a far jump', async ({ page }) => {
   await bootThreadBoard(page, { open: 600, fromList: true });
   await watchScreen(page);
   await jump(page, '[');
@@ -86,9 +88,10 @@ test('an article opened from the easy-reading list returns to that list on the f
   expectHiddenRoute(await stopWatching(page), 600, 40);
   await ptt.sendKey(page, 'ArrowLeft');
   await listActive(page);
-  expect(await server(page)).toMatchObject({ surface: 'list', filter: null });
-  await expect.poll(() => page.evaluate(() => window.__app.listSession._selectedNum)).toBe(40);
-  await expect(page.locator('.main').first().locator('.listCard[data-list-author="bob"]')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
+  expect(await server(page)).toMatchObject({ surface: 'list', filter: null, cursor: 600 });
+  expect(await page.evaluate(() => window.__app.listSession._selectedNum)).toBe(600);
+  await expect(page.locator('.main').first().locator('.listCard[data-list-author="carol"]')).toBeVisible();
 });
 
 test('a jump in range lands with one round trip', async ({ page }) => {

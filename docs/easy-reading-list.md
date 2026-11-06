@@ -257,7 +257,7 @@ states：`idle → active ⇄ functionMode`；`active → opening → suspended 
 - key（active）：nav（↑↓jk/PgUp/PgDn/Home/End → read.c op）；Enter/→＝opening（selectedNum 有值→begin-open；null＝pinned→begin-open-pinned）；數字＝jump-digit（overlay 收參）；`←`/q/e＝leave 交易（**先 sync-jump 同步 server 游標再送離板鍵**——pttbbs getkeep 記 REAL cursor，不 sync 則再進板落點錯；`_serverNum` 快路徑同 passthrough，共用 `_enqueueCursorSyncJump`）；**A 類鍵（`INPLACE_KEYS`）＝keyClass `native-inplace` → `_beginInplaceTransaction`：凍結交易，全程不切原生**；**其餘鍵（`v` `/` `s` `Z`…）＝keyClass `passthrough` → `_beginNativePassthrough`：一鍵切原生＋代送**（`term_keyboard.keyEventToBytes` 轉 bytes，非 ASCII 單字元 `u2b`）。pref `enableListNativeAutoResume` 關掉時 A 類整組落回 `passthrough`。
 - opening：settle 等 article；timeout→functionMode 自癒；期間吞所有鍵。
 - functionMode：新事件 **`resume-probe`**（靜置探針合成，見下）→ `holdReason==='passthrough'` ∧ 無 in-flight ∧ clean-list ∧ hasNumberedRow ∧ engageEligible 時 →active（`landedNumInBuffer ∧ 板名同`→resume；否則＋rebuild），其餘一律 stay。clean-list **settle**→**`holdReason` 非 null（passthrough/external）時 stay 鏡像**（settle 本身永不解除 hold——一個回應可能 settle 兩次，第一個 settle 內容已新、游標還在舊位置，在它上面 resume 會採用到錯的落點）；無 hold（leave/jump 交易）→active（landedNum∈buffer ∧ 板名同→resume；否則＋rebuild）；article→suspended；menu→idle cleanup。**enter-function-mode（passthrough/自癒/降級——原生 excursion）在 action 層清 `_boardName`** → 回 clean-list 必走 rebuild 分支（不變量 15）；只有保留 `_boardName` 的 frozen 交易（leave/jump）可走純 resume 快路徑；passthrough 屬原生 excursion → 黏性停原生；經 article/menu 回好讀時因 `_boardName` 已清必 rebuild。
-- suspended：clean-list ∧ 退出時揭開了這個列表的 live layer（`keepsLayer`，`NavigationStack.keptListLayer`）∧ 板名同→**`resume-layer`**（[#120](https://github.com/NoReasonKen/PttChrome/issues/120)，見不變量 N6c）；否則 clean-list ∧ 落點在緩衝 ∧ 板名同→**`resume-in-place`**（只採用落地幀的游標，**捲動錨一律不動**——文章期間視口不在 DOM 上，錨本來就是使用者離開前的那一個，不變量 N6）；否則 `resume-buffer`＋`rebuild`（畫面要換一份，重新錨定）；menu→idle。
+- suspended：clean-list ∧ 退出時揭開了這個列表的 live layer（`keepsLayer`，`NavigationStack.keptListLayer`；板名已被外部序列清掉時以落地幀的板名找，#127）∧ 板名同→**`resume-layer`**（[#120](https://github.com/NoReasonKen/PttChrome/issues/120)，見不變量 N6c）；否則 clean-list ∧ 落點在緩衝 ∧ 板名同→**`resume-in-place`**（只採用落地幀的游標，**捲動錨一律不動**——文章期間視口不在 DOM 上，錨本來就是使用者離開前的那一個，不變量 N6）；否則 `resume-buffer`＋`rebuild`（畫面要換一份，重新錨定）；menu→idle。
 - 任意：pref-off/斷線→cleanup。
 
 ### 落地即回好讀（`resumeOnLanding`；pref `enableListNativeAutoResume`）
@@ -482,13 +482,23 @@ states：`idle → active ⇄ functionMode`；`active → opening → suspended 
   PTT 的落地頁什麼都不加，其他頁（往上／往下補頁）**只加還沒顯示過的列**，已顯示的列永不被換掉。
   `resetListAccumulation`（rebuild／重新整理／進板）、`_resumeBuffer`、非 resize 的 `_resumeInPlace`
   （A 類交易、開文身分不符 `_openMismatched`）解除保留，PTT 那一頁照舊併入。開文前的身分檢查不變：
-  保留列與 PTT 現況不同時照樣停在列表並提示。PTT 的游標若停在別篇（換篇過），`_alignServerCursor` 以編號跳回選取的那篇（`align-sync-jump`，落地以作者＋主題驗證）；那篇被改號／刪除時畫面不動，`_serverNum` 記為未對齊，之後開文照舊走身分檢查與提示。下一篇（`beginExternalNavigation`）會清掉 `_boardName`，`_settleEvent` 改以落地幀的板名找 kept layer，`_resumeFromLayer` 補回板名。守護：`mobile_stack_list_kept.offline.spec.js`、
+  保留列與 PTT 現況不同時照樣停在列表並提示。PTT 的游標若停在別篇（換篇過），`_alignServerCursor` 以編號跳回選取的那篇（`align-sync-jump`，落地以作者＋主題驗證）；那篇被改號／刪除時畫面不動，`_serverNum` 記為未對齊，之後開文照舊走身分檢查與提示。下一篇（`beginExternalNavigation`）會清掉 `_boardName`，`_settleEvent` 改以落地幀的板名找 kept layer，`_resumeFromLayer` 補回板名。
+  **PTT 的游標在哪裡不影響**（[#127](https://github.com/NoReasonKen/PttChrome/issues/127)）：遠距同串跳轉（`hidden_article_route`）、
+  跳到／拉到 layer 沒列出的文章、重新整理讀的那篇（`aid_navigation.refresh`）、從讀的那篇做搜尋（結果沿用同一個 session）
+  都照樣揭開 layer（`NavigationStack._revealed` 不再要求 `_selects`，`follow` 追丟之後只是不再追），退回時走 `resume-layer`：
+  這些路徑都經 `beginExternalNavigation` 清掉板名，suspended 時 `_settleEvent` 以落地幀的板名找 kept layer。
+  開文前 `NavigationStack.captureList` 把這一頁（`ListSession.listPage`：term_view `snapshotListBuffer` 的列 map
+  複本＋header／footer、板名、編號空間、補頁邊界、錨與選取）跟 layer 放在一起，`_resumeFromLayer` 先還原它
+  （`_restoreListPage`／`restoreListBuffer`），之後照舊標已讀、保留列、對齊 PTT 游標。layer 在 PTT 原生列表鏡像期間
+  因寬度變化重繪時，停放中的 layer 不重量閱讀位置（`fitViewport`），以免夾住的捲動位置帶回來。
+  不在 layer 上的那篇（遠距跳到的）不標已讀，捲到它時由 PTT 的那一頁帶出來；last-read 主題色停在 layer 上最後讀的那篇。
+  守護：`mobile_stack_list_kept.offline.spec.js`、`mobile_stack_in_place.offline.spec.js`、
   `list_accumulate.test.js`「held list rows」。
   **有新文章提示**（[#128](https://github.com/NoReasonKen/PttChrome/issues/128)）：落地頁（PTT 本來就會送的那一幀，不另送鍵）
   列出比揭開的 live layer 最新編號（`StackListLayer.newestNum`）還新的文章時，`onSettle` 在 dispatch 之前（layer 還是
   顯示中的那一頁）經 `NavigationStack.noticeNewContent` 閃一次「有新文章」（`flashListHint`、純文字、`STACK_NOTICE_MS`）。
-  比的是 layer 而不是緩衝：從讀的文章做同作者／同標題搜尋時，搜尋結果會換掉 session 的緩衝，退回列表走
-  `resume-buffer`＋`rebuild` 而不是 `resume-layer`，但讀者離開時看到的仍是 layer 那一頁。
+  比的是 layer 而不是緩衝：從讀的文章做同作者／同標題搜尋時，搜尋結果會換掉 session 的緩衝（退回列表時由
+  layer 帶的那一頁還原，#127），讀者離開時看到的是 layer 那一頁。
   保留列已到板尾時這些新文章捲動也載不到，只有重新整理會帶出來。
   每個保留頁只提示一次（`_newArticlesNoticed`；保留解除後——重新整理、rebuild——算新的一頁）。
   搜尋結果（handoff 的 `results`）不提示。

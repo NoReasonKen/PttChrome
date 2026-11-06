@@ -114,6 +114,22 @@ test('Back shows every row, the selection and the reading position as they were,
   expect(await titleColor(page, 1182)).not.toBe(before.color);
 });
 
+// A refresh of the article read reopens it through the board's list on PTT
+// (`s<board>`, `#AID`, Enter); the list left is still the one Back shows (#127).
+test('Back after a refresh of the article read shows the list as it was left', async ({ page }) => {
+  const before = await readReply(page);
+  await ptt.applyPrefs(page, { refreshMinIntervalSec: 0 });
+  const from = await page.evaluate(() => window.__threadSent.length);
+  await page.locator('#mobileToolbar [data-key="__refresh"]').tap();
+  await expect.poll(() => page.evaluate(from => window.__threadSent.slice(from).join(''), from)).toMatch(/#[\w-]{8}\r/);
+  await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle && !window.__app.aidNavigation.active &&
+    window.__threadServer.state.surface)).toBe('article');
+  await expect.poll(() => page.locator(MAIN).first().innerText()).toContain(`Body of article ${OPEN} by`);
+  await back(page);
+  expect(await cards(page)).toEqual(asLeft(before.cards));
+  expect(await topEntry(page)).toEqual(before.top);
+});
+
 test('rows loaded after Back show PTT\'s list now, and the rows kept stay as they were', async ({ page }) => {
   const before = await readReply(page);
   await back(page);
@@ -250,10 +266,10 @@ test('Back to the list through a search from the article read shows the new-arti
   await expect.poll(() => recordedHints(page)).toContain(NEW_ARTICLES);
 });
 
-// The same route keeps no rows yet: the search results reuse the list
-// session and replace the list's rows and board, so Back rebuilds the list
-// from PTT. Keeping the list across in-board navigation is #127's.
-test.fixme('Back to the list through a search from the article read shows the list as it was left', async ({ page }) => {
+// The same route keeps the list's own rows too (#127): the search results
+// reuse the list session and replace its rows and board, and the list Back
+// shows again is the one its layer kept.
+test('Back to the list through a search from the article read shows the list as it was left', async ({ page }) => {
   const before = await readReply(page);
   await revealArticleDrawer(page);
   await page.locator('[data-article-shortcut="author"]').tap();

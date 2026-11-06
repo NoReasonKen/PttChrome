@@ -3615,6 +3615,32 @@ TermView.prototype = {
     this._listBlankRow = null;
   },
 
+  // The accumulated article list as it is now, for its live layer to give back
+  // (#127). The maps are copied; their rows are shared, since a stored row is
+  // never changed in place (accumulation and markListArticleRead replace it).
+  snapshotListBuffer: function() {
+    if (!this._listNumMap || !this._listHeaderRows || !this._listFooterRow) return null;
+    return {
+      numMap: new Map(this._listNumMap),
+      pinnedMap: new Map(this._listPinnedMap || []),
+      headerRows: this._listHeaderRows,
+      footerRow: this._listFooterRow
+    };
+  },
+
+  // Show the list of `snap` (snapshotListBuffer) again, whatever was
+  // accumulated since, such as search results that reused the session.
+  restoreListBuffer: function(snap) {
+    this.resetListAccumulation();
+    this._listNumMap = new Map(snap.numMap);
+    this._listPinnedMap = new Map(snap.pinnedMap);
+    this._listHeaderRows = snap.headerRows;
+    this._listFooterRow = snap.footerRow;
+    var flat = flattenListBuffer(this._listNumMap, this._listPinnedMap);
+    this.buf.listLines = flat.lines;
+    this.buf.listLineNums = flat.nums;
+  },
+
   // ---- 看板列表（BoardListSession）的累積與視窗 -------------------------------
   // 與上面那組（文章列表）平行、**緩衝完全獨立**：兩者的 cleanup 會互相清空對方
   // 的 map，共用一份就會在「進板 → ← 回看板列表」時互踩（handoff §6.4）。
