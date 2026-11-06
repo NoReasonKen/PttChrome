@@ -559,6 +559,40 @@ export class NavigationStack {
     return !!h?.layer && !h.legs.length && h.target === kind;
   }
 
+  // The live layer shown while PTT answers Back, or null.
+  shownLayer() {
+    return this.handoff?.layer || null;
+  }
+
+  // What a Back made now during the handoff shows: the next lower page's
+  // live layer (null for the dark fallback) under its title and App Bar, or
+  // null when it shows nothing more.
+  nextReveal() {
+    const h = this.handoff;
+    if (!h) return null;
+    const last = h.legs[h.legs.length - 1] || h;
+    const next = last.target && backPastRevealed(this.stack);
+    if (!next) return null;
+    const revealed = next.revealed && this._revealIn(next.stack);
+    return { layer: revealed?.layer || null, title: revealed?.title || '', appBar: revealed?.appBar || null };
+  }
+
+  // The page shown is being swiped away: the real page does not take over
+  // until the returned release, as while a finger is down.
+  holdSwap() {
+    const h = this.handoff;
+    if (!h) return () => {};
+    h.holds++;
+    let held = true;
+    return () => {
+      if (!held) return;
+      held = false;
+      if (this.handoff !== h) return;
+      h.holds--;
+      this._step();
+    };
+  }
+
   // A Back made during the handoff (#125): the revealed page is left too, and
   // the page below it shows at once, its live layer or the dark fallback. PTT
   // follows this Back once it has answered the earlier ones; nothing waits for
@@ -634,7 +668,7 @@ export class NavigationStack {
       results: !!revealed?.page.results,
       board: this._top()?.board || core.view._articleBoard,
       identity: openArticleKey(core), appBar: revealed?.appBar || null,
-      sentAt: performance.now(), presentedAt: null, touches: 0, lastScrollAt: -Infinity,
+      sentAt: performance.now(), presentedAt: null, touches: 0, holds: 0, lastScrollAt: -Infinity,
       timer: null, followTimer: null, listeners: [], layerListeners: [], finish, follow, reveal, hint, action: null,
       // The Backs PTT is still to follow after this one, in order: the page each
       // leaves and what it is expected to show.
@@ -820,7 +854,9 @@ export class NavigationStack {
     const h = this.handoff;
     if (!h) return;
     clearTimeout(h.timer);
-    const next = handoffStep({ ...h, reached: h.layer?.reaches?.(this.core) ?? true, now: performance.now() });
+    const next = handoffStep({
+      ...h, touches: h.touches + h.holds, reached: h.layer?.reaches?.(this.core) ?? true, now: performance.now()
+    });
     if (next.action === 'swap') return this._end('presented');
     if (next.action === 'timeout') return this._end('timeout');
     h.timer = setTimeout(() => this._step(), next.ms);

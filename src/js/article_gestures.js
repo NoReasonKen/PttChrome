@@ -6,7 +6,7 @@ import { ArticleHorizontalGesture, ARTICLE_TAP_SLOP } from './article_horizontal
 import { NavigationStack } from './navigation_stack';
 import { PAGE } from './page_stack';
 import { StackEntry } from './stack_entry';
-import { createUnderlay, holdSurfaces, releaseSurfaces, paintSurfaces, slideDuration } from './stack_motion';
+import { createUnderlay, holdSurfaces, raiseSurfaces, releaseSurfaces, paintSurfaces, slideDuration } from './stack_motion';
 import { STACK_NOTICE_MS } from './stack_layer';
 import { OWNER_ARTICLE_LIST, OWNER_BOARD_LIST } from './list_render_owner';
 import { recordFor } from './reading_record';
@@ -47,6 +47,9 @@ export class ArticleGestures {
     // Backs made during a committed exit slide, before its handoff starts;
     // null while no exit is committing.
     this.backsDuringSlide = null;
+    // The page revealed during a handoff, being swiped away over the page a
+    // Back would show next, or null.
+    this.layerExit = null;
     this.listeners = [];
     this.stack = new NavigationStack(core);
     this._listen(window, 'pointerdown', event => this._start(event), true);
@@ -135,10 +138,10 @@ export class ArticleGestures {
   _start(event) {
     if (event.isPrimary) this.suppressClickUntil = 0;
     if (event.pointerType !== 'touch') return;
-    // A revealed list owns its input until the real list takes over, and a page
-    // sliding in is not there until PTT has answered.
+    // A page sliding in is not there until PTT has answered.
     this.entry?.land();
-    if (this.stack.handingOff || this.entry) return;
+    if (this.entry) return;
+    if (this.stack.handingOff) return this._startOnLayer(event);
     if (this.track) {
       this._cancel();
       return;
@@ -163,14 +166,45 @@ export class ArticleGestures {
     };
   }
 
+  // A page revealed during a handoff is the page (#119): a swipe right on it
+  // is a Back made meanwhile, which shows the next lower page at once while
+  // PTT follows (#125). It has no drawer until the real page takes over.
+  _startOnLayer(event) {
+    if (this.track) return this._cancel();
+    const layer = this.stack.shownLayer();
+    const target = event.target;
+    if (!event.isPrimary || !readEffectivePrefs().articleHorizontalGestures || this._otherModalOpen()) return;
+    if (!layer?.el.contains(target) || target.closest(EXCLUDED) || !this.stack.nextReveal()) return;
+    if (this.core.mobileSelectMode || !window.getSelection().isCollapsed) return;
+    this.track = {
+      id: event.pointerId,
+      level: null,
+      layer,
+      gesture: new ArticleHorizontalGesture({
+        width: window.innerWidth, opened: false, allowExit: true, allowOpen: false, x: event.clientX, y: event.clientY, t: event.timeStamp
+      })
+    };
+    layer.el.addEventListener('touchmove', this._nativeTouchMove, { capture: true, passive: false });
+  }
+
   _move(event) {
     const track = this.track;
     if (!track || event.pointerId !== track.id) return;
-    if (this._swipeLevel() !== track.level || this._otherModalOpen()) return this._cancel();
+    const left = track.layer ? this.stack.shownLayer() !== track.layer : this._swipeLevel() !== track.level;
+    if (left || this._otherModalOpen()) return this._cancel();
     const snapshot = track.gesture.move(event.clientX, event.clientY, event.timeStamp);
     if (this.opened || snapshot.operation) {
       this._consume(event);
       if (snapshot.operation) {
+        if (track.layer) {
+          this._ensureLayerExit(track.layer);
+          this.exitDistance = snapshot.distance;
+          if (!this.frame) this.frame = requestAnimationFrame(() => {
+            this.frame = null;
+            if (this.layerExit) paintSurfaces(this.layerExit.surfaces, this.exitDistance);
+          });
+          return;
+        }
         if (snapshot.operation === 'exit') {
           this.exitLevel = track.level;
           this._ensureExit();
@@ -197,6 +231,7 @@ export class ArticleGestures {
     if (!track || event.pointerId !== track.id) return;
     this.track = null;
     if (!track.gesture.operation) {
+      track.layer?.el.removeEventListener('touchmove', this._nativeTouchMove, true);
       if (this.opened && track.gesture.axis) {
         this._consume(event);
         this.suppressClickUntil = performance.now() + 400;
@@ -206,20 +241,71 @@ export class ArticleGestures {
     this._consume(event);
     this.suppressClickUntil = performance.now() + 400;
     const result = track.gesture.release(event.timeStamp, canceled);
+    if (track.layer) return this._settleLayerExit(result.exit);
     if (track.gesture.operation === 'exit') return this._settleExit(result.exit);
     this._settle(result.opened);
   }
 
   _cancel() {
-    if (!this.track) return;
-    const opened = this.track.gesture.opened;
-    const recognized = !!this.track.gesture.operation;
+    const track = this.track;
+    if (!track) return;
+    const opened = track.gesture.opened;
+    const recognized = !!track.gesture.operation;
     this.track = null;
     if (recognized) {
       this.suppressClickUntil = performance.now() + 400;
+      if (track.layer) return this._settleLayerExit(false);
       if (this.exitUnderlay) return this._settleExit(false);
       this._settle(opened);
+    } else if (track.layer) {
+      track.layer.el.removeEventListener('touchmove', this._nativeTouchMove, true);
     }
+  }
+
+  // The revealed page and its App Bar slide over the page a Back would show
+  // next. The real page does not take over meanwhile.
+  _ensureLayerExit(layer) {
+    if (this.layerExit) return;
+    const next = this.stack.nextReveal();
+    const underlay = createUnderlay(this.core, next?.layer || null, next?.title || '', next?.appBar || null);
+    const surfaces = [...raiseSurfaces([this.exitUnderlay]), ...raiseSurfaces([layer.el])];
+    // The layer paints over its own App Bar's underlay.
+    layer.el.style.zIndex = '153';
+    this.layerExit = { layer, below: next?.layer || null, underlay, surfaces, timer: null, release: this.stack.holdSwap() };
+  }
+
+  _settleLayerExit(commit) {
+    const exit = this.layerExit;
+    if (!exit) return;
+    if (this.frame) cancelAnimationFrame(this.frame);
+    this.frame = null;
+    const duration = slideDuration();
+    for (const { node } of exit.surfaces) node.style.transition = `translate ${duration}ms ease-out`;
+    paintSurfaces(exit.surfaces, commit ? window.innerWidth : 0);
+    clearTimeout(exit.timer);
+    exit.timer = setTimeout(() => {
+      exit.timer = null;
+      this._dropLayerExit(commit && this.stack.shownLayer() === exit.layer);
+    }, duration);
+  }
+
+  // Ends a swipe on a revealed page: `back` makes it a Back during the
+  // handoff, which reveals the page shown under it; otherwise the page stays.
+  _dropLayerExit(back = false) {
+    const exit = this.layerExit;
+    if (!exit) return;
+    this.layerExit = null;
+    clearTimeout(exit.timer);
+    exit.layer.el.removeEventListener('touchmove', this._nativeTouchMove, true);
+    releaseSurfaces(exit.surfaces);
+    exit.underlay.remove();
+    if (back) this.stack.backDuringHandoff();
+    // A Back made meanwhile some other way may already show the page below.
+    else if (exit.below && exit.below !== this.stack.shownLayer()) {
+      if (exit.below.prepare) exit.below.prepare();
+      else exit.below.hide();
+    }
+    exit.release();
   }
 
   // Another modal owns input; an open drawer or exit underlay is our own.
@@ -485,6 +571,7 @@ export class ArticleGestures {
   }
 
   _removeExit() {
+    this._dropLayerExit();
     if (!this.exitUnderlay) return;
     this._stopMotion();
     this.backsDuringSlide = null;

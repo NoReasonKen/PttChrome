@@ -698,3 +698,74 @@ test('Back from the results to the source never tells the reader the connection 
     expect((await recordedHints(page)).filter(hint => /斷線|reconnect/i.test(hint))).toEqual([]);
   }
 });
+
+// Hold every key sent to PTT that `held` matches, from now until the returned
+// `release()` sends them in order and lets later ones through.
+async function holdSends(page, held) {
+  await page.evaluate(held => {
+    const send = window.__stubWSSent;
+    const match = new RegExp(held);
+    window.__heldSends = [];
+    window.__stubWSSent = data => {
+      if (!match.test(data)) return send(data);
+      window.__heldSends.push(() => send(data));
+    };
+    window.__releaseSends = () => {
+      window.__stubWSSent = send;
+      window.__heldSends.splice(0).forEach(sendHeld => sendHeld());
+    };
+  }, held.source);
+  return () => page.evaluate(() => window.__releaseSends());
+}
+
+// A swipe right across the revealed source, from its left edge.
+async function swipeRightOver(page, root) {
+  const box = await page.locator(root).boundingBox();
+  const y = box.y + box.height / 2;
+  const contact = await beginArticleTouch(page, { x: box.x + 20, y });
+  await contact.move({ x: box.x + 140, y });
+  await contact.move({ x: box.x + box.width - 20, y });
+  await contact.release();
+}
+
+test('a swipe on the source revealed by Back from the results reveals its list at once, before PTT has answered', async ({ page }) => {
+  await sourceFromList(page);
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+  const release = await holdSends(page, /./);
+  await nativeBack(page);
+  await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__heldSends.length)).toBeGreaterThan(0);
+  await swipeRightOver(page, ARTICLE_LAYER);
+  await expect(page.locator(LIST_LAYER)).toBeVisible();
+  await expect(page.locator(ARTICLE_LAYER)).toHaveCount(0);
+  const before = await cardOffset(page, LIST_LAYER, 'Alpha topic');
+  // PTT follows: it reopens the source, then leaves it for the list.
+  await release();
+  await expect(page.locator(LIST_LAYER)).toHaveCount(0, { timeout: 10000 });
+  await waitList(page, FULL_LIST);
+  await settled(page);
+  expect(Math.abs(await cardOffset(page, `${MAIN} .listBodyView`, 'Alpha topic') - before)).toBeLessThanOrEqual(1);
+});
+
+test('a swipe on the source revealed by Back from the results reveals its list at once while PTT\'s copy still pages to the reading position', async ({ page }) => {
+  await longSourceFromList(page);
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+  // PTT reopens the source, but pages it on only once released.
+  const release = await holdSends(page, /\x1b\[6~|^:/);
+  await nativeBack(page);
+  await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__heldSends.length)).toBeGreaterThan(0);
+  // PTT shows the source again; the layer stays until PTT's copy reaches it.
+  await page.waitForFunction(() => window.__app.articleGestures.stack.handoff?.presentedAt != null);
+  await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
+  await swipeRightOver(page, ARTICLE_LAYER);
+  await expect(page.locator(LIST_LAYER)).toBeVisible();
+  await expect(page.locator(ARTICLE_LAYER)).toHaveCount(0);
+  await release();
+  await expect(page.locator(LIST_LAYER)).toHaveCount(0, { timeout: 10000 });
+  await waitList(page, FULL_LIST);
+});
