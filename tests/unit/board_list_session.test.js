@@ -119,7 +119,7 @@ function makeSession({ prefOn = true, rows = 24 } = {}) {
     flushKind() {},
   };
   const s = new BoardListSession(core, view, termBuf, queue);
-  return { s, termBuf, queue, enqueued, hints, view };
+  return { s, termBuf, queue, enqueued, hints, view, core };
 }
 
 // 把一頁畫面塞進緩衝（term_view.accumulateBoardListLines 在真實路徑上做的事）。
@@ -1357,6 +1357,35 @@ describe("進板 → 退板：緩衝與捲動錨跨畫面保留", () => {
     expect(termBuf.brdListLineNums.length).toBe(60);
     expect(s._topNum).toBe(21);
     expect(s._selectedNum).toBe(40);
+  });
+
+  // Shown again from its live layer (#122), the list is the page the reader
+  // left: only a confirmed mismatch rebuilds it.
+  const backFromLayer = (h, rowTexts, curY) => {
+    h.core.articleGestures = { showsLayerOf: () => true, captureBoardListLayer() {}, pagePresented() {} };
+    h.s._beginOpen();
+    const cmd = h.enqueued.find((c) => c.kind === BRD_CMD_PREFIX + "open-board");
+    cmd.expect(null, { ctx: "other" });
+    cmd.onDone();
+    h.termBuf.feed(rowTexts, { curY });
+  };
+
+  test("shown from its layer, a landing page with nothing to check keeps the list", () => {
+    const h = engaged();
+    backFromLayer(h, brdScreenRows({ startNum: 61, count: 20 }), 3 + 15);
+    expect(h.s.state).toBe("active");
+    expect(h.termBuf.brdListLineNums.length).toBe(60);
+    expect(h.s._topNum).toBe(21);
+  });
+
+  test("shown from its layer, other rows of the landing page that list other boards rebuild the list", () => {
+    const h = engaged();
+    // PTT's cursor row (61) is not in the buffer; rows 45..60 are, under other names.
+    const body = Array.from({ length: 20 }, (_, i) => brdRow(45 + i, (i < 16 ? "OTHER" : "B") + (45 + i)));
+    backFromLayer(h, brdScreenRows({ bodyRows: body }), 3 + 16);
+    expect(h.s.state).toBe("active");
+    expect(h.termBuf.brdListLineNums.length).toBe(0);
+    expect(h.s._topNum).toBe(45);
   });
 });
 

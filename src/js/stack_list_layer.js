@@ -11,6 +11,10 @@ import { PAGE } from './page_stack';
 import { mobileFillLayout, listRowSpan } from './mobile_layout';
 import { boardMarkReadTargetOfText } from './board_list_parse';
 
+// Layout sizes that differ by less than a pixel are the same size: the
+// layout reports sub-pixel drift (411.99997 / 412.00003) between frames.
+const sameSize = (a, b) => Math.abs(a - b) < 1;
+
 // Only one hidden list per terminal stays connected and laid out. Deeper
 // history keeps its detached renderer and the existing live-layer bound.
 const readyLists = new WeakMap();
@@ -287,8 +291,8 @@ export class StackListLayer extends ScreenCopyLayer {
     const rect = this._viewportRect();
     if (!rect.width || !rect.height) return false;
     const viewportChanged = this.frame.enhance.listCards &&
-      this.screen.props.enhance.listScroll.viewportPx !== this.view.listCardViewportPx();
-    if (!force && this.width === window.innerWidth && rect.width === this.rect.width &&
+      !sameSize(this.screen.props.enhance.listScroll.viewportPx, this.view.listCardViewportPx());
+    if (!force && sameSize(this.width, window.innerWidth) && sameSize(rect.width, this.rect.width) &&
         this.forceWidth === this.view.chh && !viewportChanged) {
       // Keyboard-only changes move the box, preserving the prepared rows.
       if (rect.top !== this.rect.top || rect.height !== this.rect.height) {
@@ -350,7 +354,7 @@ export class StackListLayer extends ScreenCopyLayer {
       const rect = this.view.mainDisplay.getBoundingClientRect();
       // An article shrinks for the keyboard; a list keeps its content height.
       // Only width and font changes require preparing the list's layout again.
-      if (rect.width !== this.rect.width || this.view.chh !== this.forceWidth)
+      if (!sameSize(rect.width, this.rect.width) || this.view.chh !== this.forceWidth)
         this.fitViewport(true);
     });
     this.viewportObserver.observe(this.view.mainDisplay);

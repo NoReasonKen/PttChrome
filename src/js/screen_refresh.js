@@ -272,7 +272,8 @@ ScreenRefresh.prototype = {
       // A refresh replaces a list's content with PTT's current data: the live
       // layer it was shown from is spent (#125). The home dashboard keeps
       // sharing its state with its layer.
-      if (target.kind === 'article-list' || target.kind === 'board-list') core.articleGestures?.stack?.spend('refresh');
+      if (target.kind === 'article-list' || target.kind === 'board-list')
+        core.articleGestures?.stack?.spend('refresh', target.kind === 'board-list' ? 'board' : 'article');
       this._lastAt = this._now();
       const next = this.cooldownLeftMs();
       this._listeners.forEach(function(fn) {

@@ -316,10 +316,6 @@ export function BoardListSession(core, view, termBuf, queue) {
   this._seqCache = null;
 
   this._anchorOverride = false;
-  // Shown again from its live layer (#122): the rows the list holds stay as the
-  // reader left them, and only rows it never held are taken from PTT, until a
-  // refresh or another action rebuilds the list from PTT.
-  this._keepShown = false;
   // While a board opened from the list is read: whether its newest article is
   // unread, as last shown on its article list ({ board, unread } / null).
   this._visited = null;
@@ -379,11 +375,6 @@ BoardListSession.prototype = {
     if (unread != null) this._visited = { board: board, unread: unread };
   },
 
-  // Whether the rows already held stay as they are on a redraw.
-  keepsShownRows: function() {
-    return this._keepShown;
-  },
-
   _collectFacts: function(snap) {
     const buf = this._termBuf;
     const rowTexts = [];
@@ -434,13 +425,22 @@ BoardListSession.prototype = {
   // 就會把兩份清單 merge 進同一個緩衝（靜默錯誤）。所以整頁掃一遍：落地頁每一列
   // 只要在緩衝裡有同編號的列，板名就必須一致；有任一列矛盾就不是同一份清單。
   // 緩衝沒有的編號不算證據（落地頁本來就可能比緩衝多出邊界列）。
+  //
+  // Shown again from its live layer (#122), the list is the page the reader
+  // left: only a confirmed mismatch rebuilds it. When PTT's cursor row cannot
+  // be checked (its number is not in the buffer, or its name is unreadable),
+  // the other rows of PTT's page decide, and a page with nothing to check
+  // keeps the list.
   _landedSameList: function(facts) {
     const brd = facts && facts.brd;
-    if (!brd || brd.cursorNum == null) return false;
-    const buffered = this._rowTextOf(brd.cursorNum);
-    if (!buffered) return false;
-    const name = parseBoardListName(facts.rowTexts[facts.curY] || '');
-    if (!name || name !== parseBoardListName(buffered)) return false;
+    if (!brd) return false;
+    const buffered = brd.cursorNum != null ? this._rowTextOf(brd.cursorNum) : null;
+    const name = buffered ? parseBoardListName(facts.rowTexts[facts.curY] || '') : null;
+    if (!name) {
+      if (!this._core.articleGestures?.showsLayerOf?.(PAGE.BOARD_LIST)) return false;
+      return !this._listContradicts(facts);
+    }
+    if (name !== parseBoardListName(buffered)) return false;
     return !this._listContradicts(facts);
   },
 
@@ -924,6 +924,8 @@ BoardListSession.prototype = {
   // :2044 Ctrl('T')），本地導覽零網路 ⇒ server 對錯的那列動作。理由與實證同
   // list_session._beginNativePassthrough 的標頭。
   _beginNativePassthrough: function(e) {
+    // Keys sent in native mode ask PTT for the list anew (#125).
+    this._core.articleGestures?.stack?.spend('nativePassthrough', 'board');
     let bytes = keyEventToBytes(e);
     // **Ctrl 組合一律不過 u2b**：控制碼（CtrlShiftMap 全 < 0x80），與原生鍵盤路徑
     // 同樣不轉碼；`!e.ctrlKey` 是合約表達，見 list_session 同處。
@@ -1085,8 +1087,9 @@ BoardListSession.prototype = {
       keyClass: 'native-inplace'
     });
     this.state = r.next; // functionMode（吸收 settle／吞鍵），render 仍是 frozen
-    // Marking boards read asks PTT for the list anew.
-    this._keepShown = false;
+    // The key acts on the selected board: only its row takes PTT's rendering
+    // while the list's rows are held (#125).
+    this._view.retakeListRow?.(this._selectedNum, null, 'board');
     this._freezeForTransaction();
     const self = this;
     const send = function() {
@@ -1176,8 +1179,12 @@ BoardListSession.prototype = {
     this._visited = null;
     // A list just shown from its layer is a page the reader has not been told
     // of new articles on yet.
-    if (!this._keepShown) this._newArticlesNoticed = false;
-    this._keepShown = fromLayer;
+    if (!this._view.holdsListRows?.('board')) this._newArticlesNoticed = false;
+    // Shown again from its live layer (#122): the rows the list holds stay as
+    // the reader left them, and only rows it never held are taken from PTT,
+    // until the layer is spent (NavigationStack.spend) or the list rebuilt.
+    if (fromLayer) this._view.holdListRows?.(null, 'board');
+    else this._view.releaseListRows?.('board');
     const num = this._selectedNum;
     if (fromLayer && visited && num != null &&
         parseBoardListName(this._rowTextOf(num)).toLowerCase() === visited.board.toLowerCase())
@@ -1397,7 +1404,6 @@ BoardListSession.prototype = {
     this._breakScroll();
     this._seqCache = null;
     this._prunePivotOverride = undefined;
-    this._keepShown = false;
     this._view.resetBoardListAccumulation();
     this._termBuf.brdListLines = [];
     this._termBuf.brdListLineNums = [];

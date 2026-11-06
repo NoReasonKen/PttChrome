@@ -257,7 +257,10 @@ async function backRevealsDashboard(page, cassette) {
   await waitFed(page, cassette.steps.length);
 }
 
-test('after switching to the next article, its list still reveals the dashboard', async ({ page }) => {
+// Needs re-recording: since #123 the next-article alignment jump sends
+// `354048\r\f`, which scn-stack-home-next never recorded (as in
+// stack_scenarios.offline.spec.js).
+test.fixme('after switching to the next article, its list still reveals the dashboard', async ({ page }) => {
   await enterBoardFromDashboard(page, homeNext);
   for (let i = 0; i < 2; i++) await ptt.sendKey(page, 'ArrowUp');
   await ptt.sendKey(page, 'Enter');
@@ -390,6 +393,38 @@ test('refreshing the board list shown again replaces its rows with PTT\'s curren
   }, reloaded);
   await page.locator('[data-key="__refresh"]').tap();
   await expect.poll(async () => (await boardPage(page)).boards.find(b => b.board === 'NTUHI').unread).toBe(true);
+});
+
+// PTT answers each key in `replies` ({ keys: recv }) with that recorded
+// reply, base64 as in a cassette.
+const answerKeys = (page, replies) => page.evaluate(replies => {
+  const send = window.__stubWSSent;
+  window.__stubWSSent = data => {
+    send(data);
+    const keys = data.replace(/\f$/, '');
+    if (keys in replies) window.__app.onData(atob(replies[keys]));
+  };
+}, replies);
+
+// An in-place key acts on the selected board only (#125): its row takes PTT's
+// rendering, and every other row stays as the reader left it.
+test('marking the selected board unread on the board list shown again changes only its row', async ({ page }) => {
+  const route = withReplies(boardList, { ...MAYCLASS_UNREAD, [BACK]: [markUnread(21, 'MayClass'), markUnread(23, 'NTUHI')] });
+  await bootBoardListOf(page, route);
+  const kept = await openAndBack(page, route);
+  expect(kept.selected).toBe('MayClass');
+  expect(kept.boards.find(b => b.board === 'MayClass').unread).toBe(false);
+  expect(kept.boards.find(b => b.board === 'NTUHI').unread).toBe(false);
+  // `V` marks the board unread; PTT redraws its page, NTUHI unread there too.
+  await answerKeys(page, { V: route.steps[BACK].recv });
+  await ptt.sendKey(page, 'V');
+  await expect.poll(async () => (await boardPage(page)).boards.find(b => b.board === 'MayClass').unread).toBe(true);
+  await boardListEngaged(page);
+  // MayClass's row is PTT's now, with the popularity of the reader's visit.
+  const now = await boardPage(page);
+  expect(now.boards.find(b => b.board === 'MayClass')).toMatchObject({ unread: true, text: expect.stringContaining('MayClass課程1') });
+  const others = page => ({ ...page, boards: page.boards.filter(b => b.board !== 'MayClass') });
+  expectKept(others(now), others(kept), {});
 });
 
 // PTT's answer to Back lists boards whose unread marks differ from the board

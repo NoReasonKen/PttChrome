@@ -3401,16 +3401,7 @@ TermView.prototype = {
     // Rows kept as the reader left them (holdListRows): PTT's landing page adds
     // only the rows marked to retake, and any other page also adds the rows
     // not shown yet (retakeListRow).
-    var hold = this._listHold;
-    if (hold) {
-      var numMap = this._listNumMap;
-      var pinnedMap = this._listPinnedMap;
-      var landing = rowTexts.join('\n') === hold.landing;
-      entries = entries.filter(function(e) {
-        var retake = e.num != null ? hold.retakeNums.has(e.num) : hold.retakeKeys.has(e.key);
-        return retake || (!landing && !(e.num != null ? numMap.has(e.num) : pinnedMap.has(e.key)));
-      });
-    }
+    entries = this._heldOut('article', entries, rowTexts);
     // 合併前量「緩衝往哪端長」：evict 不砍剛長出來的那一端（evictListBuffer 註解）。
     var grewDir = listGrowthDir(this._listNumMap, entries);
     var prevRange = grewDir ? listNumRange(this._listNumMap) : null;
@@ -3459,9 +3450,7 @@ TermView.prototype = {
       var stalled = grewDir < 0 ? !(after.lo < prevRange.lo) : !(after.hi > prevRange.hi);
       if (stalled && ls.noteGrowthStalled) ls.noteGrowthStalled(grewDir);
     }
-    var flat = flattenListBuffer(this._listNumMap, this._listPinnedMap);
-    buf.listLines = flat.lines;
-    buf.listLineNums = flat.nums;
+    this._flattenList('article');
     // Cache the surrounding chrome for the window render off clean-list-shaped
     // live frames only (a jump response blanks the bottom row — protocol §4 ✚ —
     // and must not poison the footer cache).
@@ -3571,43 +3560,97 @@ TermView.prototype = {
     return this._listBlankRow;
   },
 
-  // Keep the accumulated rows as the reader left them (#120): the list comes
-  // back from an article as its live layer showed it. `landing` is PTT's page
-  // on that return (row texts); it adds only the rows marked to retake, and
-  // later pages also add the rows not shown yet, until releaseListRows or a
-  // fresh accumulation.
-  holdListRows: function(landing) {
-    this._listHold = { landing: (landing || []).join('\n'), retakeNums: new Set(), retakeKeys: new Set() };
+  // Keep the accumulated rows of `list` ('article', the default, or 'board')
+  // as the reader left them: the list comes back from a page above as its
+  // live layer showed it (#120, #122). One hold per list buffer, released by
+  // releaseListRows (NavigationStack.spend) or a fresh accumulation. `landing`
+  // is PTT's page on that return (row texts), or null: it adds only the rows
+  // marked to retake, and other pages also add the rows not held yet.
+  holdListRows: function(landing, list) {
+    this._holdsByList()[list || 'article'] = {
+      landing: landing ? landing.join('\n') : null, retakeNums: new Set(), retakeKeys: new Set()
+    };
   },
 
-  // The row of article `num` (or of the pinned row `pinnedKey`) takes PTT's
+  // The row of `num` (or of the pinned row `pinnedKey`) in `list` takes PTT's
   // rendering while the rows are held: the reader's own in-place action, such
   // as tagging (`t`), changed it on PTT (#125), or the list cannot tell
   // whether it is an article just read (#128).
-  retakeListRow: function(num, pinnedKey) {
-    var hold = this._listHold;
+  retakeListRow: function(num, pinnedKey, list) {
+    var hold = this._holdsByList()[list || 'article'];
     if (!hold) return;
     if (num != null) hold.retakeNums.add(num);
     else if (pinnedKey != null) hold.retakeKeys.add(pinnedKey);
   },
 
-  releaseListRows: function() {
-    this._listHold = null;
+  // Release the hold of `list`, or of both lists without one.
+  releaseListRows: function(list) {
+    if (list) this._holdsByList()[list] = null;
+    else this._holds = null;
   },
 
-  holdsListRows: function() {
-    return !!this._listHold;
+  holdsListRows: function(list) {
+    return !!this._holdsByList()[list || 'article'];
+  },
+
+  _holdsByList: function() {
+    return this._holds || (this._holds = { article: null, board: null });
+  },
+
+  // The page `entries` ({ num, key }) of `list` that may replace or add to
+  // its rows, as its hold allows (holdListRows).
+  _heldOut: function(list, entries, rowTexts) {
+    var hold = this._holdsByList()[list];
+    if (!hold) return entries;
+    var board = list === 'board';
+    var numMap = board ? this._brdNumMap : this._listNumMap;
+    var pinnedMap = board ? EMPTY_PINNED_MAP : this._listPinnedMap;
+    var landing = hold.landing != null && rowTexts.join('\n') === hold.landing;
+    return entries.filter(function(e) {
+      if (e.num != null ? hold.retakeNums.has(e.num) : hold.retakeKeys.has(e.key)) return true;
+      return !landing && !(e.num != null ? numMap.has(e.num) : pinnedMap.has(e.key));
+    });
   },
 
   // Show the kept row of article `num` (or of the pinned row `pinnedKey`) as
   // read, as PTT lists it once it was read.
   markListArticleRead: function(num, pinnedKey) {
-    var map = num != null ? this._listNumMap : this._listPinnedMap;
+    return this._editListRow('article', num, pinnedKey, readListRow);
+  },
+
+  // Change the buffered row of board `num` with `edit(cells)`, which returns
+  // whether it changed them.
+  editBoardListRow: function(num, edit) {
+    return this._editListRow('board', num, null, function(row) {
+      var copy = cloneRow(row);
+      return edit(copy) ? copy : null;
+    });
+  },
+
+  // Replace the buffered row of `num` (or of the pinned row `pinnedKey`) in
+  // `list` with `edit(row)`, a changed copy or null. Rows are never changed
+  // in place: they are shared with frames already rendered, such as a live
+  // layer's.
+  _editListRow: function(list, num, pinnedKey, edit) {
+    var board = list === 'board';
+    var map = board ? this._brdNumMap : num != null ? this._listNumMap : this._listPinnedMap;
     var key = num != null ? num : pinnedKey;
-    if (!map || key == null || !map.has(key)) return;
-    var read = readListRow(map.get(key));
-    if (!read) return;
-    map.set(key, read);
+    if (!map || key == null || !map.has(key)) return false;
+    var copy = edit(map.get(key));
+    if (!copy) return false;
+    map.set(key, copy);
+    this._flattenList(list);
+    return true;
+  },
+
+  // Flatten the buffer maps of `list` into the rows the session reads.
+  _flattenList: function(list) {
+    if (list === 'board') {
+      var brd = flattenListBuffer(this._brdNumMap, EMPTY_PINNED_MAP);
+      this.buf.brdListLines = brd.lines;
+      this.buf.brdListLineNums = brd.nums;
+      return;
+    }
     var flat = flattenListBuffer(this._listNumMap, this._listPinnedMap);
     this.buf.listLines = flat.lines;
     this.buf.listLineNums = flat.nums;
@@ -3615,7 +3658,7 @@ TermView.prototype = {
 
   // Clear the list-accumulation maps (fresh board entry / board switch rebuild).
   resetListAccumulation: function() {
-    this._listHold = null;
+    this._holdsByList().article = null;
     this._listNumMap = null;
     this._listPinnedMap = null;
     this._listHeaderRows = null;
@@ -3645,9 +3688,7 @@ TermView.prototype = {
     this._listPinnedMap = new Map(snap.pinnedMap);
     this._listHeaderRows = snap.headerRows;
     this._listFooterRow = snap.footerRow;
-    var flat = flattenListBuffer(this._listNumMap, this._listPinnedMap);
-    this.buf.listLines = flat.lines;
-    this.buf.listLineNums = flat.nums;
+    this._flattenList('article');
   },
 
   // ---- 看板列表（BoardListSession）的累積與視窗 -------------------------------
@@ -3673,10 +3714,9 @@ TermView.prototype = {
       if (nums[j] != null) pageEntries.push({ num: nums[j] });
     var grewDir = listGrowthDir(this._brdNumMap, pageEntries);
     // A list shown again from its live layer keeps the rows it showed (#122).
-    var keepShown = !!(bs && bs.keepsShownRows && bs.keepsShownRows());
+    var taken = new Set(this._heldOut('board', pageEntries, rowTexts).map(function(e) { return e.num; }));
     for (var i = BRD_HEADER_ROWS; i <= buf.rows - 2; ++i) {
-      if (nums[i] == null) continue;
-      if (keepShown && this._brdNumMap.has(nums[i])) continue;
+      if (nums[i] == null || !taken.has(nums[i])) continue;
       var row = cloneRow(buf.lines[i]);
       // 把 `%7d` 序號欄由解析出的編號重寫一次：server 的游標 `>` 蓋著 cell 0，
       // 存進 map 的列必須長得跟乾淨的原生列一模一樣（游標由 render 端自己畫）。
@@ -3693,9 +3733,7 @@ TermView.prototype = {
     var ev = evictListBuffer(this._brdNumMap, bs ? bs.evictPivot() : null, MAX_LIST_ROWS, grewDir);
     if (bs && ev.evictedUp) bs.noteEvicted(-1);
     if (bs && ev.evictedDown) bs.noteEvicted(1);
-    var flat = flattenListBuffer(this._brdNumMap, EMPTY_PINNED_MAP);
-    buf.brdListLines = flat.lines;
-    buf.brdListLineNums = flat.nums;
+    this._flattenList('board');
     // 只在「長得像乾淨看板列表」的活幀更新 header/footer 快取：跳號回應會先把
     // 底列清成 prompt，污染快取就會讓視窗畫出半條 footer。
     if (
@@ -3762,23 +3800,9 @@ TermView.prototype = {
     return this._brdBlankRow;
   },
 
-  // Change the buffered row of board `num` with `edit(cells)`, which returns
-  // whether it changed them. The row is replaced by an edited copy: rows are
-  // shared with frames already rendered, such as a live layer's.
-  editBoardListRow: function(num, edit) {
-    var row = this._brdNumMap && this._brdNumMap.get(num);
-    if (!row) return false;
-    var copy = cloneRow(row);
-    if (!edit(copy)) return false;
-    this._brdNumMap.set(num, copy);
-    var flat = flattenListBuffer(this._brdNumMap, EMPTY_PINNED_MAP);
-    this.buf.brdListLines = flat.lines;
-    this.buf.brdListLineNums = flat.nums;
-    return true;
-  },
-
   // 進入／離開看板列表、或整份重建時清掉累積（BoardListSession._resetBuffer）。
   resetBoardListAccumulation: function() {
+    this._holdsByList().board = null;
     this._brdNumMap = null;
     this._brdHeaderRows = null;
     this._brdFooterRow = null;

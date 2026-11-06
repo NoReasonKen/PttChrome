@@ -47,7 +47,7 @@ const onlineAuthorSpan = { from: 17, to: 29, fg: 7, bright: true };
 
 function fakeView(texts, curY, listSession = null) {
   const lines = texts.map((t) => chRow(t));
-  return {
+  return Object.assign(Object.create(TermView.prototype), {
     buf: {
       rows: texts.length,
       cols: 80,
@@ -62,9 +62,7 @@ function fakeView(texts, curY, listSession = null) {
     bbscore: listSession ? { listSession } : null,
     _listNumMap: null,
     _listPinnedMap: null,
-    accumulateListLines: TermView.prototype.accumulateListLines,
-    resetListAccumulation: TermView.prototype.resetListAccumulation,
-  };
+  });
 }
 
 function fakeListSession() {
@@ -962,11 +960,6 @@ describe("held list rows (holdListRows)", () => {
   };
   const held = () => {
     const v = fakeView(frame([row(11, "+", 1, "a"), row(12, "+", "", "b")]), 3, fakeListSession());
-    Object.assign(v, {
-      holdListRows: TermView.prototype.holdListRows,
-      releaseListRows: TermView.prototype.releaseListRows,
-      markListArticleRead: TermView.prototype.markListArticleRead,
-    });
     show(v, frame([row(11, "+", 1, "a"), row(12, "+", "", "b")]));
     return v;
   };

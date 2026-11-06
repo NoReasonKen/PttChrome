@@ -2271,7 +2271,7 @@ ListSession.prototype = {
     // PTT's page merges into the buffer again. A resize repaints the same
     // page, and an in-place key leaves the rows as they were (#125): both keep
     // rows held for the reader.
-    if (!opts?.preserveSelection && !opts?.keepRows) this._view.releaseListRows?.();
+    if (!opts?.preserveSelection && !opts?.keepRows) this._view.releaseListRows?.('article');
     this._holdReason = null;
     this._cancelResumeProbe();
     this._resumedAt = performance.now();
@@ -3833,7 +3833,7 @@ ListSession.prototype = {
   },
 
   _resumeBuffer: function(facts) {
-    this._view.releaseListRows?.();
+    this._view.releaseListRows?.('article');
     this._holdReason = null;
     this._cancelResumeProbe();
     this._resumedAt = performance.now(); // 不變量 N4：殘餘幀不得打到 active 的 catch-all

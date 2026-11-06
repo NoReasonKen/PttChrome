@@ -603,14 +603,13 @@ export class NavigationStack {
   // The reader acted on the page shown (#125). An action that asks PTT for the
   // page's data anew spends the live layer the page was shown from: what the
   // layer still had to do, such as a remembered action, no longer affects the
-  // page, and its rows no longer stay as the reader left them. Returns whether
-  // `action` spends it.
-  spend(action) {
-    if (!spendsLayer(action)) return false;
+  // page, and the rows of `list` ('article' or 'board') no longer stay as the
+  // reader left them.
+  spend(action, list = 'article') {
+    if (!spendsLayer(action)) return;
     if (this.handoff) this._forget(this.handoff);
-    this.core.view.releaseListRows?.();
-    this._mark('spent', { action });
-    return true;
+    this.core.view.releaseListRows?.(list);
+    this._mark('spent', { action, list });
   }
 
   // Drops a remembered action without running it.
