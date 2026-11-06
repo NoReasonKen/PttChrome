@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const { bootThreadBoard, FAR_BOARD } = require('../helpers/thread_jump');
-const { waitRectStable, waitScrollStable } = require('../helpers/layout');
+const { assertScrollCapacity, waitRectStable, waitScrollStable } = require('../helpers/layout');
 const { revealArticleDrawer } = require('../helpers/article_gestures');
 const { touchDrag } = require('../helpers/real_input');
 
@@ -16,13 +16,16 @@ for (const [source, target, key] of [[600, 40, '['], [40, 1, '['], [1, 40, ']'],
     await page.mouse.move(box.left + box.width / 2, box.top + box.height / 2);
     await page.mouse.wheel(0, 200);
     await expect.poll(() => page.evaluate(() => window.__app.view.mainDisplay.scrollTop)).toBeGreaterThan(0);
+    const sourceTop = await waitScrollStable(page, main);
+    await assertScrollCapacity(page, main, sourceTop);
     await revealArticleDrawer(page);
     await page.locator(`[data-article-shortcut="${key}"]`).tap();
     await expect.poll(() => page.evaluate(() => window.__threadServer.state.open.num)).toBe(target);
     await expect.poll(() => page.evaluate(() => !window.__app.threadJump.active && window.__app.easyReading.easyReadingReachedPageEnd)).toBe(true);
     await waitScrollStable(page, main);
+    await assertScrollCapacity(page, main, Math.min(sourceTop, 200));
     expect(await page.evaluate(() => window.__app.view.mainDisplay.scrollTop)).toBe(0);
-    if (source === 40 && key === '[') {
+    if (process.env.E2E_ARTIFACT_DIR && source === 40 && key === '[') {
       const screenshot = await page.screenshot();
       await testInfo.attach('article-origin', { body: screenshot, contentType: 'image/png' });
     }
@@ -38,16 +41,24 @@ for (const entry of ['tap', 'pull']) {
     await expect.poll(() => page.evaluate(() => window.__app.easyReading.easyReadingReachedPageEnd)).toBe(true);
     const card = page.locator('#nextArticleCard');
     await expect(card).toBeVisible();
-    if (entry === 'tap') await card.tap();
-    else {
+    const main = '.main:not([data-stack-layer])';
+    let sourceTop;
+    if (entry === 'tap') {
+      await card.scrollIntoViewIfNeeded();
+      sourceTop = await waitScrollStable(page, main);
+      await assertScrollCapacity(page, main, sourceTop);
+      await card.tap();
+    } else {
       await page.evaluate(() => { const main = window.__app.view.mainDisplay; main.scrollTop = main.scrollHeight; });
-      await waitScrollStable(page, '.main:not([data-stack-layer])');
-      const box = await waitRectStable(page, '.main:not([data-stack-layer])');
+      sourceTop = await waitScrollStable(page, main);
+      await assertScrollCapacity(page, main, sourceTop);
+      const box = await waitRectStable(page, main);
       await touchDrag(page, { x: box.left + 100, y: box.top + 300 }, { x: box.left + 100, y: box.top + 80 });
     }
     await expect.poll(() => page.evaluate(() => window.__threadServer.state.open.num)).toBe(40);
     await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle && window.__app.easyReading.easyReadingReachedPageEnd)).toBe(true);
-    await waitScrollStable(page, '.main:not([data-stack-layer])');
+    await waitScrollStable(page, main);
+    await assertScrollCapacity(page, main, Math.min(sourceTop, 200));
     expect(await page.evaluate(() => window.__app.view.mainDisplay.scrollTop)).toBe(0);
   });
 }

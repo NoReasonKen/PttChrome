@@ -40,6 +40,9 @@ fixture（`tests/unit/fixtures/replay/<name>.page.json`）：
 
 ### Replay readiness
 
+For scroll preconditions, durable review screenshots and captured viewport
+metadata, see [layout reproduction tools](test-reproduction-tools.md).
+
 Replay checks the recorded terminal dimensions before feeding bytes. Default
 80x24 recordings require a matching initial terminal; errors include the actual
 terminal and viewport dimensions. Resize tests should establish their recorded

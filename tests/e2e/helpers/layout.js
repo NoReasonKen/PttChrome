@@ -531,6 +531,21 @@ async function waitScrollStable(
   );
 }
 
+// A reset regression needs enough destination overflow to retain the old offset.
+// Otherwise the browser itself clamps it to zero and conceals a missing reset.
+async function assertScrollCapacity(page, selector, offset) {
+  if (!Number.isFinite(offset) || offset <= 0)
+    throw new Error('assertScrollCapacity requires a positive source offset');
+  const geometry = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    return el ? { top: el.scrollTop, height: el.clientHeight, content: el.scrollHeight } : null;
+  }, selector);
+  if (!geometry || geometry.height <= 0 || geometry.content - geometry.height < offset) {
+    throw new Error(`Scroll precondition failed for ${selector}: cannot retain ${offset}px; geometry=${JSON.stringify(geometry)}. Use taller content or a compatible viewport.`);
+  }
+  return geometry;
+}
+
 // 逐幀量「讀者看到的版面」：裝上之後，頁面端用 `window.__paintedFrame.add(cb)`／
 // `.remove(cb)` 掛回呼，cb 每一幀在**這一幀的 layout、content-visibility 判定與所有
 // ResizeObserver 修正都跑完之後、paint 之前**被呼叫一次。
@@ -568,6 +583,7 @@ async function installPaintedFrameProbe(page) {
 }
 
 module.exports = {
+  assertScrollCapacity,
   OVERRIDING_SEL,
   EDGE_PAGING_BLOCKERS,
   MEDIA_SEL,
