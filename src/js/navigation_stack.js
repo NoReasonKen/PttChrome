@@ -377,8 +377,8 @@ export class NavigationStack {
   // Whether a lower article list holds PTT's selection: the article now open,
   // followed through every replacement in place (#74). Only fullListBelow
   // asks; a reveal does not need it (#127).
-  _selects(lower, top = this._top()) {
-    return lower.kind !== PAGE.ARTICLE_LIST || (lower.follows === top.id && lower.shows !== false);
+  _selects(lower) {
+    return lower.kind !== PAGE.ARTICLE_LIST || (lower.follows === this._top().id && lower.shows !== false);
   }
 
   // What PTT's Back from the shown article returns to, when the stack knows
@@ -503,7 +503,6 @@ export class NavigationStack {
     // A later Back already left the source (#125): PTT's board list takes over
     // the page shown.
     if (h.legs.length) return this._end('unexpected');
-    h.gone = true;
     this._end('gone');
   }
 
@@ -564,7 +563,7 @@ export class NavigationStack {
   // the page below it shows at once, its live layer or the dark fallback. PTT
   // follows this Back once it has answered the earlier ones; nothing waits for
   // a swap. It replaces a remembered action: the reader's last choice wins.
-  queueBack() {
+  backDuringHandoff() {
     const h = this.handoff;
     if (!h) return false;
     this._forget(h);
@@ -636,7 +635,7 @@ export class NavigationStack {
       board: this._top()?.board || core.view._articleBoard,
       identity: openArticleKey(core), appBar: revealed?.appBar || null,
       sentAt: performance.now(), presentedAt: null, touches: 0, lastScrollAt: -Infinity,
-      timer: null, followTimer: null, listeners: [], layerListeners: [], finish, follow, reveal, hint, action: null, gone: false,
+      timer: null, followTimer: null, listeners: [], layerListeners: [], finish, follow, reveal, hint, action: null,
       // The Backs PTT is still to follow after this one, in order: the page each
       // leaves and what it is expected to show.
       legs: []
@@ -842,7 +841,6 @@ export class NavigationStack {
     if (!h) return;
     const core = this.core;
     // A deleted source stays shown over the board list PTT stopped on.
-    if (h.gone && how !== 'disconnected') how = 'gone';
     const gone = how === 'gone';
     this._mark('end', { how });
     if (how === 'presented' && h.layer && !h.action?.refresh) h.layer.alignReal(core);

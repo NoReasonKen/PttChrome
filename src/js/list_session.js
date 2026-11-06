@@ -1068,7 +1068,7 @@ ListSession.prototype = {
     if (consumed === 'done' && (this._renderMode === 'frozen' || this.state === 'opening'))
       this._armFrozenWatchdog();
     // While the layer Back revealed is still the page shown.
-    if (this._landsNewerArticles(facts)) this._noticeNewArticles(!this._view.holdsListRows?.());
+    noticeNewArticles(this, !this._view.holdsListRows?.('article'), this._landsNewerArticles(facts));
     this._dispatch(this._settleEvent(facts, consumed), facts);
     this._scheduleResumeProbe();
     this._core.listResize?.pump();
@@ -2040,6 +2040,11 @@ ListSession.prototype = {
     });
   },
 
+  // A sync jump that continues with `next` however it lands.
+  _enqueueCursorSyncJumpThen: function(kind, next) {
+    this._enqueueCursorSyncJump(kind, next, next, next);
+  },
+
   // Shared sync-jump leg: park the server's REAL cursor on the local selection
   // before a command that acts FROM the cursor ([ ] = / v mark / ← leave —
   // pttbbs remembers the board position via the real cursor, getkeep). Expect
@@ -2158,10 +2163,9 @@ ListSession.prototype = {
     }
     // A jump that lands elsewhere (the selected number is gone, or lists
     // another article now) still leaves.
-    const leave = function() {
+    this._enqueueCursorSyncJumpThen('leave-sync-jump', function() {
       self._enqueueLeaveKey();
-    };
-    this._enqueueCursorSyncJump('leave-sync-jump', leave, leave, leave);
+    });
   },
 
   // A 類鍵（INPLACE_KEYS）的凍結交易 —— 本功能的 L1，形狀完全照抄 _beginLeave：
@@ -2430,8 +2434,7 @@ ListSession.prototype = {
   // selection counts as unknown; opening an article runs its own check.
   _alignServerCursor: function() {
     if (this._selectedNum == null || this._selectedNum === this._serverNum) return;
-    const noop = function() {};
-    this._enqueueCursorSyncJump('align-sync-jump', noop, noop, noop);
+    this._enqueueCursorSyncJumpThen('align-sync-jump', function() {});
   },
 
   // Whether PTT's answer to Back lists an article newer than the newest the
@@ -2444,15 +2447,6 @@ ListSession.prototype = {
     if (newest == null) return false;
     for (let r = 3; r <= facts.rows - 2; ++r) if (facts.nums[r] != null && facts.nums[r] > newest) return true;
     return false;
-  },
-
-  // The brief new-articles notice, once per page: `freshPage` is a list
-  // that had not kept its rows from a layer yet (a refresh or a rebuild
-  // makes a new page).
-  _noticeNewArticles: function(freshPage) {
-    if (freshPage) this._newArticlesNoticed = false;
-    if (!this._newArticlesNoticed)
-      this._newArticlesNoticed = !!this._core.articleGestures?.stack?.noticeNewContent?.();
   },
 
   _enqueueLeaveKey: function() {
@@ -4966,6 +4960,17 @@ export function listGrowthDir(numMap, entries) {
     if (n > prevMax) down = true;
   }
   return up === down ? 0 : up ? -1 : 1;
+}
+
+// The brief new-articles notice on a list shown again from its live layer,
+// once per page: `freshPage` is a list that had not kept its rows from the
+// layer yet (a refresh or a rebuild makes a new page), and `newer` whether
+// PTT's landing page lists something the kept rows do not. Shared by the
+// article list and the board list sessions.
+export function noticeNewArticles(session, freshPage, newer) {
+  if (freshPage) session._newArticlesNoticed = false;
+  if (newer && !session._newArticlesNoticed)
+    session._newArticlesNoticed = !!session._core.articleGestures?.stack?.noticeNewContent?.();
 }
 
 // The article number at a buffer edge: smallest (direction<0, the "older" top)

@@ -625,11 +625,12 @@ export function TermView() {
   });
 
   addEventListener('keydown', (e) => {
-    // A Back while a leave is on its way to PTT is queued (#34); the leave's
-    // own modal gate holds every other key.
+    // A Back while a leave is on its way to PTT reveals the next lower page at
+    // once, and PTT follows it (#125); the leave's own modal gate holds every
+    // other key.
     if (this.bbscore.articleGestures?.holdsInput() && isPlainBack(e)) {
       e.preventDefault();
-      this.bbscore.articleGestures.queueBack();
+      this.bbscore.articleGestures.backDuringHandoff();
       return;
     }
     // A refresh key then refreshes a revealed list once PTT shows it (#124).
@@ -1537,7 +1538,7 @@ TermView.prototype = {
     // reach PTT until the real list takes over. Toolbar keys come through here
     // too, past the modal gate that holds the hardware keyboard.
     if (this.bbscore.articleGestures?.holdsInput()) {
-      if (isPlainBack(e)) this.bbscore.articleGestures.queueBack();
+      if (isPlainBack(e)) this.bbscore.articleGestures.backDuringHandoff();
       e.preventDefault();
       return;
     }

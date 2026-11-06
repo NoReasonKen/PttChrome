@@ -192,7 +192,8 @@ export const MobileToolbar = ({
   const pushAction = useCallback(() => {
     const bar = pttchrome.commentBar;
     const s = bar && bar.state;
-    // 從頁層顯示、PTT 還沒接手（或無法確認原文）的文章：留言只走推文列（#121）。
+    // An article shown from its live layer before PTT takes over (or whose
+    // source cannot be confirmed) takes a comment only through the comment bar (#121).
     const stack = pttchrome.articleGestures?.stack;
     if (stack?.showsArticleLayer?.()) {
       if (!stack.refusesComment() && s && s.available) bar.expand();

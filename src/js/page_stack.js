@@ -4,8 +4,7 @@
 //
 // A page is { kind, board, layer }: the kind of page, the board it shows (for
 // a board list, the board its selected row opens), and whether a live layer of
-// it exists underneath. An article list an article was opened from has that
-// article's `id` as `selected`. A board list opened from a board list's row has that
+// it exists underneath. A board list opened from a board list's row has that
 // row as its `folder`. An article list that shows
 // search results has `results`; an article has its `id` when known.
 import { sameBoard } from './screen_titles';
@@ -24,12 +23,6 @@ export function createPageStack() {
 // (search, article code, link, resume, board jump) starts a new base.
 export function pushPage(stack, page, { fromBelow = false } = {}) {
   if (!fromBelow) return { pages: [page] };
-  const n = stack.pages.length;
-  const below = stack.pages[n - 1];
-  // An article list shows the article opened from it selected.
-  if (below?.kind === PAGE.ARTICLE_LIST && page.kind === PAGE.ARTICLE && page.id != null) {
-    return { pages: [...stack.pages.slice(0, n - 1), { ...below, selected: page.id }, page] };
-  }
   return { pages: [...stack.pages, page] };
 }
 

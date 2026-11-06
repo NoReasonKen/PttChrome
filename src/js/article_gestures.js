@@ -318,8 +318,8 @@ export class ArticleGestures {
 
   // A Back made meanwhile reveals the next lower page at once, and PTT follows
   // it (#125); one made during the slide does so once the leave is sent.
-  queueBack() {
-    if (!this.stack.queueBack() && this.backsDuringSlide != null) this.backsDuringSlide++;
+  backDuringHandoff() {
+    if (!this.stack.backDuringHandoff() && this.backsDuringSlide != null) this.backsDuringSlide++;
   }
 
   // Whether Back is showing the page of `kind` again from its live layer, and
@@ -428,7 +428,7 @@ export class ArticleGestures {
       cancel: () => this._settleExit(false),
       hint: () => core.view.flashListHint?.(i18n('stack_handoffTimeout'), STACK_NOTICE_MS)
     });
-    for (let i = 0; sent && i < backsDuringSlide; i++) this.stack.queueBack();
+    for (let i = 0; sent && i < backsDuringSlide; i++) this.stack.backDuringHandoff();
   }
 
   // A later Back's lower page replaces the one shown under the page left.

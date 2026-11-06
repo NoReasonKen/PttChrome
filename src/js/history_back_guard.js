@@ -250,10 +250,10 @@ export function installHistoryBackGuard(app, win, opts) {
     }
     // Closing an overlay takes priority over the optional terminal-back mapping.
     if (!gateOn()) return false;
-    // A Back while the revealed page waits for PTT is queued to unwind further
-    // after the swap (#34), never counted toward leaving the site.
+    // A Back while the revealed page waits for PTT reveals the next lower page
+    // at once, and PTT follows it (#125); it never counts toward leaving the site.
     if (app.articleGestures && app.articleGestures.holdsInput && app.articleGestures.holdsInput()) {
-      app.articleGestures.queueBack();
+      app.articleGestures.backDuringHandoff();
       lastBlockedAt = 0;
       return true;
     }

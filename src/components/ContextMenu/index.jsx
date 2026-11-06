@@ -868,8 +868,10 @@ export const ContextMenu = ({ pttchrome }) => {
       const body = String(text || "");
       if (!body.trim()) return false;
       writeDraft(body);
-      // 從頁層顯示的文章（#121）：無法確認原文就不送；PTT 還沒接手就記住，
-      // 接手後再送一次（最後一次為準），逾時則提示沒有送出。
+      // An article shown from its live layer (#121): nothing is sent when the
+      // source cannot be confirmed. Before PTT takes over, the comment is
+      // remembered and sent once it does (the last one wins); on a timeout, a
+      // notice says it was not sent.
       const held = pttchrome.articleGestures?.stack?.holdComment?.(() =>
         pttchrome.openQuickPush({ text: body, type }),
       );

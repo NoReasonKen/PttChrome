@@ -39,7 +39,7 @@ import {
   boardListRowNums
 } from './board_list_parse';
 import { articleListBoard, newestArticleUnread } from './home_dashboard';
-import { bufferEdgeNum } from './list_session';
+import { bufferEdgeNum, noticeNewArticles } from './list_session';
 import { rowToText } from './comment_parse';
 import {
   topPosFromScrollTop,
@@ -1179,7 +1179,7 @@ BoardListSession.prototype = {
     this._visited = null;
     // A list just shown from its layer is a page the reader has not been told
     // of new articles on yet.
-    if (!this._view.holdsListRows?.('board')) this._newArticlesNoticed = false;
+    const freshPage = !this._view.holdsListRows?.('board');
     // Shown again from its live layer (#122): the rows the list holds stay as
     // the reader left them, and only rows it never held are taken from PTT,
     // until the layer is spent (NavigationStack.spend) or the list rebuilt.
@@ -1191,8 +1191,7 @@ BoardListSession.prototype = {
       this._view.editBoardListRow?.(num, cells => setBoardListRowUnread(cells, visited.unread));
     const newer = fromLayer && this._landsOtherUnreadMarks(facts, num);
     this._resumeInPlace(facts, { keepSelection: fromLayer });
-    if (newer && !this._newArticlesNoticed)
-      this._newArticlesNoticed = !!this._core.articleGestures?.stack?.noticeNewContent?.();
+    noticeNewArticles(this, freshPage, newer);
   },
 
   // Whether PTT's landing page marks a board the list holds unread or read
