@@ -471,3 +471,73 @@ test('a refresh on the list restored through a search from the article read show
   await listActive(page);
   expect(await shownNow(page, 1184)).toMatchObject({ title: '□ [Talk] Edited title' });
 });
+
+// Search results kept under an article whose shortcut search left PTT's
+// filter: `s<board>` from the article lands on the board's full list, and so
+// does every Back after it.
+const SEARCHED = [
+  { num: 1100, author: 'dave', title: '[Talk] Kept topic', date: '11/28' },
+  { num: 1120, author: 'dave', title: 'Re: [Talk] Kept topic', date: '11/29' },
+  { num: 1150, author: 'dave', title: '[Talk] Other topic', date: '11/30', url: true },
+  { num: 1160, author: 'erin', title: 'Re: [Talk] Other topic', date: '12/01' }
+];
+const LIST_CHANGED = /列表已更新/;
+
+// dave's author results, searched on the list, then his last article opened
+// from them and its same-subject search, then Back to the article and Back
+// to the results.
+// `native`: the results are the native same-subject search of Other topic
+// instead, which the app cannot run again.
+async function backToResultsThroughThreadSearch(page, { native = false } = {}) {
+  await bootThreadBoard(page, {
+    open: native ? 1160 : 1150, size: 1190, fromList: true, thread: SEARCHED,
+    beforeOpen: async page => {
+      if (native) {
+        await ptt.sendKey(page, 'S');
+        await expect.poll(() => page.evaluate(() => window.__threadServer.state.filter)).toBe('[Talk] Other topic');
+      } else {
+        await ptt.sendKey(page, 'a');
+        await page.locator('input[name="searchKeyword"]').fill('dave');
+        await page.locator('input[name="searchKeyword"]').press('Enter');
+        await expect.poll(() => page.evaluate(() => window.__threadServer.state.byAuthor)).toBe('dave');
+      }
+      await listActive(page);
+    }
+  });
+  await revealArticleDrawer(page);
+  await page.locator('[data-article-shortcut="thread"]').tap();
+  await expect.poll(() => page.evaluate(() => window.__threadServer.state.filter)).toBe('[Talk] Other topic');
+  await listActive(page);
+  await recordHints(page);
+  for (const surface of ['article', 'list']) {
+    await page.goBack();
+    await expect.poll(() => page.evaluate(() => window.__app.commandQueue.idle && !window.__app.articleGestures.stack.handingOff &&
+      window.__threadServer.state.surface)).toBe(surface);
+  }
+  await listActive(page);
+}
+
+test('an article tapped on search results shown again after a search from an article opened from them opens', async ({ page }) => {
+  await backToResultsThroughThreadSearch(page);
+  // dave's reply, the second of his results.
+  await page.locator(`${MAIN} .listCard`).filter({ has: page.locator('.listCardNum', { hasText: /^2$/ }) }).tap();
+  await expect.poll(() => page.locator(MAIN).first().innerText()).toContain('Body of article 1120 by dave');
+  expect(await recordedHints(page)).not.toContainEqual(expect.stringMatching(LIST_CHANGED));
+});
+
+test('search results shown again after a search from an article opened from them list only the results', async ({ page }) => {
+  await backToResultsThroughThreadSearch(page);
+  await page.waitForTimeout(500); // sleep-ok: rows PTT's answer would add have been added by now
+  await listActive(page);
+  // Blank cards fill the rest of the screen.
+  expect((await cards(page)).filter(card => card.num).map(card => `${card.num} ${card.author}`)).toEqual(['1 dave', '2 dave', '3 dave']);
+  expect(await page.evaluate(() => window.__threadServer.state)).toMatchObject({ byAuthor: 'dave', filter: null });
+});
+
+test('search results shown again after PTT left them, whose search cannot run again, give way to PTT\'s list', async ({ page }) => {
+  await backToResultsThroughThreadSearch(page, { native: true });
+  expect((await cards(page)).filter(card => card.num).some(card => card.author === 'filler')).toBe(true);
+  await page.locator(`${MAIN} .listCard`).filter({ has: page.locator('.listCardNum', { hasText: /^1160$/ }) }).tap();
+  await expect.poll(() => page.locator(MAIN).first().innerText()).toContain('Body of article 1160 by erin');
+  expect(await recordedHints(page)).not.toContainEqual(expect.stringMatching(LIST_CHANGED));
+});

@@ -76,6 +76,8 @@ import {
 import { isArticleListFooter, isSubListFooter } from './screen_captions';
 import { recordFor, listRecordMatches } from './reading_record';
 import { markReadPromptShown } from './mark_read_prompt';
+import { readSearchResultsContext, recordSearchResults } from './search_results_context';
+import { repeatSearch } from './repeat_search';
 import {
   windowVisibleSequence,
   LIST_HEADER_ROWS,
@@ -582,7 +584,18 @@ export function transitionListSession(state, event) {
             // Back revealed this list's live layer (#120): the real list keeps
             // the layer's rows, selection and reading position instead of
             // merging PTT's landing page; only the article read changes.
-            if (event.keepsLayer && event.boardNameMatch) return { next: 'active', actions: ['resume-layer'] };
+            if (event.keepsLayer && event.boardNameMatch) {
+              // PTT left the layer's search results on the way: their
+              // numbers name other articles on its list. Their search runs
+              // again; a search that cannot shows PTT's list now.
+              if (event.layerResultsLeft) {
+                if (event.inFlightKind || event.layerSearch === 'running') return stay;
+                return event.layerSearch === 'repeatable'
+                  ? { next: 'suspended', actions: ['repeat-layer-search'] }
+                  : { next: 'active', actions: ['resume-buffer', 'rebuild'] };
+              }
+              return { next: 'active', actions: ['resume-layer'] };
+            }
             return event.landedNumInBuffer && event.boardNameMatch
               ? { next: 'active', actions: ['resume-in-place'] }
               : { next: 'active', actions: ['resume-buffer', 'rebuild'] };
@@ -889,6 +902,9 @@ export function ListSession(core, view, termBuf, queue) {
   // The board of the list a number-keeping route above it left (#123): its
   // live layer resumes the list although that route cleared _boardName.
   this._layerBoard = null;
+  // The search of results Back revealed, run again in PTT:
+  // { layer, failed }. See _repeatLayerSearch.
+  this._layerSearch = null;
   this._selectedNum = null; // numbered selection (article number)
   // Article number WE opened (set in _beginOpen). Unlike _selectedNum this is
   // never a stale echo of a cursor that moved natively — see currentAnchor.
@@ -1124,8 +1140,52 @@ ListSession.prototype = {
       withinResumeGrace: performance.now() - this._resumedAt < RESUME_GRACE_MS,
       hasNumberedRow: hasNumberedEntryRow(facts),
       engageEligible: this._engageEligible(),
-      keepsLayer: !!layer
+      keepsLayer: !!layer,
+      layerResultsLeft: this._layerResultsLeft(facts, layer),
+      layerSearch: this._layerSearchState(layer)
     };
+  },
+
+  // The live layer shows search results, and PTT's answer is a list of
+  // another number space: its full list.
+  _layerResultsLeft: function(facts, layer) {
+    return !!(layer && layer.listPage && layer.listPage.selectMode) && listModeOf(facts) !== 'select';
+  },
+
+  // Whether the search of `layer`'s results can run again in PTT: 'repeatable',
+  // 'running', or null once it ran and failed, or when there is no search.
+  _layerSearchState: function(layer) {
+    const run = this._layerSearch;
+    if (run && run.layer === layer) return run.failed ? null : 'running';
+    return layer && layer.listPage && layer.listPage.search ? 'repeatable' : null;
+  },
+
+  // Runs the search of the results Back revealed again on PTT's full list
+  // (repeat_search.js). The layer stays shown meanwhile; PTT's results then
+  // settle and the list takes over from the layer as usual. A failure shows
+  // PTT's list now.
+  _repeatLayerSearch: function(facts, layer) {
+    const self = this;
+    const run = { layer: layer, failed: false };
+    const search = layer && layer.listPage && layer.listPage.search;
+    this._layerSearch = run;
+    const started = repeatSearch(this._core, search, function(ok) {
+      if (self._layerSearch !== run) return;
+      if (ok) {
+        recordSearchResults(self._core, search);
+        self._layerSearch = null;
+        return;
+      }
+      run.failed = true;
+      // A dismissed turn-down settles on the full list right after this. Any
+      // other failure decides on the screen as it is, once nothing else has.
+      setTimeout(function() {
+        if (self._layerSearch !== run || self.state !== 'suspended' || self._queue.inFlightKind) return;
+        const now = self._collectFacts(null);
+        self._dispatch(self._settleEvent(now), now);
+      });
+    });
+    if (!started) run.failed = true;
   },
 
   // The live layer a Back revealed over the list of `board` (a board key;
@@ -1277,14 +1337,18 @@ ListSession.prototype = {
       case 'enter-function-mode':
         return this._enterFunctionMode(facts);
       case 'resume-buffer':
+        this._layerSearch = null;
         this._resumeBuffer(facts);
         return this._presented();
       case 'resume-in-place':
         this._resumeInPlace(facts);
         return this._presented();
       case 'resume-layer':
+        this._layerSearch = null;
         this._resumeFromLayer(facts, this._keptLayer(this._boardName ?? this._layerBoard ?? facts.boardName));
         return this._presented();
+      case 'repeat-layer-search':
+        return this._repeatLayerSearch(facts, this._keptLayer(this._boardName ?? this._layerBoard ?? facts.boardName));
       case 'cleanup':
         return this._cleanup();
       // 'move-selection' / 'begin-open*' carry key context; executed in onKeyDown.
@@ -2405,6 +2469,9 @@ ListSession.prototype = {
       buffer: buffer,
       boardName: this._boardName,
       selectMode: this._selectMode,
+      // The search that found these results, to run again when PTT has left
+      // them by the time Back shows them.
+      search: this._selectMode ? readSearchResultsContext(this._core, boardNameFromKey(this._boardName)) : null,
       edgeUp: this._edgeUp,
       edgeDown: this._edgeDown,
       stallUp: this._stallUp,
@@ -2455,7 +2522,10 @@ ListSession.prototype = {
   // the way (a search from the article read), rebuilds from PTT.
   _landsNewerArticles: function(facts) {
     if (this.state !== 'suspended' || facts.kind !== 'clean-list' || !facts.nums) return false;
-    const newest = this._keptLayer(facts.boardName)?.newestNum?.();
+    const layer = this._keptLayer(facts.boardName);
+    // Numbers of another number space tell nothing of what is newer.
+    if (this._layerResultsLeft(facts, layer)) return false;
+    const newest = layer?.newestNum?.();
     if (newest == null) return false;
     for (let r = 3; r <= facts.rows - 2; ++r) if (facts.nums[r] != null && facts.nums[r] > newest) return true;
     return false;

@@ -586,6 +586,14 @@ describe("transitionListSession (full table)", () => {
       "suspended",
       []
     );
+    // The layer's search results, but PTT answers with its full list: their
+    // search runs again, and the layer resumes once PTT shows the results. A
+    // search that cannot run again rebuilds from PTT's list.
+    const left = { keepsLayer: true, layerResultsLeft: true };
+    T("suspended", settle("clean-list", { ...left, layerSearch: "repeatable" }), "suspended", ["repeat-layer-search"]);
+    T("suspended", settle("clean-list", { ...left, layerSearch: "running" }), "suspended", []);
+    T("suspended", settle("clean-list", { ...left, layerSearch: "repeatable", inFlightKind: "leave" }), "suspended", []);
+    T("suspended", settle("clean-list", { ...left, layerSearch: null }), "active", ["resume-buffer", "rebuild"]);
     // 不變量 17：退文落點只剩置底文 → 不 re-seed，停在原生鏡像等下一幀
     T(
       "suspended",
