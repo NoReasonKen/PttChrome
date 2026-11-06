@@ -1,4 +1,4 @@
-// 手機的「下拉重新整理」（docs/screen-refresh.md「下拉重整」）。
+// 手機的「下拉重新整理」（docs/screen-refresh.md「Pull-to-refresh」）。
 //
 // **為什麼這裡自己做、不接瀏覽器原生的 pull-to-refresh**（「原生行為不准模擬」原則
 // 的例外，理由逐條對照該規範）：

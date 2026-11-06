@@ -281,7 +281,7 @@ describe("passthrough sync 腿期間 frozen（不得閃現原生畫面）", () =
 });
 
 describe("v5 互動封閉：keyClass 白名單枚舉＋未列鍵一鍵切原生", () => {
-  // 枚舉即合約（docs/easy-reading-list.md §操作分類）：白名單＝導覽/開文/跳號/離板；
+  // 枚舉即合約（docs/easy-reading-list.md §Operation classes）：白名單＝導覽/開文/跳號/離板；
   // 其餘一律 passthrough（sync＋切原生＋代送），airlock 兩段式已退役。
   const WHITELIST_BEHAVIOR = [
     // [key, 預期 state, 預期佇列 kind（null=不佇列）]
