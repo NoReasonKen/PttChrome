@@ -987,7 +987,9 @@ AidNavigation.prototype = {
     // absorbs our intermediate clean-list settles. Must run BEFORE we enqueue.
     // 回到原處從主功能表出發，列表 session 通常是 idle：也要停泊（見 fromIdle）。
     if (this._core.listSession)
-      this._core.listSession.beginExternalNavigation({ fromIdle: run.dir === 'resume' });
+      this._core.listSession.beginExternalNavigation({
+        fromIdle: run.dir === 'resume', keepsListing: run.target.kind === 'num' && !run.target.subList
+      });
     // 看板列表平滑捲動同理（AID 跳文的逃生前導會經過主功能表／看板列表）。
     if (this._core.boardListSession)
       this._core.boardListSession.beginExternalNavigation();

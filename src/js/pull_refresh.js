@@ -102,11 +102,15 @@ export function installPullRefresh(core, doc) {
 
   const onStart = function(e) {
     track = null;
-    if (!core.mobile || core.mobileSelectMode || core.modalShown) return;
+    if (!core.mobile || core.mobileSelectMode) return;
     if (!e.touches || e.touches.length !== 1) return;
     if (ignoredTarget(e.target)) return;
     const refresh = core.screenRefresh;
-    if (!refresh || !refresh.target()) return;
+    const target = refresh && refresh.target();
+    if (!target) return;
+    // A Back's handoff holds the modal gate; a list it revealed can still be
+    // pulled to refresh (#124).
+    if (core.modalShown && target.kind !== 'revealed') return;
     const sp = scrollParentOf(e.target);
     if (sp && sp.scrollTop > 0) return;
     const t = e.touches[0];

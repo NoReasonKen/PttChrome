@@ -903,6 +903,9 @@ export function ListSession(core, view, termBuf, queue) {
   this.state = 'idle';
   this._renderMode = 'native';
   this._boardName = null;
+  // The board of the list a number-keeping route above it left (#123): its
+  // live layer resumes the list although that route cleared _boardName.
+  this._layerBoard = null;
   this._selectedNum = null; // numbered selection (article number)
   // Article number WE opened (set in _beginOpen). Unlike _selectedNum this is
   // never a stale echo of a cursor that moved natively — see currentAnchor.
@@ -978,6 +981,9 @@ export function ListSession(core, view, termBuf, queue) {
   // independent from the main list (protocol §8) — entering/leaving forces a
   // rebuild (via _boardName=null) so numbers never alias.
   this._selectMode = false;
+  // Whether the list kept from its live layer has shown the new-articles
+  // notice (#128): once per kept page, until PTT's rows replace it.
+  this._newArticlesNoticed = false;
   // Absolute frozen-render backstop (see _armFrozenWatchdog). null = disarmed.
   this._frozenWatchdog = null;
   // 這一次凍結裡在飛的那一步自帶的預算（hard + probe 窗，ms；0 ＝沒有）。比
@@ -1078,6 +1084,8 @@ ListSession.prototype = {
     // race the cap once the per-command budgets got short).
     if (consumed === 'done' && (this._renderMode === 'frozen' || this.state === 'opening'))
       this._armFrozenWatchdog();
+    // While the layer Back revealed is still the page shown.
+    if (this._landsNewerArticles(facts)) this._noticeNewArticles(!this._view.holdsListRows?.());
     this._dispatch(this._settleEvent(facts, consumed), facts);
     this._scheduleResumeProbe();
     this._core.listResize?.pump();
@@ -1110,10 +1118,12 @@ ListSession.prototype = {
   },
 
   _settleEvent: function(facts, consumed) {
+    const board = this._boardName ?? this._layerBoard;
+    const layer = this.state === 'suspended' && this._keptLayer(board);
     return {
       type: 'settle',
       kind: facts.kind,
-      boardNameMatch: facts.boardName != null && facts.boardName === this._boardName,
+      boardNameMatch: facts.boardName != null && facts.boardName === board,
       inFlightKind: this._queue.inFlightKind,
       consumed: !!consumed,
       landedNumInBuffer:
@@ -1123,14 +1133,15 @@ ListSession.prototype = {
       withinResumeGrace: performance.now() - this._resumedAt < RESUME_GRACE_MS,
       hasNumberedRow: hasNumberedEntryRow(facts),
       engageEligible: this._engageEligible(),
-      keepsLayer: this.state === 'suspended' && !!this._keptLayer()
+      keepsLayer: !!layer
     };
   },
 
-  // The live layer a Back revealed over this list, while PTT's answer is on
-  // its way (NavigationStack.keptListLayer), or null.
-  _keptLayer: function() {
-    return this._core.articleGestures?.stack?.keptListLayer?.(boardNameFromKey(this._boardName)) || null;
+  // The live layer a Back revealed over the list of `board` (a board key;
+  // this list's by default), while PTT's answer is on its way
+  // (NavigationStack.keptListLayer), or null.
+  _keptLayer: function(board = this._boardName) {
+    return this._core.articleGestures?.stack?.keptListLayer?.(boardNameFromKey(board)) || null;
   },
 
   // The reader's `action` on this list may spend the live layer it was shown
@@ -1281,7 +1292,7 @@ ListSession.prototype = {
         this._resumeInPlace(facts);
         return this._presented();
       case 'resume-layer':
-        this._resumeFromLayer(facts, this._keptLayer());
+        this._resumeFromLayer(facts, this._keptLayer(this._boardName ?? this._layerBoard));
         return this._presented();
       case 'cleanup':
         return this._cleanup();
@@ -1341,10 +1352,14 @@ ListSession.prototype = {
     const pos = this.readingPosition();
     if (pos && pos.board != null) recordFor(this._core).noteBehindList(pos);
     this.state = 'functionMode';
+    const board = this._boardName ?? this._layerBoard;
     // 'external'：**永不自動解除**（不變量 N1）。序列途中的 clean-list 幀很多，
     // 命令與命令之間 inFlightKind 也會是 null ⇒ 讓靜置探針看到就會把別人的序列
     // 從中間截斷（deep link 跳文、長推文）。
     this._enterFunctionMode(null, { hold: 'external' });
+    // A route that keeps the list's number space (the next-article pull in the
+    // full list) leaves the list it left kept: its layer says which list it is (#123).
+    if (opts && opts.keepsListing) this._layerBoard = board;
   },
 
   // 外部序列收尾（reading_record.releaseExternal）：停在列表上時把 'external' hold
@@ -2043,7 +2058,9 @@ ListSession.prototype = {
   // (redrawwin repaints the server's CURRENT virtual screen — protocol §6 M1
   // correction). Timeout recovery = the queue's \f probe. Callers gate on
   // `_selectedNum != null` and the `_serverNum` fast path themselves.
-  _enqueueCursorSyncJump: function(kind, onSynced, onFail) {
+  // `onMoved`: runs instead of the native degrade when the landed row lists
+  // another article.
+  _enqueueCursorSyncJump: function(kind, onSynced, onFail, onMoved) {
     const num = this._selectedNum;
     const self = this;
     // 身分基準＝**跳之前**使用者畫面上那一列的作者／主題（見 onDone 的驗證）。
@@ -2095,6 +2112,7 @@ ListSession.prototype = {
         // 「讀得出來、而且確定是別篇」時才拒絕。
         if (anchor && checkCursorAnchor(landed, anchor) === 'moved') {
           self._serverNum = null;
+          if (onMoved) return onMoved();
           self._degradeToNative('列表已變動，游標對不上選取的文章，已切至原生模式');
           return;
         }
@@ -2148,12 +2166,12 @@ ListSession.prototype = {
       this._enqueueLeaveKey();
       return;
     }
-    // A jump that lands elsewhere (the selected number is gone) still leaves.
-    this._enqueueCursorSyncJump('leave-sync-jump', function() {
+    // A jump that lands elsewhere (the selected number is gone, or lists
+    // another article now) still leaves.
+    const leave = function() {
       self._enqueueLeaveKey();
-    }, function() {
-      self._enqueueLeaveKey();
-    });
+    };
+    this._enqueueCursorSyncJump('leave-sync-jump', leave, leave, leave);
   },
 
   // A 類鍵（INPLACE_KEYS）的凍結交易 —— 本功能的 L1，形狀完全照抄 _beginLeave：
@@ -2311,7 +2329,20 @@ ListSession.prototype = {
   // as the reader left them, and PTT's landing page merges nothing. Only the
   // articles read are shown read, as PTT lists them now. Rows loaded later
   // and a refresh show PTT's current list (term_view holdListRows).
+  //
+  // Each layer is independent (#123): after thread jumps or next-article
+  // pulls above it, the selection stays on the article opened from it, every
+  // article read on the way shows read, and PTT's selection is moved back to
+  // that article in the background (_alignServerCursor). An in-board external
+  // route above it (the next-article pull) cleared the board identity; the
+  // layer of this board's list restores it.
   _resumeFromLayer: function(facts, layer) {
+    if (this._boardName == null) {
+      this._boardName = this._layerBoard;
+      this._layerBoard = null;
+      // The list behind that route is the layer itself, not a record to restore.
+      recordFor(this._core).takeBehindList();
+    }
     this._holdReason = null;
     this._cancelResumeProbe();
     this._resumedAt = performance.now();
@@ -2330,11 +2361,50 @@ ListSession.prototype = {
       this._selectedNum = null;
       this._selectedPinnedKey = pinnedKey;
     }
-    // The article opened and the one the reader ended on (#74) were read.
-    this._view.markListArticleRead(this._openedNum, null);
-    this._view.markListArticleRead(num, pinnedKey);
+    // The article opened from the list and each one PTT's selection moved to
+    // above it were read; PTT now colours the last one's subject.
+    const read = layer ? layer.readRows() : [];
+    for (const row of read) {
+      const readText = rowToText(row);
+      const readNum = parseListArticleNumLoose(readText);
+      this._view.markListArticleRead(readNum, readNum == null && isPinnedListRow(readText) ? pinnedRowKey(readText) : null);
+    }
+    if (read.length) this.noteLastRead(subjectOfListRow(read[read.length - 1]));
     this._view.holdListRows(facts && facts.rowTexts);
     this._forceRedraw();
+    this._alignServerCursor();
+  },
+
+  // Move PTT's selection back to the article the list shows selected, by its
+  // number, once a page above moved it (#123). The landed row's author and
+  // title are checked against the selected row: on a mismatch (the article
+  // was deleted or renumbered meanwhile) the list stays as it is and PTT's
+  // selection counts as unknown; opening an article runs its own check.
+  _alignServerCursor: function() {
+    if (this._selectedNum == null || this._selectedNum === this._serverNum) return;
+    const noop = function() {};
+    this._enqueueCursorSyncJump('align-sync-jump', noop, noop, noop);
+  },
+
+  // Whether PTT's answer to Back lists an article newer than the newest the
+  // list's live layer shows (#128). The layer is the page the reader left,
+  // whether the real list then keeps its rows or, its own rows given up on
+  // the way (a search from the article read), rebuilds from PTT.
+  _landsNewerArticles: function(facts) {
+    if (this.state !== 'suspended' || facts.kind !== 'clean-list' || !facts.nums) return false;
+    const newest = this._keptLayer(facts.boardName)?.newestNum?.();
+    if (newest == null) return false;
+    for (let r = 3; r <= facts.rows - 2; ++r) if (facts.nums[r] != null && facts.nums[r] > newest) return true;
+    return false;
+  },
+
+  // The brief new-articles notice, once per page: `freshPage` is a list
+  // that had not kept its rows from a layer yet (a refresh or a rebuild
+  // makes a new page).
+  _noticeNewArticles: function(freshPage) {
+    if (freshPage) this._newArticlesNoticed = false;
+    if (!this._newArticlesNoticed)
+      this._newArticlesNoticed = !!this._core.articleGestures?.stack?.noticeNewContent?.();
   },
 
   _enqueueLeaveKey: function() {
@@ -2356,6 +2426,7 @@ ListSession.prototype = {
         if (self._selectMode) {
           self._selectMode = false;
           self._boardName = null;
+          self._layerBoard = null;
         }
       },
       onFail: function() {
@@ -3598,6 +3669,7 @@ ListSession.prototype = {
   // opts.hold: 'passthrough'（預設，靜置後自動回好讀）| 'external'（永不自動解除）。
   _enterFunctionMode: function(facts, opts) {
     this._externalResumeNotice = null;
+    this._layerBoard = null;
     // 閱讀紀錄凍結：下面會清掉看板身分、鏡像期間也沒有列表視口 ⇒ 之後任何人問
     // 「使用者在看哪裡」都拿這一刻的視野（reading_record.freeze）。
     const pos = this.readingPosition();
@@ -3803,6 +3875,7 @@ ListSession.prototype = {
     if (this._view.hideListOverlay) this._view.hideListOverlay();
     this._renderMode = 'native';
     this._boardName = null;
+    this._layerBoard = null;
     this._selectedNum = null;
     this._openedNum = null;
     this._selectedPinnedKey = null;

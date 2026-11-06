@@ -21,12 +21,24 @@ import { StackListLayer } from './stack_list_layer';
 import { StackHomeLayer } from './stack_home_layer';
 import { StackArticleLayer } from './stack_article_layer';
 import { EMPTY_TOOLBAR_CONTEXT } from './mobile_toolbar';
+import { commentBarEnabled } from './comment_bar';
+import { i18n } from './i18n';
+import { STACK_NOTICE_MS } from './stack_layer';
 import { searchGateFacts } from './article_search';
 import { isSearchResultsFrame, isFullBoardListFrame } from './search_results_screen';
 import { readSearchResultsContext } from './search_results_context';
 
 // Input on a usable layer stays on the layer; nothing reaches the terminal.
 const LOCAL_INPUT = ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'click', 'contextmenu', 'dblclick'];
+
+// The progress bar's owner while a remembered action waits for PTT.
+const PENDING_OWNER = 'stackPending';
+
+// Keep input on a usable layer from reaching the terminal.
+function stopLocal(event) {
+  event.stopPropagation();
+  if (event.type === 'click' || event.type === 'contextmenu') event.preventDefault();
+}
 
 function countNodes(root) {
   let n = 0;
@@ -71,6 +83,9 @@ export class NavigationStack {
     this.captured = [];
     this.pending = null;
     this.handoff = null;
+    // A deleted source article kept shown over its board list (#121):
+    // { layer, appBar, off }, or null.
+    this.gone = null;
     // Set by the same-thread jump that sends `=`: the next move in place lands
     // on the first article of the thread, not on the nearest one.
     this.firstInThread = false;
@@ -208,8 +223,8 @@ export class NavigationStack {
     const depth = this.stack.pages.length - 1;
     this.stack = withLayer(this.stack);
     this.captured[depth]?.layer?.destroy();
-    // An article list shows the article opened from it selected.
-    pending.selected = page.id;
+    // PTT's selection in an article list starts on the article opened from it.
+    pending.follows = page.id;
     pending.time = null;
     this.captured[depth] = pending;
     this.stack = pushPage(this.stack, page, { fromBelow: true });
@@ -286,9 +301,11 @@ export class NavigationStack {
     }
   }
 
-  // The article list below follows each article that replaces the open one in
-  // place (#74): its selection moves to it, as PTT's does, one move at a time.
-  // Once it loses PTT's selection it reveals nothing.
+  // PTT's selection in the article list below moves to each article that
+  // replaces the open one in place (#74), one move at a time. The list keeps
+  // its own selection as the reader left it (#123) and only tracks PTT's, to
+  // show the articles read and move PTT back on Back. Once it loses PTT's
+  // selection it reveals nothing.
   _follow() {
     // A same-thread jump has moved PTT's selection once it is over.
     if (this.core.threadJump?.active) return;
@@ -298,9 +315,9 @@ export class NavigationStack {
     const lower = this.captured[this.stack.pages.length - 2];
     if (!lower || lower.kind !== PAGE.ARTICLE_LIST || top?.kind !== PAGE.ARTICLE || this.article.id !== top.id) return;
     const { time } = this.article;
-    if (lower.selected !== top.id) {
-      lower.shows = lower.shows !== false && lower.layer.select(this.article, postedBefore(time, lower.time), first);
-      lower.selected = top.id;
+    if (lower.follows !== top.id) {
+      lower.shows = lower.shows !== false && lower.layer.follow(this.article, postedBefore(time, lower.time), first);
+      lower.follows = top.id;
     }
     lower.time = time;
   }
@@ -314,6 +331,7 @@ export class NavigationStack {
 
   clear() {
     if (this.handoff) return;
+    this.leaveGone();
     this.dropPending();
     this._discard();
   }
@@ -347,10 +365,10 @@ export class NavigationStack {
     return lower?.layer.fitViewport() && this._selects(lower, stack.pages[n - 1]) ? { page: target, ...lower } : null;
   }
 
-  // Whether a lower article list shows PTT's selection: the article now open,
+  // Whether a lower article list holds PTT's selection: the article now open,
   // followed through every replacement in place (#74).
   _selects(lower, top = this._top()) {
-    return lower.kind !== PAGE.ARTICLE_LIST || (lower.selected === top.id && lower.shows !== false);
+    return lower.kind !== PAGE.ARTICLE_LIST || (lower.follows === top.id && lower.shows !== false);
   }
 
   // What PTT's Back from the shown article returns to, when the stack knows
@@ -384,10 +402,121 @@ export class NavigationStack {
   }
 
   // While a layer is only revealed, the toolbar shows that page without its
-  // actions; they return once the real page is usable.
+  // actions; they return once the real page is usable. An article shown from
+  // its layer keeps its comment action (#121).
   toolbarContext() {
-    if (!this.handoff) return null;
-    return { ...EMPTY_TOOLBAR_CONTEXT, appBar: this.handoff.appBar || EMPTY_TOOLBAR_CONTEXT.appBar, locked: true };
+    const shown = this.gone || this.handoff;
+    if (!shown) return null;
+    const push = this.showsArticleLayer() && commentBarEnabled(readEffectivePrefs());
+    const refresh = this.refreshesRevealed();
+    return { ...EMPTY_TOOLBAR_CONTEXT, appBar: shown.appBar || EMPTY_TOOLBAR_CONTEXT.appBar, push, refresh, locked: true };
+  }
+
+  // The shown page is an article not usable as a real page yet: revealed while
+  // search backtracking reopens it, or a deleted source kept shown (#121).
+  showsArticleLayer() {
+    return !!this.gone || (this._shownTarget() === PAGE.ARTICLE && !!this.handoff.layer);
+  }
+
+  // The kind of page the handoff shows: what the last Back revealed, which PTT
+  // may still be on its way to (#125).
+  _shownTarget() {
+    const h = this.handoff;
+    return h && (h.legs.length ? h.legs[h.legs.length - 1].target : h.target);
+  }
+
+  // A comment made on such an article: 'refused' when it could not be reopened,
+  // 'held' when it is remembered until PTT is ready, or null to send it now.
+  // `run` sends it.
+  holdComment(run) {
+    if (this.refusesComment()) return 'refused';
+    if (!this.showsArticleLayer()) return null;
+    this.remember({ run, drop: () => this.core.view.flashListHint?.(i18n('stack_commentNotSent'), STACK_NOTICE_MS) });
+    return 'held';
+  }
+
+  // A comment on a source that could not be reopened is refused with a notice.
+  refusesComment() {
+    if (!this.gone) return false;
+    this.core.view.flashListHint?.(i18n('stack_commentSourceUnverified'), STACK_NOTICE_MS);
+    return true;
+  }
+
+  // An action made on a revealed page before PTT has caught up ({ run, drop }):
+  // remembered with the progress bar showing, the last one wins, and run once
+  // the real page takes over; any other end of the handoff drops it.
+  remember(action) {
+    const h = this.handoff;
+    if (!h) return false;
+    h.action = action;
+    this.core.view.setListLoading?.(true, PENDING_OWNER);
+    return true;
+  }
+
+  // An action on the revealed page (#124): remembered until PTT has caught
+  // up, or run at once when the real page is already shown. A dropped one says
+  // it did not run.
+  whenReady(run) {
+    if (!this.remember({ run, drop: () => this._notRun() })) run();
+  }
+
+  // A refresh (pull, toolbar or F5) can refresh a list revealed before PTT
+  // has caught up (#124).
+  refreshesRevealed() {
+    const h = this.handoff;
+    return !!h?.layer && this._shownTarget() !== PAGE.ARTICLE;
+  }
+
+  // Such a refresh replaces any remembered action and runs once PTT shows the
+  // real page. The real page then keeps PTT's position: the refresh replaces
+  // what the layer showed.
+  refreshWhenReady(run) {
+    return this.refreshesRevealed() && this.remember({ run, drop: () => this._notRun(), refresh: true });
+  }
+
+  _notRun() {
+    this.core.view.flashListHint?.(i18n('stack_actionNotRun'), STACK_NOTICE_MS);
+  }
+
+  // The entry of the revealed list under `target` while PTT has not caught
+  // up, or null: see StackListLayer.entryAt.
+  layerEntryAt(target) {
+    const layer = this.handoff?.layer;
+    return layer?.el.contains(target) ? layer.entryAt?.(target) || null : null;
+  }
+
+  // Search backtracking could not reopen the revealed source article, deleted
+  // or not verifiable: it stays shown when the handoff ends (#121).
+  sourceGone() {
+    const h = this.handoff;
+    if (h?.target !== PAGE.ARTICLE || !h.layer) return;
+    // A later Back already left the source (#125): PTT's board list takes over
+    // the page shown.
+    if (h.legs.length) return this._end('unexpected');
+    h.gone = true;
+    this._end('gone');
+  }
+
+  // Back from a deleted source kept shown: PTT already shows the board list,
+  // so the article only goes away. Returns whether one was shown.
+  leaveGone() {
+    const gone = this.gone;
+    if (!gone) return false;
+    this.gone = null;
+    gone.off();
+    gone.layer.destroy();
+    this.core._refreshScreenContext?.();
+    this.core.commentBar?.refresh();
+    return true;
+  }
+
+  _keepGone(h) {
+    const layer = h.layer;
+    for (const type of LOCAL_INPUT) layer.el.addEventListener(type, stopLocal);
+    this.gone = {
+      layer, appBar: h.appBar,
+      off: () => LOCAL_INPUT.forEach(type => layer.el.removeEventListener(type, stopLocal))
+    };
   }
 
   get handingOff() {
@@ -404,6 +533,16 @@ export class NavigationStack {
     return h.layer;
   }
 
+  // PTT's answer to Back shows content newer than the list a live layer shows
+  // again (#128): a brief notice, text only, that a refresh would show it.
+  // Search results and the home dashboard show none. Returns whether it shows.
+  noticeNewContent() {
+    const h = this.handoff;
+    if (!h?.layer || h.legs.length || h.results || (h.target !== PAGE.ARTICLE_LIST && h.target !== PAGE.BOARD_LIST)) return false;
+    this.core.view.flashListHint?.(i18n('stack_newArticles'), STACK_NOTICE_MS);
+    return true;
+  }
+
   // Whether Back is showing the page of `kind` again from its live layer, and
   // PTT is answering the Back to that page.
   showsLayerOf(kind) {
@@ -414,11 +553,11 @@ export class NavigationStack {
   // A Back made during the handoff (#125): the revealed page is left too, and
   // the page below it shows at once, its live layer or the dark fallback. PTT
   // follows this Back once it has answered the earlier ones; nothing waits for
-  // a swap. It replaces a remembered tap: the reader's last choice wins.
+  // a swap. It replaces a remembered action: the reader's last choice wins.
   queueBack() {
     const h = this.handoff;
     if (!h) return false;
-    h.tap = null;
+    this._forget(h);
     const last = h.legs[h.legs.length - 1] || h;
     // The dark fallback waits for whatever PTT shows; nothing is known below.
     const next = last.target && backPastRevealed(this.stack);
@@ -453,15 +592,21 @@ export class NavigationStack {
 
   // The reader acted on the page shown (#125). An action that asks PTT for the
   // page's data anew spends the live layer the page was shown from: what the
-  // layer still had to do, such as a remembered tap, no longer affects the
+  // layer still had to do, such as a remembered action, no longer affects the
   // page, and its rows no longer stay as the reader left them. Returns whether
   // `action` spends it.
   spend(action) {
     if (!spendsLayer(action)) return false;
-    if (this.handoff) this.handoff.tap = null;
+    if (this.handoff) this._forget(this.handoff);
     this.core.view.releaseListRows?.();
     this._mark('spent', { action });
     return true;
+  }
+
+  // Drops a remembered action without running it.
+  _forget(h) {
+    h.action = null;
+    this.core.view.setListLoading?.(false, PENDING_OWNER);
   }
 
   // The current page has slid away. `send` sends PTT's Back and returns
@@ -478,10 +623,11 @@ export class NavigationStack {
     const layer = revealed?.layer || null;
     const h = this.handoff = {
       layer, level, target: revealed?.page.kind || (level === PAGE.ARTICLE ? PAGE.ARTICLE_LIST : null), id: revealed?.page.id,
+      results: !!revealed?.page.results,
       board: this._top()?.board || core.view._articleBoard,
       identity: openArticleKey(core), appBar: revealed?.appBar || null,
       sentAt: performance.now(), presentedAt: null, touches: 0, lastScrollAt: -Infinity,
-      timer: null, followTimer: null, listeners: [], layerListeners: [], finish, follow, reveal, hint, tap: null,
+      timer: null, followTimer: null, listeners: [], layerListeners: [], finish, follow, reveal, hint, action: null, gone: false,
       // The Backs PTT is still to follow after this one, in order: the page each
       // leaves and what it is expected to show.
       legs: []
@@ -517,6 +663,7 @@ export class NavigationStack {
     if (sent) {
       this._mark('sent', { level, target: h.target, layer: !!layer });
       this._step();
+      core.commentBar?.refresh();
     }
     return sent;
   }
@@ -530,11 +677,10 @@ export class NavigationStack {
       h.layerListeners.push(() => target.removeEventListener(type, fn, options));
     };
     const local = event => {
-      event.stopPropagation();
-      if (event.type === 'click' || event.type === 'contextmenu') event.preventDefault();
-      // A tap on an entry is remembered by identity; the last tap wins.
+      stopLocal(event);
+      // A tap on an entry is remembered by identity, like any other action.
       const id = layer.tapOf(event);
-      if (id) h.tap = id;
+      if (id) this.whenReady(() => layer.openTapped(this.core, id));
     };
     for (const type of LOCAL_INPUT) listen(layer.el, type, local);
     const touches = event => {
@@ -686,21 +832,32 @@ export class NavigationStack {
     const h = this.handoff;
     if (!h) return;
     const core = this.core;
+    // A deleted source stays shown over the board list PTT stopped on.
+    if (h.gone && how !== 'disconnected') how = 'gone';
+    const gone = how === 'gone';
     this._mark('end', { how });
-    if (how === 'presented' && h.layer) h.layer.alignReal(core);
+    if (how === 'presented' && h.layer && !h.action?.refresh) h.layer.alignReal(core);
     this._cleanup();
+    core.view.setListLoading?.(false, PENDING_OWNER);
     // The revealed page is now PTT's real page; its layer is spent.
-    h.layer?.hide();
+    if (!gone) h.layer?.hide();
     this.captured.length = Math.max(0, this.stack.pages.length - 2);
     this.stack = popPage(this.stack).stack;
     // PTT left the route the stack describes, or never confirmed it: nothing
     // below is known to be the way back.
-    if (how === 'unexpected' || how === 'timeout') this._discard();
+    if (how === 'unexpected' || how === 'timeout' || gone) this._discard();
     h.finish();
+    if (gone) this._keepGone(h);
     core._refreshScreenContext?.();
+    core.commentBar?.refresh();
     if (how === 'timeout' && h.hint) h.hint();
-    if (how === 'presented' && h.tap) h.layer.openTapped(core, h.tap);
-    h.layer?.destroy();
+    // A remembered action runs from its own task, once the real page is shown.
+    if (h.action) {
+      if (how === 'presented') setTimeout(h.action.run);
+      else if (gone) this.refusesComment();
+      else h.action.drop(how);
+    }
+    if (!gone) h.layer?.destroy();
     // Prepare the next list outside a new contact, after the spent layer is
     // removed. Only that list remains connected below the real page.
     if (how === 'presented') this._revealed()?.layer.prepare?.();

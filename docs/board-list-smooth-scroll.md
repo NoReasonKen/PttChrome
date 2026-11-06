@@ -189,6 +189,9 @@ pin 1 只跑 `applyFunctionKeys`，而 `functionKeyRows(1,n) === functionKeyRows
 `board_list_parse.setBoardListRowUnread` 改那一列（板名要對得上；看不出來就不動）。`_resetBuffer`（重新整理的 seed、
 rebuild、切原生）與 A 類鍵（`v`/`V`/`t`）會關掉 `_keepShown`，回到以 PTT 為準。沒有活層（桌面、超過活層上限、交接逾時）
 照舊合併。守護：`mobile_stack_board_reveal.offline.spec.js` 的 #122 那組（改寫 PTT 回覆模擬清單在板內時變了）。
+落地頁上同編號、同板名的看板，未讀 ˇ 跟緩衝裡的不一樣時（剛逛過的那個板不算，它跟著讀者自己的閱讀走），
+經 `NavigationStack.noticeNewContent` 閃一次「有新文章」（[#128](https://github.com/NoReasonKen/PttChrome/issues/128)；
+只看 PTT 本來就送的落地幀，不另送鍵；每個保留頁一次，`_keepShown` 關掉後算新的一頁）。
 
 `parseBoardListName` **不用固定欄位**：未讀標記 `unread[1]` 是全形「ˇ」（board.c:1343），
 `rowToText` 會把它收成**一個**字元 ⇒ 板名的字串索引隨已讀/未讀位移一格；改抓「編號之後的

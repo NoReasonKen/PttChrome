@@ -475,8 +475,8 @@ states：`idle → active ⇄ functionMode`；`active → opening → suspended 
   （畫面本來就要換一份，重新錨定才是對的）。
 - **N6c 退文揭開 live layer 時，列表保持讀者離開時的樣子**（[#120](https://github.com/NoReasonKen/PttChrome/issues/120)，
   live layer 不在背景更新）：`resume-layer`（`_resumeFromLayer`）**不併入** PTT 的落地頁——
-  每一列的文字、順序、選取（取自 layer 的選取，#74 的換篇也算）與捲動位置都等於 layer 上看到的，
-  只有讀過的文章（開的那篇、#74 最後停的那篇）照 PTT 的規則改成已讀（`readListRow`：bbs.c#readdoent
+  每一列的文字、順序、選取（停在從這個列表開的那篇，換篇不帶動，#123）與捲動位置都等於 layer 上看到的，
+  只有讀過的文章（開的那篇，以及同串跳轉／下一篇一路讀過的每一篇：`StackListLayer.follow` 依方向在 layer 的列上追 PTT 的游標，`readRows`）照 PTT 的規則改成已讀（`readListRow`：bbs.c#readdoent
   的 type 字元 `+`/`~`→空白、`#`→`*`、`M`/`=`→`m`、`S`→`s`，預設色）。last-read 主題色開文時就學到
   （`noteLastRead`），「+N」由讀完時的紀錄自己重算。之後由 term_view `holdListRows` 保住這批列：
   PTT 的落地頁什麼都不加，其他頁（往上／往下補頁）**只加還沒顯示過的列**，已顯示的列永不被換掉。
@@ -487,8 +487,16 @@ states：`idle → active ⇄ functionMode`；`active → opening → suspended 
   原生 passthrough 鍵——這些向 PTT 重新要資料，丟掉 layer 還沒做完的事並解除保留；捲動補頁、開文、
   A 類鍵（`_resumeInPlace(…, { keepRows: true })`）**不**用掉 layer，保留的列不動。例外：`t` 標記改的是使用者
   自己動作的那一列（`retakeListRow`），那一列照收 PTT 的新樣子，其餘列不動。開文前的身分檢查不變：
-  保留列與 PTT 現況不同時照樣停在列表並提示。守護：`mobile_stack_list_kept.offline.spec.js`、
+  保留列與 PTT 現況不同時照樣停在列表並提示。PTT 的游標若停在別篇（換篇過），`_alignServerCursor` 以編號跳回選取的那篇（`align-sync-jump`，落地以作者＋主題驗證）；那篇被改號／刪除時畫面不動，`_serverNum` 記為未對齊，之後開文照舊走身分檢查與提示。下一篇（`beginExternalNavigation`）會清掉 `_boardName`，`_settleEvent` 改以落地幀的板名找 kept layer，`_resumeFromLayer` 補回板名。守護：`mobile_stack_list_kept.offline.spec.js`、
   `list_accumulate.test.js`「held list rows」。
+  **有新文章提示**（[#128](https://github.com/NoReasonKen/PttChrome/issues/128)）：落地頁（PTT 本來就會送的那一幀，不另送鍵）
+  列出比揭開的 live layer 最新編號（`StackListLayer.newestNum`）還新的文章時，`onSettle` 在 dispatch 之前（layer 還是
+  顯示中的那一頁）經 `NavigationStack.noticeNewContent` 閃一次「有新文章」（`flashListHint`、純文字、`STACK_NOTICE_MS`）。
+  比的是 layer 而不是緩衝：從讀的文章做同作者／同標題搜尋時，搜尋結果會換掉 session 的緩衝，退回列表走
+  `resume-buffer`＋`rebuild` 而不是 `resume-layer`，但讀者離開時看到的仍是 layer 那一頁。
+  保留列已到板尾時這些新文章捲動也載不到，只有重新整理會帶出來。
+  每個保留頁只提示一次（`_newArticlesNoticed`；保留解除後——重新整理、rebuild——算新的一頁）。
+  搜尋結果（handoff 的 `results`）不提示。
 - **N6b 編號空間不變的原生交易回好讀時還原捲動錨**（2026-10 起泛化：由閱讀紀錄 `reading_record` 的決策表決定哪些交易還原，涵蓋設已讀、重新整理、`s` 取消、身後的列表——**模型與決策表見 `docs/reading-record.md`**；下面是執行端的細節）：
   落地一律 `resume-buffer`+`rebuild`（opt in 的序列是落地即回好讀，其餘是靜置探針），而 `_resumeBuffer`／`_seedAnchors` 會改採
   PTT 分頁頂端 ⇒ 閱讀進度丟失。閱讀紀錄在交易收尾時存 `_pendingViewport`；`rebuild` 之前

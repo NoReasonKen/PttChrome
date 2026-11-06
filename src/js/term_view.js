@@ -645,6 +645,13 @@ export function TermView() {
       this.bbscore.articleGestures.queueBack();
       return;
     }
+    // A refresh key then refreshes a revealed list once PTT shows it (#124).
+    if (this.bbscore.articleGestures?.holdsInput() && isRefreshKeyEvent(e) &&
+        readEffectivePrefs().refreshKeyIntercept && this.bbscore.screenRefresh?.target()?.kind === 'revealed') {
+      e.preventDefault();
+      this.bbscore.screenRefresh.refresh('key');
+      return;
+    }
     if (!shouldAcceptInput() || belongsToClosedModal(e) || !keyEventFilter(e))
       return;
 
@@ -1530,6 +1537,13 @@ TermView.prototype = {
     if (busyHint) {
       e.preventDefault();
       this.flashListHint(busyHint);
+      return;
+    }
+    // A deleted source kept shown over its board list (#121): PTT already
+    // shows that list, so Back only removes the article and no key reaches PTT.
+    if (this.bbscore.articleGestures?.holdsGoneArticle()) {
+      if (isPlainBack(e)) this.bbscore.articleGestures.leaveGoneArticle();
+      e.preventDefault();
       return;
     }
     // Leaving an article for its revealed list (#28, #30): only that leave may
@@ -3589,6 +3603,10 @@ TermView.prototype = {
 
   releaseListRows: function() {
     this._listHold = null;
+  },
+
+  holdsListRows: function() {
+    return !!this._listHold;
   },
 
   // Show the kept row of article `num` (or of the pinned row `pinnedKey`) as

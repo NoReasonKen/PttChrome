@@ -3,13 +3,13 @@
 // its own scroll viewport, so revealing it shows the real list, scrollable at
 // once, instead of a static copy.
 import { ScreenCopyLayer, setUsable, STACK_NOTICE_MS } from './stack_layer';
-import { LIST_TITLE_COL_START, hasServerCursorMark, rowToText } from './comment_parse';
-import { labelListCursor } from './list_window';
+import { LIST_TITLE_COL_START, hasServerCursorMark, rowToText, parseListArticleNumLoose } from './comment_parse';
 import { listEntryOf } from './split_reader';
 import { subjectKey, subjectMatches } from './long_push_anchor';
 import { i18n } from './i18n';
 import { PAGE } from './page_stack';
 import { mobileFillLayout, listRowSpan } from './mobile_layout';
+import { boardMarkReadTargetOfText } from './board_list_parse';
 
 // Only one hidden list per terminal stays connected and laid out. Deeper
 // history keeps its detached renderer and the existing live-layer bound.
@@ -73,18 +73,6 @@ export function articleRow(lines, bodyStart, article, { from = -1, up = null, fi
   const others = hits.filter(row => row !== from);
   if (others.length === 1) return others[0];
   return hits.length === 1 ? hits[0] : -1;
-}
-
-// The frame's lines with the selection mark on `row` alone. A changed row is a
-// copy: the rows are shared with the list's own buffer.
-function withSelection(lines, bodyStart, row) {
-  return lines.map((line, r) => {
-    if (r < bodyStart || r === lines.length - 1 || (r === row) === hasServerCursorMark(line, 0)) return line;
-    const copy = line.map(ch => Object.assign(Object.create(Object.getPrototypeOf(ch)), ch));
-    if (r === row) labelListCursor(copy);
-    else Object.assign(copy[0], { ch: ' ', isLeadByte: false });
-    return copy;
-  });
 }
 
 export class StackListLayer extends ScreenCopyLayer {
@@ -161,48 +149,53 @@ export class StackListLayer extends ScreenCopyLayer {
     };
   }
 
-  // The card of frame row `row`, or null when the list does not show it.
-  _card(row) {
-    return this.el.querySelector(`.listCardBody[data-row="${row}"]`)?.closest('.listCard') || null;
-  }
-
-  // Show `article` ({ author, title }) selected, as PTT's selection is once
-  // another article replaced the selected one in place (#74). `up`: whether it
-  // was posted before that one, null when unknown; `first`: it is the first
-  // article of the thread. Returns whether the list shows it.
-  select(article, up, first = false) {
-    if (!this.screen) return false;
+  // The frame row this list shows selected, or -1.
+  _selectedRow() {
     const lines = this.frame.lines;
     const bodyStart = this.frame.enhance.listScroll.bodyStart;
-    const from = lines.findIndex((line, r) => r >= bodyStart && r < lines.length - 1 && hasServerCursorMark(line, 0));
-    const row = articleRow(lines, bodyStart, article, { from, up, first });
-    if (row < 0 || !this._card(row)) return false;
-    this.frame = { ...this.frame, lines: withSelection(this.frame.lines, bodyStart, row) };
-    this._render(this.rect, this.forceWidth);
-    this.selection = row;
-    if (this.el.isConnected) this._revealSelection();
+    return lines.findIndex((line, r) => r >= bodyStart && r < lines.length - 1 && hasServerCursorMark(line, 0));
+  }
+
+  // Follow PTT's selection to `article` ({ author, title }), which replaced
+  // the open article in place (#74). The list keeps showing the article the
+  // reader opened from it selected (#123); PTT's selection is only tracked,
+  // to know which rows were read and to move PTT back on Back. `up`: whether
+  // it was posted before the previous one, null when unknown; `first`: it is
+  // the first article of the thread. Returns whether the list holds it.
+  follow(article, up, first = false) {
+    if (!this.screen) return false;
+    const lines = this.frame.lines;
+    const from = this.followed ?? this._selectedRow();
+    const row = articleRow(lines, this.frame.enhance.listScroll.bodyStart, article, { from, up, first });
+    if (row < 0) return false;
+    this.followed = row;
+    (this.read ||= new Set()).add(row);
     return true;
+  }
+
+  // The newest article number this list shows, or null.
+  newestNum() {
+    const lines = this.frame.lines;
+    let newest = null;
+    for (let r = this.frame.enhance.listScroll.bodyStart; r < lines.length - 1; r++) {
+      const num = parseListArticleNumLoose(rowToText(lines[r]));
+      if (num != null && (newest == null || num > newest)) newest = num;
+    }
+    return newest;
   }
 
   // The text of the entry this list shows selected, or null.
   selectedText() {
-    const lines = this.frame.lines;
-    const bodyStart = this.frame.enhance.listScroll.bodyStart;
-    const row = lines.findIndex((line, r) => r >= bodyStart && r < lines.length - 1 && hasServerCursorMark(line, 0));
-    return row < 0 ? null : rowToText(lines[row]);
+    const row = this._selectedRow();
+    return row < 0 ? null : rowToText(this.frame.lines[row]);
   }
 
-  // Scroll the selection chosen by `select` into view, the least distance.
-  _revealSelection() {
-    const card = this.selection != null && this._card(this.selection);
-    const view = card && this.el.querySelector('.listBodyView');
-    if (!view) return;
-    const box = card.getBoundingClientRect();
-    const port = view.getBoundingClientRect();
-    const shift = box.top < port.top ? box.top - port.top : box.bottom > port.bottom ? box.bottom - port.bottom : 0;
-    if (!shift) return;
-    this.screen.setListScrollTop(this.screen.getListScrollTop() + shift);
-    this.scrollTop = this.screen.getListScrollTop();
+  // The rows (TermChar[]) of the articles read since the list was left: the
+  // one it shows selected and each that PTT's selection followed, the one PTT's
+  // selection is on last.
+  readRows() {
+    const rows = [this._selectedRow(), ...(this.read || []), this.followed ?? -1].filter(row => row >= 0);
+    return [...new Set(rows.reverse())].reverse().map(row => this.frame.lines[row]);
   }
 
   // Ready to be revealed at the current width. A width change, such as a
@@ -229,10 +222,7 @@ export class StackListLayer extends ScreenCopyLayer {
     if (this.el.isConnected) this.anchor = topCard(this.el, this.el.getBoundingClientRect().top);
     this._render(rect, this.view.chh);
     this.scrollTop = null;
-    if (this.el.isConnected) {
-      this._restoreAnchor();
-      this._revealSelection();
-    }
+    if (this.el.isConnected) this._restoreAnchor();
     return true;
   }
 
@@ -247,7 +237,6 @@ export class StackListLayer extends ScreenCopyLayer {
       this.parent.appendChild(this.el);
       if (this.scrollTop != null) this.screen.setListScrollTop(this.scrollTop);
       else this._restoreAnchor();
-      this._revealSelection();
     }
     this.el.style.pointerEvents = usable ? '' : 'none';
     setUsable(this.el, usable);
@@ -270,7 +259,6 @@ export class StackListLayer extends ScreenCopyLayer {
       this.parent.appendChild(this.el);
       if (this.scrollTop != null) this.screen.setListScrollTop(this.scrollTop);
       else this._restoreAnchor();
-      this._revealSelection();
     }
     this.viewportObserver ||= new ResizeObserver(() => {
       if (readyLists.get(this.view) !== this) return;
@@ -334,17 +322,40 @@ export class StackListLayer extends ScreenCopyLayer {
     return card ? cardIdentity(card) : null;
   }
 
-  // Open the remembered entry on the refreshed list, found by identity, through
-  // its list session's own open path.
+  // Open the remembered entry on the real list PTT now shows. It runs after
+  // the swap, when this layer may already be released.
   openTapped(core, id) {
-    if (!this.screen) return;
-    const row = findCard(core.view.mainDisplay, id)?.querySelector('.listCardBody')?.closest('[data-row]')?.dataset.row;
-    if (row == null) {
-      core.view.flashListHint?.(i18n(this.kind === 'board' ? 'stack_boardGone' : 'stack_articleGone'), STACK_NOTICE_MS);
-      return;
-    }
-    core.noteUserAction?.();
-    const session = this.kind === 'board' ? core.boardListSession : core.listSession;
-    session.onMouseClick(Number(row), LIST_TITLE_COL_START);
+    openListEntry(core, { kind: this.kind, id });
   }
+
+  // The entry of this list under `target`, for the context menu, or null: its
+  // kind and identity, and the number marking it read would use.
+  entryAt(target) {
+    if (!this.screen) return null;
+    const card = target?.closest?.('.listCard');
+    if (!card || !this.el.contains(card)) return null;
+    const line = this.frame.lines[Number(card.querySelector('.listCardBody')?.dataset.row)];
+    const text = line ? rowToText(line) : '';
+    if (this.kind === 'board') return { kind: 'board', id: cardIdentity(card), boardMarkRead: boardMarkReadTargetOfText(text) };
+    const entry = listEntryOf(text);
+    return { kind: 'article', id: cardIdentity(card), markRead: entry ? { num: entry.num } : null };
+  }
+}
+
+// The row of `entry` ({ kind, id }) on the real list PTT now shows, or null
+// with a notice when that list no longer has it.
+export function realEntryRow(core, entry) {
+  const row = findCard(core.view.mainDisplay, entry.id)?.querySelector('.listCardBody')?.dataset.row;
+  if (row != null) return Number(row);
+  core.view.flashListHint?.(i18n(entry.kind === 'board' ? 'stack_boardGone' : 'stack_articleGone'), STACK_NOTICE_MS);
+  return null;
+}
+
+// Open `entry` on the real list through its list session's own open path.
+export function openListEntry(core, entry) {
+  const row = realEntryRow(core, entry);
+  if (row == null) return;
+  core.noteUserAction?.();
+  const session = entry.kind === 'board' ? core.boardListSession : core.listSession;
+  session.onMouseClick(row, LIST_TITLE_COL_START);
 }

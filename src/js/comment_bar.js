@@ -182,6 +182,8 @@ CommentBar.prototype = {
     const core = this._core;
     const er = core.easyReading;
     const buf = core.buf;
+    // An article shown from its layer before PTT presents it, or deleted (#121).
+    if (core.articleGestures?.stack?.showsArticleLayer?.()) return true;
     return !!(buf && buf.pageState === 3 && er && er._enabled && !er._functionMode && (buf.pageLines || []).length);
   },
 

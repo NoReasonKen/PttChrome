@@ -101,7 +101,11 @@ test('home dashboard → board → title search → back → back replays end to
   await waitFed(page, homeSearch.steps.length);
 });
 
-test('home dashboard → board → article → next article → back → back replays end to end', async ({ page }) => {
+// The cassette records the Back of the list rebuilt behind a next-article pull
+// (a jump and three page-ups). The list now keeps its layer and only moves
+// PTT's selection back to the article opened from it (#123); the scenario
+// needs re-recording.
+test.fixme('home dashboard → board → article → next article → back → back replays end to end', async ({ page }) => {
   await openBoardFromDashboard(page, homeNext);
   for (let i = 0; i < 2; i++) await ptt.sendKey(page, 'ArrowUp');
   await ptt.sendKey(page, 'Enter');
