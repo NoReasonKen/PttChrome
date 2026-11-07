@@ -443,6 +443,27 @@ describe("延遲載入佔位盒（掛載/卸載）", () => {
     expect(floorOf(slot)).toBe("");
   });
 
+  // #152: lowering the floor inside the ResizeObserver callback shortens the
+  // long-page chunk during the same delivery, which Chrome reports as a
+  // ResizeObserver loop. A higher floor only matches content already laid out.
+  test("a shown preview growing shorter lowers its floor on the next frame", async () => {
+    const slot = mountSlot(HREF).el;
+    near().emit(true);
+    fakeLoadedMedia(slot, 270);
+    resized().emit();
+    expect(floorOf(slot)).toBe("270px");
+
+    resizeTo(slot, 238);
+    resized().emit();
+    expect(floorOf(slot)).toBe("270px");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(floorOf(slot)).toBe("238px");
+
+    resizeTo(slot, 300);
+    resized().emit();
+    expect(floorOf(slot)).toBe("300px");
+  });
+
   // 同一個判準在**卸載**路徑也要成立。延遲載入的預載／遲滯邊界生效後，視窗外的盒子
   // 先掛上開始載入，前面的圖陸續載完撐高版面，就會把還在讀取中的盒子推出卸載邊界 ⇒
   // 卸載當下 <img> 已在 DOM（display:none），只看 querySelector 會把「讀取中…」指示器
@@ -729,13 +750,15 @@ describe("延遲載入佔位盒（掛載/卸載）", () => {
     // 被自己墊高的值 ⇒ 一個過期偏大的高度會被原封不動再記一次＝自我增強的永久假
     // 空白（舊 code 得靠「量之前先拿掉 min-height、量完再放回」硬繞）。疊層之後量
     // 的是 content，而 content 從來沒有 inline style ⇒ 這條路徑隨結構消失。
-    test("量的是內容層 ⇒ 過期的佔位高度不會自我增強成永久假空白", () => {
+    test("量的是內容層 ⇒ 過期的佔位高度不會自我增強成永久假空白", async () => {
       // memo 帶進一個舊寬度下量到的 570，但這一次的真實內容只有 320。
       measureThenDiscard(HREF, 570);
       const handle = mountSlot(HREF);
       expect(floorOf(handle.el)).toBe("570px");
       fakeLaidOutMedia(handle.el, 320);
       resized().emit();
+      // A lower floor applies on the next frame (#152).
+      await new Promise((resolve) => requestAnimationFrame(resolve));
       expect(floorOf(handle.el)).toBe("320px");
       expect(contentOf(handle.el).getAttribute("style")).toBeNull();
     });

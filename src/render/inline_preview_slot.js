@@ -287,6 +287,27 @@ export function createInlinePreviewSlot(href, sizeMode = "normal") {
     else spacer.style.removeProperty("min-height");
   }
 
+  // A size report never shortens the slot inside the ResizeObserver callback
+  // (#152). The slot's height feeds its long-page chunk, whose remembered size
+  // (`contain-intrinsic-height: auto`) Chrome records with its own resize
+  // observation; shortening the chunk in the same delivery leaves that
+  // shallower observation undelivered, which Chrome reports as a
+  // ResizeObserver loop. A lower floor waits for the next frame; a floor that
+  // only matches content already laid out applies at once.
+  let floorFrame = 0;
+  function applyMeasuredFloor() {
+    const floor = slotFloorHeight(state.pinned, state.sizeMode) || 0;
+    if (floor >= (parseFloat(spacer.style.minHeight) || 0)) {
+      applyFloorHeight();
+      return;
+    }
+    if (floorFrame) return;
+    floorFrame = requestAnimationFrame(() => {
+      floorFrame = 0;
+      if (!state.destroyed) applyFloorHeight();
+    });
+  }
+
   function removeGhost() {
     if (ghost) {
       ghost.remove();
@@ -535,7 +556,7 @@ export function createInlinePreviewSlot(href, sizeMode = "normal") {
       content.offsetHeight,
       loaded,
     );
-    applyFloorHeight();
+    applyMeasuredFloor();
     if (loaded) {
       const it = measureIntrinsic(content);
       state.aspect = recordSlotAspect(state.aspect, it.count, it.w, it.h);
