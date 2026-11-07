@@ -179,8 +179,11 @@ export class ArticleGestures {
   // whose actions wait for the real page to take over.
   _startOnLayer(event) {
     if (this.track) return this._cancel();
+    // The contact lands on the page the finished swipe shows, which was not
+    // usable when it was made; its touch events still go to what it touched.
+    const finished = this._finishLayerExit();
+    const target = finished ? document.elementFromPoint(event.clientX, event.clientY) : event.target;
     const layer = this.stack.shownLayer();
-    const target = event.target;
     if (!layer || !event.isPrimary || !readEffectivePrefs().articleHorizontalGestures || this._otherModalOpen()) return;
     if (this.settling) {
       if (!this.opened) return;
@@ -196,11 +199,12 @@ export class ArticleGestures {
       id: event.pointerId,
       level: null,
       layer,
+      touched: finished ? event.target : layer.el,
       gesture: new ArticleHorizontalGesture({
         width: window.innerWidth, opened: this.opened, allowExit, allowOpen, x: event.clientX, y: event.clientY, t: event.timeStamp
       })
     };
-    layer.el.addEventListener('touchmove', this._nativeTouchMove, { capture: true, passive: false });
+    this.track.touched.addEventListener('touchmove', this._nativeTouchMove, { capture: true, passive: false });
   }
 
   _move(event) {
@@ -246,7 +250,7 @@ export class ArticleGestures {
     const track = this.track;
     if (!track || event.pointerId !== track.id) return;
     this.track = null;
-    track.layer?.el.removeEventListener('touchmove', this._nativeTouchMove, true);
+    track.touched?.removeEventListener('touchmove', this._nativeTouchMove, true);
     if (!track.gesture.operation) {
       if (this.opened && track.gesture.axis) {
         this._consume(event);
@@ -269,7 +273,7 @@ export class ArticleGestures {
     const opened = track.gesture.opened;
     const operation = track.gesture.operation;
     this.track = null;
-    track.layer?.el.removeEventListener('touchmove', this._nativeTouchMove, true);
+    track.touched?.removeEventListener('touchmove', this._nativeTouchMove, true);
     if (!operation) return;
     this.suppressClickUntil = performance.now() + 400;
     if (operation === 'exit') return track.layer ? this._settleLayerExit(false) : this._settleExit(false);
@@ -297,10 +301,20 @@ export class ArticleGestures {
     for (const { node } of exit.surfaces) node.style.transition = `translate ${duration}ms ease-out`;
     paintSurfaces(exit.surfaces, commit ? window.innerWidth : 0);
     clearTimeout(exit.timer);
+    exit.committed = commit;
     exit.timer = setTimeout(() => {
       exit.timer = null;
       this._dropLayerExit(commit && this.stack.shownLayer() === exit.layer);
     }, duration);
+  }
+
+  // A committed swipe still sliding away is a Back already made: it counts
+  // before any input that follows it, so a second Back is never absorbed.
+  _finishLayerExit() {
+    const exit = this.layerExit;
+    if (!exit?.committed) return false;
+    this._dropLayerExit(this.stack.shownLayer() === exit.layer);
+    return true;
   }
 
   // Ends a swipe on a revealed page: `back` makes it a Back during the
@@ -435,6 +449,7 @@ export class ArticleGestures {
   // drawer open on the revealed page closes first, as a sheet does.
   backDuringHandoff() {
     if (this.root) return this.close();
+    this._finishLayerExit();
     if (!this.stack.backDuringHandoff() && this.backsDuringSlide != null) this.backsDuringSlide++;
   }
 

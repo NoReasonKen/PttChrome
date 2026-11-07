@@ -9,7 +9,8 @@ const {
   bootNestedShortcutSearch, nativeBack, waitArticle, waitList, readToMiddle, topLine, tapShortcut, tapCard
 } = require('../helpers/article_shortcut_search');
 const ptt = require('../helpers/ptt');
-const { MAIN, holdBackReply, heldBack, recordHints, recordedHints } = require('../helpers/stack_routes');
+const { MAIN, holdBackReply, heldBack, recordHints, recordedHints, dashboardVisible } = require('../helpers/stack_routes');
+const { waitScreenSettled } = require('../helpers/replay');
 const { installPaintedFrameProbe } = require('../helpers/layout');
 const { beginArticleTouch, revealArticleDrawer } = require('../helpers/article_gestures');
 
@@ -948,6 +949,54 @@ test('Share on the revealed source shares its link at once, within the tap, with
   expect(await received(page)).not.toContain('Q');
   expect(await page.evaluate(() => window.__shared.length)).toBe(1);
 });
+
+// Home dashboard → board Test → Alpha read to its middle, each page alive
+// under the next.
+async function alphaFromDashboard(page) {
+  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, homeMenu: true, ptList: true });
+  await ptt.applyPrefs(page, { enableHomeDashboard: true });
+  // Favorites already fetched: the dashboard fetches nothing from this board.
+  await page.evaluate(() => {
+    const home = window.__app.homeDashboard;
+    home._state.fetchedAt = Date.now();
+    home._set({ boards: [{ name: 'Test', desc: 'controlled' }] });
+  });
+  await ptt.sendKey(page, 'ArrowLeft');
+  await waitList(page, FULL_LIST);
+  await ptt.sendKey(page, 'ArrowLeft');
+  await waitScreenSettled(page, { 0: '主功能表' });
+  await dashboardVisible(page);
+  await page.locator('#homeDashboard [data-home-board="Test"]').tap();
+  await waitList(page, FULL_LIST);
+  await tapCard(page, '[Talk] Alpha topic');
+  await waitArticle(page, 'Alpha');
+  await readToMiddle(page);
+}
+
+for (const [how, again] of [
+  ['Back', page => nativeBack(page)],
+  ['swipe', page => swipeRightOver(page, LIST_LAYER)]
+]) {
+  test(`a ${how} made while a swipe on the revealed source still settles reveals the page below its list`, async ({ page }) => {
+    await alphaFromDashboard(page);
+    await tapShortcut(page, 'author');
+    await waitList(page, AUTHOR_RESULTS);
+    await settled(page);
+    const release = await holdSends(page, /./);
+    await nativeBack(page);
+    await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.__heldSends.length)).toBeGreaterThan(0);
+    await swipeRightOver(page, ARTICLE_LAYER);
+    await expect(page.locator(LIST_LAYER)).toBeVisible();
+    // The swipe's slide has not ended yet.
+    expect(await page.evaluate(() => !!window.__app.articleGestures.layerExit)).toBe(true);
+    await again(page);
+    await expect(page.locator('[data-stack-layer="home"]')).toBeVisible();
+    await expect(page.locator(LIST_LAYER)).toHaveCount(0);
+    await release();
+    await expect(page.locator('#homeDashboard')).toBeVisible({ timeout: 10000 });
+  });
+}
 
 test('search backtracking back to the source article shows it without a notice', async ({ page }) => {
   await sourceFromList(page);
