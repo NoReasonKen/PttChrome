@@ -764,6 +764,32 @@ test('a swipe on the source revealed by Back from the results reveals its list a
   expect(Math.abs(await cardOffset(page, `${MAIN} .listBodyView`, 'Alpha topic') - before)).toBeLessThanOrEqual(1);
 });
 
+// A page that leaves keeps no scroll of its own (#119): the revealed source
+// being swiped away cannot scroll natively, so no fling outlives it for the
+// next tap to stop instead of clicking. Snapped back, it scrolls again.
+test('the revealed source cannot scroll while it is swiped away, and scrolls again once it snaps back', async ({ page }) => {
+  await sourceFromList(page);
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+  await holdSends(page, /./);
+  await nativeBack(page);
+  await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__heldSends.length)).toBeGreaterThan(0);
+  const overflow = () => page.locator(ARTICLE_LAYER).evaluate(el => getComputedStyle(el).overflowY);
+  const scrolling = await overflow();
+  expect(scrolling).not.toBe('hidden');
+  const box = await page.locator(ARTICLE_LAYER).boundingBox();
+  const y = box.y + box.height / 2;
+  const contact = await beginArticleTouch(page, { x: box.x + 20, y });
+  await contact.move({ x: box.x + 140, y });
+  expect(await overflow()).toBe('hidden');
+  await contact.move({ x: box.x + 30, y });
+  await contact.release();
+  await expect.poll(overflow).toBe(scrolling);
+  await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
+});
+
 test('a swipe on the source revealed by Back from the results reveals its list at once while PTT\'s copy still pages to the reading position', async ({ page }) => {
   await longSourceFromList(page);
   await tapShortcut(page, 'author');

@@ -34,6 +34,8 @@ export class ScreenCopyLayer {
     this.el = document.createElement('div');
     // Same classes and inline geometry as the real surface, so its CSS applies.
     this.el.className = main.className;
+    // A copy made while the screen leaves scrolls like a page (stack_motion.js#freezeScroll).
+    this.el.classList.remove('stackLeaving');
     this.el.style.cssText = main.style.cssText;
     this.el.setAttribute('data-stack-layer', kind);
     setUsable(this.el, false);

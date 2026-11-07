@@ -6,7 +6,7 @@ import { ArticleHorizontalGesture, ARTICLE_TAP_SLOP } from './article_horizontal
 import { NavigationStack } from './navigation_stack';
 import { PAGE } from './page_stack';
 import { StackEntry } from './stack_entry';
-import { createUnderlay, holdSurfaces, raiseSurfaces, releaseSurfaces, paintSurfaces, slideDuration } from './stack_motion';
+import { createUnderlay, holdSurfaces, raiseSurfaces, releaseSurfaces, paintSurfaces, slideDuration, freezeScroll } from './stack_motion';
 import { STACK_NOTICE_MS } from './stack_layer';
 import { OWNER_ARTICLE_LIST, OWNER_BOARD_LIST } from './list_render_owner';
 import { recordFor } from './reading_record';
@@ -291,6 +291,7 @@ export class ArticleGestures {
     const surfaces = [...raiseSurfaces([this.exitUnderlay]), ...raiseSurfaces([layer.el])];
     // The layer paints over its own App Bar's underlay.
     layer.el.style.zIndex = '153';
+    freezeScroll(layer.el);
     this.layerExit = { layer, below: next?.layer || null, underlay, surfaces, timer: null, release: this.stack.holdSwap() };
   }
 
@@ -510,6 +511,7 @@ export class ArticleGestures {
     this.exitUnderlay.setAttribute('data-article-exit-underlay', '');
     this.exitUnderlay.dataset.preview = layer ? 'layer' : 'fallback';
     this.exitSurfaces = holdSurfaces(this.core);
+    freezeScroll(this.core.view.mainDisplay);
     this.core.setModalOpen(MODAL_SOURCE, true);
   }
 

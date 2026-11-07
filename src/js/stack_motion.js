@@ -73,8 +73,17 @@ export function raiseSurfaces(nodes) {
   return surfaces;
 }
 
+// A page that leaves keeps no scroll of its own (#119): a fling still running
+// on it would outlive it, and the next tap on the page shown would only stop
+// that fling, with no click. Its scrollers stay where they are until the
+// surfaces holding it are released.
+export function freezeScroll(node) {
+  node?.classList.add('stackLeaving');
+}
+
 export function releaseSurfaces(surfaces) {
   for (const surface of surfaces) {
+    surface.node.classList.remove('stackLeaving');
     surface.node.style.translate = surface.translate;
     surface.node.style.transition = surface.transition;
     surface.node.style.zIndex = surface.zIndex;

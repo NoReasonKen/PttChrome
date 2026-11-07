@@ -10,7 +10,7 @@ import { parseStatusRow } from './string_util';
 import { HiddenArticleRoute } from './hidden_article_route';
 import { isBoardArticleList, isSearchResultsFrame, searchResultsLanded } from './search_results_screen';
 import { readSearchResultsContext } from './search_results_context';
-import { createUnderlay, raiseSurfaces, releaseSurfaces, paintSurfaces, slideDuration } from './stack_motion';
+import { createUnderlay, raiseSurfaces, releaseSurfaces, paintSurfaces, slideDuration, freezeScroll } from './stack_motion';
 import { STACK_NOTICE_MS } from './stack_layer';
 import { PAGE } from './page_stack';
 import { recordFor } from './reading_record';
@@ -207,6 +207,7 @@ export class ThreadJump extends HiddenArticleRoute {
     const layer = stack.revealable();
     const underlay = createUnderlay(core, layer, stack.title, stack.appBar);
     const surfaces = raiseSurfaces([this.cover.el, document.getElementById('mobileAppBar')]);
+    freezeScroll(this.cover.el);
     const duration = slideDuration();
     this.slide = { underlay, surfaces, timer: null };
     for (const { node } of surfaces) node.style.transition = `translate ${duration}ms ease-out`;
