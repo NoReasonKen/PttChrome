@@ -178,6 +178,48 @@ export function listViewSample(app, v) {
 const LIST_VIEW_SEL = '.listBodyView';
 const TOUCH_TYPES = ['touchstart', 'touchend', 'touchcancel'];
 
+// Error text in a recording is bounded and kept ASCII: messages can quote screen
+// lines, whose article text is mostly not ASCII, so each non-ASCII run becomes an
+// ellipsis (account names are masked by the recording's redaction). Objects
+// other than errors are named, never serialized.
+const ERROR_MESSAGE_MAX = 200;
+const ERROR_FRAME_MAX = 160;
+const ERROR_FRAMES = 4;
+const RESIZE_OBSERVER_LOOP = /^ResizeObserver loop/;
+
+const boundText = (text, max) => {
+  const ascii = String(text).replace(/[^\x20-\x7e]+/g, '…');
+  return ascii.length > max ? ascii.slice(0, max - 1) + '…' : ascii;
+};
+
+const describeValue = value => {
+  if (value instanceof Error) return String(value);
+  if (value === null || ['string', 'number', 'boolean', 'undefined'].includes(typeof value)) return String(value);
+  return `[${value.constructor?.name || typeof value}]`;
+};
+
+// The first frames of an error's stack, without the message line and with
+// dev-server query strings (`?t=…`) dropped from file URLs.
+const stackFrames = error => {
+  if (!(error instanceof Error) || typeof error.stack !== 'string') return null;
+  const frames = error.stack.split('\n').map(line => line.trim())
+    .filter(line => /^at |@/.test(line))
+    .slice(0, ERROR_FRAMES)
+    .map(line => boundText(line.replace(/\?[^:)\s]*(?=:\d)/g, ''), ERROR_FRAME_MAX));
+  return frames.length ? frames : null;
+};
+
+// The `error` log for one report. `kind` is `uncaught`, `rejection`, `console`
+// or `resize-observer-loop` (Chrome reports that one as an uncaught error with
+// no error object).
+export function errorLogInfo(kind, message, error) {
+  const info = { kind, message: boundText(message, ERROR_MESSAGE_MAX) };
+  if (kind === 'uncaught' && RESIZE_OBSERVER_LOOP.test(info.message)) info.kind = 'resize-observer-loop';
+  const stack = stackFrames(error);
+  if (stack) info.stack = stack;
+  return info;
+}
+
 export class DebugRecorder {
   constructor(app, { detailedGestures = false } = {}) {
     this.app = app;
@@ -237,6 +279,7 @@ export class DebugRecorder {
     setDiagSink((tag, info) => this.log(tag, info));
     this._watchScroller(app.view && app.view.mainDisplay);
     this._watchList();
+    this._watchErrors();
 
     this.log('record.start', { url: app.connectedUrl && app.connectedUrl.url, detailedGestures: this.detailedGestures });
     this._watchEnvironment();
@@ -389,6 +432,36 @@ export class DebugRecorder {
     this._onTouch = null;
   }
 
+  // Uncaught errors, unhandled rejections and console.error go into the
+  // timeline next to the keys and screens around them.
+  _watchErrors() {
+    if (typeof window === 'undefined') return;
+    this._onError = e => this.log('error', errorLogInfo('uncaught', e.message || describeValue(e.error), e.error));
+    this._onRejection = e => this.log('error', errorLogInfo('rejection', describeValue(e.reason), e.reason));
+    window.addEventListener('error', this._onError);
+    window.addEventListener('unhandledrejection', this._onRejection);
+    const print = console.error;
+    this._origConsoleError = print;
+    const rec = this;
+    this._consoleErrorWrapper = function (...args) {
+      rec.log('error', errorLogInfo('console', args.map(describeValue).join(' '), args.find(arg => arg instanceof Error)));
+      return print.apply(this, args);
+    };
+    console.error = this._consoleErrorWrapper;
+  }
+
+  _unwatchErrors() {
+    if (typeof window === 'undefined' || !this._onError) return;
+    window.removeEventListener('error', this._onError);
+    window.removeEventListener('unhandledrejection', this._onRejection);
+    // A wrapper installed after ours stays; ours then only passes calls through.
+    if (console.error === this._consoleErrorWrapper) console.error = this._origConsoleError;
+    this._consoleErrorWrapper = null;
+    this._onError = null;
+    this._onRejection = null;
+    this._origConsoleError = null;
+  }
+
   _unwatchScroller() {
     if (!this._scroller) return;
     this._scroller.removeEventListener('wheel', this._onWheel, { passive: true });
@@ -413,6 +486,7 @@ export class DebugRecorder {
     setDiagSink(null);
     this._unwatchScroller();
     this._unwatchList();
+    this._unwatchErrors();
     this._unwatchEnvironment();
     if (this._origOnData) this.app.onData = this._origOnData;
     if (this._origSendRaw && this._patchedConn) this._patchedConn._sendRaw = this._origSendRaw;
