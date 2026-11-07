@@ -306,10 +306,15 @@ async function bootBoardListOf(page, route) {
   await boardListEngaged(page);
 }
 
-// What each board card shows, which board is selected, and how far the list
-// is scrolled.
+// What each board card shows, which board is selected, and the reading
+// position: the first card in view and its offset from the top of the view.
+// The view's scrollTop is no measure of it: it also counts the blank reserve
+// above the first row, which the article list read meanwhile can leave larger
+// until the list is next at rest.
 const boardPage = (page, root = MAIN) => page.locator(root).evaluate(el => {
   const cards = [...el.querySelectorAll('.listCard[data-list-board]')];
+  const viewTop = el.querySelector('.listBodyView').getBoundingClientRect().top;
+  const top = cards.find(card => card.getBoundingClientRect().bottom > viewTop + 1);
   return {
     boards: cards.map(card => {
       const rest = card.cloneNode(true);
@@ -321,7 +326,7 @@ const boardPage = (page, root = MAIN) => page.locator(root).evaluate(el => {
       };
     }),
     selected: cards.find(card => card.querySelector('.listCardCursor')?.textContent.trim() === '>')?.dataset.listBoard,
-    scrollTop: el.querySelector('.listBodyView').scrollTop
+    top: { board: top?.dataset.listBoard, offset: top && top.getBoundingClientRect().top - viewTop }
   };
 });
 
@@ -341,12 +346,13 @@ async function openAndBack(page, route) {
   return boardPage(page);
 }
 
-// Every row's text and order, the selection and the scroll position equal
+// Every row's text and order, the selection and the reading position equal
 // `before`, except the unread marks in `unread`.
 function expectKept(after, before, unread) {
   expect(after.boards).toEqual(before.boards.map(b => (b.board in unread ? { ...b, unread: unread[b.board] } : b)));
   expect(after.selected).toBe(before.selected);
-  expect(Math.abs(after.scrollTop - before.scrollTop)).toBeLessThanOrEqual(1);
+  expect(after.top.board).toBe(before.top.board);
+  expect(Math.abs(after.top.offset - before.top.offset)).toBeLessThanOrEqual(1);
 }
 
 test('Back to a board list keeps every row as it was; the visited board shows read once its newest article was read', async ({ page }) => {
@@ -445,7 +451,11 @@ async function noticesOnBack(page, route) {
   await boardListEngaged(page);
   await waitFed(page, route.steps.length);
   await page.waitForTimeout(500); // sleep-ok: anything sent or shown after the swap is by now
-  return { hints: await recordedHints(page), sent: await sentSince(page, from) };
+  // A Back PTT answers after 250 ms is followed by the command queue's bare
+  // redraw probe (\f), as when the held reply waits on the test's polling: it
+  // asks PTT for nothing new, so it is not counted.
+  const sent = (await sentSince(page, from)).filter(data => data !== '\f');
+  return { hints: await recordedHints(page), sent };
 }
 
 test('Back to a board list whose boards PTT now marks differently shows a brief notice, and sends nothing more', async ({ page }) => {
