@@ -178,6 +178,7 @@ export const App = function() {
     // cost): a reproduced "畫面停住/處理中" hang shows exactly which kind sat
     // on the wire, for how long, and whether it ended done/miss/timeout.
     onEvent: (name, info) => this.debugRecorder?.log('queue.' + name, info),
+    serverWrites: () => this.buf.serverWrites,
     // Only a COMPLETE screen may end a probed command as 'miss' (see
     // command_queue's header). The probe is a bare \f = redrawwin, whose
     // response always opens with ESC[H ESC[2J, and term_buf's erase-display

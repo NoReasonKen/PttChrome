@@ -388,6 +388,12 @@ export function TermBuf(cols, rows) {
   // TWICE, and the second (cursor-only, zero content rows) settle must still
   // reach the ListSession/CommandQueue — its screen is the complete response.
   this._settleCursorMoved = false;
+  // How many chunks of server data the parser has written so far, frozen into
+  // settleSnapshot.serverWrites. A command sent after the last chunk a settle
+  // carries is not answered by it (CommandQueue: the settle of a flushed
+  // command's late answer, held back by local repaints, once satisfied the
+  // next command's expect).
+  this.serverWrites = 0;
 
   // ---- DEC 2026 Synchronized Output（BSU/ESU）------------------------------
   // PTT 從 2026-09 起把每個 doupdate() 包在 `ESC[?2026h` … `ESC[?2026l` 之間
@@ -1249,7 +1255,8 @@ TermBuf.prototype = {
         cursorMoved: this._settleCursorMoved,
         curX: this.cur_x,
         curY: this.cur_y,
-        pageState: this.pageState
+        pageState: this.pageState,
+        serverWrites: this.serverWrites
       };
       this._settleChangedRows = new Set();
       this._settleCursorMoved = false;

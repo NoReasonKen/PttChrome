@@ -89,4 +89,17 @@ describe("TermBuf settle snapshot", () => {
     expect(first.changedRows.size).toBe(firstSize);
     expect(first.changedRows.has(4)).toBe(true); // full paint included row 4 too
   });
+  test("the snapshot counts the server data written so far, so a settle can be told from data that predates a send", () => {
+    const buf = makeBuf();
+    const parser = new AnsiParser(buf);
+    parser.feed(decodeRecv(cassette.steps[0].recv));
+    const before = buf.serverWrites;
+    expect(before).toBeGreaterThan(0);
+    settle();
+    expect(buf.settleSnapshot.serverWrites).toBe(before);
+
+    parser.feed("\x1b[5;1H>");
+    settle();
+    expect(buf.settleSnapshot.serverWrites).toBeGreaterThan(before);
+  });
 });

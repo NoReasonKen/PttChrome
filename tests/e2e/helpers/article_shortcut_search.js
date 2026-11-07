@@ -162,12 +162,15 @@ const NESTED_ARTICLES = [
 // `urls`: articles end with their URL line, so the app knows an article's
 //   AID without asking PTT.
 // `images`: short articles show an image link near their top, previewed inline.
-async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false, legacyCaptions = false, extraArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false, images = false } = {}) {
+// `ptList`: lists behave as PTT's do where the default server simplifies: the
+//   footer names its keys, (y)回應 among them, and `s<board>` from a list lands
+//   on the board's full list.
+async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false, legacyCaptions = false, extraArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false, images = false, ptList = false } = {}) {
   await bootGestureArticle(page, { resumeLastPlace });
   // The image-article boot disables the easy-reading list; the reader's
   // default enables it before any list from this server is seen.
   if (easyList) await ptt.applyPrefs(page, { enableEasyReadingList: true });
-  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article', legacyCaptions, extraArticles, homeMenu, dynamicRows, pinned, alphaLines, urls, images });
+  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article', legacyCaptions, extraArticles, homeMenu, dynamicRows, pinned, alphaLines, urls, images, ptList });
   if (loggedIn) {
     await waitScreenSettled(page, { 0: '主功能表' });
     await page.evaluate(() => {
@@ -291,7 +294,8 @@ async function installNestedServer(page, session) {
           1: '[←]離開 [→]閱讀 [^P]發表文章 [b]備忘錄',
           2: '  編號    日 期 作  者       文  章  標  題',
           [termRows - 1]: session.legacyCaptions ? ' 文章選讀 [←]離開 [→]閱讀'
-            : state.filter ? ' 系列文章  [←]離開 [→]閱讀' : ' 文章列表  [←]離開 [→]閱讀'
+            : (state.filter ? ' 系列文章 ' : ' 文章列表 ') +
+              (session.ptList ? ' (^P)發表 (y)回應 (X)推文 (→)閱讀 (←)離開' : ' [←]離開 [→]閱讀')
         };
         inverse = [0, 2];
         const start = Math.max(0, Math.min(state.cursor - Math.floor(bodyRows / 2), entries.length - bodyRows));
@@ -446,7 +450,7 @@ async function installNestedServer(page, session) {
         const value = rest.slice(1, end);
         if (head === 's') {
           // From an article the board jump keeps its subset (aid_navigation).
-          if (state.surface === 'main') state.filter = null;
+          if (state.surface === 'main' || (session.ptList && state.surface === 'list')) state.filter = null;
           state.board = value;
           state.surface = 'list';
         } else if (!state.filter) {

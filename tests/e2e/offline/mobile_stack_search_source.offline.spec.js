@@ -19,8 +19,8 @@ const FULL_LIST = { has: ['Alpha topic', 'Delta topic'] };
 const AUTHOR_RESULTS = { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] };
 
 // The board's list, then Alpha opened from it and read to its middle.
-async function sourceFromList(page) {
-  await bootNestedShortcutSearch(page, { easyList: true });
+async function sourceFromList(page, options = {}) {
+  await bootNestedShortcutSearch(page, { easyList: true, ...options });
   // The app guards system Back only once the reader has acted.
   await ptt.sendKey(page, 'ArrowLeft');
   await waitList(page, FULL_LIST);
@@ -888,4 +888,48 @@ test('search backtracking back to the source article shows it without a notice',
   await settled(page);
   await page.waitForTimeout(500); // sleep-ok: a notice after the takeover would show by now
   expect(await recordedHints(page)).toEqual([]);
+});
+
+// PTT's last answer on the results can still be settling when Back's board
+// jump goes out: local repaints of the reveal hold its settle back past the
+// send. That settle shows the results, not the board the jump asked for.
+test('Back from the results reopens the source though the results still settle after the board jump went out', async ({ page }) => {
+  await sourceFromList(page, { ptList: true });
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+  await page.evaluate(() => {
+    const app = window.__app;
+    const queue = app.commandQueue;
+    const enqueue = queue.enqueue.bind(queue);
+    const send = window.__stubWSSent;
+    window.__heldSends = null;
+    queue.enqueue = cmd => {
+      if (cmd.kind === 'aid-board-jump' && !window.__heldSends) {
+        // A late cursor park of the results arrives just before the jump...
+        app.onData('\x1b[4;1H');
+        // ...and PTT answers the jump only after that settle.
+        window.__heldSends = [];
+        window.__stubWSSent = data => window.__heldSends.push(data);
+        window.__releaseSends = () => {
+          window.__stubWSSent = send;
+          window.__heldSends.splice(0).forEach(send);
+        };
+      }
+      return enqueue(cmd);
+    };
+  });
+  await nativeBack(page);
+  await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__heldSends?.length || 0)).toBeGreaterThan(0);
+  // The late answer's settle has fired.
+  await expect.poll(() => page.evaluate(() => !window.__app.buf._settleTimer && !window.__app.buf.timerUpdate)).toBe(true);
+  const held = await page.evaluate(() => window.__heldSends);
+  expect(held[0]).toMatch(/^sTest\r/);
+  // No ← follows the board jump: the stale settle is no answer to it.
+  expect(held.slice(1).filter(data => data.includes('\x1b[D'))).toEqual([]);
+  await page.evaluate(() => window.__releaseSends());
+  await waitArticle(page, 'Alpha');
+  await settled(page);
+  expect(await page.evaluate(() => window.__app.buf.pageState)).toBe(3);
 });
