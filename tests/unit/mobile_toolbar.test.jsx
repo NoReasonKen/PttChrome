@@ -674,6 +674,23 @@ describe("toolbar diagnostics in a debug recording", () => {
     }
   });
 
+  test("a touch tap logs the click it made, and a click that lands elsewhere after it is logged as stray", () => {
+    const { core, entries } = recordingCore();
+    const uninstall = installToolbarDiagnostics(core, window);
+    try {
+      renderBar(core);
+      const at = { pointerId: 3, pointerType: "touch", isPrimary: true, clientX: 5, clientY: 5 };
+      fireEvent.pointerDown(byKey("__end"), at);
+      fireEvent.pointerUp(byKey("__end"), at);
+      expect(entries).toContainEqual(expect.objectContaining({ tag: "toolbar.action", step: "tapUp", key: "__end", outcome: "click" }));
+      expect(entries).toContainEqual(expect.objectContaining({ tag: "toolbar.input", type: "click", key: "__end", trusted: false }));
+      fireEvent.click(document.body);
+      expect(entries).toContainEqual(expect.objectContaining({ tag: "toolbar.strayClick", target: "body" }));
+    } finally {
+      uninstall();
+    }
+  });
+
   test("a context change logs its old and new ids; nothing is logged when not recording", () => {
     const { core, entries } = recordingCore();
     const next = { ...ARTICLE, end: false };
@@ -682,5 +699,84 @@ describe("toolbar diagnostics in a debug recording", () => {
     core.debugRecorder.isRecording = false;
     logToolbarContext(core, next, ARTICLE);
     expect(entries).toHaveLength(1);
+  });
+});
+
+// A touch tap acts when the finger lifts (#119): on Android, a tap that stops
+// native momentum left by another page gets pointer events but no click. A
+// click that still follows is swallowed, so the action runs once; mouse and
+// keyboard activation keep the click.
+describe("a touch tap acts on pointerup", () => {
+  const ARTICLE = { push: true, reply: true, mail: false, share: true, threadNav: true, post: false, search: [], end: true };
+  const touch = (el, type, { x = 20, y = 20, id = 7, pointerType = "touch" } = {}) =>
+    fireEvent[type](el, { pointerId: id, pointerType, isPrimary: true, clientX: x, clientY: y });
+
+  test("a tap with no click runs the action once, and a click that follows does not run it again", () => {
+    const core = makeCore({ context: ARTICLE });
+    renderBar(core);
+    touch(byKey("__end"), "pointerDown");
+    touch(byKey("__end"), "pointerUp");
+    expect(core.view.sendKeyAsUser).toHaveBeenCalledTimes(1);
+    expect(core.view.sendKeyAsUser).toHaveBeenLastCalledWith("End");
+    fireEvent.click(byKey("__end"));
+    expect(core.view.sendKeyAsUser).toHaveBeenCalledTimes(1);
+  });
+
+  test("the next tap acts again, whether or not the last one got its click", () => {
+    const core = makeCore({ context: ARTICLE });
+    renderBar(core);
+    touch(byKey("__end"), "pointerDown");
+    touch(byKey("__end"), "pointerUp");
+    touch(byKey("__end"), "pointerDown");
+    touch(byKey("__end"), "pointerUp");
+    fireEvent.click(byKey("__end"));
+    expect(core.view.sendKeyAsUser).toHaveBeenCalledTimes(2);
+  });
+
+  test("a keypad key acts on the tap too", () => {
+    const core = makeCore({ context: ARTICLE });
+    renderBar(core);
+    fireEvent.click(byKey("__keys"));
+    const key = document.querySelector("#mobileKeypad [data-key]");
+    const name = key.getAttribute("data-key");
+    touch(key, "pointerDown");
+    touch(key, "pointerUp");
+    expect(core.view.sendKeyAsUser).toHaveBeenCalledTimes(1);
+    expect(core.view.sendKeyAsUser.mock.calls[0][0]).toBe(name);
+  });
+
+  test("a contact that moved past the tap slop does not act on pointerup", () => {
+    const core = makeCore({ context: ARTICLE });
+    renderBar(core);
+    touch(byKey("__end"), "pointerDown", { x: 20 });
+    touch(byKey("__end"), "pointerUp", { x: 40 });
+    expect(core.view.sendKeyAsUser).not.toHaveBeenCalled();
+  });
+
+  test("a canceled contact does not act", () => {
+    const core = makeCore({ context: ARTICLE });
+    renderBar(core);
+    touch(byKey("__end"), "pointerDown");
+    touch(byKey("__end"), "pointerCancel");
+    touch(byKey("__end"), "pointerUp");
+    expect(core.view.sendKeyAsUser).not.toHaveBeenCalled();
+  });
+
+  test("a disabled button does not act on the tap", () => {
+    const core = makeCore({ context: { ...ARTICLE, end: false } });
+    renderBar(core);
+    touch(byKey("__end"), "pointerDown");
+    touch(byKey("__end"), "pointerUp");
+    expect(core.view.sendKeyAsUser).not.toHaveBeenCalled();
+  });
+
+  test("a mouse press acts on its click only", () => {
+    const core = makeCore({ context: ARTICLE });
+    renderBar(core);
+    touch(byKey("__end"), "pointerDown", { pointerType: "mouse" });
+    touch(byKey("__end"), "pointerUp", { pointerType: "mouse" });
+    expect(core.view.sendKeyAsUser).not.toHaveBeenCalled();
+    fireEvent.click(byKey("__end"));
+    expect(core.view.sendKeyAsUser).toHaveBeenCalledTimes(1);
   });
 });

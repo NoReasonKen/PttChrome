@@ -73,20 +73,40 @@ export function logToolbarContext(core, prev, next) {
   });
 }
 
-const INPUT_TYPES = ['pointerdown', 'pointerup', 'pointercancel', 'click'];
+const INPUT_TYPES = ['pointerdown', 'pointerup', 'pointercancel', 'touchstart', 'click'];
+
+// How long after a contact on the toolbar a click elsewhere is still logged:
+// the browser may send a tap's click to whatever is under it by then.
+const STRAY_CLICK_MS = 1000;
+
+// An element named by its tag, id and first class, never its text.
+function describe(el) {
+  if (!el) return null;
+  const cls = typeof el.className === 'string' ? el.className.split(/\s+/).find(Boolean) : null;
+  return el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (cls ? '.' + cls : '');
+}
 
 // Records every contact and click on #mobileToolbar, in the capture phase,
 // before any handler can stop it.
 export function installToolbarDiagnostics(core, win = typeof window === 'undefined' ? null : window) {
   if (!win) return () => {};
+  let lastUpAt = -Infinity;
   const onInput = event => {
     if (!recorder(core)) return;
     const target = event.target?.nodeType === 1 ? event.target : event.target?.parentElement;
     const root = target?.closest?.('#mobileToolbar');
-    if (!root) return;
+    if (!root) {
+      if (event.type === 'click' && performance.now() - lastUpAt < STRAY_CLICK_MS) {
+        toolbarDiag(core, 'strayClick', {
+          trusted: event.isTrusted, target: describe(target), ms: Math.round(performance.now() - lastUpAt), prevented: event.defaultPrevented
+        });
+      }
+      return;
+    }
+    if (event.type === 'pointerup') lastUpAt = performance.now();
     const button = target.closest('[data-key], [data-slot-empty]');
     toolbarDiag(core, 'input', {
-      type: event.type, pointer: event.pointerType || null, primary: event.isPrimary ?? null,
+      type: event.type, trusted: event.isTrusted, cancelable: event.cancelable, pointer: event.pointerType || null, primary: event.isPrimary ?? null,
       key: button?.getAttribute('data-key') || (button ? 'slot' + button.getAttribute('data-slot-empty') : null),
       element: target.tagName.toLowerCase(), disabled: !!button?.disabled, connected: !!button?.isConnected,
       x: Number.isFinite(event.clientX) ? Math.round(event.clientX) : null,
@@ -95,6 +115,7 @@ export function installToolbarDiagnostics(core, win = typeof window === 'undefin
       source: toolbarContextSource(core), ...handoffState(core)
     });
   };
-  for (const type of INPUT_TYPES) win.addEventListener(type, onInput, true);
-  return () => INPUT_TYPES.forEach(type => win.removeEventListener(type, onInput, true));
+  const options = { capture: true, passive: true };
+  for (const type of INPUT_TYPES) win.addEventListener(type, onInput, options);
+  return () => INPUT_TYPES.forEach(type => win.removeEventListener(type, onInput, options));
 }

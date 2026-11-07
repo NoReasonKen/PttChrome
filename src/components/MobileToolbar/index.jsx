@@ -37,6 +37,7 @@ import {
   toolbarSlots,
 } from "../../js/mobile_toolbar";
 import { toolbarDiag, toolbarContextId } from "../../js/toolbar_diag";
+import { ARTICLE_TAP_SLOP } from "../../js/article_horizontal_gesture";
 import "./MobileToolbar.css";
 
 // 手機底部導覽（docs/mobile.md「底部導覽」）。只在 pttchrome.mobile 時渲染。
@@ -75,6 +76,10 @@ const keepFocus = (e) => {
 
 // 觸覺回饋：短震一下（Android Chrome；沒有 API／APK 沒給 VIBRATE 權限時靜默）。
 export const HAPTIC_MS = 8;
+// How long after a tap acted on its pointerup the click that may follow it is
+// swallowed.
+export const TAP_CLICK_MS = 800;
+
 const haptic = () => {
   try {
     if (typeof navigator !== "undefined" && navigator.vibrate)
@@ -296,6 +301,78 @@ export const MobileToolbar = ({
   const onToolbarPointerDown = useCallback(() => {
     pressSelectionRef.current = readSelectionText();
   }, []);
+
+  // A touch tap on a button of the bar or the keypad acts when the finger
+  // lifts (#119): on Android, a tap that stops native momentum left by another
+  // page gets its pointer events but no click. A click that still follows is
+  // swallowed, so the action runs once; mouse and keyboard keep the click.
+  const rootRef = useRef(null);
+  const tapRef = useRef(null);
+  const tapClickUntilRef = useRef(0);
+  const tapClickingRef = useRef(false);
+  const tapButton = (target) => {
+    const button = target?.closest?.("button");
+    return button && rootRef.current?.contains(button) ? button : null;
+  };
+  const onTapDown = useCallback((e) => {
+    tapClickUntilRef.current = 0;
+    const button =
+      e.pointerType === "mouse" || !e.isPrimary ? null : tapButton(e.target);
+    tapRef.current = button
+      ? { id: e.pointerId, x: e.clientX, y: e.clientY, button }
+      : null;
+  }, []);
+  const onTapUp = useCallback(
+    (e) => {
+      const tap = tapRef.current;
+      tapRef.current = null;
+      if (!tap || tap.id !== e.pointerId) return;
+      if (Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > ARTICLE_TAP_SLOP)
+        return;
+      const key = tap.button.getAttribute("data-key");
+      // A re-render may have replaced the button under the finger.
+      const button = tap.button.isConnected
+        ? tap.button
+        : key &&
+          [
+            ...(rootRef.current?.querySelectorAll("button[data-key]") || []),
+          ].find((b) => b.getAttribute("data-key") === key);
+      if (!button || button.disabled) return;
+      toolbarDiag(pttchrome, "action", {
+        step: "tapUp",
+        key,
+        outcome: "click",
+      });
+      tapClickUntilRef.current = performance.now() + TAP_CLICK_MS;
+      tapClickingRef.current = true;
+      try {
+        button.click();
+      } finally {
+        tapClickingRef.current = false;
+      }
+    },
+    [pttchrome],
+  );
+  const onTapCancel = useCallback(() => {
+    tapRef.current = null;
+  }, []);
+  const onTapClick = useCallback(
+    (e) => {
+      if (
+        tapClickingRef.current ||
+        performance.now() >= tapClickUntilRef.current
+      )
+        return;
+      tapClickUntilRef.current = 0;
+      e.preventDefault();
+      e.stopPropagation();
+      toolbarDiag(pttchrome, "action", {
+        step: "click",
+        outcome: "swallowedAfterTap",
+      });
+    },
+    [pttchrome],
+  );
 
   const onExternalSearch = useCallback(
     (item) => {
@@ -830,8 +907,13 @@ export const MobileToolbar = ({
     <div
       id="mobileToolbar"
       className="nomouse_command mobileToolbar"
+      ref={rootRef}
       data-context-id={toolbarContextId(context)}
       onPointerDownCapture={onToolbarPointerDown}
+      onPointerDown={onTapDown}
+      onPointerUp={onTapUp}
+      onPointerCancel={onTapCancel}
+      onClickCapture={onTapClick}
       onMouseDown={keepFocus}
       onMouseUp={swallow}
       onClick={swallow}
