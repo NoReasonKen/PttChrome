@@ -139,11 +139,12 @@ export class NavigationStack {
     const board = listBoard(core);
     if (!core.mobile || !board) return this.dropPending();
     const fullList = isFullBoardListFrame(searchGateFacts(core), board);
-    this._capture(PAGE.ARTICLE_LIST, board, () => StackListLayer.capture(core.view, 'article'));
-    if (!this.pending) return;
-    this.pending.fullList = fullList;
-    // The list page the real list takes over again on Back (#127).
-    this.pending.layer.listPage = core.listSession?.listPage?.() || null;
+    // The layer keeps the list session's page: the real list takes it over
+    // again on Back (#127), so a list without one keeps no layer.
+    const session = core.listSession?.listPage?.();
+    if (!session) return this.dropPending();
+    this._capture(PAGE.ARTICLE_LIST, board, () => StackListLayer.capture(core.view, 'article', session));
+    if (this.pending) this.pending.fullList = fullList;
   }
 
   // An article shortcut search is about to start from the shown article

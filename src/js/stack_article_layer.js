@@ -88,7 +88,8 @@ export class StackArticleLayer extends ScreenCopyLayer {
   }
 
   constructor(view, rect, frame) {
-    super(view, frame, PAGE.ARTICLE);
+    super(view, PAGE.ARTICLE);
+    this.frame = frame;
     const main = view.mainDisplay;
     this._hold = () => {
       this.held = true;

@@ -1,4 +1,4 @@
-import { articleRow, identityRows } from '../../src/js/stack_list_layer';
+import { articleRow, identityRows } from '../../src/js/stack_list_page';
 
 // An article list frame as the list layer keeps it: three header rows, the
 // entries (bbs.c readdoent columns) and the footer.

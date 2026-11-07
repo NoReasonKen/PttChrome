@@ -36,10 +36,10 @@ export function releaseScreenLater(screen) {
 // so its next reveal can reuse layout; other retained copies stay detached
 // until they are revealed.
 export class ScreenCopyLayer {
-  constructor(view, frame, kind) {
+  // A subclass provides `frame`, the frame it renders.
+  constructor(view, kind) {
     const main = view.mainDisplay;
     this.view = view;
-    this.frame = frame;
     this.el = document.createElement('div');
     // Same classes and inline geometry as the real surface, so its CSS applies.
     this.el.className = main.className;
