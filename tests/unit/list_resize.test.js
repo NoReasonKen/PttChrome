@@ -119,7 +119,7 @@ describe('Article-list resize coordination', () => {
   test('waits for a stacked Back handoff before changing terminal rows', () => {
     const h = makeReader();
     const stack = { handingOff: true };
-    h.core.articleGestures = { stack };
+    h.core.navigationStack = stack;
     expect(h.resize.request(80, 40)).toBe(true);
     expect(h.resize.pending).toEqual({ cols: 80, rows: 40 });
     expect(h.resize.active).toBe(false);
@@ -135,7 +135,7 @@ describe('Article-list resize coordination', () => {
     const h = makeReader();
     h.list.state = 'suspended';
     h.list._renderMode = 'native';
-    h.core.articleGestures = { stack: { handingOff: true } };
+    h.core.navigationStack = { handingOff: true };
     expect(h.resize.request(80, 40)).toBe(true);
     expect(h.resize.pending).toEqual({ cols: 80, rows: 40 });
     expect(h.core._setTermSizeNow).not.toHaveBeenCalled();

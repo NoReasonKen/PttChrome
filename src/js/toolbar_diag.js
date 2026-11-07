@@ -45,7 +45,7 @@ function layerId(layer) {
 // ('layer'), the locked fallback of a revealed page without one
 // ('layerLocked'), a cover shown over the screen ('cover'), or the real page.
 export function toolbarContextSource(core) {
-  const stack = core?.articleGestures?.stack;
+  const stack = core?.navigationStack;
   if (stack && (stack.gone || stack.handoff)) return stack.handoff?.layer && stack.handoff.toolbar ? 'layer' : 'layerLocked';
   const covered = core && ((core.threadJump && core.threadJump.toolbarContext()) ||
     (core.headerlessReopen && core.headerlessReopen.toolbarContext()) ||
@@ -55,7 +55,7 @@ export function toolbarContextSource(core) {
 
 // The handoff as the toolbar sees it.
 export function handoffState(core) {
-  const stack = core?.articleGestures?.stack;
+  const stack = core?.navigationStack;
   const h = stack?.handoff;
   return {
     handingOff: !!h, presented: !!h && h.presentedAt != null, layer: layerId(stack?.shownLayer?.() || null),

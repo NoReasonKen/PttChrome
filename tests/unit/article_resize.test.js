@@ -99,7 +99,7 @@ describe('Article resize ownership', () => {
     ['native input mode', h => { h.reader._functionMode = true; }],
     ['no accumulated article', h => { h.buf.pageLines = []; }],
     ['unknown article board', h => { h.view._articleBoard = null; }],
-    ['stacked Back handoff', h => { h.core.articleGestures = { stack: { handingOff: true } }; }],
+    ['stacked Back handoff', h => { h.core.navigationStack = { handingOff: true }; }],
     ['no command queue', h => { h.core.commandQueue = null; }],
   ])('declines ownership when %s', (_name, arrange) => {
     const h = makeReader();
@@ -147,7 +147,7 @@ describe('Article resize ownership', () => {
     h.reader._reverse = {};
     h.resize.request(80, 40);
     expect(h.resize.pending).toEqual({ cols: 80, rows: 40 });
-    h.core.articleGestures = { stack: { handingOff: true } };
+    h.core.navigationStack = { handingOff: true };
     arrange(h);
     h.resize.pump();
     expect(h.resize.pending).toBeNull();

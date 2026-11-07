@@ -1192,13 +1192,13 @@ ListSession.prototype = {
   // this list's by default), while PTT's answer is on its way
   // (NavigationStack.keptListLayer), or null.
   _keptLayer: function(board = this._boardName) {
-    return this._core.articleGestures?.stack?.keptListLayer?.(boardNameFromKey(board)) || null;
+    return this._core.navigationStack?.keptListLayer?.(boardNameFromKey(board)) || null;
   },
 
   // The reader's `action` on this list may spend the live layer it was shown
   // from (#125, page_stack.js#spendsLayer).
   _spendLayer: function(action) {
-    this._core.articleGestures?.stack?.spend(action);
+    this._core.navigationStack?.spend(action);
   },
 
   // pref 開著＝本功能（L1 凍結交易 ＋ L2 自動回復）生效；關掉＝**逐位元回到
@@ -3886,7 +3886,7 @@ ListSession.prototype = {
 
   waitingToResize: function() {
     return this.state === 'opening' || this._renderMode === 'frozen' ||
-      !!this._core.articleGestures?.stack?.handingOff;
+      !!this._core.navigationStack?.handingOff;
   },
 
   beginResize: function(timeoutMs) {
@@ -5065,7 +5065,7 @@ export function listGrowthDir(numMap, entries) {
 export function noticeNewArticles(session, freshPage, newer) {
   if (freshPage) session._newArticlesNoticed = false;
   if (newer && !session._newArticlesNoticed)
-    session._newArticlesNoticed = !!session._core.articleGestures?.stack?.noticeNewContent?.();
+    session._newArticlesNoticed = !!session._core.navigationStack?.noticeNewContent?.();
 }
 
 // The article number at a buffer edge: smallest (direction<0, the "older" top)

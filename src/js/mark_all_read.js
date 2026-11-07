@@ -106,7 +106,7 @@ MarkAllRead.prototype = {
       return false;
     }
     // Marking every article read asks PTT for the list anew (#125).
-    core.articleGestures?.stack?.spend('markRead');
+    core.navigationStack?.spend('markRead');
     return true;
   }
 };

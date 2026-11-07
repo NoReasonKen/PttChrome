@@ -1540,7 +1540,7 @@ TermView.prototype = {
   onKeyDown: function(e) {
     // A deleted source kept shown over its board list (#121): PTT already
     // shows that list, so Back only removes the article and no key reaches PTT.
-    if (this.bbscore.articleGestures?.holdsGoneArticle()) {
+    if (this.bbscore.navigationStack?.gone) {
       this._keyOutcome = isPlainBack(e) ? 'leftGoneArticle' : 'droppedGoneArticle';
       if (isPlainBack(e)) this.bbscore.articleGestures.leaveGoneArticle();
       e.preventDefault();

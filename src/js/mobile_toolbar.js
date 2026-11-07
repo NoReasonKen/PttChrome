@@ -125,7 +125,7 @@ export function toolbarContextFromFacts(facts, pageState, opts) {
 
 export function mobileToolbarContext(core) {
   // A page revealed during a handoff, until its real page takes over.
-  const revealed = core && core.articleGestures && core.articleGestures.toolbarContext();
+  const revealed = core && core.navigationStack && core.navigationStack.toolbarContext();
   if (revealed) return revealed;
   // A far thread jump keeps its source article on screen until it lands, so
   // does the reopen that reads a headerless article's list row, and so does a

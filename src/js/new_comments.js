@@ -264,7 +264,7 @@ NewComments.prototype = {
     if (!er.easyReadingReachedPageEnd) return;
     // An article shown again from its live layer keeps the layer's content;
     // PTT's reopened copy behind it was not read (#121).
-    if (core.articleGestures?.stack?.handoff?.layer?.holdsReading?.()) return;
+    if (core.navigationStack?.handoff?.layer?.holdsReading?.()) return;
     const lines = buf.pageLines || [];
     if (!lines.length) return;
     this._save(lines);

@@ -59,7 +59,7 @@ export class ListResize {
     const core = this.core;
     // Back must present and align its real page before a resize may borrow
     // the terminal. Otherwise the prompt looks like an unexpected Back reply.
-    if (core.articleGestures?.stack?.handingOff) return false;
+    if (core.navigationStack?.handingOff) return false;
     const s = core.listSession;
     if (!this._available() || core.articleResize?.active || core.articleResize?.pending) {
       this.pending = null;

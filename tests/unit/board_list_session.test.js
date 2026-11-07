@@ -1362,7 +1362,8 @@ describe("進板 → 退板：緩衝與捲動錨跨畫面保留", () => {
   // Shown again from its live layer (#122), the list is the page the reader
   // left: only a confirmed mismatch rebuilds it.
   const backFromLayer = (h, rowTexts, curY) => {
-    h.core.articleGestures = { showsLayerOf: () => true, captureBoardListLayer() {}, pagePresented() {} };
+    h.core.navigationStack = { showsLayerOf: () => true };
+    h.core.articleGestures = { captureBoardListLayer() {}, pagePresented() {} };
     h.s._beginOpen();
     const cmd = h.enqueued.find((c) => c.kind === BRD_CMD_PREFIX + "open-board");
     cmd.expect(null, { ctx: "other" });

@@ -184,7 +184,7 @@ export const MobileToolbar = ({
   // take over (#119); the toolbar itself responds at once.
   const whenReady = useCallback(
     (run) => {
-      const stack = pttchrome.articleGestures?.stack;
+      const stack = pttchrome.navigationStack;
       toolbarDiag(pttchrome, "action", {
         step: "whenReady",
         outcome: stack?.handingOff ? "toStack" : "runNow",
@@ -230,7 +230,7 @@ export const MobileToolbar = ({
     // An article shown from its live layer before PTT takes over opens its
     // comment bar at once (#121); a source that cannot be confirmed refuses
     // the comment.
-    const stack = pttchrome.articleGestures?.stack;
+    const stack = pttchrome.navigationStack;
     if (stack?.showsArticleLayer?.()) {
       if (stack.refusesComment()) {
         toolbarDiag(pttchrome, "action", {
@@ -459,7 +459,7 @@ export const MobileToolbar = ({
     setPanel(null);
     setConfirmLogout(false);
     if (!onOpenSearch || !context.search.length) return;
-    if (pttchrome.articleGestures?.stack?.handingOff)
+    if (pttchrome.navigationStack?.handingOff)
       onOpenSearch(context.search[0], { kinds: context.search });
     else onOpenSearch(context.search[0]);
   }, [pttchrome, onOpenSearch, context]);
@@ -472,7 +472,7 @@ export const MobileToolbar = ({
     setConfirmLogout(false);
     const dl = pttchrome.deepLinkController;
     const title = context.appBar ? context.appBar.title : "";
-    const post = pttchrome.articleGestures?.stack?.revealedPost?.();
+    const post = pttchrome.navigationStack?.revealedPost?.();
     if (post && dl && typeof dl.sharePostLink === "function")
       dl.sharePostLink(post, title);
     else if (dl && typeof dl.shareCurrentPostLink === "function")

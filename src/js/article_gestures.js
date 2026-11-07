@@ -3,7 +3,6 @@ import { mobileToolbarContext } from './mobile_toolbar';
 import { i18n } from './i18n';
 import { serializedOpHint } from './serialized_op_gate';
 import { ArticleHorizontalGesture, ARTICLE_TAP_SLOP } from './article_horizontal_gesture';
-import { NavigationStack } from './navigation_stack';
 import { PAGE } from './page_stack';
 import { StackEntry } from './stack_entry';
 import { createUnderlay, holdSurfaces, raiseSurfaces, releaseSurfaces, paintSurfaces, slideDuration, freezeScroll } from './stack_motion';
@@ -51,7 +50,7 @@ export class ArticleGestures {
     // Back would show next, or null.
     this.layerExit = null;
     this.listeners = [];
-    this.stack = new NavigationStack(core);
+    this.stack = core.navigationStack;
     this._listen(window, 'pointerdown', event => this._start(event), true);
     this._listen(window, 'pointermove', event => this._move(event), { capture: true, passive: false });
     this._nativeTouchMove = event => {
@@ -395,16 +394,6 @@ export class ArticleGestures {
     this.entry.answered();
   }
 
-  // Whether the shown article was opened from its board's full list (#86).
-  fullListBelow() {
-    return this.stack.fullListBelow();
-  }
-
-  // The toolbar of a page only revealed so far, or null.
-  toolbarContext() {
-    return this.stack.toolbarContext();
-  }
-
   bindListLayer() {
     this.stack.enterArticle();
     this.entry?.answered();
@@ -423,16 +412,6 @@ export class ArticleGestures {
     this.entry = new StackEntry(this.core, from, entry => {
       if (this.entry === entry) this.entry = null;
     });
-  }
-
-  // Search backtracking found its source deleted (#121).
-  sourceGone() {
-    this.stack.sourceGone();
-  }
-
-  // A deleted source is kept shown over its board list until Back.
-  holdsGoneArticle() {
-    return !!this.stack.gone;
   }
 
   leaveGoneArticle() {
@@ -462,12 +441,6 @@ export class ArticleGestures {
   holdKey(key, mods) {
     const view = this.core.view;
     this.stack.holdKey(() => view.sendKeyAsUser(key, mods));
-  }
-
-  // Whether Back is showing the page of `kind` again from its live layer, and
-  // the real page has yet to take over.
-  showsLayerOf(kind) {
-    return this.stack.showsLayerOf(kind);
   }
 
   // A session presented a real page: an article list, a board list or the
