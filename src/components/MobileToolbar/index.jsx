@@ -308,9 +308,11 @@ export const MobileToolbar = ({
   // swallowed, so the action runs once; mouse and keyboard keep the click.
   // The tap's own click is hit-tested where the finger lifted only after the
   // action ran, so it may land on what the action opened there, such as the
-  // search dialog: such a click outside the toolbar is swallowed too. The tap
-  // itself goes on (its touchend is not canceled), since Android shows the
-  // soft keyboard for a field focused by a tap.
+  // search dialog: such a click outside the toolbar is swallowed too. Either
+  // swallow ends both, since a tap has one click: the "more" sheet sits in the
+  // toolbar's React tree, so a later click on it would otherwise be taken for
+  // the tap's. The tap itself goes on (its touchend is not canceled), since
+  // Android shows the soft keyboard for a field focused by a tap.
   const rootRef = useRef(null);
   const tapRef = useRef(null);
   const tapClickUntilRef = useRef(0);
@@ -333,6 +335,7 @@ export const MobileToolbar = ({
       if (!e.isTrusted || rootRef.current?.contains(e.target)) return;
       if (Math.hypot(e.clientX - x, e.clientY - y) > ARTICLE_TAP_SLOP) return;
       stopSwallowingStrayClick();
+      tapClickUntilRef.current = 0;
       e.preventDefault();
       e.stopPropagation();
       toolbarDiag(pttchrome, "action", {
@@ -402,6 +405,7 @@ export const MobileToolbar = ({
       )
         return;
       tapClickUntilRef.current = 0;
+      stopSwallowingStrayClick();
       e.preventDefault();
       e.stopPropagation();
       toolbarDiag(pttchrome, "action", {

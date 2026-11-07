@@ -105,6 +105,20 @@ test.describe('手機底部工具列（離線重放）', () => {
     expect(await page.evaluate(() => window.__strayClicks)).toEqual([]);
   });
 
+  test('a click right after a tap whose click was swallowed outside the toolbar still acts', async ({ page }) => {
+    await bootOffline(page, ptt);
+    await ptt.applyPrefs(page, { enableEasyReadingList: false });
+    await drawArticleList(page);
+    await byKey(page, '__search').tap();
+    const keyword = page.locator('input[name="searchKeyword"]');
+    await expect(keyword).toBeVisible();
+    await keyword.press('Escape');
+    await expect(keyword).toBeHidden();
+    // A click with no touch before it, as a keyboard or assistive tool gives.
+    await byKey(page, '__more').evaluate(button => button.click());
+    await expect(page.locator('[data-key="__settings"]')).toBeVisible();
+  });
+
   test('按鍵面板：送鍵、終端機底列不被工具列／面板蓋住；Ctrl＋p 送 ^P', async ({ page }) => {
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, { enableEasyReadingList: false });

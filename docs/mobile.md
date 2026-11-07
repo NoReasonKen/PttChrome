@@ -96,7 +96,8 @@ The enabled-by-default `articleHorizontalGestures` preference applies only to mo
     reaches the toolbar within `TAP_CLICK_MS` is swallowed in the capture phase, so the action runs once. The browser hit-tests the tap's
     own click only after the action ran, so it may land on whatever the action opened under the finger, such as the search dialog: a
     trusted click outside the toolbar within `ARTICLE_TAP_SLOP` of the lift point and within `TAP_CLICK_MS` is swallowed on `window`
-    too. The tap's `touchend` is left alone, because Android shows the soft keyboard for a field focused by a tap (the keypad's ⌨).
+    too. A tap has one click, so whichever swallow takes it ends the other: the "more" sheet sits in the toolbar's React tree, and a click
+    on it right after the tap (Settings by keyboard) would otherwise be taken for the tap's. The tap's `touchend` is left alone, because Android shows the soft keyboard for a field focused by a tap (the keypad's ⌨).
     Mouse and keyboard activation keep the click.
   - A debug recording traces the toolbar (`js/toolbar_diag.js`, #119): every pointerdown, pointerup, pointercancel and click on `#mobileToolbar`
     (`toolbar.input`: button key, disabled, the context id the bar rendered against the App's current one, its source and the handoff state),
