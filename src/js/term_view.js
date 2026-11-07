@@ -3225,6 +3225,34 @@ TermView.prototype = {
     return { stableRows: true, reverseJunction: rv.junction };
   },
 
+  // Where accumulating the article's pages stands: the row its last page ends
+  // on and that page's signature. A stacked article layer (#121) saves it and
+  // restores it with restoreAccumulation.
+  accumulation: function() {
+    return { accEndRow: this._accEndRow, lastSig: this._lastAccumulatedSig };
+  },
+
+  restoreAccumulation: function(accumulation) {
+    this._accEndRow = accumulation.accEndRow;
+    this._lastAccumulatedSig = accumulation.lastSig;
+  },
+
+  // Whether the article is being accumulated backwards from its end.
+  readsInReverse: function() {
+    return !!this._reverse;
+  },
+
+  // The rows `over.shown` stay shown over PTT's copy `over.copy` of the article
+  // until the page's rows change (#126); null shows PTT's copy.
+  showOverCopy: function(over) {
+    this._showsOverCopy = over;
+  },
+
+  // Render `pageLines` as the article's accumulated rows.
+  renderArticleRows: function(pageLines) {
+    this._renderScreenLines(pageLines, true, true, false, this._pageRenderOverrides());
+  },
+
   // 反向分支本體（純決策在 comment_parse.decideReverseBranch）。result＝這一幀的
   // parseStatusRow，newRows＝畫面上 23 列內文。只在 complete 幀被呼叫。
   //

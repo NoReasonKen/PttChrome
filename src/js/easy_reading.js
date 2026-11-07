@@ -712,6 +712,18 @@ EasyReading.prototype._currentPageSignature = function() {
   return statusSignature(s);
 };
 
+// What a stacked article layer (#121) needs to know of easy reading: whether
+// it reads in reverse or in function-key mode, whether a page it asked PTT for
+// is still on its way, and the signature of the page shown.
+EasyReading.prototype.readingState = function() {
+  return {
+    reverse: !!this._reverse,
+    functionMode: !!this._functionMode,
+    pageInFlight: this._inFlightSig != null,
+    pageSignature: this._currentPageSignature()
+  };
+};
+
 // parseStatusRow of the CURRENT bottom row (null off an article page).
 EasyReading.prototype._currentPageStatus = function() {
   const lastRowText = this._termBuf.getRowText(this._termBuf.rows - 1, 0, this._termBuf.cols);
