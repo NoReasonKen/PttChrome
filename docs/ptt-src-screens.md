@@ -22,7 +22,7 @@ tests/unit/ptt_src_screens.test.js  依幀名把第 0..i 幀疊進 app 自己的
 ```
 
 - 不架站、不登入、不需要 logind／Go 服務。`generate.sh` exit 2＝build／driver／場景問題（不是解析器壞）。
-- 平常 `yarn test:unit` 跑 repo 裡那份 fixture（產自 pttbbs 3b8596b9）；nightly 換成 upstream HEAD 產的。
+- 平常 `yarn test:unit` 跑 repo 裡那份 fixture（產自 pttbbs babcbce921843cfb535a6173cc78355ac31cfdec）；nightly 換成 upstream HEAD 產的。
 - **輸出可重現**：driver 定義自己的 `time()`（執行檔的符號蓋過 libc），時間釘在 `FIXED_NOW`；同一份
   upstream 跑兩次 fixture 逐位元組相同。所以 fixture 有 diff＝upstream 改了畫面。
 
@@ -96,6 +96,9 @@ pfterm 只在阻塞讀鍵前 flush。鍵送早了會被 typeahead 吃掉中間�
   文章場景會測錯東西）。
 - 必須 clang＋`-finput-charset=big5`（gcc 把 Big5 尾碼 0x5C 當跳脫字元，字串壞掉）；upstream HEAD 在
   `-Werror` 下常編不過 ⇒ `-Wno-error`。
+- The generator supplies `sys/time.h` with `-include` because upstream `common/bbs/content.c` calls
+  `gettimeofday()` without declaring it. It loads upstream's `osdep.h` first so feature macros such
+  as `_GNU_SOURCE` take effect before system headers. Declaration diagnostics remain enabled.
 - 連結的物件檔：排除 `mbbsd.o`（用改名過的那份）、`vers.o`（重編）、`screen.o`（非 pfterm 畫面層），
   以及**任何自帶 `main` 的物件**（`nm` 偵測；upstream 的 `test_*.o`／`testsz.o` 這類小程式，新增的也自動排除）。
 - driver 要先 `init_io()`（否則 pfterm 沒輸出緩衝）、`currboard` 先清空再 `enter_board`（`brc_initial_board`

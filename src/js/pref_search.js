@@ -452,6 +452,7 @@ export const PREF_SEARCH_ITEMS = [
     },
     { key: "enableAutoFixUrl", titleKey: "options_enableAutoFixUrl" },
     { key: "enableXMentionLink", titleKey: "options_enableXMentionLink" },
+    { key: "enablePixivLookup", titleKey: "options_enablePixivLookup", tooltipKey: "tooltip_enablePixivLookup" },
     { key: "enableBareDomainLink", titleKey: "options_enableBareDomainLink" },
     { key: "enableImageUpload", titleKey: "options_enableImageUpload" },
     {

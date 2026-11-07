@@ -20,7 +20,9 @@ cp "$P/sample/pttbbs.conf" "$P/pttbbs.conf" &&
   printf '\n#define USE_PFTERM\n#define USE_PMORE\n' >> "$P/pttbbs.conf" || exit 2
 # clang＋-finput-charset=big5 才不會把 Big5 尾碼 0x5C 當跳脫字元（gcc 會弄壞字串）；
 # upstream HEAD 在 -Werror 下常有 unused 警告編不過，關掉 -Werror。
-X='EXT_CFLAGS=-finput-charset=big5 -fexec-charset=big5 -Wno-error'
+# Upstream content.c calls gettimeofday without including its declaration.
+# Load upstream's feature macros before the system header, retaining GNU APIs.
+X='EXT_CFLAGS=-finput-charset=big5 -fexec-charset=big5 -Wno-error -include osdep.h -include sys/time.h'
 make -s -C "$P" clean >/dev/null 2>&1
 make -j8 -C "$P/common" "$X" >"$OUT/build.log" 2>&1 || { tail -60 "$OUT/build.log"; exit 2; }
 make -j8 -C "$P/mbbsd" "$X" >>"$OUT/build.log" 2>&1 || { tail -60 "$OUT/build.log"; exit 2; }

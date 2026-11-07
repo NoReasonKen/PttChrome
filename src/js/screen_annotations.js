@@ -29,6 +29,7 @@ import {
 import { detectWrappedAids } from "./aid_wrap";
 import { detectBareDomains } from "./bare_domain";
 import { detectMentions } from "./mention_parse";
+import { detectPixivIds } from "./pixiv_parse";
 import { detectAids } from "./aid_parse";
 import { articleHasSteamgifts, detectGiveawayCodes } from "./steamgifts_parse";
 import {
@@ -146,6 +147,9 @@ export function detectRowExtras(chars, text, ann, opts) {
   const {
     autoFixUrl,
     enableXMention,
+    enablePixivLookup,
+    onPixivClick,
+    pixivBounds,
     easyReading,
     onAidClick,
     hasSteamgifts,
@@ -228,7 +232,18 @@ export function detectRowExtras(chars, text, ann, opts) {
     // （同一個 host 在不同句子裡本來就該有不同答案）。
     if (found.length) bareDomains = found.map((d) => ({ ...d, rowText: text }));
   }
-  return { fixedUrls, mentions, aids, giveaways, bareDomains };
+  let pixivIds;
+  if (enablePixivLookup && onPixivClick && !(ann && ann.hidden) &&
+      !/^(?:作者|標題|時間|看板|※|--|\s*瀏覽\s+第)/.test(text)) {
+    const bounds = pixivBounds ? { ...ann, ...pixivBounds } : ann;
+    const overlaps = candidate => [...(mentions || []), ...(aids || []), ...(bareDomains || []), ...(giveaways || [])]
+      .some(other => candidate.startCol < other.endCol && candidate.endCol > other.startCol);
+    const found = detectPixivIds(chars, text, bounds).filter(candidate => !overlaps(candidate));
+    if (found.length) pixivIds = found.map(candidate => ({
+      ...candidate, onClick: () => onPixivClick(candidate.query),
+    }));
+  }
+  return { fixedUrls, mentions, aids, giveaways, bareDomains, pixivIds };
 }
 
 // 好讀累積長頁的「前沿」：之後只往後接新列時，最早可能改變最終標註的那一列
@@ -310,6 +325,8 @@ export function computeAnnotations(
     easyReading,
     enableXMention,
     mergeSameAuthorComments,
+    enablePixivLookup,
+    onPixivClick,
     inListContext,
     listEasyReading,
     onAidClick,
@@ -471,6 +488,8 @@ export function computeAnnotations(
       bareDomainLink,
       enableXMention,
       easyReading,
+      enablePixivLookup,
+      onPixivClick,
       onAidClick,
       hasSteamgifts,
     };
@@ -528,7 +547,7 @@ export function computeAnnotations(
         undefined;
       const dC = [];
       const fC = [];
-      const { fixedUrls, mentions, aids, giveaways, bareDomains } = withUrlAi(
+      const { fixedUrls, mentions, aids, giveaways, bareDomains, pixivIds } = withUrlAi(
         detectRowExtras(lines[row], text, ann, detectOpts),
         dC,
         fC,
@@ -540,6 +559,7 @@ export function computeAnnotations(
       if (aids) r = { ...(r || {}), aids };
       if (giveaways) r = { ...(r || {}), giveaways };
       if (bareDomains) r = { ...(r || {}), bareDomains };
+      if (pixivIds) r = { ...(r || {}), pixivIds };
       base[row] = r;
     }
     // 有候選的列（遞增）。純 append 時前綴沿用、只掃新列 ⇒ 串候選是 O(候選數)。
@@ -758,7 +778,7 @@ export function computeAnnotations(
               merged.chars,
               mText,
               firstAnn,
-              detectOpts,
+              { ...detectOpts, pixivBounds: { contentCol: merged.contentStart, contentEnd: merged.tailStart } },
             );
             // 跨行連結接合（src/js/url_wrap.js）：只有合併塊做得到——被 PTT 推文
             // 輸入欄切成兩則的網址，逐列偵測兩層都看不見，要有 run 的換行邊界才接
@@ -803,6 +823,11 @@ export function computeAnnotations(
                   };
                 }
               }
+            }
+            if (extras.pixivIds && extras.aids) {
+              extras.pixivIds = extras.pixivIds.filter(candidate => !extras.aids.some(aid =>
+                candidate.startCol < aid.endCol && candidate.endCol > aid.startCol));
+              if (!extras.pixivIds.length) delete extras.pixivIds;
             }
             decorated.push([
               first,

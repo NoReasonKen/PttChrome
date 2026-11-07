@@ -1,4 +1,20 @@
 ﻿export const zh_TW = {
+  "options_enablePixivLookup": { "message": "點擊數字查詢 Pixiv" },
+  "tooltip_enablePixivLookup": { "message": "點擊文章內文或留言中的獨立數字，查詢對應的 Pixiv 使用者與作品頁面。只在點擊後才發出請求。" },
+  "pixiv_unsupported": { "message": "需要支援 Pixiv 查詢的 Android App 版本；瀏覽器與舊版 APK 暫不支援。" },
+  "pixiv_title": { "message": "Pixiv" },
+  "pixiv_user": { "message": "使用者" },
+  "pixiv_artwork": { "message": "作品" },
+  "pixiv_loading": { "message": "載入中…" },
+  "pixiv_missing": { "message": "此頁面無法瀏覽，可能已移除或受存取限制。" },
+  "pixiv_no_results": { "message": "查無可瀏覽的 Pixiv 使用者或作品頁面。" },
+  "pixiv_unavailable": { "message": "暫時無法查詢此頁面，請稍後再試。" },
+  "pixiv_image_unavailable": { "message": "圖片無法顯示" },
+  "pixiv_r18": { "message": "無法瀏覽 R-18 作品" },
+  "pixiv_r18g": { "message": "無法瀏覽 R-18G 作品" },
+  "pixiv_restricted": { "message": "此作品有瀏覽限制" },
+  "pixiv_open": { "message": "在 Pixiv 開啟" },
+  "pixiv_close": { "message": "關閉" },
   "appName": {
     "message": "PttChrome",
     "description": "The title of the application, displayed in the web store."

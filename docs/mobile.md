@@ -27,7 +27,7 @@ The enabled-by-default `articleHorizontalGestures` preference applies only to mo
 | 10 | safe-area／theme-color／等待進度條／點擊波紋（波紋桌機共用） | 已實作（真機 `guess`） |
 
 使用者定案：文章只支援好讀模式、要換行不要縮小；列表做卡片；選單項做大按鈕（主功能表與子選單一致；ANSI 圖保留縮小在上方、點一下直接進入）；其他 80 欄格線畫面只求不被切。
-2026-10 原生 App 化定案：App Bar **不放返回鍵**（返回＝系統邊緣滑動／返回鍵，`history_back_guard`）；標頭／狀態列只在卡片／文章／選單畫面收起；文章左右滑換篇**不做**（與捲動、選取、系統返回手勢互搶）。
+2026-10 原生 App 化定案：App Bar **不放返回鍵**（返回＝系統邊緣滑動／返回鍵，`history_back_guard`）；標頭／狀態列只在卡片／文章／選單畫面收起；文章左右滑換篇**不做**。文章好讀的左滑開啟文章捷徑抽屜、右滑退出文章；手勢的啟用條件與操作優先權見[文章捷徑抽屜規格](article-swipe-drawer-spec.md)。
 
 ## 規則
 
@@ -419,6 +419,15 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
 - `term_view.pageRowTop` 跳過 `offsetParent===null` 的列（收起列 offsetTop＝0 會把閱讀位置還原拉回頂端）。
 
 ## Phase 9：Bottom sheet（`components/MobileSheet`，Mantine Drawer position bottom）
+
+Menu-item touches keep the action pressed initially, even if an entrance animation
+moves another item under the finger before Chromium synthesizes its click.
+`MobileSheet` preserves ordinary native activation and redirects only a mismatched
+touch click to the original connected, enabled item. Movement beyond 10 CSS pixels,
+pointer cancellation or another contact cancels the action; a later contact starts
+fresh. It never activates on pointerup, so native scrolling and long-press suppression
+remain in charge. Mouse, keyboard, editable fields and non-menu buttons keep their
+existing behavior. Real-input coverage lives in `mobile_sheet_tap.offline.spec.js`.
 
 - 用在：「更多」（`MobileToolbar` 自己持有，`panel==='more'`）、長按選單（`ContextMenu` 在 `useMobile` 時畫 `ContextSheet`，
   項目清單 `ContextMenu/context_menu_entries.js` 與桌機 `DropdownMenu` 共用）、搜尋（`SearchModal` 的 `mobile` prop 換外殼）、

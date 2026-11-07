@@ -53,6 +53,7 @@ test('Back from an article without a header reveals the list it was opened from'
   await settledOn(page, 600);
   const main = await waitRectStable(page, '.main');
   const contact = await beginArticleTouch(page, { x: 20, y: main.top + 100 });
+  await contact.move({ x: 36, y: main.top + 100 });
   await contact.move({ x: page.viewportSize().width - 20, y: main.top + 100 });
   await expect(page.locator('[data-article-exit-underlay]')).toHaveAttribute('data-preview', 'layer');
   await contact.release();

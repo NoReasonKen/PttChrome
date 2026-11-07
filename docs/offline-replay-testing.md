@@ -40,6 +40,9 @@ fixture（`tests/unit/fixtures/replay/<name>.page.json`）：
 
 ### Replay readiness
 
+For scroll preconditions, durable review screenshots and captured viewport
+metadata, see [layout reproduction tools](test-reproduction-tools.md).
+
 Replay checks the recorded terminal dimensions before feeding bytes. Default
 80x24 recordings require a matching initial terminal; errors include the actual
 terminal and viewport dimensions. Resize tests should establish their recorded
@@ -229,6 +232,23 @@ settings-export artifacts after save, native retrieval, reconnect and page resta
 see [Android credentials](android-credentials.md#cross-feature-privacy-coverage).
 The recorder follows a replacement connection while recording, preserving masked
 login sends rather than silently dropping the reconnect's outgoing stream.
+
+### Opt-in gesture tracing
+
+`DebugRecorder(app, { detailedGestures: false })` uses standard recording by
+default. For a specific diagnosis, set `DETAILED_GESTURE_CAPTURE` in
+`src/js/debug_record_control.js` to `true`; restore it to `false` after
+collecting the capture. The development-only guard keeps
+production recordings standard. This is a code switch, not a saved preference.
+
+Detailed recording adds fractional coordinates and event timestamps for each
+delivered touch movement, including movements after native scrolling cancels
+the pointer. `articleGestures.move` records the gesture classifier's displacement,
+angle, locked axis, operation and `lockedNow` at each delivered pointer movement.
+The export's `meta.detailedGestures` identifies the mode. Extra touch listeners
+exist only between recording start and stop; movement samples do not measure
+layout. The trace reflects browser-delivered events, not every physical finger
+position, and ends where the browser stops delivering them.
 
 ## 素材選用（逐卷測試的前提，選錯＝測試恆綠）
 逐卷 spec 會把 `cassettes/` 裡每一卷都跑一遍，但**不是每卷都能重現每個 bug**：

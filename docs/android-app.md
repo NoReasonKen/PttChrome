@@ -4,6 +4,9 @@ Read this guide before Android installation, on-device acceptance testing,
 APK/web updates or deployment, and changes to `android/**`,
 `src/js/android_bridge.js`, `src/js/credential_store.js`, or `src/js/boot_site.js`.
 
+The optional Pixiv capability and its native request boundaries are documented in
+[Pixiv numeric-ID lookup](pixiv-lookup.md).
+
 For web changes in an existing APK, start with [development page sources](#debug-版並存與-dev-server-模式):
 the APK loads an online reading page, so a local frontend commit or an
 unchanged APK rebuild does not deliver unpublished web changes to the phone.

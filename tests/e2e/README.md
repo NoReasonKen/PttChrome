@@ -358,6 +358,17 @@ window 失焦（Playwright 1.62 實測，`isTrusted`／`document.hasFocus()`）�
   （`long_push_image_upload.offline.spec.js#openLongPushModal`）。
 - contextmenu 時機依 OS：Windows 在 mouseup 發、Linux／macOS 在 mousedown 發 ⇒「按住右鍵滾輪」類斷言要依實際觀察到的時機分支，不寫死平台。
 
+### Animation-time input
+
+Wait for stable layout when it is a setup condition for an unrelated assertion.
+For a bug triggered during animation, preserve that timing in the regression:
+pause the actual CSS transition through the Web Animations API, send real
+browser input, and finish the transition between the relevant input events.
+See `offline/mobile_sheet_tap.offline.spec.js`. A resolved Playwright `tap()`
+does not prove which action the browser's final click activated; assert the
+intended action and that neighboring actions did not run. Waiting for the
+animation to finish before input would remove this failure window.
+
 ## 規範：會疊在畫面上的功能要進「浮層不蓋文末」矩陣
 
 各功能的 offline spec 預設把別的功能關掉（`helpers/replay.js#bootOffline`），單獨看都對、疊在一起才壞

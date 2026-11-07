@@ -46,6 +46,7 @@ test('an unplayed YouTube embed shows only its card, and a left swipe on it open
   const width = page.viewportSize().width;
   const from = { x: Math.min(cover.left + cover.width - 4, width - 24), y: cover.top + cover.height / 2 };
   const contact = await beginArticleTouch(page, from);
+  await contact.move({ x: from.x - 16, y: from.y });
   await contact.move({ x: Math.max(8, from.x - width * 0.6), y: from.y });
   await contact.release();
   await expect(page.locator(DRAWER)).toHaveAttribute('data-state', 'open');
@@ -56,6 +57,7 @@ test('a right swipe starting on the cover leaves the article', async ({ page }) 
   const cover = await bootCoverArticle(page);
   const y = cover.top + cover.height / 2;
   const contact = await beginArticleTouch(page, { x: Math.max(20, cover.left + 4), y });
+  await contact.move({ x: Math.max(20, cover.left + 4) + 16, y });
   await contact.move({ x: page.viewportSize().width - 20, y });
   await contact.release();
   await expect.poll(() => gestureSent(page)).toBe('\x1b[D');

@@ -2137,6 +2137,23 @@ export const en_US = {
     "message": "sec"
   },
 
+  "options_enablePixivLookup": { "message": "Tap numeric IDs to look up Pixiv" },
+  "tooltip_enablePixivLookup": { "message": "Tap a standalone number in article text or comments to check its Pixiv user and artwork pages. Requests start only after tapping." },
+  "pixiv_unsupported": { "message": "Requires an Android app version with Pixiv lookup support. Not available in browsers or older APKs." },
+  "pixiv_title": { "message": "Pixiv" },
+  "pixiv_user": { "message": "User" },
+  "pixiv_artwork": { "message": "Artwork" },
+  "pixiv_loading": { "message": "Loading…" },
+  "pixiv_missing": { "message": "This page is unavailable. It may have been removed or restricted." },
+  "pixiv_no_results": { "message": "This ID has no available Pixiv user or artwork page." },
+  "pixiv_unavailable": { "message": "Unable to look up this page. Try again later." },
+  "pixiv_image_unavailable": { "message": "Image unavailable" },
+  "pixiv_r18": { "message": "Unable to view R-18 works" },
+  "pixiv_r18g": { "message": "Unable to view R-18G works" },
+  "pixiv_restricted": { "message": "Viewing this artwork is restricted" },
+  "pixiv_open": { "message": "Open in Pixiv" },
+  "pixiv_close": { "message": "Close" },
+
   // tooltips
   "tooltip_antiIdleTime": {
     "message": "When no key has been sent for this long, send a keep-alive packet that does not affect the screen, so routers / mobile networks do not drop the idle connection. No response within 30 seconds is treated as disconnected. Default: 180 seconds. Input 0 to disable."

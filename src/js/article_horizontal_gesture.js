@@ -1,5 +1,7 @@
 // Gesture constants are initial calibration values, pending Android feedback.
-export const ARTICLE_GESTURE_SLOP = 0;
+export const ARTICLE_GESTURE_SLOP = 16;
+// Each horizontal sector spans 80 degrees; each vertical sector spans 100.
+const HORIZONTAL_MAX_SLOPE = Math.tan(40 * Math.PI / 180);
 export const ARTICLE_TAP_SLOP = 10;
 export const ARTICLE_FLING_WINDOW_MS = 100;
 export const ARTICLE_FLING_SPEED = 0.65;
@@ -17,6 +19,7 @@ export class ArticleHorizontalGesture {
     this.axis = null;
     this.operation = null;
     this.distance = 0;
+    this.motionStartX = null;
     this.allowExit = allowExit;
     this.allowOpen = allowOpen;
   }
@@ -26,9 +29,11 @@ export class ArticleHorizontalGesture {
     const dy = y - this.start.y;
     if (!this.axis) {
       if (t - this.start.t >= ARTICLE_LONG_PRESS_MS) this.axis = 'vertical';
-      else if ((dx !== 0 || dy !== 0) && Math.max(Math.abs(dx), Math.abs(dy)) >= ARTICLE_GESTURE_SLOP) {
-        this.axis = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
+      else if (Math.hypot(dx, dy) >= ARTICLE_GESTURE_SLOP) {
+        this.axis = Math.abs(dy) < Math.abs(dx) * HORIZONTAL_MAX_SLOPE ? 'horizontal' : 'vertical';
         if (this.axis === 'horizontal') {
+          // Do not move the surface by the distance spent confirming direction.
+          this.motionStartX = x;
           if (this.opened) this.operation = 'close';
           else if (dx < 0) this.operation = this.allowOpen ? 'open' : null;
           else this.operation = this.allowExit ? 'exit' : null;
@@ -38,7 +43,8 @@ export class ArticleHorizontalGesture {
     this.samples.push({ x, t });
     this.samples = this.samples.filter(sample => t - sample.t <= ARTICLE_FLING_WINDOW_MS);
     const limit = this.operation === 'exit' ? this.width : this.width * 0.75;
-    this.distance = Math.min(limit, Math.max(0, this.operation === 'open' ? -dx : dx));
+    const movement = this.motionStartX === null ? 0 : x - this.motionStartX;
+    this.distance = this.operation ? Math.min(limit, Math.max(0, this.operation === 'open' ? -movement : movement)) : 0;
     return this.snapshot();
   }
 

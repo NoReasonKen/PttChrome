@@ -57,6 +57,36 @@ export function snapshotState(app) {
   }
 }
 
+// Capture only layout inputs and effective geometry, never preferences or text.
+// This runs at recording/resize boundaries, outside the send/receive hot path.
+export function recordingEnvironment(app, win = typeof window !== 'undefined' ? window : null) {
+  const number = value => typeof value === 'number' && Number.isFinite(value) ? value : null;
+  const view = app.view || {};
+  const buf = app.buf || {};
+  const vv = win && win.visualViewport;
+  return {
+    viewport: {
+      width: number(win && win.innerWidth),
+      height: number(win && win.innerHeight),
+      dpr: number(win && win.devicePixelRatio),
+    },
+    visualViewport: vv ? {
+      width: number(vv.width), height: number(vv.height), scale: number(vv.scale),
+      offsetLeft: number(vv.offsetLeft), offsetTop: number(vv.offsetTop),
+    } : null,
+    terminal: {
+      cols: number(buf.cols), rows: number(buf.rows),
+      cellWidth: number(view.chw), cellHeight: number(view.chh),
+      scaleX: number(view.scaleX), scaleY: number(view.scaleY),
+      mobileFontPx: number(app.mobileFontPx),
+    },
+    reading: {
+      mobile: !!app.mobile, easyReading: !!view.useEasyReadingMode,
+      reflow: !!view.reflow, listCards: !!view.listCards, gridRender: !!view._gridRender,
+    },
+  };
+}
+
 // 游標幾何取樣（tag `cursor.geom`）。**只錄數字座標，不錄任何文字** ⇒ 不觸及
 // serializeRecording 的 redact 契約。呼叫端（term_view.updateCursorPos）自帶
 // 「游標真的動了才取樣」的節流，且只在 isRecording 時才進來 —— 這裡會強制 reflow。
@@ -149,8 +179,10 @@ const LIST_VIEW_SEL = '.listBodyView';
 const TOUCH_TYPES = ['touchstart', 'touchend', 'touchcancel'];
 
 export class DebugRecorder {
-  constructor(app) {
+  constructor(app, { detailedGestures = false } = {}) {
     this.app = app;
+    this.detailedGestures = detailedGestures;
+    this._touchTypes = detailedGestures ? [...TOUCH_TYPES, 'touchmove'] : TOUCH_TYPES;
     this.events = [];
     this.isRecording = false;
     this._t0 = 0;
@@ -187,6 +219,7 @@ export class DebugRecorder {
     if (this.isRecording) return;
     const app = this.app;
     const rec = this;
+    this.events = [];
     this._t0 = performance.now();
     this.isRecording = true;
 
@@ -205,7 +238,8 @@ export class DebugRecorder {
     this._watchScroller(app.view && app.view.mainDisplay);
     this._watchList();
 
-    this.log('record.start', { url: app.connectedUrl && app.connectedUrl.url });
+    this.log('record.start', { url: app.connectedUrl && app.connectedUrl.url, detailedGestures: this.detailedGestures });
+    this._watchEnvironment();
     app.reconnectResume?.recordingStarted?.();
     if (app.reconnectResume?.diagnostics)
       this.log('reconnectResume.diagnostics', app.reconnectResume.diagnostics());
@@ -223,6 +257,57 @@ export class DebugRecorder {
     // 黑名單設定（作者／標題關鍵字）：「這篇為什麼沒出現／為什麼出現了」只看 bytes 判斷不了。
     // 之後改設定時 App.applyPref 會再記一筆（同 tag）。
     this.log('list.filter', filterSummary(view));
+  }
+
+  _watchEnvironment() {
+    this._environmentKey = null;
+    this._recordEnvironment();
+    if (typeof window === 'undefined') return;
+    this._environmentViewport = window.visualViewport;
+    this._onEnvironmentResize = () => {
+      if (!this.isRecording || this._environmentFrame != null) return;
+      this._environmentFrame = window.requestAnimationFrame(() => {
+        this._environmentFrame = null;
+        if (this.isRecording) this._recordEnvironment();
+      });
+    };
+    window.addEventListener('resize', this._onEnvironmentResize, { passive: true });
+    this._environmentViewport?.addEventListener('resize', this._onEnvironmentResize, { passive: true });
+    // App resizing is debounced. Observe the resulting screen box as well as
+    // the viewport, so a later terminal/font update is captured without polling.
+    const main = this.app.view && this.app.view.mainDisplay;
+    if (main && typeof window.ResizeObserver === 'function') {
+      this._environmentObserver = new window.ResizeObserver(this._onEnvironmentResize);
+      this._environmentObserver.observe(main);
+    }
+    // In reflow mode the outer box can stay fixed while cell size or terminal
+    // rows change. Watch only this node's layout attributes, never its content.
+    if (main && typeof window.MutationObserver === 'function') {
+      this._environmentMutationObserver = new window.MutationObserver(this._onEnvironmentResize);
+      this._environmentMutationObserver.observe(main, { attributes: true, attributeFilter: ['style', 'class'] });
+    }
+  }
+
+  _recordEnvironment() {
+    const environment = recordingEnvironment(this.app);
+    const key = JSON.stringify(environment);
+    if (key === this._environmentKey) return;
+    this._environmentKey = key;
+    this.log('record.environment', environment);
+  }
+
+  _unwatchEnvironment() {
+    if (typeof window === 'undefined') return;
+    window.removeEventListener('resize', this._onEnvironmentResize);
+    this._environmentViewport?.removeEventListener('resize', this._onEnvironmentResize);
+    this._environmentObserver?.disconnect();
+    this._environmentMutationObserver?.disconnect();
+    if (this._environmentFrame != null) window.cancelAnimationFrame(this._environmentFrame);
+    this._environmentFrame = null;
+    this._environmentObserver = null;
+    this._environmentMutationObserver = null;
+    this._environmentViewport = null;
+    this._onEnvironmentResize = null;
   }
 
   // 好讀長頁的捲動軌跡：使用者的滾輪輸入（main.wheel）對照實際捲動位置
@@ -273,17 +358,24 @@ export class DebugRecorder {
       const info = {
         type: e.type,
         n: e.touches ? e.touches.length : 0,
-        x: p ? Math.round(p.clientX) : null,
-        y: p ? Math.round(p.clientY) : null,
+        x: p ? this.detailedGestures ? p.clientX : Math.round(p.clientX) : null,
+        y: p ? this.detailedGestures ? p.clientY : Math.round(p.clientY) : null,
         inList: !!v,
       };
-      if (v) Object.assign(info, listViewSample(app, v));
+      if (this.detailedGestures) Object.assign(info, {
+        eventTime: e.timeStamp,
+        points: Array.from(e.changedTouches || [], point => ({ id: point.identifier, x: point.clientX, y: point.clientY })),
+        cancelable: e.cancelable,
+        prevented: e.defaultPrevented,
+      });
+      // Movement traces read coordinates only, avoiding a layout on every sample.
+      if (v && e.type !== 'touchmove') Object.assign(info, listViewSample(app, v));
       this.log('touch', info);
     };
     const opt = { capture: true, passive: true };
     document.addEventListener('scroll', this._onListScroll, opt);
     document.addEventListener('wheel', this._onListWheel, opt);
-    for (const type of TOUCH_TYPES) document.addEventListener(type, this._onTouch, opt);
+    for (const type of this._touchTypes) document.addEventListener(type, this._onTouch, opt);
   }
 
   _unwatchList() {
@@ -291,7 +383,7 @@ export class DebugRecorder {
     const opt = { capture: true, passive: true };
     document.removeEventListener('scroll', this._onListScroll, opt);
     document.removeEventListener('wheel', this._onListWheel, opt);
-    for (const type of TOUCH_TYPES) document.removeEventListener(type, this._onTouch, opt);
+    for (const type of this._touchTypes) document.removeEventListener(type, this._onTouch, opt);
     this._onListScroll = null;
     this._onListWheel = null;
     this._onTouch = null;
@@ -314,11 +406,14 @@ export class DebugRecorder {
   // 停止並還原 patch；回傳序列化 JSON 字串（已 redact）。
   stop({ prefs } = {}) {
     if (!this.isRecording) return null;
+    // Preserve a resize/font change even if Stop wins the next animation frame.
+    this._recordEnvironment();
     this.log('record.stop');
     this.isRecording = false;
     setDiagSink(null);
     this._unwatchScroller();
     this._unwatchList();
+    this._unwatchEnvironment();
     if (this._origOnData) this.app.onData = this._origOnData;
     if (this._origSendRaw && this._patchedConn) this._patchedConn._sendRaw = this._origSendRaw;
     this._origOnData = null;
@@ -335,6 +430,7 @@ export class DebugRecorder {
         url: app.connectedUrl && app.connectedUrl.url,
         build: process.env.GIT_COMMIT,
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+        detailedGestures: this.detailedGestures,
       },
       redact: {
         ids: [...knownCredentials.ids, prefs?.autoLoginUser].filter(Boolean),

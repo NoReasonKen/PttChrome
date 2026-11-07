@@ -44,6 +44,7 @@ import {
 import { deepEqual } from "../../js/pref_sync_logic";
 import { isSignInCancelled } from "../../js/google_sign_in";
 import { ensureNotifyPermission } from "../../js/notification_gate";
+import { pixivLookupAvailable } from "../../js/pixiv_lookup";
 import {
   buildExportPayload,
   parseImportPayload,
@@ -122,9 +123,10 @@ const setFlashKey = (key) => {
 };
 const useFlashKey = () => useSyncExternalStore(subscribeFlash, getFlashKey);
 
-// 窄螢幕（手機直向）版型：全螢幕＋頂端橫向分頁（PrefModal.css `.PrefModal--narrow`）。
-// 寬版的 160px 左欄在 ~400px 寬的手機上會把內容擠到只剩一半。看視窗寬而不是
-// App 的 mobile 旗標：桌機把視窗拉窄同樣需要。
+// Narrow Settings uses a full-screen category list with drill-down pages
+// (docs/mobile.md, narrow Settings; PrefModal.css `.PrefModal--narrow`).
+// Match viewport width, not the App's mobile flag: the wide layout's sidebar
+// would also crowd the content in a narrow desktop window.
 export const PREF_NARROW_QUERY = "(max-width: 640px)";
 const subscribeNarrow = (cb) => {
   const mq = window.matchMedia(PREF_NARROW_QUERY);
@@ -2115,6 +2117,21 @@ export const PrefModal = ({
                 >
                   {i18n("options_enableXMentionLink")}
                 </PrefCheckbox>
+                <PrefCheckbox
+                  name="enablePixivLookup"
+                  checked={values.enablePixivLookup}
+                  disabled={!pixivLookupAvailable()}
+                  onChange={onCheckboxChange}
+                >
+                  {i18n("options_enablePixivLookup")}
+                </PrefCheckbox>
+                <Text size="xs" c="dimmed" mb="xs">
+                  {i18n(
+                    pixivLookupAvailable()
+                      ? "tooltip_enablePixivLookup"
+                      : "pixiv_unsupported",
+                  )}
+                </Text>
                 <PrefCheckbox
                   name="enableBareDomainLink"
                   checked={values.enableBareDomainLink}

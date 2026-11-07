@@ -111,6 +111,26 @@ describe("serializeRecording", () => {
     expect(out.cassette.steps.map((s) => s.on)).toEqual(["start", "pagedown"]);
     expect(b64decode(out.cassette.steps[0].recv)).toBe("hello xxxxxx xxxxxxx");
     expect(b64decode(out.cassette.steps[1].recv)).toBe("xxxxx page2");
+    expect(out.cassette.rows).toBe(24);
+    expect(out.cassette.meta).not.toHaveProperty("environment");
+  });
+
+  it("preserves the initial environment for replay and redacts its copied metadata", () => {
+    const initial = { viewport: { width: 412, height: 840, dpr: 2.625 }, terminal: { cols: 80, rows: 45 }, note: "pw123" };
+    const out = JSON.parse(serializeRecording({
+      events: [
+        { t: 0, dir: "log", tag: "record.environment", info: initial },
+        { t: 1, dir: "recv", data: "screen" },
+        { t: 2, dir: "log", tag: "record.environment", info: { terminal: { cols: 80, rows: 24 } } },
+      ],
+      rows: 24,
+      redact: { secrets: ["pw123"] },
+    }));
+    expect(out.cassette.rows).toBe(45);
+    expect(out.cassette.cols).toBe(80);
+    expect(out.cassette.meta.environment).toEqual({ ...initial, note: "xxxxx" });
+    expect(out.cassette.meta.environment).toEqual(out.events[0].info);
+    expect(out.events.filter(event => event.tag === "record.environment")).toHaveLength(2);
   });
 
   // REGRESSION（2026-10，live scenario 錄製的隱私把關抓到）：redact 原本逐個 event 做，

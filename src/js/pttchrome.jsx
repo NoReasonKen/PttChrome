@@ -243,6 +243,7 @@ export const App = function() {
   // 搜尋彈窗送出的兩步在途（article_search.submitSearch 寫、serialized_op_gate 讀）。
   this.searchInFlight = false;
   this.view.onAidClick = (aid, board) => this.onAidClick(aid, board);
+  this.view.onPixivClick = query => this.openPixivLookup(query);
   // 功能鍵按鈕（畫面上的 `[d]刪除` / `(y)回應`）→ 送出那個按鍵。
   // **只指派這一次，引用從此不變**：annotationsKey.refs 與 render/screen.js 的
   // outerHTML 節點重用都以它的參考身分為前提（每幀新建箭頭函式會讓整份標註快取
@@ -1129,6 +1130,7 @@ App.prototype.onDisableLiveHelperModalState = noop;
 // 等答案回來才開，中間蓋一層遮罩。線路上仍然只有那一個 X，淨效果與原生按 X 一致
 // （使用者本來就是要推文才按的）。詳見 docs/long-push.md「探路（preflight）」。
 App.prototype.openLongPushModal = noop;
+App.prototype.openPixivLookup = noop;
 
 // 好讀文章底部常駐推文列按 Enter（comment_bar.js）：({ text, type }) → 探路 → 直接送，或
 // 退回長推文輸入框讓使用者看一眼。合約同上：noop ＝ ContextMenu 未 mount ⇒ 回 undefined。
@@ -2360,6 +2362,10 @@ App.prototype.onPrefChange = function(name, value) {
       break;
     case 'enableXMentionLink':
       this.view.enableXMention = value;
+      this.view.redraw(true);
+      break;
+    case 'enablePixivLookup':
+      this.view.enablePixivLookup = value;
       this.view.redraw(true);
       break;
     case 'blacklist':

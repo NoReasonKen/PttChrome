@@ -212,7 +212,9 @@ export class ArticleGestures {
     if (!track || event.pointerId !== track.id) return;
     const left = track.layer ? this.stack.shownLayer() !== track.layer : this._swipeLevel() !== track.level;
     if (left || this._otherModalOpen()) return this._cancel();
+    const previousAxis = track.gesture.axis;
     const snapshot = track.gesture.move(event.clientX, event.clientY, event.timeStamp);
+    this.diag.move(event, track, previousAxis);
     if (this.opened || snapshot.operation) {
       this._consume(event);
       if (snapshot.operation) {

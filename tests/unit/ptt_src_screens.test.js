@@ -6,8 +6,8 @@
 // 這裡的每一個位元組都是 upstream 程式碼吐的。
 //
 // fixture 由 tools/ptt-src-screens/generate.sh 重產（場景表 scenes.mjs、種子 seed.tsv）。
-// 平常跑 repo 裡那份（產自 pttbbs 3b8596b9）；nightly（.github/workflows/ptt-src-screens.yml）
-// 換成 upstream HEAD 產的。
+// Checked-in snapshots come from pttbbs babcbce921843cfb535a6173cc78355ac31cfdec;
+// the nightly workflow replaces them with screens generated from upstream HEAD.
 import { TermBuf } from "../../src/js/term_buf";
 import { AnsiParser } from "../../src/js/ansi_parser";
 import { classifyListScreen } from "../../src/js/list_session";
@@ -282,6 +282,9 @@ describe("upstream pttbbs 產的說明選單（文章列表的 h）", () => {
     expect(byLabel["發表"].keys).toEqual(["^P"]);
     expect(byLabel["推文"].keys).toContain("X");
     expect(byLabel["閱讀"].keys).toContain("Enter");
+    expect(byLabel["回應"].keys).toEqual(["y", "Y"]);
+    expect(byLabel["進板"].keys).toEqual(["b", "B"]);
+    expect(byLabel["丟水球"].keys).toEqual(["w", "W"]);
   });
 
   test("在說明選單按 ⏎ 不會被當成進板而 arm", () => {

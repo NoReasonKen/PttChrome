@@ -33,6 +33,7 @@ async function swipeOut(page) {
   const main = await waitRectStable(page, MAIN);
   const y = main.top + 100;
   const contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: 36, y });
   await contact.move({ x: page.viewportSize().width - 20, y });
   return contact;
 }

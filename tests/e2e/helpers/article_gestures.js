@@ -56,6 +56,7 @@ async function revealArticleDrawer(page) {
   });
   if (cardTop != null && y > cardTop - 8) y = Math.max(main.top + 16, cardTop - 16);
   const contact = await beginArticleTouch(page, { x: width - 24, y });
+  await contact.move({ x: width - 40, y });
   await contact.move({ x: 12, y });
   await contact.release();
   await expect(page.locator(DRAWER)).toHaveAttribute('data-state', 'open');

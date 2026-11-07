@@ -115,7 +115,9 @@ test('progress consumes Back; explicit cancel and error Back preserve the draft'
   const dialog = page.getByRole('dialog', { name: await text(page, 'longPushProgress_title') });
   await dialog.getByRole('button', { name: await text(page, 'longPushProgress_cancel'), exact: true }).tap();
   await expect.poll(() => sent(page)).toMatch(/\x03$/);
-  await draw(page, { 23: FOOTER });
+  // draw clears the entire terminal. Restore the article, not just its footer:
+  // a headerless reply starts an unrelated identity lookup and timeout probe.
+  await draw(page, ARTICLE);
   await expect(progress).toHaveCount(0);
   const error = page.getByTestId('longPushErrorMessage');
   await expect(error).toBeVisible();

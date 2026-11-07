@@ -267,6 +267,26 @@ async function aiTaskStats(page) {
 //   window.__replay.sent：本次重放中 client 送出的所有 bytes（含自动翻页键），
 //     window.__replay.sends：[{data, sig}]，sig = 送出当下所在页的状态列签章，
 //     供「同一页不得送两次 PageDown」这类断言用。
+// Apply the captured CSS viewport before booting. Device scale and OS text
+// autosizing still belong to the browser/device configuration, not page prefs.
+async function applyRecordedViewport(page, recording, { at = 0 } = {}) {
+  if (!Number.isFinite(at) || at < 0) throw new Error('Recording time must be a nonnegative number');
+  let environment = recording?.cassette?.meta?.environment || recording?.meta?.environment || null;
+  let selectedTime = -Infinity;
+  for (const event of recording?.events || []) {
+    if (event.dir === 'log' && event.tag === 'record.environment' && event.t <= at && event.t >= selectedTime) {
+      environment = event.info;
+      selectedTime = event.t;
+    }
+  }
+  if (!environment) return null; // Legacy captures need an explicit test viewport.
+  const { width, height } = environment.viewport || {};
+  if (![width, height].every(value => Number.isSafeInteger(value) && value > 0))
+    throw new Error('Recorded environment has invalid CSS viewport dimensions');
+  await page.setViewportSize({ width, height });
+  return environment;
+}
+
 // 錄製當下的終端機大小（cassette.rows／cols；舊卷沒寫＝80×24）。畫面 bytes 是按那個大小
 // 畫的（狀態列在最後一列、游標定址到第 rows 列），用別的列數重放＝超出範圍的列被夾到
 // 最後一列、整頁錯亂。所以餵資料前先把終端機設成同一個大小 —— 走 pref 的整組套用路徑
@@ -794,6 +814,9 @@ function offlineImageProfile(explicit) {
 // 第三個參數 opts.imageProfile：強制指定圖片載入情境（`image_load_conditions.offline.spec.js`
 // 用它逐條驗各情境的產品行為）。不給就依 project 名／env 推導。
 async function bootOffline(page, ptt, opts = {}) {  // eslint-disable-line no-unused-vars
+  if (opts.pixivLookup) {
+    await require('./pixiv_lookup').installPixivBridge(page, { automatic: true });
+  }
   await installReplay(page, {
     homeDashboard: !!opts.homeDashboard,
     splitReader: !!opts.splitReader,
@@ -940,6 +963,7 @@ module.exports = {
   replayCassette,
   replayListCassette,
   applyCassetteTermSize,
+  applyRecordedViewport,
   bootOffline,
   SCENARIO_BASE_PREFS,
   bootScenario,

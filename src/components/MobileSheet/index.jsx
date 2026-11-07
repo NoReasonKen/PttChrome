@@ -33,6 +33,7 @@ import "./MobileSheet.css";
 // z-index 高於底部工具列（2500）與 App Bar：sheet 開著時兩條 bar 都在遮罩下面。
 export const SHEET_Z_INDEX = 3000;
 export const SHEET_DISMISS_DRAG_PX = 80;
+const ITEM_TAP_SLOP_PX = 10;
 // sheet 外殼恆為暗色（同 App Bar／底部導覽列，MobileSheet.css），裡面的 Mantine 元件（搜尋框、
 // 指令面板、按鈕…）也要照暗色畫：淺色主題時它們跟著 <html data-mantine-color-scheme="light">
 // 變淺，選中項成了淺灰底配 sheet 繼承的淺色字，幾乎看不見。做法：.mobileSheet 掛
@@ -42,10 +43,16 @@ export const SHEET_DISMISS_DRAG_PX = 80;
 export const SHEET_DARK_VARS_ID = "mobileSheetDarkVars";
 export function sheetDarkVarsCss(theme) {
   const { dark } = defaultCssVariablesResolver(theme);
-  return convertCssVariables({ variables: {}, dark, light: {} }, ".mobileSheet");
+  return convertCssVariables(
+    { variables: {}, dark, light: {} },
+    ".mobileSheet",
+  );
 }
 function ensureSheetDarkVars(theme) {
-  if (typeof document === "undefined" || document.getElementById(SHEET_DARK_VARS_ID))
+  if (
+    typeof document === "undefined" ||
+    document.getElementById(SHEET_DARK_VARS_ID)
+  )
     return;
   const style = document.createElement("style");
   style.id = SHEET_DARK_VARS_ID;
@@ -73,6 +80,73 @@ export const MobileSheet = ({
   const id = useId();
   const [drag, setDrag] = useState(0);
   const startY = useRef(null);
+  const itemContact = useRef(null);
+
+  // Keep native clicks normally. Chromium can retarget the compatibility click
+  // after an animated item moves away from a stationary finger.
+  const rememberItemContact = (event) => {
+    if (event.pointerType !== "touch") {
+      itemContact.current = null;
+      return;
+    }
+    // A new primary contact replaces any previous completed/cancelled touch.
+    // Additional fingers cancel the action instead of choosing another item.
+    if (!event.isPrimary) {
+      if (itemContact.current) itemContact.current.cancelled = true;
+      return;
+    }
+    const button = event.target.closest("button.mobileSheetItem");
+    itemContact.current =
+      button && !button.disabled
+        ? {
+            button,
+            id: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            cancelled: false,
+          }
+        : null;
+  };
+  const moveItemContact = (event) => {
+    const contact = itemContact.current;
+    if (
+      contact?.id === event.pointerId &&
+      Math.hypot(event.clientX - contact.x, event.clientY - contact.y) >
+        ITEM_TAP_SLOP_PX
+    ) {
+      contact.cancelled = true;
+    }
+  };
+  const cancelItemContact = () => {
+    if (itemContact.current) {
+      itemContact.current.cancelled = true;
+    }
+  };
+  const preserveItemClick = (event) => {
+    const contact = itemContact.current;
+    if (
+      !contact ||
+      event.nativeEvent.pointerType !== "touch" ||
+      event.nativeEvent.pointerId !== contact.id
+    )
+      return;
+    itemContact.current = null;
+    if (
+      !contact.cancelled &&
+      event.target.closest("button.mobileSheetItem") === contact.button
+    )
+      return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (
+      !contact.cancelled &&
+      contact.button.isConnected &&
+      event.currentTarget.contains(contact.button) &&
+      !contact.button.disabled
+    ) {
+      contact.button.click();
+    }
+  };
 
   useEffect(() => {
     if (!pttchrome || typeof pttchrome.setModalOpen !== "function")
@@ -93,7 +167,10 @@ export const MobileSheet = ({
   }, [pttchrome, opened, onClose]);
 
   useEffect(() => {
-    if (!opened) setDrag(0);
+    if (!opened) {
+      setDrag(0);
+      itemContact.current = null;
+    }
   }, [opened]);
 
   const onPointerDown = useCallback((e) => {
@@ -172,6 +249,11 @@ export const MobileSheet = ({
         className="mobileSheet nomouse_command"
         data-mantine-color-scheme="dark"
         data-sheet={sheetKey}
+        onPointerDownCapture={rememberItemContact}
+        onPointerMoveCapture={moveItemContact}
+        onPointerUpCapture={moveItemContact}
+        onPointerCancelCapture={cancelItemContact}
+        onClickCapture={preserveItemClick}
         data-position={float ? "float" : "bottom"}
         data-float-side={float ? float.side : undefined}
         style={{

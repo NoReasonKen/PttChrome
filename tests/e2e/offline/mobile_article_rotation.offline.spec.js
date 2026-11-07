@@ -192,6 +192,7 @@ test('rotation cancels a drawer drag and preserves an article still being loaded
   const width = page.viewportSize().width;
   const main = await waitRectStable(page, '.main');
   const touch = await beginArticleTouch(page, { x: width - 24, y: main.top + 70 });
+  await touch.move({ x: width - 40, y: main.top + 70 });
   await touch.move({ x: width / 2, y: main.top + 70 });
   await page.setViewportSize(PORTRAIT);
   await touch.release();

@@ -1,5 +1,8 @@
 # Enhanced Add-on（黑名單／樓層／自動登入）
 
+The opt-in Android numeric-ID enhancement is described in
+[Pixiv lookup](pixiv-lookup.md).
+
 原生整合自 `3rd_script/PttChrome ...Enhanced Add-on`（原為 DOM-scraping userscript）。功能改用內部
 `TermChar[]` 結構，不爬 DOM。測試：`yarn test:unit`（純邏輯＋渲染，不連網，見 `tests/unit/`）；
 畫面行為走 offline e2e（`yarn test:e2e:offline`，live 只剩核心 `core.spec.js`）。

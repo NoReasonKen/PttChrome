@@ -40,6 +40,7 @@ for (const [key, target] of [['[', 40], ['=', 1], [']', 1150]]) {
     await watchScreen(page);
     await jump(page, key);
     await landedOn(page, target);
+    await expect.poll(() => page.locator('.main').first().evaluate(el => el.scrollTop)).toBe(0);
     expectHiddenRoute(await stopWatching(page), 600, target);
     expect(await server(page)).toMatchObject({ open: target, filter: null, cursor: target });
   });

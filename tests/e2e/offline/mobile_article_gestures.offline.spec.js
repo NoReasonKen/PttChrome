@@ -15,7 +15,9 @@ test('article drawer follows the finger, settles at the agreed proportions and d
   const y = main.top + 100;
   const before = await page.locator('.main').evaluate(el => el.scrollTop);
   const contact = await beginArticleTouch(page, { x: width - 24, y });
-  await contact.move({ x: width - 124, y });
+  const anchorX = width - 40;
+  await contact.move({ x: anchorX, y });
+  await contact.move({ x: anchorX - 100, y });
   let panel = await waitRectStable(page, PANEL);
   expect(panel.left).toBeCloseTo(width - 100, 0);
   await contact.move({ x: 12, y });
@@ -40,10 +42,12 @@ test('a short drag and touch cancellation restore the closed drawer', async ({ p
   const main = await waitRectStable(page, '.main');
   const y = main.top + 100;
   let contact = await beginArticleTouch(page, { x: width - 24, y });
+  await contact.move({ x: width - 40, y });
   await contact.move({ x: width - 124, y });
   await contact.release();
   await expect(page.locator(DRAWER)).toHaveCount(0);
   contact = await beginArticleTouch(page, { x: width - 24, y });
+  await contact.move({ x: width - 40, y });
   await contact.move({ x: 12, y });
   await contact.release({ cancel: true });
   await expect(page.locator(DRAWER)).toHaveCount(0);
@@ -56,6 +60,7 @@ async function tapDuringOpening(page, target) {
   const main = await waitRectStable(page, '.main');
   const y = main.top + Math.min(100, main.height / 2);
   const contact = await beginArticleTouch(page, { x: width - 24, y });
+  await contact.move({ x: width - 40, y });
   await contact.move({ x: 12, y });
   // The drag already fully extends the panel. Measure before releasing so
   // layout waits cannot consume the opening interval that this test exercises.
@@ -154,6 +159,7 @@ test('the open drawer consumes vertical and left swipes; a right swipe closes wi
   await expect(page.locator(DRAWER)).toHaveAttribute('data-state', 'open');
   expect(await page.locator('.main').evaluate(el => el.scrollTop)).toBe(before);
   const contact = await beginArticleTouch(page, { x: panel.left + 10, y: panel.top + 30 });
+  await contact.move({ x: panel.left + 26, y: panel.top + 30 });
   await contact.move({ x: panel.left + panel.width - 10, y: panel.top + 30 });
   await contact.release();
   await expect(page.locator(DRAWER)).toHaveCount(0);
@@ -207,6 +213,7 @@ test('a preview tap still opens the viewer while a horizontal preview drag opens
   const image = await waitRectStable(page, PREVIEW);
   const from = { x: Math.min(image.left + image.width - 4, page.viewportSize().width - 24), y: image.top + image.height / 2 };
   const contact = await beginArticleTouch(page, from);
+  await contact.move({ x: from.x - 16, y: from.y });
   // Past half the width and held still: the drag opens the drawer by distance,
   // whatever the machine's speed. A fling depends on how fast the events land.
   await contact.move({ x: Math.max(8, from.x - page.viewportSize().width * 0.6), y: from.y });
@@ -221,11 +228,13 @@ test('a second contact and a viewport change cancel an unfinished drawer reveal'
   const main = await waitRectStable(page, '.main');
   const y = main.top + 100;
   let contact = await beginArticleTouch(page, { x: width - 24, y });
+  await contact.move({ x: width - 40, y });
   await contact.move({ x: 20, y });
   await contact.second({ x: 20, y });
   await contact.release();
   await expect(page.locator(DRAWER)).toHaveCount(0);
   contact = await beginArticleTouch(page, { x: width - 24, y });
+  await contact.move({ x: width - 40, y });
   await contact.move({ x: 20, y });
   await page.setViewportSize({ width: 360, height: 450 });
   await contact.release();
