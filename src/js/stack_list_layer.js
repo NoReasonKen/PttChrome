@@ -2,7 +2,7 @@
 // of the shared screen renderer re-renders the list's last presented frame in
 // its own scroll viewport, so revealing it shows the real list, scrollable at
 // once, instead of a static copy.
-import { ScreenCopyLayer, setUsable, STACK_NOTICE_MS } from './stack_layer';
+import { ScreenCopyLayer, setUsable, STACK_NOTICE_MS, releaseScreenLater } from './stack_layer';
 import { LIST_TITLE_COL_START, hasServerCursorMark, rowToText, parseListArticleNumLoose, readListRow, subjectOfListRow } from './comment_parse';
 import { listEntryOf } from './split_reader';
 import { subjectKey, subjectMatches } from './long_push_anchor';
@@ -381,7 +381,7 @@ export class StackListLayer extends ScreenCopyLayer {
   destroy() {
     // Destruction must remove the prepared DOM, rather than park it again.
     this._detach();
-    this.screen?.release();
+    releaseScreenLater(this.screen);
     this.screen = null;
   }
 

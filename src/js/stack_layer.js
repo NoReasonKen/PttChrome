@@ -12,6 +12,15 @@ export function setUsable(el, usable) {
   else el.setAttribute('aria-hidden', 'true');
 }
 
+// Release a layer's screen copy once the current task's code has run. A
+// layer is torn down from whatever reacts to the page shown, such as the home
+// dashboard registering itself in a layout effect, and React refuses to
+// unmount the roots the copy holds (its inline previews, its hover preview)
+// while it is rendering. The copy is already off the page.
+export function releaseScreenLater(screen) {
+  if (screen) queueMicrotask(() => screen.release());
+}
+
 // A second instance of the shared screen renderer that re-renders a page's
 // last presented frame over the real screen's box. It is rendered when the
 // page is left. A list layer may retain one hidden, connected copy after entry
@@ -48,7 +57,7 @@ export class ScreenCopyLayer {
 
   destroy() {
     this.hide();
-    this.screen?.release();
+    releaseScreenLater(this.screen);
     this.screen = null;
   }
 }

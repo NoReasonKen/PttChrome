@@ -48,6 +48,20 @@ const settled = page => page.waitForFunction(() => {
     !app.buf._settleTimer && (app.buf.pageState !== 2 || app.listSession.state === 'active');
 });
 
+// Tearing a layer down never unmounts its React roots (its inline previews)
+// while React renders, as from the home dashboard registering itself.
+const REACT_ERRORS = /synchronously unmount a root|React was already rendering/;
+let reactErrors = [];
+test.beforeEach(({ page }) => {
+  reactErrors = [];
+  page.on('console', msg => {
+    if (msg.type() === 'error' && REACT_ERRORS.test(msg.text())) reactErrors.push(msg.text());
+  });
+});
+test.afterEach(() => {
+  expect(reactErrors).toEqual([]);
+});
+
 // A card's offset from the top of its list view.
 const cardOffset = (page, root, title) => page.evaluate(([root, title]) => {
   const view = document.querySelector(root);
@@ -932,4 +946,27 @@ test('Back from the results reopens the source though the results still settle a
   await waitArticle(page, 'Alpha');
   await settled(page);
   expect(await page.evaluate(() => window.__app.buf.pageState)).toBe(3);
+});
+
+test('a revealed source with inline previews goes when PTT shows the main menu instead', async ({ page }) => {
+  await bootNestedShortcutSearch(page, { easyList: true, images: true, homeMenu: true, ptList: true });
+  await ptt.applyPrefs(page, { enableHomeDashboard: true });
+  await ptt.sendKey(page, 'ArrowLeft');
+  await waitList(page, FULL_LIST);
+  await tapCard(page, '[Talk] Alpha topic');
+  await waitArticle(page, 'Alpha');
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  // PTT keeps what it is sent, and the reader sees the source's previews.
+  await page.evaluate(() => { window.__stubWSSent = () => {}; });
+  await nativeBack(page);
+  await expect(page.locator(`${ARTICLE_LAYER} img`).first()).toBeVisible();
+  await page.evaluate(() => {
+    const server = window.__shortcutServer;
+    server.state.surface = 'main';
+    server.state.filter = null;
+    window.__app.onData(server.frame(true));
+  });
+  await expect(page.locator('#homeDashboard')).toBeVisible();
+  await expect(page.locator(ARTICLE_LAYER)).toHaveCount(0);
 });

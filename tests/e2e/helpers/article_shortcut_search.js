@@ -162,9 +162,9 @@ const NESTED_ARTICLES = [
 // `urls`: articles end with their URL line, so the app knows an article's
 //   AID without asking PTT.
 // `images`: short articles show an image link near their top, previewed inline.
-// `ptList`: lists behave as PTT's do where the default server simplifies: the
-//   footer names its keys, (y)回應 among them, and `s<board>` from a list lands
-//   on the board's full list.
+// `ptList`: screens behave as PTT's do where the default server simplifies: a
+//   list's footer names its keys, (y)回應 among them, `s<board>` from a list
+//   lands on the board's full list, and the main menu has its title bar.
 async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false, legacyCaptions = false, extraArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false, images = false, ptList = false } = {}) {
   await bootGestureArticle(page, { resumeLastPlace });
   // The image-article boot disables the easy-reading list; the reader's
@@ -282,6 +282,8 @@ async function installNestedServer(page, session) {
       } else if (state.surface === 'main') {
         rows = { 0: '【主功能表】', 3: '  (B)oard 看板列表', [termRows - 1]: '我是測試主選單' };
         if (session.homeMenu) rows[4] = '  (F)avorite 我 的 最愛';
+        // PTT's menu title fills its row, as the app's menu screen expects.
+        if (session.ptList) inverse = [0];
         cursor = [4, 1];
       } else if (state.surface === 'boardPrompt') {
         // CompleteBoard asks on row two; cancellation preserves this list.
