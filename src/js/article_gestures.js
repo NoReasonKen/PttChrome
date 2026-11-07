@@ -121,7 +121,8 @@ export class ArticleGestures {
     // A list being swiped or left stays while it can be left: its own paging
     // redraws the screen meanwhile.
     // During a handoff the page shown is the revealed one, whatever PTT draws
-    // meanwhile: a swipe on it goes on (#119).
+    // meanwhile: a swipe or the drawer on it goes on (#119). The page that
+    // takes over is checked afresh.
     if (this.stack.handingOff) {
       this.identity = null;
       return;
@@ -153,7 +154,7 @@ export class ArticleGestures {
       return;
     }
     const level = this._swipeLevel();
-    if (!event.isPrimary || !level || this._otherModalOpen()) return;
+    if (!event.isPrimary || !level || this._otherModalOpen() || this.exitSettling) return;
     if (this.settling) {
       if (!this.opened || !this.root) return;
       // A fresh contact is intentional input, unlike the opening drag's release.
@@ -174,20 +175,29 @@ export class ArticleGestures {
 
   // A page revealed during a handoff is the page (#119): a swipe right on it
   // is a Back made meanwhile, which shows the next lower page at once while
-  // PTT follows (#125). It has no drawer until the real page takes over.
+  // PTT follows (#125); a swipe left on a revealed article opens its drawer,
+  // whose actions wait for the real page to take over.
   _startOnLayer(event) {
     if (this.track) return this._cancel();
     const layer = this.stack.shownLayer();
     const target = event.target;
-    if (!event.isPrimary || !readEffectivePrefs().articleHorizontalGestures || this._otherModalOpen()) return;
-    if (!layer?.el.contains(target) || target.closest(EXCLUDED) || !this.stack.nextReveal()) return;
-    if (this.core.mobileSelectMode || !window.getSelection().isCollapsed) return;
+    if (!layer || !event.isPrimary || !readEffectivePrefs().articleHorizontalGestures || this._otherModalOpen()) return;
+    if (this.settling) {
+      if (!this.opened) return;
+      this._finishDrawerSettle(true);
+    }
+    const allowExit = !!this.stack.nextReveal();
+    const allowOpen = this.stack.showsArticleLayer();
+    if (!this.opened) {
+      if (!layer.el.contains(target) || target.closest(EXCLUDED) || !(allowExit || allowOpen)) return;
+      if (this.core.mobileSelectMode || !window.getSelection().isCollapsed) return;
+    }
     this.track = {
       id: event.pointerId,
       level: null,
       layer,
       gesture: new ArticleHorizontalGesture({
-        width: window.innerWidth, opened: false, allowExit: true, allowOpen: false, x: event.clientX, y: event.clientY, t: event.timeStamp
+        width: window.innerWidth, opened: this.opened, allowExit, allowOpen, x: event.clientX, y: event.clientY, t: event.timeStamp
       })
     };
     layer.el.addEventListener('touchmove', this._nativeTouchMove, { capture: true, passive: false });
@@ -202,7 +212,7 @@ export class ArticleGestures {
     if (this.opened || snapshot.operation) {
       this._consume(event);
       if (snapshot.operation) {
-        if (track.layer) {
+        if (snapshot.operation === 'exit' && track.layer) {
           this._ensureLayerExit(track.layer);
           this.exitDistance = snapshot.distance;
           if (!this.frame) this.frame = requestAnimationFrame(() => {
@@ -236,8 +246,8 @@ export class ArticleGestures {
     const track = this.track;
     if (!track || event.pointerId !== track.id) return;
     this.track = null;
+    track.layer?.el.removeEventListener('touchmove', this._nativeTouchMove, true);
     if (!track.gesture.operation) {
-      track.layer?.el.removeEventListener('touchmove', this._nativeTouchMove, true);
       if (this.opened && track.gesture.axis) {
         this._consume(event);
         this.suppressClickUntil = performance.now() + 400;
@@ -247,8 +257,9 @@ export class ArticleGestures {
     this._consume(event);
     this.suppressClickUntil = performance.now() + 400;
     const result = track.gesture.release(event.timeStamp, canceled);
-    if (track.layer) return this._settleLayerExit(result.exit);
-    if (track.gesture.operation === 'exit') return this._settleExit(result.exit);
+    if (track.gesture.operation === 'exit') {
+      return track.layer ? this._settleLayerExit(result.exit) : this._settleExit(result.exit);
+    }
     this._settle(result.opened);
   }
 
@@ -256,16 +267,13 @@ export class ArticleGestures {
     const track = this.track;
     if (!track) return;
     const opened = track.gesture.opened;
-    const recognized = !!track.gesture.operation;
+    const operation = track.gesture.operation;
     this.track = null;
-    if (recognized) {
-      this.suppressClickUntil = performance.now() + 400;
-      if (track.layer) return this._settleLayerExit(false);
-      if (this.exitUnderlay) return this._settleExit(false);
-      this._settle(opened);
-    } else if (track.layer) {
-      track.layer.el.removeEventListener('touchmove', this._nativeTouchMove, true);
-    }
+    track.layer?.el.removeEventListener('touchmove', this._nativeTouchMove, true);
+    if (!operation) return;
+    this.suppressClickUntil = performance.now() + 400;
+    if (operation === 'exit') return track.layer ? this._settleLayerExit(false) : this._settleExit(false);
+    this._settle(opened);
   }
 
   // The revealed page and its App Bar slide over the page a Back would show
@@ -423,9 +431,19 @@ export class ArticleGestures {
   }
 
   // A Back made meanwhile reveals the next lower page at once, and PTT follows
-  // it (#125); one made during the slide does so once the leave is sent.
+  // it (#125); one made during the slide does so once the leave is sent. A
+  // drawer open on the revealed page closes first, as a sheet does.
   backDuringHandoff() {
+    if (this.root) return this.close();
     if (!this.stack.backDuringHandoff() && this.backsDuringSlide != null) this.backsDuringSlide++;
+  }
+
+  // A key for PTT made on a page revealed during the handoff (the toolbar, the
+  // keypad): kept in order with the others made meanwhile and sent once the
+  // real page takes over.
+  holdKey(key, mods) {
+    const view = this.core.view;
+    this.stack.holdKey(() => view.sendKeyAsUser(key, mods));
   }
 
   // Whether Back is showing the page of `kind` again from its live layer, and
@@ -485,7 +503,7 @@ export class ArticleGestures {
   _settleExit(commit) {
     if (!this.exitUnderlay) return;
     this._stopMotion();
-    this.settling = true;
+    this.exitSettling = true;
     const identity = this.identity;
     const duration = slideDuration();
     this.backsDuringSlide = commit ? 0 : null;
@@ -579,7 +597,8 @@ export class ArticleGestures {
   _removeExit() {
     this._dropLayerExit();
     if (!this.exitUnderlay) return;
-    this._stopMotion();
+    // A drawer opened on the revealed page owns the motion from then on.
+    if (!this.root) this._stopMotion();
     this.backsDuringSlide = null;
     if (!this.stack.handingOff) {
       const layer = this.stack.revealable();
@@ -589,8 +608,9 @@ export class ArticleGestures {
     releaseSurfaces(this.exitSurfaces);
     this.exitUnderlay.remove();
     this.exitUnderlay = this.exitSurfaces = null;
-    this.settling = false;
-    this.core.setModalOpen(MODAL_SOURCE, false);
+    this.exitSettling = false;
+    // A drawer opened on the revealed page keeps the modal they share.
+    if (!this.root) this.core.setModalOpen(MODAL_SOURCE, false);
   }
 
   _ensurePanel() {
@@ -651,14 +671,25 @@ export class ArticleGestures {
     this.unregisterDismiss = this.core.registerSheetDismiss(() => this.close());
   }
 
+  // An action from the drawer of a page revealed during a handoff is
+  // remembered until the real page takes over (#119); one that cannot run
+  // there then says so.
   _runShortcut(action) {
-    const gate = !this.opened ? 'closed' : this.settling ? 'settling' : !this.available() ? 'unavailable' : null;
+    const held = this.stack.handingOff;
+    const gate = !this.opened ? 'closed' : this.settling ? 'settling' : !held && !this.available() ? 'unavailable' : null;
     if (gate) return this.diag.log('shortcutRefused', null, { action: action.key, gate });
     this.close(true);
-    if (!mobileToolbarContext(this.core).threadNav) return;
-    this.core.noteUserAction();
-    if (action.key === 'author' || action.key === 'thread') this.core.articleShortcutSearch.start(action.key);
-    else this.core.view.sendKeyAsUser(action.key);
+    const run = () => {
+      if (!mobileToolbarContext(this.core).threadNav) {
+        if (held) this.core.view.flashListHint?.(i18n('stack_actionNotRun'), STACK_NOTICE_MS);
+        return;
+      }
+      this.core.noteUserAction();
+      if (action.key === 'author' || action.key === 'thread') this.core.articleShortcutSearch.start(action.key);
+      else this.core.view.sendKeyAsUser(action.key);
+    };
+    if (held) this.stack.whenReady(run);
+    else run();
   }
 
   _geometry() {
@@ -716,7 +747,8 @@ export class ArticleGestures {
     this.root?.remove();
     this.root = this.panel = null;
     this.opened = this.settling = false;
-    this.core.setModalOpen(MODAL_SOURCE, false);
+    // The exit of a handoff keeps the modal they share.
+    if (!this.exitUnderlay) this.core.setModalOpen(MODAL_SOURCE, false);
     if (this.previousFocus?.isConnected && this.previousFocus !== this.core.inputArea) {
       this.previousFocus.focus({ preventScroll: true });
     }
@@ -726,15 +758,15 @@ export class ArticleGestures {
   close(immediate = false) {
     if (this.track?.layer) this._cancel();
     this.track = null;
+    if (this.root) return immediate ? this._remove() : this._settle(false);
     // Leaving the article is what a handoff expects; it ends on its own.
     if (this.stack.handingOff) return;
-    if (this.exitUnderlay) return this._removeExit();
-    if (immediate) this._remove();
-    else this._settle(false);
+    if (this.exitUnderlay) this._removeExit();
   }
 
   // Kept layers survive resizing: a revealed layer re-renders at the new
-  // width when it is shown (fitViewport). A handoff keeps its swipes.
+  // width when it is shown (fitViewport). A handoff keeps its swipes and
+  // drawer.
   _resize() {
     if (!this.stack.handingOff && (this.track || this.exitUnderlay)) this.close(true);
     else if (this.root) {

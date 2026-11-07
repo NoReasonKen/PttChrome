@@ -1527,12 +1527,16 @@ TermView.prototype = {
     }
     // Leaving a page for the page revealed under it (#28, #30): only that
     // leave reaches PTT until the real page takes over. A Back reveals the
-    // next lower page at once (#125), whatever PTT is busy with meanwhile.
-    // Toolbar keys come through here too, past the modal gate that holds the
-    // hardware keyboard.
-    if (this.bbscore.articleGestures?.holdsInput()) {
-      if (isPlainBack(e)) this.bbscore.articleGestures.backDuringHandoff();
+    // next lower page at once (#125), whatever PTT is busy with meanwhile;
+    // other keys made on the revealed page are sent once it takes over
+    // (#119). Toolbar and keypad keys come through here, past the modal gate
+    // that holds the hardware keyboard.
+    var gestures = this.bbscore.articleGestures;
+    if (gestures?.holdsInput()) {
       e.preventDefault();
+      if (isPlainBack(e)) gestures.backDuringHandoff();
+      else if (gestures.stack.handingOff && MODIFIER_KEY_NAMES.indexOf(e.key) < 0)
+        gestures.holdKey(e.key, { ctrlKey: e.ctrlKey, altKey: e.altKey });
       return;
     }
     // 序列化操作（AID 跳文／長推文）在途：程式化的鍵序列擁有這條線路，使用者的鍵

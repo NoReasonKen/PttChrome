@@ -106,7 +106,8 @@ export class NavigationStack {
     const ms = performance.now() - t;
     if (!layer) return;
     const title = document.querySelector('#mobileAppBar .mobileAppBarTitle')?.textContent || board;
-    this.pending = { kind, board, id, layer, appBar: this.core._screenContext?.appBar, title };
+    const toolbar = this.core._screenContext;
+    this.pending = { kind, board, id, layer, appBar: toolbar?.appBar, toolbar, title };
     this._diagCost(kind, layer.el, ms, this.pending);
   }
 
@@ -411,15 +412,19 @@ export class NavigationStack {
     return this._revealed()?.appBar || null;
   }
 
-  // While a layer is only revealed, the toolbar shows that page without its
-  // actions; they return once the real page is usable. An article shown from
-  // its layer keeps its comment action (#121).
+  // A revealed page keeps the toolbar it had (#119): its panels open at once,
+  // and what it sends PTT waits for the real page to take over. The dark
+  // fallback and a deleted source kept shown have no actions; such an
+  // article keeps its comment action (#121).
   toolbarContext() {
     const shown = this.gone || this.handoff;
     if (!shown) return null;
+    const appBar = shown.appBar || EMPTY_TOOLBAR_CONTEXT.appBar;
+    const h = this.handoff;
+    if (h?.layer && h.toolbar) return { ...h.toolbar, appBar, locked: false };
     const push = this.showsArticleLayer() && commentBarEnabled(readEffectivePrefs());
     const refresh = this.refreshesRevealed();
-    return { ...EMPTY_TOOLBAR_CONTEXT, appBar: shown.appBar || EMPTY_TOOLBAR_CONTEXT.appBar, push, refresh, locked: true };
+    return { ...EMPTY_TOOLBAR_CONTEXT, appBar, push, refresh, locked: true };
   }
 
   // The shown page is an article not usable as a real page yet: revealed while
@@ -470,15 +475,28 @@ export class NavigationStack {
     if (!this.remember({ run, drop: () => this._notRun() })) run();
   }
 
-  // A refresh (pull, toolbar or F5) can refresh a list revealed before PTT
+  // A refresh (pull, toolbar or F5) can refresh a page revealed before PTT
   // has caught up (#124).
   refreshesRevealed() {
+    return !!this.handoff?.layer;
+  }
+
+  // A key for PTT made on the revealed page (`send` sends it): remembered
+  // like any action, but keys made one after another are all kept, in order,
+  // and sent together once the real page takes over.
+  holdKey(send) {
     const h = this.handoff;
-    return !!h?.layer && this._shownTarget() !== PAGE.ARTICLE;
+    if (!h) return false;
+    if (h.action?.sends) {
+      h.action.sends.push(send);
+      return true;
+    }
+    const sends = [send];
+    return this.remember({ sends, run: () => sends.forEach(key => key()), drop: () => this._notRun() });
   }
 
   // Such a refresh replaces any remembered action and runs once PTT shows the
-  // real page. The real page then keeps PTT's position: the refresh replaces
+  // real page. A real list then keeps PTT's position: the refresh replaces
   // what the layer showed.
   refreshWhenReady(run) {
     return this.refreshesRevealed() && this.remember({ run, drop: () => this._notRun(), refresh: true });
@@ -618,6 +636,7 @@ export class NavigationStack {
     });
     h.layer = revealed?.layer || null;
     h.appBar = revealed?.appBar || null;
+    h.toolbar = revealed?.toolbar || null;
     h.reveal?.(h.layer, revealed?.title || '', h.appBar);
     if (h.layer) {
       h.layer.show(true);
@@ -667,7 +686,7 @@ export class NavigationStack {
       layer, level, target: revealed?.page.kind || (level === PAGE.ARTICLE ? PAGE.ARTICLE_LIST : null), id: revealed?.page.id,
       results: !!revealed?.page.results,
       board: this._top()?.board || core.view._articleBoard,
-      identity: openArticleKey(core), appBar: revealed?.appBar || null,
+      identity: openArticleKey(core), appBar: revealed?.appBar || null, toolbar: revealed?.toolbar || null,
       sentAt: performance.now(), presentedAt: null, touches: 0, holds: 0, lastScrollAt: -Infinity,
       timer: null, followTimer: null, listeners: [], layerListeners: [], finish, follow, reveal, hint, action: null,
       // The Backs PTT is still to follow after this one, in order: the page each
@@ -879,7 +898,8 @@ export class NavigationStack {
     // A deleted source stays shown over the board list PTT stopped on.
     const gone = how === 'gone';
     this._mark('end', { how });
-    if (how === 'presented' && h.layer && !h.action?.refresh) h.layer.alignReal(core);
+    const listRefresh = h.action?.refresh && this._shownTarget() !== PAGE.ARTICLE;
+    if (how === 'presented' && h.layer && !listRefresh) h.layer.alignReal(core);
     this._cleanup();
     core.view.setListLoading?.(false, PENDING_OWNER);
     // The revealed page is now PTT's real page; its layer is spent.

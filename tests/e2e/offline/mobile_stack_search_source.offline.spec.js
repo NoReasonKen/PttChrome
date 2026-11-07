@@ -798,3 +798,81 @@ test('a swipe on the revealed source goes on while PTT reopens the source under 
   await expect(page.locator(ARTICLE_LAYER)).toHaveCount(0);
   await waitList(page, FULL_LIST);
 });
+
+test('the keypad\'s ← on the revealed source reveals its list at once, before PTT has answered', async ({ page }) => {
+  const release = await revealSourceHeld(page);
+  await page.locator('#mobileToolbar [data-key="__keys"]').tap();
+  await page.locator('#mobileKeypad [data-key="ArrowLeft"]').tap();
+  await expect(page.locator(LIST_LAYER)).toBeVisible();
+  await expect(page.locator(ARTICLE_LAYER)).toHaveCount(0);
+  await release();
+  await expect(page.locator(LIST_LAYER)).toHaveCount(0, { timeout: 10000 });
+  await waitList(page, FULL_LIST);
+});
+
+// A swipe left across the revealed source, from its right edge.
+async function swipeLeftOver(page, root) {
+  const box = await page.locator(root).boundingBox();
+  const y = box.y + Math.min(100, box.height / 2);
+  const contact = await beginArticleTouch(page, { x: box.x + box.width - 24, y });
+  await contact.move({ x: box.x + box.width - 140, y });
+  await contact.move({ x: box.x + 12, y });
+  await contact.release();
+}
+
+// Counts the shortcut searches started from now on.
+const countSearchStarts = page => page.evaluate(() => {
+  const search = window.__app.articleShortcutSearch;
+  const start = search.start.bind(search);
+  window.__searchStarts = 0;
+  search.start = kind => {
+    window.__searchStarts++;
+    return start(kind);
+  };
+});
+const searchStarts = page => page.evaluate(() => window.__searchStarts);
+
+test('a left swipe on the revealed source opens its drawer at once, and a search from it runs once the source takes over', async ({ page }) => {
+  const release = await revealSourceHeld(page);
+  await countSearchStarts(page);
+  await swipeLeftOver(page, ARTICLE_LAYER);
+  await expect(page.locator('[data-article-drawer]')).toHaveAttribute('data-state', 'open');
+  await page.locator('[data-article-shortcut="author"]').tap();
+  await expect(page.locator('[data-article-drawer]')).toHaveCount(0);
+  await expect.poll(() => pendingShown(page)).toBe(true);
+  expect(await searchStarts(page)).toBe(0);
+  await release();
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+  expect(await searchStarts(page)).toBe(1);
+  expect(await pendingShown(page)).toBe(false);
+});
+
+test('the toolbar of the revealed source opens its panels at once, and a key from it reaches the source once it takes over', async ({ page }) => {
+  const release = await revealSourceHeld(page);
+  await page.evaluate(() => {
+    const reading = window.__app.easyReading;
+    const stick = reading._stickBottom.bind(reading);
+    window.__ends = [];
+    reading._stickBottom = () => {
+      window.__ends.push(!!window.__app.articleGestures.stack.handingOff);
+      return stick();
+    };
+  });
+  const toolbar = key => page.locator(`#mobileToolbar [data-key="${key}"]`);
+  await toolbar('__more').tap();
+  await expect(page.locator('[data-sheet="more"]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-sheet="more"]')).toHaveCount(0);
+  await toolbar('__keys').tap();
+  await expect(page.locator('#mobileKeypad')).toBeVisible();
+  await toolbar('__keys').tap();
+  await toolbar('__end').tap();
+  await expect.poll(() => pendingShown(page)).toBe(true);
+  expect(await page.evaluate(() => window.__ends)).toEqual([]);
+  await release();
+  await waitArticle(page, 'Alpha');
+  await settled(page);
+  await expect.poll(() => page.evaluate(() => window.__ends)).toEqual([false]);
+  expect(await pendingShown(page)).toBe(false);
+});

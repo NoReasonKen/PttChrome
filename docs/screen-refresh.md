@@ -54,10 +54,10 @@ so its budget is `aid_navigation.SLOW_STEP_BUDGET` (as the board entry of an AID
 - Home dashboard: `home_dashboard`'s `state.visible` (it recognises the main menu itself). It is checked first; while favorites are being fetched, a screen on the favorites list also counts as the home dashboard, so sending is blocked by the busy notice.
 - Anything else (the native main menu once the panel is collapsed, the mailbox list, an open prompt, the editor…): not taken over. F5 goes back to the browser (while connected, beforeunload asks first),
   and the toolbar does not show 「重整」.
-- A list or home dashboard shown first from its live layer on Back, before PTT has caught up (`NavigationStack.refreshesRevealed`, [#124](https://github.com/NoReasonKen/PttChrome/issues/124)):
+- A list, home dashboard or article shown first from its live layer on Back, before PTT has caught up (`NavigationStack.refreshesRevealed`, [#124](https://github.com/NoReasonKen/PttChrome/issues/124)):
   `target()` returns `{ kind: 'revealed' }`, and all three entry points work as usual (the handoff's modal gate does not block pulling down, and F5 is caught first by `term_view`'s
   keydown). This refresh is recorded as the handoff's pending action (`refreshWhenReady`, replacing any click or menu action remembered before), with the progress bar showing;
-  once the real screen takes over, `refresh()` runs again (cooldown and busy checks as usual), and the real screen is not aligned to the layer's reading position but stays where PTT is.
+  once the real screen takes over, `refresh()` runs again (cooldown and busy checks as usual), and a real list is not aligned to the layer's reading position but stays where PTT is (an article keeps the layer's position).
   When the handoff times out, the action is dropped with the notice 「PTT 尚未就緒，操作未執行」 ("PTT is not ready; the action was not run").
 - Once a list refresh (article list or board list) is sent, it spends that list's live layer (`NavigationStack.spend('refresh', list)`,
   [#125](https://github.com/NoReasonKen/PttChrome/issues/125)): actions remembered during the handoff are void, the rows kept for that list (#120, #122) are released,

@@ -166,6 +166,17 @@ export const MobileToolbar = ({
     [pttchrome],
   );
 
+  // An action on a page revealed during a handoff waits for the real page to
+  // take over (#119); the toolbar itself responds at once.
+  const whenReady = useCallback(
+    (run) => {
+      const stack = pttchrome.articleGestures?.stack;
+      if (stack?.handingOff) stack.whenReady(run);
+      else run();
+    },
+    [pttchrome],
+  );
+
   const sendKey = useCallback(
     (key, mods) => {
       // 等待進度條：接著真的送出 byte 才會亮（mobile_busy.js）。
@@ -192,12 +203,18 @@ export const MobileToolbar = ({
   const pushAction = useCallback(() => {
     const bar = pttchrome.commentBar;
     const s = bar && bar.state;
-    // An article shown from its live layer before PTT takes over (or whose
-    // source cannot be confirmed) takes a comment only through the comment bar (#121).
+    // An article shown from its live layer before PTT takes over opens its
+    // comment bar at once (#121); a source that cannot be confirmed refuses
+    // the comment.
     const stack = pttchrome.articleGestures?.stack;
     if (stack?.showsArticleLayer?.()) {
-      if (!stack.refusesComment() && s && s.available) bar.expand();
-      return;
+      if (stack.refusesComment()) return;
+      if (s && s.available) {
+        bar.expand();
+        setPanel(null);
+        setConfirmLogout(false);
+        return;
+      }
     }
     if (s && s.available && s.folded && bar.expand()) {
       setPanel(null);
@@ -277,8 +294,9 @@ export const MobileToolbar = ({
   const onSearch = useCallback(() => {
     setPanel(null);
     setConfirmLogout(false);
-    if (onOpenSearch && context.search.length) onOpenSearch(context.search[0]);
-  }, [onOpenSearch, context]);
+    if (onOpenSearch && context.search.length)
+      whenReady(() => onOpenSearch(context.search[0]));
+  }, [onOpenSearch, context, whenReady]);
 
   // 系統分享面板（Web Share API）。**同步**呼叫：免費路徑要在這個 click 的 user
   // activation 內叫出 navigator.share（deep_link_controller.shareCurrentPostLink）。
@@ -287,8 +305,10 @@ export const MobileToolbar = ({
     setConfirmLogout(false);
     const dl = pttchrome.deepLinkController;
     if (dl && typeof dl.shareCurrentPostLink === "function")
-      dl.shareCurrentPostLink(context.appBar ? context.appBar.title : "");
-  }, [pttchrome, context]);
+      whenReady(() =>
+        dl.shareCurrentPostLink(context.appBar ? context.appBar.title : ""),
+      );
+  }, [pttchrome, context, whenReady]);
 
   // 跳到第一篇未讀：與桌機快捷鍵（預設 F7）同一個入口（unread_jump.js）。
   const onUnreadJump = useCallback(() => {
@@ -296,10 +316,12 @@ export const MobileToolbar = ({
     setConfirmLogout(false);
     const u = pttchrome.unreadJump;
     if (!u || typeof u.start !== "function") return;
-    if (typeof pttchrome.noteUserAction === "function")
-      pttchrome.noteUserAction();
-    u.start();
-  }, [pttchrome]);
+    whenReady(() => {
+      if (typeof pttchrome.noteUserAction === "function")
+        pttchrome.noteUserAction();
+      u.start();
+    });
+  }, [pttchrome, whenReady]);
 
   // 設為全部已讀：與桌機右鍵選單同一個入口（mark_all_read.js）。
   const onMarkAllRead = useCallback(() => {
@@ -307,10 +329,12 @@ export const MobileToolbar = ({
     setConfirmLogout(false);
     const m = pttchrome.markAllRead;
     if (!m || typeof m.start !== "function") return;
-    if (typeof pttchrome.noteUserAction === "function")
-      pttchrome.noteUserAction();
-    m.start();
-  }, [pttchrome]);
+    whenReady(() => {
+      if (typeof pttchrome.noteUserAction === "function")
+        pttchrome.noteUserAction();
+      m.start();
+    });
+  }, [pttchrome, whenReady]);
 
   // 操作說明：送 h（與實體鍵盤同一條分派）；好讀開著時 PTT 的說明選單會變成 bottom sheet
   // （components/HelpMenu）。
@@ -381,8 +405,9 @@ export const MobileToolbar = ({
   const onLogoutYes = useCallback(() => {
     setConfirmLogout(false);
     setPanel(null);
-    if (typeof pttchrome.startLogout === "function") pttchrome.startLogout();
-  }, [pttchrome]);
+    if (typeof pttchrome.startLogout === "function")
+      whenReady(() => pttchrome.startLogout());
+  }, [pttchrome, whenReady]);
 
   if (!visible) return null;
 
