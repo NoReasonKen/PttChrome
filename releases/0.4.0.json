@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "version": "0.4.0",
+  "tag": "android-fork-v0.4.0",
+  "publishedAt": null,
+  "previousRelease": {
+    "version": "0.3.1",
+    "sourceCommit": "cf133db5c96dd6e91656ca26597bf8394610243f"
+  },
+  "nativeChanged": true,
+  "summary": {
+    "zhTW": [
+      "新增可選的 Pixiv 數字查詢：在「增強功能」啟用後，點文章或推文中的獨立數字，可預覽對應的 Pixiv 使用者與作品並開啟頁面；需更新至此版 APK。",
+      "按返回時，下層的看板列表、文章列表、搜尋結果或原文會立即照離開時的樣子顯示，保留順序、選取、捲動位置與已讀標記，不再被 PTT 回傳的頁面打亂；PTT 跟上之前即可點選、長按、使用工具列與抽屜或再滑動返回，需要 PTT 的動作會在同步後執行。",
+      "返回列表時若 PTT 有更新的文章，會短暫提示「有新文章」；往下捲動時補載離開期間新增的文章。",
+      "從同標題／同作者搜尋返回原文時，保留閱讀位置與圖片預覽，並把期間新增的推文接在文末；文章被修改時提示「文章已更新」，原文無法重新開啟時保留顯示並不送出推文。搜尋結果改為從右側滑入，也不再出現斷線重連的提示。",
+      "滑動手勢改為移動一小段距離後才決定方向，減少誤把捲動當成滑動，且滑動返回啟動更快。",
+      "「還原預設值」需先確認，窄螢幕改放在「關於」最後；修正對話框的返回鍵傳到 PTT、選單動畫中或返回後工具列點擊無反應、開啟新文章未從頂端顯示、設定分類捲動位置殘留，以及偶爾按返回會離開網站的問題。除錯錄製也會記錄頁面錯誤。"
+    ],
+    "en": [
+      "Add opt-in Pixiv numeric-ID lookup: after enabling it in Enhancements, tap a standalone number in an article or comment to preview the matching Pixiv user and artwork and open their pages. Requires this APK.",
+      "Back now shows the board list, article list, search results or source article below exactly as the reader left it, keeping order, selection, scroll position and read marks instead of merging PTT's returned page. Taps, long presses, the toolbar, the drawer and further swipe-backs respond before PTT catches up; actions that need PTT run once it does.",
+      "Returning to a list briefly shows a new-articles notice when PTT has newer posts, and articles posted meanwhile load as the reader scrolls down.",
+      "Back from same-subject or same-author search keeps the source article's reading position and image previews and appends comments added meanwhile; an edited article shows an updated notice, and a source that cannot be reopened stays shown without sending comments. Search results now slide in from the right, and no reconnect notices appear.",
+      "Swipe gestures choose their direction only after a short travel, so scrolling is less often mistaken for a swipe, and swipe-back starts faster.",
+      "Restore defaults asks for confirmation and moves to the end of About on narrow screens. Fix dialog Back reaching PTT, toolbar taps ignored during menu animations or after Back, a newly opened article not starting at the top, stale Settings category scroll, and Back occasionally leaving the site. Debug recordings also log page errors."
+    ]
+  },
+  "commits": [
+    {
+      "sha": "c84557e68238e54c5cc483d46dafc7005edb07d3",
+      "subject": "Label issues resolved when they close as completed"
+    },
+    {
+      "sha": "173c88551acd29a9e1531aead4f58a5f01d855f6",
+      "subject": "Reset settings category scroll after page transitions"
+    },
+    {
+      "sha": "3e4e58cd326fae5032b8e37c3f024fbcb90e8cd4",
+      "subject": "Confirm Restore defaults and keep it once on narrow screens"
+    },
+    {
+      "sha": "63fd6e5c699680e4286bdc026aa6f6161d80c885",
+      "subject": "Count only visible settings resets in the search history test"
+    },
+    {
+      "sha": "77da869a93baf61dd075b0f7706f91bee89123ba",
+      "subject": "Fix two offline e2e flakes found by the nightly hunt"
+    },
+    {
+      "sha": "aeabff42e024ac5f6b02b60647fa66ab59a89d5b",
+      "subject": "Keep the back guard's self-navigation window until its hashchange"
+    },
+    {
+      "sha": "d9f0f45d9e530a3594c1aa5c8ec4e7ab886cd220",
+      "subject": "Reduce swipe startup delay by preparing the next list layer (#69) (#115)"
+    },
+    {
+      "sha": "a0b87de86c711359dc1c1f4514fb99250cebb5f8",
+      "subject": "Keep dialog Back actions from reaching PTT"
+    },
+    {
+      "sha": "25f28a8163ff2cdd3a54651e6385a96f7ed9f056",
+      "subject": "Centralize shared mobile chrome colors"
+    },
+    {
+      "sha": "c3edc18a94cd0524031daebc7de9ce7c80639ebb",
+      "subject": "Clarify Settings navigation and article gesture documentation"
+    },
+    {
+      "sha": "ffd46aef8c5fe41fd5e4e1263e7a390ca0261808",
+      "subject": "Fix upstream PTT screen compilation with ordered headers"
+    },
+    {
+      "sha": "4dd81687b5d2e9b7086f718d35b53ac52f59c03b",
+      "subject": "Refresh upstream PTT screen fixtures and command aliases (#130)"
+    },
+    {
+      "sha": "8062ef4900dfb73724eade03c56a292b57ffe0d0",
+      "subject": "Stabilize settled-result and dialog Back regressions"
+    },
+    {
+      "sha": "7a1dd70660339c8e2a3f125d893614b89cca3dc5",
+      "subject": "Confirm swipe intent before locking gesture direction"
+    },
+    {
+      "sha": "19123bde845cdd8c0a532f2d12bcff70f92165cd",
+      "subject": "Preserve touch targets while mobile menus animate (#136)"
+    },
+    {
+      "sha": "0505bcaab2d0c7f83417e98f5d2678629ec22f38",
+      "subject": "Deduplicate CI failure diagnostics across polling snapshots"
+    },
+    {
+      "sha": "ef9b6c9dfa9ccf47f5780672e4a8dd23724e2f9c",
+      "subject": "Add opt-in Pixiv numeric-ID previews for Android (#141)"
+    },
+    {
+      "sha": "f4811f2c2a813f065e1fd33a41b8f4311ef07d4a",
+      "subject": "Reset article scroll position when rebuilding content"
+    },
+    {
+      "sha": "4ee88ea406e3694494d17209aefb2fc14d6f1df3",
+      "subject": "Strengthen layout reproduction and recording diagnostics"
+    },
+    {
+      "sha": "fb8203499d5d24cceeb75a3821b04fdfb1220cd1",
+      "subject": "Keep live layers as the reader left them while PTT follows (#119) (#149)"
+    },
+    {
+      "sha": "0934d12752600fe54f528c938dd57df544645feb",
+      "subject": "Log page errors into the debug recording"
+    },
+    {
+      "sha": "1700d31584fee4130fa4bdd31246abd9ef3d9c3b",
+      "subject": "Give the page stack's handoff its own module and one route"
+    },
+    {
+      "sha": "3a1c6fc16d90832e84dd79cd4326087e71dc6296",
+      "subject": "Restore a stacked article through public methods"
+    },
+    {
+      "sha": "133dfd01d03f2fe6655e027e2d50d996e83c92c9",
+      "subject": "Keep a list layer's page in one object"
+    }
+  ]
+}
