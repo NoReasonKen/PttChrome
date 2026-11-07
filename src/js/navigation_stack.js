@@ -134,6 +134,16 @@ export class NavigationStack {
 
   // A debug recording keeps each handoff's timeline (#24): the send, each
   // redraw and settle, the presentation and the end, in ms since the send.
+  // What became of an action made on the revealed page, for debug recordings:
+  // remembered (replacing another), a key held with the others, run, or
+  // dropped and why.
+  _diagAction(outcome, info) {
+    const rec = this.core.debugRecorder;
+    if (!rec?.isRecording) return;
+    const h = this.handoff;
+    rec.log('stack.action', { outcome, ms: h ? Math.round(performance.now() - h.sentAt) : null, presented: h?.presentedAt != null, ...info });
+  }
+
   _mark(mark, info) {
     const rec = this.core.debugRecorder;
     const h = this.handoff;
@@ -483,6 +493,7 @@ export class NavigationStack {
   remember(action) {
     const h = this.handoff;
     if (!h) return false;
+    this._diagAction('remembered', { replaced: !!h.action, refresh: !!action.refresh, keys: action.sends?.length || 0 });
     h.action = action;
     this.core.view.setListLoading?.(true, PENDING_OWNER);
     return true;
@@ -492,7 +503,9 @@ export class NavigationStack {
   // up, or run at once when the real page is already shown. A dropped one says
   // it did not run.
   whenReady(run) {
-    if (!this.remember({ run, drop: () => this._notRun() })) run();
+    if (this.remember({ run, drop: () => this._notRun() })) return;
+    this._diagAction('runNow', {});
+    run();
   }
 
   // A refresh (pull, toolbar or F5) can refresh a page revealed before PTT
@@ -509,6 +522,7 @@ export class NavigationStack {
     if (!h) return false;
     if (h.action?.sends) {
       h.action.sends.push(send);
+      this._diagAction('keyHeld', { keys: h.action.sends.length });
       return true;
     }
     const sends = [send];
@@ -519,7 +533,9 @@ export class NavigationStack {
   // real page. A real list then keeps PTT's position: the refresh replaces
   // what the layer showed.
   refreshWhenReady(run) {
-    return this.refreshesRevealed() && this.remember({ run, drop: () => this._notRun(), refresh: true });
+    if (this.refreshesRevealed()) return this.remember({ run, drop: () => this._notRun(), refresh: true });
+    this._diagAction('dropped', { reason: 'refreshWithoutLayer' });
+    return false;
   }
 
   _notRun() {
@@ -638,7 +654,7 @@ export class NavigationStack {
   backDuringHandoff() {
     const h = this.handoff;
     if (!h) return false;
-    this._forget(h);
+    this._forget(h, 'back');
     const last = h.legs[h.legs.length - 1] || h;
     // The dark fallback waits for whatever PTT shows; nothing is known below.
     const next = last.target && backPastRevealed(this.stack);
@@ -680,13 +696,14 @@ export class NavigationStack {
   // reader left them.
   spend(action, list = 'article') {
     if (!spendsLayer(action)) return;
-    if (this.handoff) this._forget(this.handoff);
+    if (this.handoff) this._forget(this.handoff, 'spent:' + action);
     this.core.view.releaseListRows?.(list);
     this._mark('spent', { action, list });
   }
 
   // Drops a remembered action without running it.
-  _forget(h) {
+  _forget(h, reason) {
+    if (h.action) this._diagAction('dropped', { reason });
     h.action = null;
     this.core.view.setListLoading?.(false, PENDING_OWNER);
   }
@@ -920,6 +937,7 @@ export class NavigationStack {
     // A deleted source stays shown over the board list PTT stopped on.
     const gone = how === 'gone';
     this._mark('end', { how });
+    if (h.action) this._diagAction(how === 'presented' ? 'run' : 'dropped', { reason: how, keys: h.action.sends?.length || 0 });
     const listRefresh = h.action?.refresh && this._shownTarget() !== PAGE.ARTICLE;
     if (how === 'presented' && h.layer && !listRefresh) h.layer.alignReal(core);
     this._cleanup();

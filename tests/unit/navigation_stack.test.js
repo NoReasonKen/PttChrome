@@ -115,3 +115,22 @@ test('an action made when ready runs at once, and one dropped by a timeout gives
     vi.useRealTimers();
   }
 });
+
+// A debug recording keeps what became of each action made during a handoff
+// (#119): remembered, replaced, run or dropped, with the reason.
+test('a debug recording logs each remembered action and how it ended', () => {
+  const { core } = fakeCore();
+  const actions = [];
+  core.debugRecorder.log = (tag, info) => tag === 'stack.action' && actions.push(info);
+  core.view.setListLoading = () => {};
+  const stack = new NavigationStack(core);
+  stack.begin({ level: PAGE.BOARD_LIST, send: () => true, finish: () => {}, cancel: () => {} });
+  stack.remember({ run: () => {}, drop: () => {} });
+  stack.remember({ run: () => {}, drop: () => {} });
+  settle(core, 1, null);
+  expect(actions.map(a => [a.outcome, a.replaced ?? a.reason ?? null])).toEqual([
+    ['remembered', false], ['remembered', true], ['run', 'presented']
+  ]);
+  stack.whenReady(() => {});
+  expect(actions[actions.length - 1].outcome).toBe('runNow');
+});

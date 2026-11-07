@@ -28,6 +28,7 @@ import { LongPushSession } from './long_push_session';
 import { LogoutSession } from './logout_session';
 import { BoardNoteSkip } from './board_note_skip';
 import { HelpMenuController } from './help_menu';
+import { installToolbarDiagnostics, logToolbarContext } from './toolbar_diag';
 import { DeepLinkController } from './deep_link_controller';
 import { AutoLogin } from './auto_login';
 import { LIST_TITLE_COL_START, parseBlacklist, parseTitleBlacklist, shouldClearArticleContextOnSettle } from './comment_parse';
@@ -379,6 +380,7 @@ export const App = function() {
   this._busy = BUSY_IDLE;
   this._busyListeners = new Set();
   this.articleGestures = new ArticleGestures(this);
+  installToolbarDiagnostics(this);
 
   this.waterball = { userId: '', message: '' };
   this.appFocused = true;
@@ -940,7 +942,11 @@ App.prototype.dismissTopSheet = function() {
 App.prototype.onScreenContextChange = function(fn) {
   this._screenContextListeners.add(fn);
   // 訂閱前沒人算過（_refreshScreenContext 沒訂閱者時跳過）⇒ 先算一次現值。
-  if (this.mobile) this._screenContext = mobileToolbarContext(this);
+  if (this.mobile) {
+    var prev = this._screenContext;
+    this._screenContext = mobileToolbarContext(this);
+    logToolbarContext(this, prev, this._screenContext);
+  }
   fn(this._screenContext);
   return () => this._screenContextListeners.delete(fn);
 };
@@ -952,6 +958,7 @@ App.prototype._refreshScreenContext = function() {
   var next = this.mobile ? mobileToolbarContext(this) : EMPTY_TOOLBAR_CONTEXT;
   if (sameToolbarContext(next, this._screenContext)) return;
   if (!sameAppBar(next.appBar, this._screenContext.appBar)) this.debugRecorder?.log('appBar', next.appBar);
+  logToolbarContext(this, this._screenContext, next);
   this._screenContext = next;
   this._screenContextListeners.forEach(function(fn) { fn(next); });
 };

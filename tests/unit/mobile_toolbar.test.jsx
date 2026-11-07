@@ -10,6 +10,7 @@ import { render, fireEvent, act } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { MobileToolbar, LOGOUT_CONFIRM_MS, HAPTIC_MS } from "../../src/components/MobileToolbar";
 import { MOBILE_TOOLBAR_PX } from "../../src/js/mobile_layout";
+import { installToolbarDiagnostics, logToolbarContext, toolbarContextId } from "../../src/js/toolbar_diag";
 import { setupI18n, i18n } from "../../src/js/i18n";
 import { readValuesWithDefault, writeValues } from "../../src/js/pref_storage";
 import toolbarCss from "../../src/components/MobileToolbar/MobileToolbar.css?raw";
@@ -618,5 +619,68 @@ describe("焦點與事件邊界", () => {
       for (const t of ["mousedown", "mouseup", "click"]) window.removeEventListener(t, spy);
     }
     expect(seen).toEqual([]);
+  });
+});
+
+// A debug recording keeps each contact and click on the toolbar, the context it
+// rendered against the App's current one, and what the action did (#119).
+describe("toolbar diagnostics in a debug recording", () => {
+  const ARTICLE = { push: true, reply: true, mail: false, share: true, threadNav: true, post: false, search: [], end: true };
+
+  function recordingCore() {
+    const core = makeCore({ context: ARTICLE });
+    const entries = [];
+    core.debugRecorder = { isRecording: true, log: (tag, info) => entries.push({ tag, ...info }) };
+    core._screenContext = ARTICLE;
+    return { core, entries };
+  }
+
+  test("a tap logs its pointer events and click with the button, the rendered and current context, and the action", () => {
+    const { core, entries } = recordingCore();
+    const uninstall = installToolbarDiagnostics(core, window);
+    try {
+      renderBar(core);
+      const id = toolbarContextId(ARTICLE);
+      expect(entries).toContainEqual(expect.objectContaining({ tag: "toolbar.rendered", context: id }));
+      fireEvent.pointerDown(byKey("__end"));
+      fireEvent.pointerUp(byKey("__end"));
+      fireEvent.click(byKey("__end"));
+      const inputs = entries.filter((e) => e.tag === "toolbar.input");
+      expect(inputs.map((e) => e.type)).toEqual(["pointerdown", "pointerup", "click"]);
+      for (const e of inputs) {
+        expect(e).toMatchObject({ key: "__end", disabled: false, rendered: id, current: id, source: "page", handingOff: false });
+      }
+      expect(entries).toContainEqual(expect.objectContaining({ tag: "toolbar.action", step: "click", key: "__end", outcome: "handler" }));
+      expect(entries).toContainEqual(expect.objectContaining({ tag: "toolbar.action", step: "sendAction", action: "end", outcome: "sendKey", sent: "End" }));
+    } finally {
+      uninstall();
+    }
+  });
+
+  test("a context swapped under the finger shows as a rendered id other than the current one", () => {
+    const { core, entries } = recordingCore();
+    const uninstall = installToolbarDiagnostics(core, window);
+    try {
+      renderBar(core);
+      fireEvent.pointerDown(byKey("__end"));
+      core._screenContext = { ...ARTICLE };
+      fireEvent.click(byKey("__end"));
+      const [down, click] = entries.filter((e) => e.tag === "toolbar.input");
+      expect(down.rendered).toBe(down.current);
+      expect(click.rendered).toBe(down.current);
+      expect(click.current).not.toBe(click.rendered);
+    } finally {
+      uninstall();
+    }
+  });
+
+  test("a context change logs its old and new ids; nothing is logged when not recording", () => {
+    const { core, entries } = recordingCore();
+    const next = { ...ARTICLE, end: false };
+    logToolbarContext(core, ARTICLE, next);
+    expect(entries).toEqual([expect.objectContaining({ tag: "toolbar.context", from: toolbarContextId(ARTICLE), to: toolbarContextId(next), end: false, source: "page" })]);
+    core.debugRecorder.isRecording = false;
+    logToolbarContext(core, next, ARTICLE);
+    expect(entries).toHaveLength(1);
   });
 });

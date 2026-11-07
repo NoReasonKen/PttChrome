@@ -39,6 +39,7 @@ import { keyEventPredatesModalClose } from './modal_key_gate';
 import icon128 from '../icon/icon_128.png';
 import { MOUSE_CURSOR_URLS } from './mouse_cursors';
 import { isAndroidApp, androidNotify } from './android_bridge';
+import { toolbarDiag, handoffState } from './toolbar_diag';
 
 const DEFINE_INPUT_BUFFER_SIZE = 12;
 
@@ -1518,7 +1519,16 @@ TermView.prototype = {
     var down = new KeyboardEvent('keydown', {
       key: keyName, ctrlKey: ctrl, altKey: alt, cancelable: true
     });
+    this._keyOutcome = null;
     this.onKeyDown(down);
+    // What became of a toolbar or keypad key, for debug recordings. A single
+    // character is named only when it is a toolbar key, never typed text.
+    toolbarDiag(this.bbscore, 'key', {
+      key: keyName.length > 1 || /^[yXph]$/.test(keyName) ? keyName : 'char', ctrl: ctrl, alt: alt,
+      outcome: this._keyOutcome || (down.defaultPrevented ? 'handled' : 'passed'),
+      ...handoffState(this.bbscore)
+    });
+    this._keyOutcome = null;
     // 單一字元（手機工具列的推文 X）：真鍵盤的字元是 keypress 送的
     // （term_keyboard._onKeyDown 對單字元 return false），合成的 keydown 沒有後續
     // keypress ⇒ 沒人接手（例如 pushKeyOpensLongPush 關掉時）就補走同一條 keypress。
@@ -1531,6 +1541,7 @@ TermView.prototype = {
     // A deleted source kept shown over its board list (#121): PTT already
     // shows that list, so Back only removes the article and no key reaches PTT.
     if (this.bbscore.articleGestures?.holdsGoneArticle()) {
+      this._keyOutcome = isPlainBack(e) ? 'leftGoneArticle' : 'droppedGoneArticle';
       if (isPlainBack(e)) this.bbscore.articleGestures.leaveGoneArticle();
       e.preventDefault();
       return;
@@ -1544,9 +1555,15 @@ TermView.prototype = {
     var gestures = this.bbscore.articleGestures;
     if (gestures?.holdsInput()) {
       e.preventDefault();
-      if (isPlainBack(e)) gestures.backDuringHandoff();
-      else if (gestures.stack.handingOff && MODIFIER_KEY_NAMES.indexOf(e.key) < 0)
+      if (isPlainBack(e)) {
+        this._keyOutcome = 'backDuringHandoff';
+        gestures.backDuringHandoff();
+      } else if (gestures.stack.handingOff && MODIFIER_KEY_NAMES.indexOf(e.key) < 0) {
+        this._keyOutcome = 'heldForHandoff';
         gestures.holdKey(e.key, { ctrlKey: e.ctrlKey, altKey: e.altKey });
+      } else {
+        this._keyOutcome = gestures.stack.handingOff ? 'droppedModifier' : 'droppedBeforeHandoff';
+      }
       return;
     }
     // 序列化操作（AID 跳文／長推文）在途：程式化的鍵序列擁有這條線路，使用者的鍵
@@ -1555,6 +1572,7 @@ TermView.prototype = {
     var busyHint = serializedOpHint(this.bbscore);
     if (busyHint) {
       e.preventDefault();
+      this._keyOutcome = 'droppedBusy';
       this.flashListHint(busyHint);
       return;
     }

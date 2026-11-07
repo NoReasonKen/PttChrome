@@ -36,6 +36,7 @@ import {
   THREAD_NAV_KEYS,
   toolbarSlots,
 } from "../../js/mobile_toolbar";
+import { toolbarDiag, toolbarContextId } from "../../js/toolbar_diag";
 import "./MobileToolbar.css";
 
 // 手機底部導覽（docs/mobile.md「底部導覽」）。只在 pttchrome.mobile 時渲染。
@@ -143,6 +144,12 @@ export const MobileToolbar = ({
     );
   }, [pttchrome]);
 
+  // The context the toolbar's buttons now show, for debug recordings: the
+  // App's current context can differ while a render is pending.
+  useLayoutEffect(() => {
+    toolbarDiag(pttchrome, "rendered", { context: toolbarContextId(context) });
+  }, [pttchrome, context]);
+
   useEffect(() => {
     if (!confirmLogout) return undefined;
     const t = setTimeout(() => setConfirmLogout(false), LOGOUT_CONFIRM_MS);
@@ -173,6 +180,10 @@ export const MobileToolbar = ({
   const whenReady = useCallback(
     (run) => {
       const stack = pttchrome.articleGestures?.stack;
+      toolbarDiag(pttchrome, "action", {
+        step: "whenReady",
+        outcome: stack?.handingOff ? "toStack" : "runNow",
+      });
       if (stack?.handingOff) stack.whenReady(run);
       else run();
     },
@@ -193,11 +204,17 @@ export const MobileToolbar = ({
   const sendAction = useCallback(
     (name) => {
       const k = TOOLBAR_KEYS[name];
+      toolbarDiag(pttchrome, "action", {
+        step: "sendAction",
+        action: name,
+        outcome: "sendKey",
+        sent: k.key,
+      });
       setPanel(null);
       setConfirmLogout(false);
       sendKey(k.key, k.mods);
     },
-    [sendKey],
+    [pttchrome, sendKey],
   );
 
   // 推文：推文列收進底部導覽（js/comment_bar.js 收合模式）時展開它並叫出鍵盤，不送 X；
@@ -210,8 +227,20 @@ export const MobileToolbar = ({
     // the comment.
     const stack = pttchrome.articleGestures?.stack;
     if (stack?.showsArticleLayer?.()) {
-      if (stack.refusesComment()) return;
+      if (stack.refusesComment()) {
+        toolbarDiag(pttchrome, "action", {
+          step: "push",
+          outcome: "dropped",
+          reason: "commentRefused",
+        });
+        return;
+      }
       if (s && s.available) {
+        toolbarDiag(pttchrome, "action", {
+          step: "push",
+          outcome: "barExpanded",
+          on: "layer",
+        });
         bar.expand();
         setPanel(null);
         setConfirmLogout(false);
@@ -219,6 +248,11 @@ export const MobileToolbar = ({
       }
     }
     if (s && s.available && s.folded && bar.expand()) {
+      toolbarDiag(pttchrome, "action", {
+        step: "push",
+        outcome: "barExpanded",
+        on: "page",
+      });
       setPanel(null);
       setConfirmLogout(false);
       return;
@@ -247,7 +281,14 @@ export const MobileToolbar = ({
         });
       }
       pressSelectionRef.current = "";
-      setPanel((cur) => (cur === p ? null : p));
+      setPanel((cur) => {
+        toolbarDiag(pttchrome, "action", {
+          step: "panel",
+          panel: p,
+          outcome: cur === p ? "closed" : "opened",
+        });
+        return cur === p ? null : p;
+      });
     },
     [pttchrome],
   );
@@ -377,7 +418,14 @@ export const MobileToolbar = ({
     setPanel(null);
     setConfirmLogout(false);
     const r = pttchrome.screenRefresh;
-    if (!r || typeof r.refresh !== "function") return;
+    if (!r || typeof r.refresh !== "function") {
+      toolbarDiag(pttchrome, "action", {
+        step: "refresh",
+        outcome: "dropped",
+        reason: "noScreenRefresh",
+      });
+      return;
+    }
     if (typeof pttchrome.noteUserAction === "function")
       pttchrome.noteUserAction();
     r.refresh("toolbar");
@@ -546,6 +594,13 @@ export const MobileToolbar = ({
         aria-expanded={o.expanded}
         data-key={key}
         onClick={() => {
+          toolbarDiag(pttchrome, "action", {
+            step: "click",
+            key,
+            outcome: "handler",
+            disabled: !!o.disabled,
+            context: toolbarContextId(context),
+          });
           haptic();
           onClick();
         }}
@@ -775,6 +830,7 @@ export const MobileToolbar = ({
     <div
       id="mobileToolbar"
       className="nomouse_command mobileToolbar"
+      data-context-id={toolbarContextId(context)}
       onPointerDownCapture={onToolbarPointerDown}
       onMouseDown={keepFocus}
       onMouseUp={swallow}
