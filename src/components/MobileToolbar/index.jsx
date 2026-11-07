@@ -304,44 +304,50 @@ export const MobileToolbar = ({
 
   // A touch tap on a button of the bar or the keypad acts when the finger
   // lifts (#119): on Android, a tap that stops native momentum left by another
-  // page gets its pointer events but no click. The tap's touchend is canceled
-  // so the browser makes no click of its own: by then the action may have
-  // opened a dialog under the finger, and the click would land on it. A click
-  // that still reaches the toolbar is swallowed, so the action runs once;
-  // mouse and keyboard keep the click.
+  // page gets its pointer events but no click. A click that still follows is
+  // swallowed, so the action runs once; mouse and keyboard keep the click.
+  // The tap's own click is hit-tested where the finger lifted only after the
+  // action ran, so it may land on what the action opened there, such as the
+  // search dialog: such a click outside the toolbar is swallowed too. The tap
+  // itself goes on (its touchend is not canceled), since Android shows the
+  // soft keyboard for a field focused by a tap.
   const rootRef = useRef(null);
   const tapRef = useRef(null);
   const tapClickUntilRef = useRef(0);
   const tapClickingRef = useRef(false);
-  const tapTouchEndRef = useRef(null);
+  const strayClickRef = useRef(null);
   const tapButton = (target) => {
     const button = target?.closest?.("button");
     return button && rootRef.current?.contains(button) ? button : null;
   };
-  const stopCancelingTouchEnd = () => {
-    const pending = tapTouchEndRef.current;
-    tapTouchEndRef.current = null;
+  const stopSwallowingStrayClick = () => {
+    const pending = strayClickRef.current;
+    strayClickRef.current = null;
     if (!pending) return;
     clearTimeout(pending.timer);
-    pending.target.removeEventListener("touchend", pending.cancel);
+    window.removeEventListener("click", pending.swallow, true);
   };
-  // The touchend goes to the contact's first target, which a re-render may
-  // already have taken out of the document: listen on that node itself.
-  const cancelTouchEnd = (target) => {
-    stopCancelingTouchEnd();
-    if (!target?.addEventListener) return;
-    const cancel = (e) => {
-      stopCancelingTouchEnd();
-      if (e.cancelable) e.preventDefault();
+  const swallowStrayClick = (x, y) => {
+    stopSwallowingStrayClick();
+    const swallow = (e) => {
+      if (!e.isTrusted || rootRef.current?.contains(e.target)) return;
+      if (Math.hypot(e.clientX - x, e.clientY - y) > ARTICLE_TAP_SLOP) return;
+      stopSwallowingStrayClick();
+      e.preventDefault();
+      e.stopPropagation();
+      toolbarDiag(pttchrome, "action", {
+        step: "click",
+        outcome: "swallowedStrayAfterTap",
+      });
     };
-    target.addEventListener("touchend", cancel, { passive: false });
-    const timer = setTimeout(stopCancelingTouchEnd, TAP_CLICK_MS);
-    tapTouchEndRef.current = { target, cancel, timer };
+    window.addEventListener("click", swallow, true);
+    const timer = setTimeout(stopSwallowingStrayClick, TAP_CLICK_MS);
+    strayClickRef.current = { swallow, timer };
   };
-  useEffect(() => stopCancelingTouchEnd, []);
+  useEffect(() => stopSwallowingStrayClick, []);
   const onTapDown = useCallback((e) => {
     tapClickUntilRef.current = 0;
-    stopCancelingTouchEnd();
+    stopSwallowingStrayClick();
     const button =
       e.pointerType === "mouse" || !e.isPrimary ? null : tapButton(e.target);
     tapRef.current = button
@@ -350,7 +356,6 @@ export const MobileToolbar = ({
           x: e.clientX,
           y: e.clientY,
           button,
-          target: e.target,
         }
       : null;
   }, []);
@@ -375,7 +380,7 @@ export const MobileToolbar = ({
         key,
         outcome: "click",
       });
-      cancelTouchEnd(tap.target);
+      swallowStrayClick(e.clientX, e.clientY);
       tapClickUntilRef.current = performance.now() + TAP_CLICK_MS;
       tapClickingRef.current = true;
       try {

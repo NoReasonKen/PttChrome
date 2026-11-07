@@ -92,10 +92,12 @@ The enabled-by-default `articleHorizontalGestures` preference applies only to mo
   - `mousedown` preventDefault（不搶 `#t` 焦點）＋ mousedown/mouseup/click stopPropagation
     （App 的滑鼠入口在 window）。守護 `tests/unit/mobile_toolbar.test.jsx`。
   - A touch tap on a bar or keypad button acts on its pointerup (#119), when it lifts within `ARTICLE_TAP_SLOP` of where it landed on an
-    enabled button: on Android, a tap that stops native momentum left by another page gets pointer events but no click. That tap's
-    `touchend` is then canceled, on the node the contact started on (a re-render may have removed it), so the browser makes no click of its
-    own: it would land on whatever the action opened under the finger, such as the search dialog. A click that still reaches the toolbar
-    within `TAP_CLICK_MS` is swallowed in the capture phase, so the action runs once. Mouse and keyboard activation keep the click.
+    enabled button: on Android, a tap that stops native momentum left by another page gets pointer events but no click. A click that still
+    reaches the toolbar within `TAP_CLICK_MS` is swallowed in the capture phase, so the action runs once. The browser hit-tests the tap's
+    own click only after the action ran, so it may land on whatever the action opened under the finger, such as the search dialog: a
+    trusted click outside the toolbar within `ARTICLE_TAP_SLOP` of the lift point and within `TAP_CLICK_MS` is swallowed on `window`
+    too. The tap's `touchend` is left alone, because Android shows the soft keyboard for a field focused by a tap (the keypad's ⌨).
+    Mouse and keyboard activation keep the click.
   - A debug recording traces the toolbar (`js/toolbar_diag.js`, #119): every pointerdown, pointerup, pointercancel and click on `#mobileToolbar`
     (`toolbar.input`: button key, disabled, the context id the bar rendered against the App's current one, its source and the handoff state),
     each context the App gives it (`toolbar.context`, old → new id) and renders (`toolbar.rendered`), and what each action did:
