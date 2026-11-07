@@ -1518,15 +1518,6 @@ TermView.prototype = {
   },
 
   onKeyDown: function(e) {
-    // 序列化操作（AID 跳文／長推文）在途：程式化的鍵序列擁有這條線路，使用者的鍵
-    // 會與它競態（typeahead，協定 §2）。吞掉並給提示——條件與提示文字四條入口共用，
-    // 見 serialized_op_gate.js。
-    var busyHint = serializedOpHint(this.bbscore);
-    if (busyHint) {
-      e.preventDefault();
-      this.flashListHint(busyHint);
-      return;
-    }
     // A deleted source kept shown over its board list (#121): PTT already
     // shows that list, so Back only removes the article and no key reaches PTT.
     if (this.bbscore.articleGestures?.holdsGoneArticle()) {
@@ -1534,12 +1525,23 @@ TermView.prototype = {
       e.preventDefault();
       return;
     }
-    // Leaving an article for its revealed list (#28, #30): only that leave may
-    // reach PTT until the real list takes over. Toolbar keys come through here
-    // too, past the modal gate that holds the hardware keyboard.
+    // Leaving a page for the page revealed under it (#28, #30): only that
+    // leave reaches PTT until the real page takes over. A Back reveals the
+    // next lower page at once (#125), whatever PTT is busy with meanwhile.
+    // Toolbar keys come through here too, past the modal gate that holds the
+    // hardware keyboard.
     if (this.bbscore.articleGestures?.holdsInput()) {
       if (isPlainBack(e)) this.bbscore.articleGestures.backDuringHandoff();
       e.preventDefault();
+      return;
+    }
+    // 序列化操作（AID 跳文／長推文）在途：程式化的鍵序列擁有這條線路，使用者的鍵
+    // 會與它競態（typeahead，協定 §2）。吞掉並給提示——條件與提示文字四條入口共用，
+    // 見 serialized_op_gate.js。
+    var busyHint = serializedOpHint(this.bbscore);
+    if (busyHint) {
+      e.preventDefault();
+      this.flashListHint(busyHint);
       return;
     }
     // 手機黏滯 Ctrl：下一個按鍵改送組合鍵（用一次就解除）。重新走 sendKeyAsUser ⇒

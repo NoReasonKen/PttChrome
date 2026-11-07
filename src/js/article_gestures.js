@@ -120,6 +120,12 @@ export class ArticleGestures {
     const identity = [board, author, title, this.core.easyReading?._articleKey].join('\n');
     // A list being swiped or left stays while it can be left: its own paging
     // redraws the screen meanwhile.
+    // During a handoff the page shown is the revealed one, whatever PTT draws
+    // meanwhile: a swipe on it goes on (#119).
+    if (this.stack.handingOff) {
+      this.identity = null;
+      return;
+    }
     const leaving = this.track?.level || (this.exitUnderlay && this.exitLevel);
     const lost = leaving && leaving !== PAGE.ARTICLE ? !this._leaveable(leaving) :
       !available || (this.identity && identity !== this.identity);
@@ -718,6 +724,7 @@ export class ArticleGestures {
   }
 
   close(immediate = false) {
+    if (this.track?.layer) this._cancel();
     this.track = null;
     // Leaving the article is what a handoff expects; it ends on its own.
     if (this.stack.handingOff) return;
@@ -727,9 +734,9 @@ export class ArticleGestures {
   }
 
   // Kept layers survive resizing: a revealed layer re-renders at the new
-  // width when it is shown (fitViewport).
+  // width when it is shown (fitViewport). A handoff keeps its swipes.
   _resize() {
-    if (this.track || this.exitUnderlay) this.close(true);
+    if (!this.stack.handingOff && (this.track || this.exitUnderlay)) this.close(true);
     else if (this.root) {
       this._geometry();
       this._paint(this.opened ? window.innerWidth * DRAWER_WIDTH : 0);

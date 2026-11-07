@@ -769,3 +769,32 @@ test('a swipe on the source revealed by Back from the results reveals its list a
   await expect(page.locator(LIST_LAYER)).toHaveCount(0, { timeout: 10000 });
   await waitList(page, FULL_LIST);
 });
+
+// The source revealed by Back from the results, every key to PTT held from
+// the Back on, so PTT has not reopened it yet.
+async function revealSourceHeld(page) {
+  await sourceFromList(page);
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+  const release = await holdSends(page, /./);
+  await nativeBack(page);
+  await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__heldSends.length)).toBeGreaterThan(0);
+  return release;
+}
+
+test('a swipe on the revealed source goes on while PTT reopens the source under the finger', async ({ page }) => {
+  const release = await revealSourceHeld(page);
+  const box = await page.locator(ARTICLE_LAYER).boundingBox();
+  const y = box.y + box.height / 2;
+  const contact = await beginArticleTouch(page, { x: box.x + 20, y });
+  await contact.move({ x: box.x + 140, y });
+  // PTT answers mid-swipe: its screens arrive while the finger is down.
+  await release();
+  await page.waitForFunction(() => window.__app.articleGestures.stack.handoff?.presentedAt != null);
+  await contact.move({ x: box.x + box.width - 20, y });
+  await contact.release();
+  await expect(page.locator(ARTICLE_LAYER)).toHaveCount(0);
+  await waitList(page, FULL_LIST);
+});
