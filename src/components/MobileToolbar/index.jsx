@@ -304,22 +304,54 @@ export const MobileToolbar = ({
 
   // A touch tap on a button of the bar or the keypad acts when the finger
   // lifts (#119): on Android, a tap that stops native momentum left by another
-  // page gets its pointer events but no click. A click that still follows is
-  // swallowed, so the action runs once; mouse and keyboard keep the click.
+  // page gets its pointer events but no click. The tap's touchend is canceled
+  // so the browser makes no click of its own: by then the action may have
+  // opened a dialog under the finger, and the click would land on it. A click
+  // that still reaches the toolbar is swallowed, so the action runs once;
+  // mouse and keyboard keep the click.
   const rootRef = useRef(null);
   const tapRef = useRef(null);
   const tapClickUntilRef = useRef(0);
   const tapClickingRef = useRef(false);
+  const tapTouchEndRef = useRef(null);
   const tapButton = (target) => {
     const button = target?.closest?.("button");
     return button && rootRef.current?.contains(button) ? button : null;
   };
+  const stopCancelingTouchEnd = () => {
+    const pending = tapTouchEndRef.current;
+    tapTouchEndRef.current = null;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pending.target.removeEventListener("touchend", pending.cancel);
+  };
+  // The touchend goes to the contact's first target, which a re-render may
+  // already have taken out of the document: listen on that node itself.
+  const cancelTouchEnd = (target) => {
+    stopCancelingTouchEnd();
+    if (!target?.addEventListener) return;
+    const cancel = (e) => {
+      stopCancelingTouchEnd();
+      if (e.cancelable) e.preventDefault();
+    };
+    target.addEventListener("touchend", cancel, { passive: false });
+    const timer = setTimeout(stopCancelingTouchEnd, TAP_CLICK_MS);
+    tapTouchEndRef.current = { target, cancel, timer };
+  };
+  useEffect(() => stopCancelingTouchEnd, []);
   const onTapDown = useCallback((e) => {
     tapClickUntilRef.current = 0;
+    stopCancelingTouchEnd();
     const button =
       e.pointerType === "mouse" || !e.isPrimary ? null : tapButton(e.target);
     tapRef.current = button
-      ? { id: e.pointerId, x: e.clientX, y: e.clientY, button }
+      ? {
+          id: e.pointerId,
+          x: e.clientX,
+          y: e.clientY,
+          button,
+          target: e.target,
+        }
       : null;
   }, []);
   const onTapUp = useCallback(
@@ -343,6 +375,7 @@ export const MobileToolbar = ({
         key,
         outcome: "click",
       });
+      cancelTouchEnd(tap.target);
       tapClickUntilRef.current = performance.now() + TAP_CLICK_MS;
       tapClickingRef.current = true;
       try {

@@ -86,6 +86,25 @@ test.describe('手機底部工具列（離線重放）', () => {
     await expect(byKey(page, '__keys')).toHaveCount(0);
   });
 
+  // A touch tap acts when the finger lifts; the browser's own click for that
+  // tap must not land on the dialog it just opened under the finger.
+  test('a touch tap that opens the search dialog leaves no click on the dialog', async ({ page }) => {
+    await bootOffline(page, ptt);
+    await ptt.applyPrefs(page, { enableEasyReadingList: false });
+    await drawArticleList(page);
+    await page.evaluate(() => {
+      window.__strayClicks = [];
+      document.addEventListener('click', (e) => {
+        if (e.isTrusted && !e.target.closest?.('#mobileToolbar'))
+          window.__strayClicks.push(e.target.className || e.target.tagName);
+      }, true);
+    });
+    await byKey(page, '__search').tap();
+    await expect(page.locator('input[name="searchKeyword"]')).toBeVisible();
+    await page.waitForTimeout(500); // sleep-ok: asserts that no click arrives
+    expect(await page.evaluate(() => window.__strayClicks)).toEqual([]);
+  });
+
   test('按鍵面板：送鍵、終端機底列不被工具列／面板蓋住；Ctrl＋p 送 ^P', async ({ page }) => {
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, { enableEasyReadingList: false });
