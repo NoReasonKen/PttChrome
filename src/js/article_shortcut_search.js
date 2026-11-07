@@ -114,7 +114,7 @@ export class ArticleShortcutSearch {
           return;
         }
         origin.aid = info.aid;
-        if (layerPage) core.articleGestures.stack.notePost(layerPage, info);
+        if (layerPage) core.navigationStack.notePost(layerPage, info);
         if (fast && !meta.boxOpen) this._fastQuery(origin);
         else this._selectThenQuery(origin, meta.boxOpen, 'forward');
       }
@@ -127,7 +127,7 @@ export class ArticleShortcutSearch {
   // themselves, opened from its board's full list. Same-thread search also needs PTT's
   // selection there on this article.
   _fastKeystrokeRoute(origin) {
-    const below = this.core.articleGestures?.fullListBelow();
+    const below = this.core.navigationStack?.fullListBelow();
     const kind = origin.query.kind;
     if (!below || (kind === 'thread' && !below.selected)) return false;
     const buf = this.core.buf;
@@ -353,7 +353,7 @@ export class ArticleShortcutSearch {
     // A revealed source stays shown, deleted, over the list (#121).
     const stop = () => {
       this._fail('articleShortcutSearch_missing', missing);
-      this.core.articleGestures?.sourceGone();
+      this.core.navigationStack?.sourceGone();
     };
     // Leave the known message before handing control back, never press Enter
     // on the replacement selection.

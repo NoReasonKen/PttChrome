@@ -1149,7 +1149,7 @@ ListSession.prototype = {
   // The live layer shows search results, and PTT's answer is a list of
   // another number space: its full list.
   _layerResultsLeft: function(facts, layer) {
-    return !!(layer && layer.listPage && layer.listPage.selectMode) && listModeOf(facts) !== 'select';
+    return !!(layer && layer.listPage.selectMode) && listModeOf(facts) !== 'select';
   },
 
   // Whether the search of `layer`'s results can run again in PTT: 'repeatable',
@@ -1157,7 +1157,7 @@ ListSession.prototype = {
   _layerSearchState: function(layer) {
     const run = this._layerSearch;
     if (run && run.layer === layer) return run.failed ? null : 'running';
-    return layer && layer.listPage && layer.listPage.search ? 'repeatable' : null;
+    return layer && layer.listPage.search ? 'repeatable' : null;
   },
 
   // Runs the search of the results Back revealed again on PTT's full list
@@ -1167,7 +1167,7 @@ ListSession.prototype = {
   _repeatLayerSearch: function(facts, layer) {
     const self = this;
     const run = { layer: layer, failed: false };
-    const search = layer && layer.listPage && layer.listPage.search;
+    const search = layer && layer.listPage.search;
     this._layerSearch = run;
     const started = repeatSearch(this._core, search, function(ok) {
       if (self._layerSearch !== run) return;
@@ -1192,13 +1192,13 @@ ListSession.prototype = {
   // this list's by default), while PTT's answer is on its way
   // (NavigationStack.keptListLayer), or null.
   _keptLayer: function(board = this._boardName) {
-    return this._core.articleGestures?.stack?.keptListLayer?.(boardNameFromKey(board)) || null;
+    return this._core.navigationStack?.keptListLayer?.(boardNameFromKey(board)) || null;
   },
 
   // The reader's `action` on this list may spend the live layer it was shown
   // from (#125, page_stack.js#spendsLayer).
   _spendLayer: function(action) {
-    this._core.articleGestures?.stack?.spend(action);
+    this._core.navigationStack?.spend(action);
   },
 
   // pref 開著＝本功能（L1 凍結交易 ＋ L2 自動回復）生效；關掉＝**逐位元回到
@@ -2397,7 +2397,7 @@ ListSession.prototype = {
   // cleared the board identity; the layer of this board's list restores it,
   // wherever PTT's selection landed (#127). A route that reused the session
   // for another list (search results from the article) replaced its rows too;
-  // the list page kept with the layer gives them back.
+  // the page the layer keeps gives them back.
   // Whether the page `facts` lists an article newer than every row the
   // buffer holds: PTT's landing page is held out of a list shown again from
   // its layer, and those articles load as the reader scrolls down to them.
@@ -2409,7 +2409,10 @@ ListSession.prototype = {
   },
 
   _resumeFromLayer: function(facts, layer) {
-    if (layer && layer.listPage) this._restoreListPage(layer.listPage);
+    // The page the layer keeps (stack_list_page.js): the session's page the
+    // reader left, and the articles read above it since.
+    const page = layer && layer.listPage;
+    if (page) this._restoreListPage(page.session);
     if (this._boardName == null) {
       this._boardName = this._layerBoard ?? (facts && facts.boardName);
       this._layerBoard = null;
@@ -2424,7 +2427,7 @@ ListSession.prototype = {
     this._setLoading(false);
     this._view.hideCursor();
     this._serverNum = facts ? facts.cursorRowNum : null;
-    const text = layer && layer.selectedText();
+    const text = page && page.selectedText();
     const num = text ? parseListArticleNumLoose(text) : null;
     const pinnedKey = text && num == null && isPinnedListRow(text) ? pinnedRowKey(text) : null;
     if (num != null && (this._termBuf.listLineNums || []).indexOf(num) !== -1) {
@@ -2443,15 +2446,15 @@ ListSession.prototype = {
       const num = parseListArticleNumLoose(text);
       return { num: num, pinnedKey: num == null && isPinnedListRow(text) ? pinnedRowKey(text) : null };
     };
-    for (const row of layer ? layer.readRows() : []) {
+    for (const row of page ? page.readRows() : []) {
       const key = rowKey(row);
       this._view.markListArticleRead(key.num, key.pinnedKey);
     }
-    const lastRead = layer && layer.lastReadSubject();
+    const lastRead = page && page.lastReadSubject();
     if (lastRead) this.noteLastRead(lastRead);
     this._view.holdListRows(facts && facts.rowTexts);
     this._newerBelow = this._listsNewerThanBuffer(facts);
-    for (const row of layer ? layer.unsureRows() : []) {
+    for (const row of page ? page.unsureRows() : []) {
       const key = rowKey(row);
       this._view.retakeListRow(key.num, key.pinnedKey);
     }
@@ -2460,8 +2463,9 @@ ListSession.prototype = {
   },
 
   // The list page as it is now: its rows and what the session knows of them
-  // (board, number space, fill edges, reading position, selection). Kept with
-  // the list's live layer when an article is opened from it (#127).
+  // (board, number space, fill edges, reading position, selection). The
+  // list's live layer keeps it (KeptListPage) when an article is opened from
+  // it (#127).
   listPage: function() {
     const buffer = this._view.snapshotListBuffer && this._view.snapshotListBuffer();
     if (!buffer || this._boardName == null) return null;
@@ -2525,7 +2529,7 @@ ListSession.prototype = {
     const layer = this._keptLayer(facts.boardName);
     // Numbers of another number space tell nothing of what is newer.
     if (this._layerResultsLeft(facts, layer)) return false;
-    const newest = layer?.newestNum?.();
+    const newest = layer?.listPage.newestNum();
     if (newest == null) return false;
     for (let r = 3; r <= facts.rows - 2; ++r) if (facts.nums[r] != null && facts.nums[r] > newest) return true;
     return false;
@@ -3886,7 +3890,7 @@ ListSession.prototype = {
 
   waitingToResize: function() {
     return this.state === 'opening' || this._renderMode === 'frozen' ||
-      !!this._core.articleGestures?.stack?.handingOff;
+      !!this._core.navigationStack?.handingOff;
   },
 
   beginResize: function(timeoutMs) {
@@ -5065,7 +5069,7 @@ export function listGrowthDir(numMap, entries) {
 export function noticeNewArticles(session, freshPage, newer) {
   if (freshPage) session._newArticlesNoticed = false;
   if (newer && !session._newArticlesNoticed)
-    session._newArticlesNoticed = !!session._core.articleGestures?.stack?.noticeNewContent?.();
+    session._newArticlesNoticed = !!session._core.navigationStack?.noticeNewContent?.();
 }
 
 // The article number at a buffer edge: smallest (direction<0, the "older" top)

@@ -28,7 +28,7 @@ export class ArticleResize {
   }
 
   _eligible(context = this.core.easyReading?.resizeContext()) {
-    return this._available(context) && !this.core.articleGestures?.stack?.handingOff;
+    return this._available(context) && !this.core.navigationStack?.handingOff;
   }
 
   attach() { this.anchor.attach(() => this.capturePosition()); }
@@ -66,7 +66,7 @@ export class ArticleResize {
       this.pending = null;
       // Back owns the wire now. The normal router lets ListResize retain the
       // request until that handoff ends; never send raw NAWS from cancel().
-      if (core.articleGestures?.stack?.handingOff && this._available(context)) {
+      if (core.navigationStack?.handingOff && this._available(context)) {
         core.setTermSize(size.cols, size.rows);
       }
       return false;

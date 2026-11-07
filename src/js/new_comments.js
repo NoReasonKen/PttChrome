@@ -184,6 +184,20 @@ export function NewComments(core, storage) {
 }
 
 NewComments.prototype = {
+  // The scan that placed the new-comments marker on the open article: a
+  // stacked article layer (#121) saves it and restores it with restore.
+  snapshot: function() {
+    return { head: this._head, scanner: this._scanner, key: this._key, seen: this._seen, saved: this._saved };
+  },
+
+  restore: function(snapshot) {
+    this._head = snapshot.head;
+    this._scanner = snapshot.scanner;
+    this._key = snapshot.key;
+    this._seen = snapshot.seen;
+    this._saved = snapshot.saved;
+  },
+
   _reset: function(head) {
     this._head = head;
     this._scanner = new CommentScanner();
@@ -264,7 +278,7 @@ NewComments.prototype = {
     if (!er.easyReadingReachedPageEnd) return;
     // An article shown again from its live layer keeps the layer's content;
     // PTT's reopened copy behind it was not read (#121).
-    if (core.articleGestures?.stack?.handoff?.layer?.holdsReading?.()) return;
+    if (core.navigationStack?.handoff?.layer?.holdsReading?.()) return;
     const lines = buf.pageLines || [];
     if (!lines.length) return;
     this._save(lines);

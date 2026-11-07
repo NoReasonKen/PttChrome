@@ -3,6 +3,7 @@ import { App } from '../../src/js/pttchrome';
 import { ListResize } from '../../src/js/list_resize';
 import { ArticleResize } from '../../src/js/article_resize';
 import { NavigationStack } from '../../src/js/navigation_stack';
+import { Handoff } from '../../src/js/stack_handoff';
 import { TermBuf } from '../../src/js/term_buf';
 import { ListSession } from '../../src/js/list_session';
 import { CommandQueue } from '../../src/js/command_queue';
@@ -106,7 +107,8 @@ describe('Mobile article-list rotation', () => {
     app.easyReading.resizeContext = vi.fn(() => ({ board: 'Test', line: 23, ready: false }));
     app.articleResize = new ArticleResize(app);
     const stack = new NavigationStack(app);
-    app.articleGestures = { stack, update: vi.fn() };
+    app.navigationStack = stack;
+    app.articleGestures = { update: vi.fn() };
     stack.stack.pages = [
       { kind: 'articleList', board: 'Test' },
       { kind: 'article', board: 'Test', id: 'source' },
@@ -118,7 +120,7 @@ describe('Mobile article-list rotation', () => {
     expect(app.articleResize.pending).toEqual({ cols: 80, rows: targetRows });
     expect(app.conn.sendNaws).not.toHaveBeenCalled();
 
-    stack.handoff = { listeners: [], finish: vi.fn(), layer: null };
+    stack.handoff = new Handoff(app, null, { level: 'article', board: 'Test', end: how => stack._end(how), finish: vi.fn() });
     app.articleResize.pump();
     expect(app.articleResize.pending).toBeNull();
     expect(app.listResize.pending).toEqual({ cols: 80, rows: targetRows });
@@ -139,12 +141,13 @@ describe('Mobile article-list rotation', () => {
   test('a completed stacked Back starts the deferred list resize', () => {
     const { app, list } = makeReader(PORTRAIT, 'plain');
     const stack = new NavigationStack(app);
-    app.articleGestures = { stack, update: vi.fn() };
+    app.navigationStack = stack;
+    app.articleGestures = { update: vi.fn() };
     stack.stack.pages = [
       { kind: 'articleList', board: 'Test' },
       { kind: 'article', board: 'Test', id: 'source' },
     ];
-    stack.handoff = { listeners: [], finish: vi.fn(), layer: null };
+    stack.handoff = new Handoff(app, null, { level: 'article', board: 'Test', end: how => stack._end(how), finish: vi.fn() });
     app.listResize.request(80, geometry(LANDSCAPE).rows);
     expect(app.listResize.active).toBe(false);
     expect(list._renderMode).toBe('buffer');

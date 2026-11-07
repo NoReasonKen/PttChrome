@@ -602,8 +602,7 @@ export const ContextMenu = ({ pttchrome }) => {
       // (#124): the menu acts on the layer's card, not on the screen PTT
       // still shows below it.
       const layerEntry =
-        (normalEnabled &&
-          pttchrome.articleGestures?.stack?.layerEntryAt?.(target)) ||
+        (normalEnabled && pttchrome.navigationStack?.layerEntryAt?.(target)) ||
         null;
       let blacklistAuthorTarget = null;
       let blacklistAuthorExists = false;
@@ -779,9 +778,7 @@ export const ContextMenu = ({ pttchrome }) => {
       const state = stateRef.current;
       const onLayer = state.layerEntry && layerEntryHandlerByEventKey[eventKey];
       if (onLayer)
-        pttchrome.articleGestures.stack.whenReady(() =>
-          onLayer(pttchrome, state),
-        );
+        pttchrome.navigationStack.whenReady(() => onLayer(pttchrome, state));
       else menuHandlerByEventKey[eventKey](pttchrome, state);
       event.stopPropagation();
       pttchrome.contextMenuShown = false;
@@ -900,7 +897,7 @@ export const ContextMenu = ({ pttchrome }) => {
       // source cannot be confirmed. Before PTT takes over, the comment is
       // remembered and sent once it does (the last one wins); on a timeout, a
       // notice says it was not sent.
-      const held = pttchrome.articleGestures?.stack?.holdComment?.(() =>
+      const held = pttchrome.navigationStack?.holdComment?.(() =>
         pttchrome.openQuickPush({ text: body, type }),
       );
       if (held === "refused") return false;
@@ -1152,7 +1149,7 @@ export const ContextMenu = ({ pttchrome }) => {
         if (!sent)
           hint(serializedOpHint(pttchrome) || i18n("searchModal_busy"));
       };
-      const stack = pttchrome.articleGestures?.stack;
+      const stack = pttchrome.navigationStack;
       if (searchHeld && stack?.handingOff) stack.whenReady(submit);
       else submit();
     },

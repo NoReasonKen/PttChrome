@@ -498,15 +498,16 @@ On resuming, `flashListHint('操作完成，已回到好讀列表')` ("done, bac
   jumping / pulling to an article the layer did not list, refreshing the article being read (`aid_navigation.refresh`) and searching from the article being read (the results reuse the same session)
   all still reveal the layer (`NavigationStack._revealIn` no longer requires `_selects`, and once `follow` loses track it simply stops tracking), and going back takes `resume-layer`:
   all these paths clear the board name through `beginExternalNavigation`, and in suspended `_settleEvent` looks up the kept layer by the landing frame's board name.
-  Before opening an article, `NavigationStack.captureList` puts this page (`ListSession.listPage`: a copy of the row map from term_view's `snapshotListBuffer`
-  + header/footer, board name, number space, page-fill edges, anchor and selection) together with the layer, and `_resumeFromLayer` restores it first
-  (`_restoreListPage`/`restoreListBuffer`), then marks read, holds rows and aligns PTT's cursor as before. When the layer is redrawn for a width change while PTT's native list mirror is up,
+  Before opening an article, `NavigationStack.captureList` gives the layer this page (`ListSession.listPage`: a copy of the row map from term_view's `snapshotListBuffer`
+  + header/footer, board name, number space, page-fill edges, anchor and selection); a list without one keeps no layer. The layer keeps it in its one kept page
+  (`KeptListPage`, `stack_list_page.js`) with the frame it renders and the articles read above it, and `_resumeFromLayer` always restores the real list from there:
+  the session's page first (`_restoreListPage`/`restoreListBuffer`), then the read marks, the hold and PTT's cursor as before. When the layer is redrawn for a width change while PTT's native list mirror is up,
   a parked layer does not re-measure its reading position (`fitViewport`), so that a clamped scroll position is not carried back.
   An article not on the layer (reached by a long-distance jump) is not marked read; scrolling to it brings it in with PTT's page; the last-read subject colour stays on the last article read on the layer.
   Guarded by `mobile_stack_list_kept.offline.spec.js`, `mobile_stack_in_place.offline.spec.js`,
   `list_accumulate.test.js` "held list rows".
   **New-articles notice** ([#128](https://github.com/NoReasonKen/PttChrome/issues/128)): when the landing page (the frame PTT sends anyway, with no extra key sent)
-  lists articles newer than the revealed live layer's newest number (`StackListLayer.newestNum`), `onSettle`, before dispatch (while the layer is still
+  lists articles newer than the revealed live layer's newest number (`KeptListPage.newestNum`), `onSettle`, before dispatch (while the layer is still
   the page on display), flashes 「有新文章」 ("new articles") once through `NavigationStack.noticeNewContent` (`flashListHint`, plain text, `STACK_NOTICE_MS`).
   It compares against the layer, not the buffer: when a same-author / same-title search is made from the article being read, the search results replace the session's buffer (going back to the list restores
   the page the layer carried, #127), and what the reader saw when leaving was the layer's page.

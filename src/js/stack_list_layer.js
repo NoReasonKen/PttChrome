@@ -3,9 +3,9 @@
 // its own scroll viewport, so revealing it shows the real list, scrollable at
 // once, instead of a static copy.
 import { ScreenCopyLayer, setUsable, STACK_NOTICE_MS, releaseScreenLater } from './stack_layer';
-import { LIST_TITLE_COL_START, hasServerCursorMark, rowToText, parseListArticleNumLoose, readListRow, subjectOfListRow } from './comment_parse';
+import { LIST_TITLE_COL_START, rowToText } from './comment_parse';
 import { listEntryOf } from './split_reader';
-import { subjectKey, subjectMatches } from './long_push_anchor';
+import { KeptListPage } from './stack_list_page';
 import { i18n } from './i18n';
 import { PAGE } from './page_stack';
 import { mobileFillLayout, listRowSpan } from './mobile_layout';
@@ -53,71 +53,12 @@ function anchorShift(root, anchor) {
   return card ? card.getBoundingClientRect().top - root.getBoundingClientRect().top - anchor.offset : null;
 }
 
-// The row of an article list frame's `lines` that lists `article` ({ author,
-// title }; the list may cut the title short), or -1. Several rows can list the
-// same author and subject, as in that author's search results; PTT then moved
-// its selection from the row `from` to the nearest of them above it (`up`) or
-// below it, or to the topmost one above it for the first article of the
-// thread (`first`). Without a direction, only a single row other than `from`
-// names it. Entries run from `bodyStart` to the footer.
-export function articleRow(lines, bodyStart, article, { from = -1, up = null, first = false } = {}) {
-  const author = String(article.author || '').toLowerCase();
-  const subject = subjectKey(article.title);
-  if (!author || !subject) return -1;
-  const hits = [];
-  for (let row = bodyStart; row < lines.length - 1; row++) {
-    const entry = listEntryOf(rowToText(lines[row]));
-    if (entry && !entry.deleted && entry.subject && String(entry.author).toLowerCase() === author &&
-        subjectMatches(entry.subject, subject)) hits.push(row);
-  }
-  if (up != null) {
-    const side = hits.filter(row => (up ? row < from : row > from));
-    return side.length ? side[up && !first ? side.length - 1 : 0] : -1;
-  }
-  const others = hits.filter(row => row !== from);
-  if (others.length === 1) return others[0];
-  return hits.length === 1 ? hits[0] : -1;
-}
-
-// A header's post date ("Mon Sep  1 12:00:00 2025") as a list shows it
-// ("9/01"), or null.
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-function listDate(time) {
-  const m = /([A-Z][a-z]{2}) +(\d{1,2}) \d\d:\d\d:\d\d \d{4}/.exec(time || '');
-  const month = m ? MONTHS.indexOf(m[1]) + 1 : 0;
-  return month ? `${month}/${m[2].padStart(2, '0')}` : null;
-}
-
-// The rows of a list frame's `lines` that may list `article` ({ author,
-// title, time }) by what the article itself says, with no selection to go by:
-// its author and subject, then whether it is a reply and its post date, as
-// far as those tell the rows apart. One row is the article; several are
-// rows it cannot be told from.
-export function identityRows(lines, bodyStart, article) {
-  const author = String(article.author || '').toLowerCase();
-  const subject = subjectKey(article.title);
-  if (!author || !subject) return [];
-  let hits = [];
-  for (let row = bodyStart; row < lines.length - 1; row++) {
-    const entry = listEntryOf(rowToText(lines[row]));
-    if (entry && !entry.deleted && entry.subject && String(entry.author).toLowerCase() === author &&
-        subjectMatches(entry.subject, subject)) hits.push({ row, entry });
-  }
-  const reply = /^Re:/i.test(String(article.title || '').trim());
-  const date = listDate(article.time);
-  for (const keep of [hit => /^R:/.test(hit.entry.title) === reply, hit => hit.entry.date === date]) {
-    if (hits.length < 2) break;
-    const narrowed = hits.filter(keep);
-    if (narrowed.length) hits = narrowed;
-  }
-  return hits.map(hit => hit.row);
-}
-
 export class StackListLayer extends ScreenCopyLayer {
   // Render `view`'s current list frame of `kind` ('article' or 'board') as a
-  // live copy over the list's box. Returns null when the view is not showing
-  // such an easy-reading list.
-  static capture(view, kind = 'article') {
+  // live copy over the list's box, keeping the list session's own page
+  // `session` with it (KeptListPage). Returns null when the view is not
+  // showing such an easy-reading list.
+  static capture(view, kind = 'article', session = null) {
     const screen = view.componentScreen;
     const frame = screen && screen.props;
     const listScroll = frame && frame.enhance && frame.enhance.listScroll;
@@ -125,12 +66,15 @@ export class StackListLayer extends ScreenCopyLayer {
     const main = view.mainDisplay;
     const rect = main.getBoundingClientRect();
     if (!rect.width || !rect.height) return null;
-    return new StackListLayer(view, rect, screen, frame);
+    return new StackListLayer(view, rect, screen, new KeptListPage(frame, session));
   }
 
-  constructor(view, rect, screen, frame) {
+  constructor(view, rect, screen, listPage) {
+    const frame = listPage.frame;
     const kind = frame.enhance.listScroll.kind;
-    super(view, frame, kind === 'board' ? PAGE.BOARD_LIST : PAGE.ARTICLE_LIST);
+    super(view, kind === 'board' ? PAGE.BOARD_LIST : PAGE.ARTICLE_LIST);
+    // The page this layer shows, the one copy the real list takes over again.
+    this.listPage = listPage;
     // Keep this unchanged between parking and an inert drag reveal: changing
     // an inherited property on reveal invalidates every descendant's style.
     this.el.style.pointerEvents = 'none';
@@ -139,6 +83,10 @@ export class StackListLayer extends ScreenCopyLayer {
     this.scrollTop = screen.getListScrollTop();
     // The reading position by entry, for a render at another width.
     this.anchor = topCard(view.mainDisplay, rect.top);
+  }
+
+  get frame() {
+    return this.listPage.frame;
   }
 
   _render(rect, forceWidth) {
@@ -187,13 +135,6 @@ export class StackListLayer extends ScreenCopyLayer {
     };
   }
 
-  // The frame row this list shows selected, or -1.
-  _selectedRow() {
-    const lines = this.frame.lines;
-    const bodyStart = this.frame.enhance.listScroll.bodyStart;
-    return lines.findIndex((line, r) => r >= bodyStart && r < lines.length - 1 && hasServerCursorMark(line, 0));
-  }
-
   // Follow PTT's selection to `article` ({ author, title }), which replaced
   // the open article in place (#74). The list keeps showing the article the
   // reader opened from it selected (#123); PTT's selection is only tracked,
@@ -202,85 +143,28 @@ export class StackListLayer extends ScreenCopyLayer {
   // the first article of the thread. Returns whether the list holds it.
   follow(article, up, first = false) {
     if (!this.screen) return false;
-    const lines = this.frame.lines;
-    const from = this.followed ?? this._selectedRow();
-    const row = articleRow(lines, this.frame.enhance.listScroll.bodyStart, article, { from, up, first });
+    const row = this.listPage.follow(article, up, first);
     if (row < 0) return false;
-    this.followed = row;
-    this._read(row, article);
+    this._showPage();
     return true;
   }
 
   // `article` was read with PTT's selection no longer followed: it shows read
-  // when the list names it by its own identity (identityRows). Rows it cannot
-  // be told from stay as they are, and are listed by `unsureRows`, so the
+  // when the list names it by its own identity (stack_list_page.js
+  // #identityRows). Rows it cannot be told from stay as they are, and the
   // real list takes them from PTT rather than guess (#128).
   noteRead(article) {
-    if (!this.screen) return;
-    const rows = identityRows(this.frame.lines, this.frame.enhance.listScroll.bodyStart, article);
-    if (rows.length === 1) return this._read(rows[0], article);
-    rows.forEach(row => (this.unsure ||= new Set()).add(row));
-    this.lastRead = { row: rows[0] ?? -1, title: article.title };
+    if (this.screen && this.listPage.noteRead(article)) this._showPage();
   }
 
   // The article opened from this list was entered: it reads as read.
   opened() {
-    const row = this.screen ? this._selectedRow() : -1;
-    if (row >= 0) this._read(row, null);
+    const row = this.screen ? this.listPage.selectedRow() : -1;
+    if (row >= 0 && this.listPage.markRead(row, null)) this._showPage();
   }
 
-  // Show `row` read as PTT lists it once read, and remember it as the last
-  // article read, `article` when known.
-  _read(row, article) {
-    (this.read ||= new Set()).add(row);
-    this.unsure?.delete(row);
-    this.lastRead = { row, title: article?.title ?? null };
-    const read = readListRow(this.frame.lines[row]);
-    if (!read) return;
-    const lines = this.frame.lines.slice();
-    lines[row] = read;
-    // The frame was the real screen's; it is replaced, never changed.
-    this.frame = { ...this.frame, lines };
-    this.screen.update({ ...this.screen.props, lines });
-  }
-
-  // The subject PTT colours as last read (bbs.c currtitle), as this list
-  // keys it: the subject of the last article read, or null when none was.
-  lastReadSubject() {
-    const last = this.lastRead;
-    if (!last) return null;
-    if (last.row >= 0) return subjectOfListRow(this.frame.lines[last.row]);
-    return subjectKey(last.title);
-  }
-
-  // The newest article number this list shows, or null.
-  newestNum() {
-    const lines = this.frame.lines;
-    let newest = null;
-    for (let r = this.frame.enhance.listScroll.bodyStart; r < lines.length - 1; r++) {
-      const num = parseListArticleNumLoose(rowToText(lines[r]));
-      if (num != null && (newest == null || num > newest)) newest = num;
-    }
-    return newest;
-  }
-
-  // The text of the entry this list shows selected, or null.
-  selectedText() {
-    const row = this._selectedRow();
-    return row < 0 ? null : rowToText(this.frame.lines[row]);
-  }
-
-  // The rows (TermChar[]) of the articles read since the list was left, each
-  // as this list now shows it: the one it shows selected, and each that PTT's
-  // selection followed or that was found by its identity.
-  readRows() {
-    const rows = [this._selectedRow(), ...(this.read || [])].filter(row => row >= 0);
-    return [...new Set(rows)].map(row => this.frame.lines[row]);
-  }
-
-  // The rows (TermChar[]) an article read may be, which none tells apart.
-  unsureRows() {
-    return [...(this.unsure || [])].map(row => this.frame.lines[row]);
+  _showPage() {
+    this.screen.update({ ...this.screen.props, lines: this.frame.lines });
   }
 
   // Ready to be revealed at the current width. A width change, such as a

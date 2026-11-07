@@ -40,22 +40,21 @@ function articleContent(view) {
   const core = view.bbscore;
   const buf = view.buf;
   const reading = core?.easyReading;
-  if (!buf?.pageLines?.length || !reading || reading._reverse || view._reverse) return null;
+  const state = reading?.readingState();
+  if (!buf?.pageLines?.length || !reading || state.reverse || view.readsInReverse()) return null;
   const whole = !!reading.easyReadingReachedPageEnd;
-  if (!whole && (reading._functionMode || view._accEndRow == null)) return null;
-  const marks = core.newComments;
-  return {
-    whole, pageLines: buf.pageLines, accEndRow: view._accEndRow, lastSig: view._lastAccumulatedSig,
-    marks: marks && { _head: marks._head, _scanner: marks._scanner, _key: marks._key, _seen: marks._seen, _saved: marks._saved }
-  };
+  const accumulation = view.accumulation();
+  if (!whole && (state.functionMode || accumulation.accEndRow == null)) return null;
+  return { whole, pageLines: buf.pageLines, ...accumulation, marks: core.newComments?.snapshot() || null };
 }
 
 // PTT has reopened the article and easy reading paged it to its end, with
 // nothing in flight: a later page would not land on the adopted rows.
 function readIdle(core) {
   const reading = core.easyReading;
-  return core.buf.pageState === 3 && !!reading?.easyReadingReachedPageEnd && reading._inFlightSig == null &&
-    !reading._reverse && !reading._functionMode && !core.buf.easyReadingHealInFlight;
+  if (core.buf.pageState !== 3 || !reading?.easyReadingReachedPageEnd) return false;
+  const state = reading.readingState();
+  return !state.pageInFlight && !state.reverse && !state.functionMode && !core.buf.easyReadingHealInFlight;
 }
 
 const blank = text => !text.trim();
@@ -89,7 +88,8 @@ export class StackArticleLayer extends ScreenCopyLayer {
   }
 
   constructor(view, rect, frame) {
-    super(view, frame, PAGE.ARTICLE);
+    super(view, PAGE.ARTICLE);
+    this.frame = frame;
     const main = view.mainDisplay;
     this._hold = () => {
       this.held = true;
@@ -190,17 +190,18 @@ export class StackArticleLayer extends ScreenCopyLayer {
     const view = core.view;
     const reading = core.easyReading;
     const buf = core.buf;
-    if (view._accEndRow == null || view._accEndRow >= content.accEndRow) return;
-    if (buf.pageState !== 3 || !buf.pageLines?.length || reading._reverse || reading._functionMode ||
-      buf.easyReadingHealInFlight || view._lastAccumulatedSig !== reading._currentPageSignature()) return;
+    const accumulation = view.accumulation();
+    if (accumulation.accEndRow == null || accumulation.accEndRow >= content.accEndRow) return;
+    if (buf.pageState !== 3 || !buf.pageLines?.length || buf.easyReadingHealInFlight) return;
+    const state = reading.readingState();
+    if (state.reverse || state.functionMode || accumulation.lastSig !== state.pageSignature) return;
     if (!reopenedTail(buf.pageLines, content.pageLines)) {
       this.content = null;
       this.edited = true;
       return;
     }
     buf.pageLines = content.pageLines;
-    view._accEndRow = content.accEndRow;
-    view._lastAccumulatedSig = content.lastSig;
+    view.restoreAccumulation(content);
   }
 
   // The real article takes over this layer's rows, in place of what PTT's
@@ -220,7 +221,7 @@ export class StackArticleLayer extends ScreenCopyLayer {
     const content = this.content;
     if (!content || !readIdle(core)) return false;
     const view = core.view;
-    const reopened = { pageLines: core.buf.pageLines, accEndRow: view._accEndRow, lastSig: view._lastAccumulatedSig };
+    const reopened = { pageLines: core.buf.pageLines, ...view.accumulation() };
     const tail = reopenedTail(content.pageLines, reopened.pageLines);
     if (!tail && !content.whole) {
       this.content = null;
@@ -230,15 +231,14 @@ export class StackArticleLayer extends ScreenCopyLayer {
     const appends = !!tail?.rows.length;
     const kept = appends ? { ...reopened, pageLines: content.pageLines.slice(0, tail.keep).concat(tail.rows) } : content;
     core.buf.pageLines = kept.pageLines;
-    view._accEndRow = tail ? kept.accEndRow : reopened.accEndRow;
-    view._lastAccumulatedSig = tail ? kept.lastSig : reopened.lastSig;
-    view._showsOverCopy = tail ? null : { shown: content.pageLines, copy: reopened.pageLines };
+    view.restoreAccumulation(tail ? kept : reopened);
+    view.showOverCopy(tail ? null : { shown: content.pageLines, copy: reopened.pageLines });
     if (content.marks && core.newComments) {
-      Object.assign(core.newComments, content.marks);
+      core.newComments.restore(content.marks);
       if (!content.whole) core.newComments.readToEnd(kept.pageLines);
       else if (appends) core.newComments.appended(kept.pageLines, tail.keep);
     }
-    view._renderScreenLines(kept.pageLines, true, true, false, view._pageRenderOverrides());
+    view.renderArticleRows(kept.pageLines);
     core.commentBar?.refresh();
     if (!tail) view.flashListHint?.(i18n('stack_articleUpdated'), STACK_NOTICE_MS);
     return true;

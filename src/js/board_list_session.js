@@ -437,7 +437,7 @@ BoardListSession.prototype = {
     const buffered = brd.cursorNum != null ? this._rowTextOf(brd.cursorNum) : null;
     const name = buffered ? parseBoardListName(facts.rowTexts[facts.curY] || '') : null;
     if (!name) {
-      if (!this._core.articleGestures?.showsLayerOf?.(PAGE.BOARD_LIST)) return false;
+      if (!this._core.navigationStack?.showsLayerOf?.(PAGE.BOARD_LIST)) return false;
       return !this._listContradicts(facts);
     }
     if (name !== parseBoardListName(buffered)) return false;
@@ -925,7 +925,7 @@ BoardListSession.prototype = {
   // list_session._beginNativePassthrough 的標頭。
   _beginNativePassthrough: function(e) {
     // Keys sent in native mode ask PTT for the list anew (#125).
-    this._core.articleGestures?.stack?.spend('nativePassthrough', 'board');
+    this._core.navigationStack?.spend('nativePassthrough', 'board');
     let bytes = keyEventToBytes(e);
     // **Ctrl 組合一律不過 u2b**：控制碼（CtrlShiftMap 全 < 0x80），與原生鍵盤路徑
     // 同樣不轉碼；`!e.ctrlKey` 是合約表達，見 list_session 同處。
@@ -1174,7 +1174,7 @@ BoardListSession.prototype = {
   // visited board's unread mark follows what was read there. Otherwise PTT's
   // page is merged in as before.
   _resumeShown: function(facts) {
-    const fromLayer = !!this._core.articleGestures?.showsLayerOf?.(PAGE.BOARD_LIST);
+    const fromLayer = !!this._core.navigationStack?.showsLayerOf?.(PAGE.BOARD_LIST);
     const visited = this._visited;
     this._visited = null;
     // A list just shown from its layer is a page the reader has not been told

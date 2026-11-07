@@ -1540,7 +1540,7 @@ TermView.prototype = {
   onKeyDown: function(e) {
     // A deleted source kept shown over its board list (#121): PTT already
     // shows that list, so Back only removes the article and no key reaches PTT.
-    if (this.bbscore.articleGestures?.holdsGoneArticle()) {
+    if (this.bbscore.navigationStack?.gone) {
       this._keyOutcome = isPlainBack(e) ? 'leftGoneArticle' : 'droppedGoneArticle';
       if (isPlainBack(e)) this.bbscore.articleGestures.leaveGoneArticle();
       e.preventDefault();
@@ -3223,6 +3223,34 @@ TermView.prototype = {
     var rv = this._reverse;
     if (!rv) return STABLE_ROWS;
     return { stableRows: true, reverseJunction: rv.junction };
+  },
+
+  // Where accumulating the article's pages stands: the row its last page ends
+  // on and that page's signature. A stacked article layer (#121) saves it and
+  // restores it with restoreAccumulation.
+  accumulation: function() {
+    return { accEndRow: this._accEndRow, lastSig: this._lastAccumulatedSig };
+  },
+
+  restoreAccumulation: function(accumulation) {
+    this._accEndRow = accumulation.accEndRow;
+    this._lastAccumulatedSig = accumulation.lastSig;
+  },
+
+  // Whether the article is being accumulated backwards from its end.
+  readsInReverse: function() {
+    return !!this._reverse;
+  },
+
+  // The rows `over.shown` stay shown over PTT's copy `over.copy` of the article
+  // until the page's rows change (#126); null shows PTT's copy.
+  showOverCopy: function(over) {
+    this._showsOverCopy = over;
+  },
+
+  // Render `pageLines` as the article's accumulated rows.
+  renderArticleRows: function(pageLines) {
+    this._renderScreenLines(pageLines, true, true, false, this._pageRenderOverrides());
   },
 
   // 反向分支本體（純決策在 comment_parse.decideReverseBranch）。result＝這一幀的

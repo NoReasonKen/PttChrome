@@ -102,7 +102,7 @@ export class ThreadJump extends HiddenArticleRoute {
     // list's: the jump searched the list it was opened from.
     this.inResults = !!readSearchResultsContext(core, source.board);
     // The list below follows the landing to the thread's first article.
-    const stack = core.articleGestures?.stack;
+    const stack = core.navigationStack;
     if (stack) stack.firstInThread = k === '=';
     this._begin(core._screenContext?.appBar || null);
     this._enqueue({
@@ -202,7 +202,7 @@ export class ThreadJump extends HiddenArticleRoute {
   // over once its session presents it again.
   _slideToList() {
     const core = this.core;
-    const stack = core.articleGestures?.stack;
+    const stack = core.navigationStack;
     if (!this.cover || !stack || !readEffectivePrefs().enableEasyReadingList) return false;
     const layer = stack.revealable();
     const underlay = createUnderlay(core, layer, stack.title, stack.appBar);

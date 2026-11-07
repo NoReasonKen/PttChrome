@@ -72,6 +72,7 @@ import { isPreviewTarget } from './preview_targets';
 import { ImageUploadController, isUploadLayerTarget } from './image_upload_controller';
 import { ImageViewer } from './image_viewer';
 import { ArticleGestures } from './article_gestures';
+import { NavigationStack } from './navigation_stack';
 import { HomeDashboard, isHomeDashboardTarget } from './home_dashboard';
 import { MessageInbox, isMessageInboxTarget } from './message_inbox';
 import { NewComments } from './new_comments';
@@ -379,6 +380,9 @@ export const App = function() {
   //   _busy           ：手機 App Bar 的等待進度條（mobile_busy.js），唯一寫入點 _busyEvent。
   this._busy = BUSY_IDLE;
   this._busyListeners = new Set();
+  // The page stack (navigation_stack.js). Features reach it here, as
+  // `core.navigationStack`; the gestures that slide its pages use the same one.
+  this.navigationStack = new NavigationStack(this);
   this.articleGestures = new ArticleGestures(this);
   installToolbarDiagnostics(this);
 

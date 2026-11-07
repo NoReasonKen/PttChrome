@@ -219,7 +219,7 @@ ScreenRefresh.prototype = {
     const core = this._core;
     if (!core.conn || !core.conn.isConnected) return null;
     // A page revealed from its live layer before PTT has caught up (#124).
-    if (core.articleGestures?.stack?.refreshesRevealed?.()) return { kind: 'revealed' };
+    if (core.navigationStack?.refreshesRevealed?.()) return { kind: 'revealed' };
     return refreshTargetOf(core);
   },
 
@@ -258,7 +258,7 @@ ScreenRefresh.prototype = {
     // It is refreshed once PTT shows it, through this same path.
     if (target.kind === 'revealed') {
       const self = this;
-      diag(core.articleGestures.stack.refreshWhenReady(function() {
+      diag(core.navigationStack.refreshWhenReady(function() {
         self.refresh(source);
       }) ? 'remembered' : 'dropped');
       return true;
@@ -282,7 +282,7 @@ ScreenRefresh.prototype = {
       // layer it was shown from is spent (#125). The home dashboard keeps
       // sharing its state with its layer.
       if (target.kind === 'article-list' || target.kind === 'board-list')
-        core.articleGestures?.stack?.spend('refresh', target.kind === 'board-list' ? 'board' : 'article');
+        core.navigationStack?.spend('refresh', target.kind === 'board-list' ? 'board' : 'article');
       this._lastAt = this._now();
       const next = this.cooldownLeftMs();
       this._listeners.forEach(function(fn) {
