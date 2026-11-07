@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "version": "0.4.0",
   "tag": "android-fork-v0.4.0",
-  "publishedAt": null,
+  "publishedAt": "2026-11-07T23:46:32Z",
   "previousRelease": {
     "version": "0.3.1",
     "sourceCommit": "cf133db5c96dd6e91656ca26597bf8394610243f"
@@ -123,5 +123,7 @@
       "sha": "133dfd01d03f2fe6655e027e2d50d996e83c92c9",
       "subject": "Keep a list layer's page in one object"
     }
-  ]
+  ],
+  "sourceCommit": "e512986a9ab07bc962048ffd33692e4d8d1c8f79",
+  "versionCode": 40
 }
