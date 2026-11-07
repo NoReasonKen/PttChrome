@@ -112,6 +112,8 @@ class FakeRO {
 }
 
 const resized = () => sizeObservers[sizeObservers.length - 1];
+// A size report moves the spacer on the next frame (#152).
+const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
 
 const near = () =>
   observers.find((o) => o.rootMargin.startsWith(String(LAZY_MOUNT_MARGIN_PX)));
@@ -341,7 +343,7 @@ describe("延遲載入佔位盒（掛載/卸載）", () => {
   //   (1) 佔位盒沿用放大態的高度 ⇒ 圖片下方一塊約等於放大後高度的空白
   //   (2) 佔位盒歸零 ⇒ 往上捲時圖一張張掛回來撐開，把上方內容推走 ⇒ 跳頁
   // 正解：兩種模式各記一組實測高度，切回去就用那一組。
-  test("放大→捲遠→縮小：佔位盒換用縮小態的高度（不留空白，也不塌陷）", () => {
+  test("放大→捲遠→縮小：佔位盒換用縮小態的高度（不留空白，也不塌陷）", async () => {
     const handle = mountSlot(HREF, "normal");
     const slot = handle.el;
     const rerender = (mode) => handle.setSizeMode(mode);
@@ -355,6 +357,7 @@ describe("延遲載入佔位盒（掛載/卸載）", () => {
     rerender("enlarged");
     resizeTo(slot, 908);
     resized().emit();
+    await nextFrame();
     expect(floorOf(slot)).toBe("908px");
 
     // 往下捲到卸載（放大態）
@@ -376,7 +379,7 @@ describe("延遲載入佔位盒（掛載/卸載）", () => {
   // 使用者往下捲時，那幾張圖**只**在放大態載入過 ⇒ normal 高度沒機會被量到。
   // 這時不得拿放大態的值頂替（＝空白），也不能什麼都不放（＝塌陷跳頁）：要留下同比例
   // 的替身盒，讓 CSS 用真圖那組規則算出縮小態該有的高度。
-  test("只在放大態量過 ⇒ 切到縮小態改由替身盒佔位（不套放大態高度）", () => {
+  test("只在放大態量過 ⇒ 切到縮小態改由替身盒佔位（不套放大態高度）", async () => {
     const handle = mountSlot(HREF, "enlarged");
     const slot = handle.el;
     const rerender = (mode) => handle.setSizeMode(mode);
@@ -384,6 +387,7 @@ describe("延遲載入佔位盒（掛載/卸載）", () => {
     near().emit(true);
     const img = fakeLoadedMedia(slot, 908, { w: 800, h: 600 });
     resized().emit();
+    await nextFrame();
     expect(floorOf(slot)).toBe("908px");
 
     far().emit(false); // 往下捲到卸載
@@ -405,11 +409,12 @@ describe("延遲載入佔位盒（掛載/卸載）", () => {
   // 指示器 —— 圖還要解析網址＋下載＋解碼才會出現（imgur 台灣連線常 stall，產品端
   // 又沒有載入 timeout）⇒ 一次 438px 的塌陷。疊層之後替身盒繼續頂在 spacer 裡，
   // 直到真圖佔到版面才讓位。
-  test("替身盒頂到真圖佔到版面為止：掛載當下不讓位（那時只有讀取中指示器）", () => {
+  test("替身盒頂到真圖佔到版面為止：掛載當下不讓位（那時只有讀取中指示器）", async () => {
     const slot = mountSlot(HREF).el;
     near().emit(true);
     const img = fakeLoadedMedia(slot, 570, { w: 800, h: 600 });
     resized().emit();
+    await nextFrame();
     expect(slot.querySelector(".inlinePreviewGhost")).toBeNull();
 
     far().emit(false);
@@ -421,11 +426,14 @@ describe("延遲載入佔位盒（掛載/卸載）", () => {
     near().emit(true);
     setContentHeight(slot, 56);
     resized().emit();
+    await nextFrame();
     expect(slot.querySelector(".inlinePreviewGhost")).not.toBeNull();
 
-    // 真圖畫出來了 ⇒ 讓位。
+    // 真圖畫出來了 ⇒ 讓位，下一幀才拿掉（#152：回呼裡不改版面）。
     fakeLoadedMedia(slot, 570, { w: 800, h: 600 });
     resized().emit();
+    expect(slot.querySelector(".inlinePreviewGhost")).not.toBeNull();
+    await nextFrame();
     expect(slot.querySelector(".inlinePreviewGhost")).toBeNull();
   });
 
@@ -443,24 +451,29 @@ describe("延遲載入佔位盒（掛載/卸載）", () => {
     expect(floorOf(slot)).toBe("");
   });
 
-  // #152: lowering the floor inside the ResizeObserver callback shortens the
-  // long-page chunk during the same delivery, which Chrome reports as a
-  // ResizeObserver loop. A higher floor only matches content already laid out.
-  test("a shown preview growing shorter lowers its floor on the next frame", async () => {
+  // #152: any change to the slot's height inside the ResizeObserver callback
+  // changes its long-page chunk during the same delivery, which Chrome reports
+  // as a ResizeObserver loop. A floor rounded up from a fractional content
+  // height grows the slot too, so every floor change waits for the next frame.
+  test("a size report moves the slot's floor on the next frame", async () => {
     const slot = mountSlot(HREF).el;
     near().emit(true);
     fakeLoadedMedia(slot, 270);
     resized().emit();
+    expect(floorOf(slot)).toBe("");
+    await nextFrame();
     expect(floorOf(slot)).toBe("270px");
 
     resizeTo(slot, 238);
     resized().emit();
     expect(floorOf(slot)).toBe("270px");
-    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await nextFrame();
     expect(floorOf(slot)).toBe("238px");
 
     resizeTo(slot, 300);
     resized().emit();
+    expect(floorOf(slot)).toBe("238px");
+    await nextFrame();
     expect(floorOf(slot)).toBe("300px");
   });
 
@@ -757,8 +770,7 @@ describe("延遲載入佔位盒（掛載/卸載）", () => {
       expect(floorOf(handle.el)).toBe("570px");
       fakeLaidOutMedia(handle.el, 320);
       resized().emit();
-      // A lower floor applies on the next frame (#152).
-      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await nextFrame();
       expect(floorOf(handle.el)).toBe("320px");
       expect(contentOf(handle.el).getAttribute("style")).toBeNull();
     });

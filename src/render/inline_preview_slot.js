@@ -287,24 +287,24 @@ export function createInlinePreviewSlot(href, sizeMode = "normal") {
     else spacer.style.removeProperty("min-height");
   }
 
-  // A size report never shortens the slot inside the ResizeObserver callback
-  // (#152). The slot's height feeds its long-page chunk, whose remembered size
+  // A size report changes no layout inside the ResizeObserver callback (#152).
+  // The slot's height feeds its long-page chunk, whose remembered size
   // (`contain-intrinsic-height: auto`) Chrome records with its own resize
-  // observation; shortening the chunk in the same delivery leaves that
-  // shallower observation undelivered, which Chrome reports as a
-  // ResizeObserver loop. A lower floor waits for the next frame; a floor that
-  // only matches content already laid out applies at once.
-  let floorFrame = 0;
-  function applyMeasuredFloor() {
-    const floor = slotFloorHeight(state.pinned, state.sizeMode) || 0;
-    if (floor >= (parseFloat(spacer.style.minHeight) || 0)) {
+  // observation; any change to the chunk's height in the same delivery leaves
+  // that shallower observation undelivered, which Chrome reports as a
+  // ResizeObserver loop. Even a floor that matches the content can change it:
+  // offsetHeight rounds a 247.5px image up to a 248px floor, and a ghost
+  // removed in favour of its loaded image can differ by a fraction of a pixel.
+  // So the callback only measures, and the spacer follows on the next frame,
+  // where the content already holds the slot's height.
+  let spacerFrame = 0;
+  function syncSpacerNextFrame() {
+    if (spacerFrame) return;
+    spacerFrame = requestAnimationFrame(() => {
+      spacerFrame = 0;
+      if (state.destroyed) return;
       applyFloorHeight();
-      return;
-    }
-    if (floorFrame) return;
-    floorFrame = requestAnimationFrame(() => {
-      floorFrame = 0;
-      if (!state.destroyed) applyFloorHeight();
+      syncGhost();
     });
   }
 
@@ -556,13 +556,12 @@ export function createInlinePreviewSlot(href, sizeMode = "normal") {
       content.offsetHeight,
       loaded,
     );
-    applyMeasuredFloor();
     if (loaded) {
       const it = measureIntrinsic(content);
       state.aspect = recordSlotAspect(state.aspect, it.count, it.w, it.h);
     }
-    // 真圖一佔到版面就讓替身盒退場（loaded=false 時它得繼續頂著）。
-    syncGhost();
+    // 真圖一佔到版面就讓替身盒退場（loaded=false 時它得繼續頂著），下一幀生效。
+    syncSpacerNextFrame();
     // 灰階鈕跟著量到的圖寬走。onResize 已經涵蓋「圖片載入完成／放大縮小／字級與
     // 視窗改變」三種會動到圖寬的時機，不必新增任何監聽。
     const img = singleLaidOutImage();
