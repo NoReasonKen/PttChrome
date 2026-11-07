@@ -203,3 +203,33 @@ test('a left swipe, a second contact and the preference turned off never go back
   expect(await heldLeaves(page)).toBe(0);
   expect(await sentSince(page, before)).toEqual([]);
 });
+
+// A page that leaves keeps no scroll of its own (#119): from the swipe's
+// horizontal intent on, the list cannot scroll natively, so no fling outlives
+// it for the next tap on the page shown to stop instead of clicking. A swipe
+// that snaps back gives the list its scrolling back.
+test('a list being swiped away cannot scroll until it is back or replaced', async ({ page }) => {
+  const { main, y } = await listOverDashboard(page);
+  const width = page.viewportSize().width;
+  const overflow = () => page.locator(MAIN).evaluate(el => getComputedStyle(el).overflowY);
+  const scrolling = await overflow();
+  expect(scrolling).not.toBe('hidden');
+  let contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: 36, y });
+  await contact.move({ x: 156, y });
+  expect(await overflow()).toBe('hidden');
+  await contact.move({ x: 30, y });
+  await contact.release();
+  await snappedBack(page, main);
+  expect(await overflow()).toBe(scrolling);
+  contact = await beginArticleTouch(page, { x: 20, y });
+  await contact.move({ x: 36, y });
+  await contact.move({ x: width - 20, y });
+  await contact.release();
+  await expect.poll(() => heldLeaves(page)).toBe(1);
+  expect(await overflow()).toBe('hidden');
+  await releaseLeave(page);
+  await dashboardVisible(page);
+  await expect(page.locator(UNDERLAY)).toHaveCount(0);
+  expect(await page.locator(MAIN).evaluate(el => el.classList.contains('stackLeaving'))).toBe(false);
+});

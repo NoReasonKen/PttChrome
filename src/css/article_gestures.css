@@ -81,6 +81,12 @@
   text-align: left;
 }
 
+/* A page that leaves cannot scroll (stack_motion.js#freezeScroll). */
+.stackLeaving,
+.stackLeaving :is(.listBodyView, .homeDashboard) {
+  overflow: hidden !important;
+}
+
 .stackMoving {
   will-change: translate;
   background-color: var(--mobile-chrome-background);

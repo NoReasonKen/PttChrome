@@ -36,7 +36,7 @@ function screenTexts({ startNum = 1, count = 20, cursorRow = -1 } = {}) {
 }
 
 function fakeView(texts, session) {
-  return {
+  return Object.assign(Object.create(TermView.prototype), {
     buf: {
       rows: texts.length,
       cols: 80,
@@ -50,12 +50,7 @@ function fakeView(texts, session) {
     },
     bbscore: { activeListSession: () => session },
     _brdNumMap: null,
-    accumulateBoardListLines: TermView.prototype.accumulateBoardListLines,
-    buildBoardListWindowLines: TermView.prototype.buildBoardListWindowLines,
-    resetBoardListAccumulation: TermView.prototype.resetBoardListAccumulation,
-    _blankBoardListRow: TermView.prototype._blankBoardListRow,
-    _listCardsThisFrame: TermView.prototype._listCardsThisFrame,
-  };
+  });
 }
 
 function fakeSession(view) {

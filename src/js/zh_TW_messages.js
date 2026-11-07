@@ -1524,8 +1524,13 @@
     "message": "手機好讀模式中，在文章向左滑可拉出文章捷徑；在文章或文章列表向右滑可返回。保留一般上下捲動、點擊與長按操作。"
   },
   "stack_articleGone": { "message": "這篇文章已經不在列表中" },
+  "stack_articleUpdated": { "message": "文章已更新" },
   "stack_boardGone": { "message": "這個看板已經不在列表中" },
   "stack_handoffTimeout": { "message": "返回列表逾時，已停在 PTT 目前的畫面" },
+  "stack_newArticles": { "message": "有新文章" },
+  "stack_commentSourceUnverified": { "message": "無法確認原文，推文未送出" },
+  "stack_commentNotSent": { "message": "PTT 尚未就緒，推文未送出" },
+  "stack_actionNotRun": { "message": "PTT 尚未就緒，操作未執行" },
   "articleShortcutDrawer_title": {
     "message": "文章捷徑"
   },
@@ -1544,7 +1549,6 @@
   "articleShortcutSearch_empty": { "message": "找不到符合條件的文章，已返回原文。" },
   "articleShortcutSearch_failed": { "message": "無法確認目前畫面，已停止文章搜尋。" },
   "articleShortcutSearch_missing": { "message": "無法確認原文章或文章已刪除，已安全停止，不會開啟其他文章。" },
-  "articleShortcutSearch_returned": { "message": "已返回原文。" },
   "articleShortcutSearch_recovered": { "message": "已恢復搜尋路徑，返回會沿著搜尋路徑往回走。" },
   "articleShortcutSearch_recoveryInactive": { "message": "無法確認文章或搜尋，未恢復搜尋路徑；返回維持一般行為。" },
   "searchResults_resumeFailed": { "message": "無法恢復先前的搜尋結果，已安全停止導覽；請重新搜尋。" },

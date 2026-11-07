@@ -565,6 +565,35 @@ describe("transitionListSession (full table)", () => {
       "active",
       ["resume-buffer", "rebuild"]
     );
+    // #120: Back revealed this list's live layer ⇒ the real list keeps the
+    // layer's rows, wherever PTT's cursor landed; another board rebuilds.
+    T("suspended", settle("clean-list", { keepsLayer: true }), "active", ["resume-layer"]);
+    T(
+      "suspended",
+      settle("clean-list", { keepsLayer: true, landedNumInBuffer: true }),
+      "active",
+      ["resume-layer"]
+    );
+    T(
+      "suspended",
+      settle("clean-list", { keepsLayer: true, boardNameMatch: false }),
+      "active",
+      ["resume-buffer", "rebuild"]
+    );
+    T(
+      "suspended",
+      settle("clean-list", { keepsLayer: true, hasNumberedRow: false }),
+      "suspended",
+      []
+    );
+    // The layer's search results, but PTT answers with its full list: their
+    // search runs again, and the layer resumes once PTT shows the results. A
+    // search that cannot run again rebuilds from PTT's list.
+    const left = { keepsLayer: true, layerResultsLeft: true };
+    T("suspended", settle("clean-list", { ...left, layerSearch: "repeatable" }), "suspended", ["repeat-layer-search"]);
+    T("suspended", settle("clean-list", { ...left, layerSearch: "running" }), "suspended", []);
+    T("suspended", settle("clean-list", { ...left, layerSearch: "repeatable", inFlightKind: "leave" }), "suspended", []);
+    T("suspended", settle("clean-list", { ...left, layerSearch: null }), "active", ["resume-buffer", "rebuild"]);
     // 不變量 17：退文落點只剩置底文 → 不 re-seed，停在原生鏡像等下一幀
     T(
       "suspended",
@@ -1673,7 +1702,7 @@ describe("遠跳落點頁被丟掉時改成重建", () => {
 
   // _rebuild 的 `edge` 必須在 _demandDownIfWindowShort **之前**生效：板上沒有置底文時
   // _seedAnchors 確認不了邊界 ⇒ 會在真板尾送一個零回應的 PgDn
-  //（docs/easy-reading-list.md「滿版落點不得探測」）。
+  //（docs/easy-reading-list.md「a full-page landing must not probe」）。
   describe("_rebuild 的 edge 參數", () => {
     // 讓 stub 的 notify 模擬 accumulate：重建清掉緩衝後把「落點短頁」填回去。
     function shortLandingSession(lo) {

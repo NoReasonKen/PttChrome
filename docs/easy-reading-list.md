@@ -1,514 +1,554 @@
-# 文章列表好讀模式 — 架構（v5：封閉互動＋確定性交易）
+# Article-list easy reading: architecture (v5: closed interaction + deterministic transactions)
 
-## 核心原則（最高優先，違反＝方向錯誤）
+## Core principles (highest priority; violating them means the wrong direction)
 
-**v5 合約（2026-07-05 拍板，取代舊 parity 合約；論證見 `docs/easy-reading-list-research.md` §1「困難點本質」／§3「BePTT 的穩定性來自哪」）：**
+**The v5 contract (settled 2026-07-05, replacing the old parity contract; reasoning in `docs/easy-reading-list-research.md` §1 「困難點本質」 (the nature of the difficulty) and §3 「BePTT 的穩定性來自哪」 (where BePTT's stability comes from)):**
 
-1. **外觀近似**原生（24 列高的畫面＋游標 `>`＋鍵盤習慣近似），**不再承諾**「與原生無可感知差異」。捲動本身自 2026-08-30 起是**瀏覽器原生捲動**（與文章好讀模式同一套），刻意偏離原生的整頁翻。
-2. **封閉互動**：白名單＝導覽/開文/跳號/離板；未列鍵分 **A/B 兩類**（2026-09-03，pref `enableListNativeAutoResume` 預設開）——
-   **A 類（原地重繪：`= \ ] + [ - < , . > { } t`）走凍結交易，全程不切原生**（送真鍵 → 等真回應 → 採用真落點，畫面逐像素凍住，不丟 cache）；
-   **B 類（其餘）一鍵切原生 passthrough**（可選 sync 腿 → enter-function-mode → queue 代送原鍵），操作完成、畫面靜下來 250ms 後由**靜置探針**自動切回好讀。
-   pref 關掉＝逐位元回到 2026-07-10 的黏性行為（切原生後停在原生，只有 article/menu 才恢復）。**不做**氣閘（同鍵二連擊）與模擬交易。
-3. **確定性交易**：server 互動一律 CommandQueue 交易；高風險交易尾附 `\f`（Ctrl+L，igetch 全域熱鍵→全幅重繪，協定 §2）→ 必得一幀全幅畫面，timeout 降為真異常。
-4. 交易期間 render=frozen＋吞鍵＋讀取中指示。
-5. **失敗顯性化**：timeout → 單獨 `\f` 探針拿全幅畫面重分類 → 恢復或 banner＋切原生。禁止靜默墜落。
+1. **Looks close to** native (a 24-row screen, the `>` cursor, similar keyboard habits), and **no longer promises** "no perceptible difference from native". Since 2026-08-30, scrolling itself is **the browser's native scrolling** (the same as article easy reading), deliberately departing from native whole-page flips.
+2. **Closed interaction**: the whitelist = navigation / open article / number jump / leave board; unlisted keys fall into **two classes, A and B** (2026-09-03, pref `enableListNativeAutoResume`, on by default):
+   **A class (in-place redraw: `= \ ] + [ - < , . > { } t`) goes through a frozen transaction and never switches to native** (send the real key → wait for the real response → adopt the real landing; the screen is frozen pixel for pixel and the cache is not dropped);
+   **B class (everything else) switches to native passthrough with one key** (optional sync leg → enter-function-mode → the queue sends the original key on the user's behalf), and once the operation completes and the screen has been quiet for 250ms, the **idle probe** switches back to easy reading automatically.
+   Turning the pref off = bit for bit the sticky behaviour of 2026-07-10 (after switching to native it stays native, and only article/menu restore easy reading). **No** airlock (pressing the same key twice) and no simulated transactions.
+3. **Deterministic transactions**: server interaction always goes through CommandQueue transactions; high-risk transactions append `\f` (Ctrl+L, igetch's global hotkey → full redraw, protocol §2), which guarantees one full frame, so a timeout drops to a genuine anomaly.
+4. During a transaction: render=frozen + swallowed keys + a loading indicator.
+5. **Make failure visible**: timeout → a standalone `\f` probe fetches a full frame to reclassify → recover, or banner + switch to native. Silent falls are forbidden.
 
-**勿回頭走 parity**（「與原生完全一致、read.c 逐格對齊」）：「測試全綠 ≠ 實測穩」跨 v3/v4 兩代重現，失敗面積在素材之外，屬結構性成本（論證見 research doc §1）。`list_window.js` 視窗數學保留但允許偏離 read.c（web 慣例優先），`list_window.test.js` 只留行為級守護、不做 read.c lockstep。
+**Do not go back to parity** ("exactly the same as native, aligned cell by cell with read.c"): "all tests green ≠ stable in practice" reproduced across both v3 and v4; the failure area lies outside the recorded material, a structural cost (reasoning in the research doc §1). The window math of `list_window.js` stays but may depart from read.c (web conventions first); `list_window.test.js` keeps only behaviour-level guards and no read.c lockstep.
 
-## 操作分類（枚舉即合約）
+## Operation classes (the enumeration is the contract)
 
-| 類 | 操作 | 處置 |
+| Class | Operation | Handling |
 |---|---|---|
-| T0 忽略鍵 | `keyEventToBytes(e) == null` 的鍵：CapsLock／F1–F12／NumLock／ScrollLock／不可映射的 Ctrl+Shift 組合 | `_classifyKey` 回 keyClass `ignore` → 吞掉、**不轉態、不 preventDefault**。判準即「這個鍵交給原生鍵盤路徑會不會送出 byte」，不硬列鍵清單。**Alt remap（`Alt+A~Z` ＝ PTT 的 `Ctrl+A~Z`）不歸此類**：`keyEventToBytes` 對 `altKey` 一律回 null（**刻意的**，見不變量 12），但它們經 `altRemapCharCode` 送得出對應控制碼 ⇒ 由 `onKeyDown` 在 `_classifyKey` **之前**攔下改走 T3-B |
-| T1 本地 | ↑↓ jk／PgUp PgDn／Home End（buffer 內）／滾輪；read.c 同義鍵 `空白`＝`N`＝PgDn、`P`＝PgUp、`p`＝↑、`n`＝↓、`$`＝End | 零 server。視窗/游標語意＝web 慣例，不 read.c 逐格對齊（同義鍵集合本身照 read.c:858-902，**Ctrl-F/Ctrl-B 不納入**，維持 Ctrl 組合與瀏覽器快捷鍵的分界）。滑鼠 hover＝上游標底色（`term_view.onListMouseMove`，只對有文章的 body 列；**只有列表起點（pref `mouseListClickStart`，預設作者欄 col≥17）以右給 pointer 並接受點擊，底色也只蓋那一段**，見 `docs/mouse.md`） |
-| T2 列表內交易 | 開文（Enter／**左鍵單擊該列**）、數字跳號、End/Home 邊界確認、`←`/q/e 離板 | 腳本交易（CommandQueue 序列化）。 Before an open sends Enter, the landed cursor row's author and title are compared with the tapped row; on a mismatch the list changed underneath, so Enter is not sent and `_resumeInPlace` merges PTT's page back in with a notice |
-| **T3-A 原地重繪（凍結交易，全程不切原生）** | `INPLACE_KEYS`＝`=` `\` `]` `+` `[` `-` `<` `,` `.` `>` `{` `}` `t`（read.c#i_read_key 的 `thread()`／`search_read()`／`ToggleTagItem` 三組 case，**枚舉即合約**，不得改成「猜會不會開 prompt」的啟發式）| `_beginInplaceTransaction`：state→functionMode（吸收 settle／吞鍵）但 **render=frozen**，選取≠`_serverNum` 時先 `inplace-sync-jump` → `native-inplace` 命令（尾附 `\f`）→ expect＝**park 指紋**（`curX<=1 ∧ 3<=curY<=rows-2 ∧ (cursorRowNum≠null ∨ kind='clean-list')`；**不可寫成 `kind==='clean-list'`**：跳號腿之後底列本來就空，`redrawwin` 重繪的是現狀，協定 §4✚/§6）→ `_resumeInPlace`：採用落點當選取／`_serverNum`，**錨（`_topNum`/`_scrollFrac`）一律不動**、只 reveal（不變量 N6）。`_boardName` 全程保留 ⇒ 不丟 cache。落點不在緩衝→退回 `_resumeBuffer`+`rebuild`。失敗＝`_degradeToNative`（banner＋原生）。**Ctrl-C（ClearTagList）不在此組**：FULLUPDATE 只重畫當前頁，緩衝其他頁的 tag 標記會殘留 ⇒ 歸 B 類 |
-| T3-B 一鍵切原生 passthrough | `v`、`/`、`s`、`a`、`Z`、Ctrl-P、Ctrl-Q、Alt+任一字母、`z`……**其餘一切未列鍵** | 單按即生效：有序號選取且 `_serverNum` 未同步→先 `native-sync-jump`（frozen＋吞鍵）→ `enter-function-mode`（原生 excursion，不變量 15 拋 cache）→ 代送原鍵（`native-key` 佇列命令，**尾附 `\f`**：PTT 完全忽略某鍵時零 byte 零 settle，沒有它只能等滿 3s）＋提示「已切至原生（操作完成後自動恢復好讀）」。**Ctrl 組合與 Alt remap（`Alt+A~Z`，全 26 字母）一律代送**（2026-09-13 修，見不變量 12）；只有算不出 bytes 的鍵（Ctrl+Shift／`CtrlShiftMap` 無對應）才不代送、事件放行原生鍵盤路徑。**hold＝`'passthrough'`**：clean-list settle **本身**一律 stay（settle 不解除 hold），由靜置探針決定何時回好讀；article／menu 情境切換照舊立即解除 |
-| T3a 右鍵「前已讀後未讀」 | 右鍵選單項（只在列表好讀、游標下是**有序號**的文章列時出現） | 同 T3 的序列，但 payload 是**兩步**：`v`（expect＝畫面上出現 getdata prompt「…(W)前已讀後未讀…」，**掃整個畫面**，prompt 在 row 22 不是底列）→ 落地後才送 `w\r`。第二步只在第一步的 `onDone` 裡 enqueue —— `v` 沒進 prompt 時 `w` 會落回列表按鍵 `b_call_in`（對該列作者送呼叫器），協定見 `docs/pttbbs-screen-protocol.md` §11.5。`markReadTargetAtRow(renderRow)` 是零副作用的可行性查詢（React 端不重複判斷）。**全程是凍結交易**（`resumeOnLanding` → `_beginLandingTransaction`，見下方「落地即回好讀」）：不切原生鏡像，`w⏎` 落回列表那一幀直接 `resume-buffer`+`rebuild`（已讀標記變了＝累積 buffer 過時）；sync 腿失敗**不送** `v`（游標沒對上＝拿錯的文章當界線）；PTT 拒絕（`vmsg`）或落點認不出 ⇒ 停原生鏡像交給靜置探針。「設為全部已讀」同一條（`mark_all_read.js`）。pref 關掉＝舊行為（照 T3-B 停在原生） |
-| T3b 貼上 | Shift+Insert／右鍵選單「貼上」／中鍵貼上 | 同 T3，但 payload 是整串：`App.onPasteDone` → `ListSession.onPaste(text)`（回 true＝已接手）→ 需要時 `native-sync-jump` → `enter-function-mode` → `native-paste` 佇列命令送出 `ansiHalfColorConv(u2b(normalizePasteText(...)))`。**PTT 收到後完全原生**：不代按 Enter、不特判 AID（`#` 仍要 Enter 才跳且只移游標不開文，協定 §8.1）；貼上內容自帶換行則照送 Enter。交易在途（opening／frozen）吞掉＋提示 |
-| T3c 文字輸入（IME） | 中文輸入法組完字送出（compositionend） | 同 T3b，只是**不套 `normalizePasteText`**（那是貼上專屬的換行／折行正規化，IME 送的是剛組完的一段字）、佇列命令 kind 為 `native-input`。入口是 `term_view.onTextInput` 這條共用漏斗 → `ListSession.noteTextInput(text)`（回 true＝已接手）。**按鍵路徑抓不到它**：IME 的 keydown keyCode 是 229，被 `keyEventFilter` 擋在 `onKeyDown` 之外 ⇒ 走不到 `_classifyKey`。見不變量 12d |
-| T4 非請自來 | 水球/廣播（server 主動寫入） | 唯一自動切原生路徑：banner 明示（水球專屬措辭）＋停在原生（`'passthrough'` hold ⇒ 畫面靜下來後靜置探針自動回好讀；pref 關掉時才是 article/menu 才恢復）|
+| T0 ignored keys | Keys with `keyEventToBytes(e) == null`: CapsLock / F1–F12 / NumLock / ScrollLock / unmappable Ctrl+Shift combinations | `_classifyKey` returns keyClass `ignore` → swallowed, **no transition, no preventDefault**. The criterion is "would this key send a byte if handed to the native keyboard path"; no hard-coded key list. **The Alt remap (`Alt+A~Z` = PTT's `Ctrl+A~Z`) is not in this class**: `keyEventToBytes` always returns null for `altKey` (**on purpose**, see invariant 12), but those keys can send their control codes through `altRemapCharCode`, so `onKeyDown` intercepts them **before** `_classifyKey` and routes them to T3-B |
+| T1 local | ↑↓ jk / PgUp PgDn / Home End (within the buffer) / wheel; read.c synonyms `空白` (Space) = `N` = PgDn, `P` = PgUp, `p` = ↑, `n` = ↓, `$` = End | Zero server. Window and cursor semantics = web conventions, not aligned cell by cell with read.c (the synonym set itself follows read.c:858-902; **Ctrl-F/Ctrl-B are not included**, keeping the boundary between Ctrl combinations and browser shortcuts). Mouse hover = cursor background highlight (`term_view.onListMouseMove`, only on body rows with an article; **only from the list start (pref `mouseListClickStart`, default the author column, col≥17) rightwards does it get a pointer and accept clicks, and the highlight covers only that span**, see `docs/mouse.md`) |
+| T2 in-list transactions | Open article (Enter / **left click on the row**), number jump, End/Home edge confirmation, `←`/q/e leave board | Scripted transactions (serialised by CommandQueue). Before an open sends Enter, the landed cursor row's author and title are compared with the tapped row; on a mismatch the list changed underneath, so Enter is not sent and `_resumeInPlace` merges PTT's page back in with a notice |
+| **T3-A in-place redraw (frozen transaction, never switching to native)** | `INPLACE_KEYS` = `=` `\` `]` `+` `[` `-` `<` `,` `.` `>` `{` `}` `t` (the three case groups `thread()` / `search_read()` / `ToggleTagItem` in read.c#i_read_key; **the enumeration is the contract**, and must not become a heuristic that "guesses whether a prompt will open") | `_beginInplaceTransaction`: state→functionMode (absorbs settles / swallows keys) but **render=frozen**; when the selection ≠ `_serverNum`, `inplace-sync-jump` first → `native-inplace` command (appending `\f`) → expect = **park fingerprint** (`curX<=1 ∧ 3<=curY<=rows-2 ∧ (cursorRowNum≠null ∨ kind='clean-list')`; **must not be written as `kind==='clean-list'`**: after the number-jump leg the bottom row is empty anyway, and `redrawwin` redraws the current state, protocol §4✚/§6) → `_resumeInPlace`: adopts the landing as the selection / `_serverNum`, **the anchor (`_topNum`/`_scrollFrac`) never moves**, only reveal (invariant N6). `_boardName` is kept throughout, so the cache is not dropped. Landing not in the buffer → falls back to `_resumeBuffer` + `rebuild`. Failure = `_degradeToNative` (banner + native). **Ctrl-C (ClearTagList) is not in this group**: FULLUPDATE only redraws the current page, so tag marks on the buffer's other pages would linger, so it is class B |
+| T3-B one-key native passthrough | `v`, `/`, `s`, `a`, `Z`, Ctrl-P, Ctrl-Q, Alt+any letter, `z`… **every other unlisted key** | Takes effect on a single press: with a numbered selection and `_serverNum` out of sync → `native-sync-jump` first (frozen + swallowed keys) → `enter-function-mode` (a native excursion; invariant 15 drops the cache) → the original key is sent on the user's behalf (`native-key` queue command, **appending `\f`**: when PTT ignores a key completely there are zero bytes and zero settles, and without it the wait would run the full 3s) + the notice 「已切至原生（操作完成後自動恢復好讀）」 ("switched to native; easy reading resumes automatically when done"). **Ctrl combinations and the Alt remap (`Alt+A~Z`, all 26 letters) are always sent on the user's behalf** (fixed 2026-09-13, see invariant 12); only keys whose bytes cannot be computed (Ctrl+Shift / no `CtrlShiftMap` entry) are not, and their event goes on to the native keyboard path. **hold = `'passthrough'`**: a clean-list settle **itself** always stays (a settle does not release the hold), and the idle probe decides when to return to easy reading; article/menu context switches release it immediately as before |
+| T3a right-click 「前已讀後未讀」 ("before read, after unread") | Context menu item (only on article-list easy reading, when the row under the pointer is a **numbered** article row) | The same sequence as T3, but the payload is **two steps**: `v` (expect = the getdata prompt 「…(W)前已讀後未讀…」 appears on screen, **scanning the whole screen**, since the prompt is on row 22, not the bottom row) → `w\r` only after it lands. The second step is enqueued only inside the first step's `onDone`: when `v` has not opened the prompt, `w` would fall back to the list key `b_call_in` (paging that row's author); protocol in `docs/pttbbs-screen-protocol.md` §11.5. `markReadTargetAtRow(renderRow)` is a side-effect-free feasibility query (React does not repeat the check). **It is a frozen transaction throughout** (`resumeOnLanding` → `_beginLandingTransaction`, see "Resume on landing" below): no native mirror, and the frame where `w⏎` lands back on the list goes straight to `resume-buffer` + `rebuild` (the read marks changed, so the accumulated buffer is stale); if the sync leg fails, `v` is **not sent** (a misaligned cursor would use the wrong article as the boundary); a PTT refusal (`vmsg`) or an unrecognised landing ⇒ it stays on the native mirror for the idle probe. 「設為全部已讀」 ("mark all as read") takes the same path (`mark_all_read.js`). Pref off = old behaviour (staying native as with T3-B) |
+| T3b paste | Shift+Insert / context menu 「貼上」 ("paste") / middle-click paste | Same as T3, but the payload is the whole string: `App.onPasteDone` → `ListSession.onPaste(text)` (true = taken over) → `native-sync-jump` when needed → `enter-function-mode` → the `native-paste` queue command sends `ansiHalfColorConv(u2b(normalizePasteText(...)))`. **Once PTT receives it, it is fully native**: no Enter is pressed on the user's behalf, AIDs are not special-cased (`#` still needs Enter to jump and only moves the cursor without opening, protocol §8.1); pasted content with its own line breaks sends Enter as usual. With a transaction in flight (opening / frozen) it is swallowed with a notice |
+| T3c text input (IME) | A Chinese input method commits composed text (compositionend) | Same as T3b, except it **does not apply `normalizePasteText`** (that is paste-specific normalisation of line breaks and wraps, while the IME sends a freshly composed piece of text), and the queue command kind is `native-input`. The entry point is the shared funnel `term_view.onTextInput` → `ListSession.noteTextInput(text)` (true = taken over). **The key path cannot catch it**: the IME's keydown keyCode is 229, which `keyEventFilter` stops before `onKeyDown`, so it never reaches `_classifyKey`. See invariant 12d |
+| T4 unsolicited | Waterballs / broadcasts (written by the server on its own) | The only automatic switch to native: an explicit banner (waterball-specific wording) + staying native (`'passthrough'` hold, so once the screen is quiet the idle probe returns to easy reading automatically; only with the pref off does it wait for article/menu) |
 
-pref `enableEasyReadingList`（**2026-09-16 起預設 on**）＋`easyReadingListPrefetchCount`（預設 200，0=停背景 fill）
-＋`enableListNativeAutoResume`（**預設 on**，一顆同時管 A 類凍結交易與 B 類自動回復；
-關掉＝逐位元回到黏性原生。三階梯：全開／中（關這顆）／全關（關母開關＝純原生 24 列）——
-每一階都必須是完整可用的狀態）
-＋`mouseWheelSmoothScroll`（預設 on＝捲動交給瀏覽器；關＝滾輪一次一頁。滑鼠分頁，
-見 `docs/mouse.md`）。
-三原則：**A 內容判定**（settle 只定何時評估；是什麼靠指紋謂詞，`docs/pttbbs-screen-protocol.md` §3-5）、**B 顯式狀態機**（ListSession 單一擁有者）、**C 命令序列化**（CommandQueue 單一 in-flight；typeahead 跳繪 §2）。誤判永遠往 native 降級（catch-all functionMode）。
+Pref `enableEasyReadingList` (**on by default since 2026-09-16**) + `easyReadingListPrefetchCount` (default 200, 0 = stop background fill)
++ `enableListNativeAutoResume` (**on by default**; one switch governs both A-class frozen transactions and B-class automatic resume;
+off = bit for bit back to sticky native. Three steps: all on / middle (this one off) / all off (the master switch off = pure native 24 rows);
+every step must be a fully usable state)
++ `mouseWheelSmoothScroll` (on by default = scrolling is left to the browser; off = one page per wheel notch. Mouse tab,
+see `docs/mouse.md`).
+Three principles: **A, content decides** (a settle only decides when to evaluate; what it is comes from fingerprint predicates, `docs/pttbbs-screen-protocol.md` §3-5), **B, an explicit state machine** (ListSession is the single owner), **C, serialised commands** (CommandQueue, a single in-flight command; typeahead skipped redraws §2). Misjudgements always degrade towards native (catch-all functionMode).
 
-## 檔案地圖
+## File map
 
-| 物件 | 位置 |
+| Object | Location |
 |---|---|
-| 導覽序列與游標標記（純函式）：`windowVisibleSequence`/`pruneListToSegment`/`labelListCursor`/`LIST_HEADER_ROWS` | `src/js/list_window.js`（unit：`list_window.test.js`）。**read.c 視窗數學已整組退場**（見「視圖模型」） |
-| 捲動數學（純函式，零 DOM）：`topPosFromScrollTop`/`anchorScrollTop`/`revealScrollTop`/`revealPlan`/`maxScrollTopFor`/`isRowVisible` | `src/js/list_scroll.js`（unit：`list_scroll.test.js`） |
-| 純函式層：`classifyListScreen`/`classifyListBurst`/`transitionListSession`/`mergeListPage`/`flattenListBuffer`/`moveListSelection`/`visibleListIndices`/`parseBoardName`/`evictListBuffer`/`bufferEdgeNum` | `src/js/list_session.js` 上半（unit：`list_session.test.js`） |
-| class `ListSession(core,view,termBuf,queue)`：狀態機＋捲動錨（`_topNum`/`_topPinnedKey`/`_scrollFrac`）＋游標（`_selectedNum`）＋demand＋`getListView`／`captureScrollAnchor`／`applyScrollAfterRender`／`onDomScroll` | 同檔下半；`pttchrome.jsx` App constructor 接線 |
-| `CommandQueue`（注入 send/timer/onEvent、soft/hard/probe timeout、`expedite`、flush 靜默） | `src/js/command_queue.js` |
-| 送出契約（2026-09-17 變更）：queue 的 send 綁 `conn.send`＝**機器模式**，server 停在 `VKSTATE_ESC` 時一律先補一個 ESC 化解。**`_beginPassthroughBytes`／`_enqueueInplaceKey` 送的使用者 byte 也一樣**——那些是單一按鍵、不可能是 ESC 組合鍵的第二個位元組（組合鍵的 Esc 走 `term_view._send`、不排進 queue），而化解反而修好「使用者漏一個 Esc 之後按 `[`／數字 → 命令零回應到 timeout → 誤降級原生」。推導見 `src/js/vtkbd_send_state.js` 檔頭與 `docs/pttbbs-screen-protocol.md` §1.2 | `src/js/vtkbd_send_state.js` |
-| 序號解析：`parseListArticleNum`/`isPinnedListRow`/`recoverCursorArticleNum`/`pageArticleNums` | `src/js/comment_parse.js` |
-| settle snapshot | `src/js/term_buf.js` `_armSettleTimer` |
-| render：redraw buffer/frozen 分支（`buildListWindowLines`＝header/footer 快取＋`getListView()` 的整段序列＋`>` 游標裝飾）、`accumulateListLines`（merge→evict→prune→flatten→chrome 快取）、`relabelListCursorRow` | `src/js/term_view.js` |
-| body 捲動視口（`.listBodyView`）：`_patchRows`／`_ensureBodyView`／`getListScrollTop`／`setListScrollTop`／`scrollListTo`／`getListViewportPx`／scroll listener | `src/render/screen.js`（unit：`render_list_scroll.test.js`） |
-| 鍵盤 hook（僅 buffer/frozen；native 全直通）；滾輪：`pttchrome.jsx mouse_scroll` buffer 分支 → **early return 交給瀏覽器**（pref 關才走 `ListSession.onWheel`） | `term_view.js onKeyDown`／`pttchrome.jsx` |
-| 測試 | offline `tests/e2e/offline/easy-reading-list.offline.spec.js`（CI gate）＋ `scenario_navigation.offline.spec.js`（`]` 凍結交易、游標捲出視野 ↓；素材 `scn-list-bracket`）；live 只剩 `core.spec.js` 的列表好讀不跑版檢查（2026-10 起 live 只保證核心，soak 已退役）；素材 `cchat-list-nav/prompt/pinned/mark/search`（**新 `>` 游標世代**，2026-08 重錄）＋ `cchat-list-*-wide`（**舊 `●` 世代**，只被「雙支援」那一條用；勿刪，它是兩代 parser 的唯一真瀏覽器覆蓋） |
+| Navigation sequence and cursor marking (pure functions): `windowVisibleSequence`/`pruneListToSegment`/`labelListCursor`/`LIST_HEADER_ROWS` | `src/js/list_window.js` (unit: `list_window.test.js`). **read.c's window math has been retired as a whole** (see "View model") |
+| Scrolling math (pure functions, zero DOM): `topPosFromScrollTop`/`anchorScrollTop`/`revealScrollTop`/`revealPlan`/`maxScrollTopFor`/`isRowVisible` | `src/js/list_scroll.js` (unit: `list_scroll.test.js`) |
+| Pure function layer: `classifyListScreen`/`classifyListBurst`/`transitionListSession`/`mergeListPage`/`flattenListBuffer`/`moveListSelection`/`visibleListIndices`/`parseBoardName`/`evictListBuffer`/`bufferEdgeNum` | The top half of `src/js/list_session.js` (unit: `list_session.test.js`) |
+| class `ListSession(core,view,termBuf,queue)`: state machine + scroll anchor (`_topNum`/`_topPinnedKey`/`_scrollFrac`) + cursor (`_selectedNum`) + demand + `getListView`/`captureScrollAnchor`/`applyScrollAfterRender`/`onDomScroll` | The bottom half of the same file; wired in the `pttchrome.jsx` App constructor |
+| `CommandQueue` (injected send/timer/onEvent, soft/hard/probe timeouts, `expedite`, silent flush) | `src/js/command_queue.js` |
+| Send contract (changed 2026-09-17): the queue's send is bound to `conn.send` = **machine mode**: when the server is in `VKSTATE_ESC`, an ESC is always sent first to defuse it. **User bytes sent by `_beginPassthroughBytes`/`_enqueueInplaceKey` are treated the same**: they are single keys and can never be the second byte of an ESC combination (a combination's Esc goes through `term_view._send` and is not queued), and the defusing actually fixes "after the user misses an Esc, pressing `[` or a digit → the command gets no response until the timeout → wrongly degrades to native". Derivation in the header of `src/js/vtkbd_send_state.js` and `docs/pttbbs-screen-protocol.md` §1.2 | `src/js/vtkbd_send_state.js` |
+| Number parsing: `parseListArticleNum`/`isPinnedListRow`/`recoverCursorArticleNum`/`pageArticleNums` | `src/js/comment_parse.js` |
+| Settle snapshot | `src/js/term_buf.js` `_armSettleTimer` |
+| Render: the redraw buffer/frozen branch (`buildListWindowLines` = header/footer cache + `getListView()`'s whole sequence + `>` cursor decoration), `accumulateListLines` (merge→evict→prune→flatten→chrome cache), `relabelListCursorRow` | `src/js/term_view.js` |
+| Body scroll viewport (`.listBodyView`): `_patchRows`/`_ensureBodyView`/`getListScrollTop`/`setListScrollTop`/`scrollListTo`/`getListViewportPx`/scroll listener | `src/render/screen.js` (unit: `render_list_scroll.test.js`) |
+| Keyboard hook (buffer/frozen only; native passes everything through); wheel: the buffer branch of `pttchrome.jsx mouse_scroll` → **early return to the browser** (only with the pref off does it go through `ListSession.onWheel`) | `term_view.js onKeyDown` / `pttchrome.jsx` |
+| Tests | Offline `tests/e2e/offline/easy-reading-list.offline.spec.js` (CI gate) + `scenario_navigation.offline.spec.js` (`]` frozen transaction, ↓ with the cursor scrolled out of view; cassette `scn-list-bracket`); live keeps only the article-list easy reading layout check in `core.spec.js` (since 2026-10 live guarantees only the core, and soak is retired); cassettes `cchat-list-nav/prompt/pinned/mark/search` (**the new `>` cursor generation**, re-recorded 2026-08) + `cchat-list-*-wide` (**the old `●` generation**, used only by the "dual support" test; do not delete them, they are the only real-browser coverage of both parser generations) |
 
-## 視圖模型（render 層）
+## View model (render layer)
 
-- **畫面＝header 3 列（快取）＋ body 視口（固定 20 列高＝`bodyRows = rows-4`）＋ footer 1 列**。
-  body 視口（`.listBodyView`，`src/render/screen.js#_patchRows`）裡放的是**整段過濾後
-  序列**（上限 `MAX_LIST_ROWS`≈300 列），`overflow-y:auto` ⇒ **捲動完全交給瀏覽器**，
-  與文章好讀模式同一套引擎。header/footer 留在 `#mainContainer` 直系子層（不跟著捲）。
-  `mainDisplay.scrollTop=0` 仍維持（`.main` 的內容恰好 24 列高，沒有可捲距離）。
-  序列短於 `bodyRows` 時補 blank 列到 20（維持 24 列外觀，且不產生額外可捲距離）。
-- **`data-row` ＝ 傳給 `<Screen>` 的 lines index**，所以 footer 的 data-row 是 `3+N`
-  （隨序列長度變動，**不再固定 23**）。消費端只有選取複製（`App.doCopyAnsi` 用
-  `view._renderedLines` 反查，`term_view._renderScreenLines` 記的那一份）與 golden。
-  - **連帶：buffer/frozen 幀的 `srow` 不是 `buf` 的列號**，所以 `#cursor`／`#t` 在這裡
-    **沒有可錨的列**。`term_view._rowAnchor` 除了 `_gridRender`（這裡是 true）還要
-    `_srowIsBufRow`（這裡是 false，由 `_renderScreenLines` 依
-    `cursor_anchor.paintedRowsAreBufRows` 逐列參考比對推導），量不到就退回 `.main`
-    可視區左下角＝原生輸入列將出現的位置。少了這道守門，`buf.cur_y` 會反查到
-    `.listBodyView` 深處、通常已捲出視野的一列，`#t` 被寫到視窗外（2026-08-31 的
-    IME bug，見不變量 12d）。
-- **捲動位置＝內容錨**：`(_topNum | _topPinnedKey, _scrollFrac)` ＝ 視口頂端是哪一列、
-  那一列被捲掉幾 px。列高恆為 `chh` ⇒ 位置 ↔ scrollTop 是純乘除（`src/js/list_scroll.js`
-  的純函式，零 DOM）。每幀順序：`captureScrollAnchor()`（重繪前從 DOM 擷取）→
-  `accumulateListLines()`（merge/evict/prune，序列可能整段位移）→ `buildListWindowLines()`
-  → render → `applyScrollAfterRender()`（錨 → 新位置 → 寫 scrollTop ＋消費 reveal）。
-  frozen 幀走快照、不做上述任何一步（畫面逐像素凍住）。
-  錨遺失（那一列被 evict／黑名單／pinned 門控拿掉）的退路三層：錨 → 游標 → 0，
-  退到第二/三層時發 `listSession.scrollAnchorLost` 診斷（不變量 7f）。
-- **游標與捲動解耦（網頁式語意）**：游標＝行首半形 `>`（`labelListCursor`，只蓋 cell 0
-  ＝`%7d` 的前導空格，同 server `STR_CURSOR` 畫法；ASCII 免 u2b；**不反白**——原生
-  lightbar 是 `UF_MENU_LIGHTBAR` 旗標非預設）。捲動**不動游標**，游標可以被捲出視野；
-  鍵盤導覽移完游標後排一次 reveal 把它帶進視野。舊的「游標被視窗推著走」與
-  `normalizeListWindow`（視窗以游標重錨）**已退場**——那條耦合正是 v1–v4 混合模型失敗
-  的接縫（research doc §4）。`list_window.js` 只剩 `windowVisibleSequence` /
-  `pruneListToSegment` / `labelListCursor`；read.c 的視窗數學（`listCursorPos` /
-  `moveListCursorWindow` / `scrollListWindow` / `normalizeListWindow`）整組刪除。
-  **兩代游標**：server 自 pttbbs `b9a5029f` 起畫 `>`（舊為全形 `●`，蓋 cells[0,1] 含
-  序號最高位）——**讀 server 畫面的 parser 必須雙支援**（cassette 是舊素材，協定 §4），
-  我們畫的假游標則一律 `>`。map 內永遠存序號欄正規化過的乾淨列（`relabelListCursorRow`
-  依 resolved num 重寫 cells[0,7) 為 `%7d`），游標只畫在 render-time clone。
-- 導航空間＝**過濾後序列**：`visibleListIndices`（黑名單）→ `windowVisibleSequence`
-  （pinned 門控）。`_sequence()` 有記憶化（O(緩衝列數) 的 rowToText，捲動每幀都要問）。
-- **鍵盤語意**（白名單一律零 server、零 byte；serverOp 的邊界判準照抄 read.c:842-880。newui 搬成
-  `read.c#read_nav_cmds` → `read_cmd_up/down/pgup/pgdn/home/end` ＋ `read_move_cursor`（＝舊 `cursor_pos`，
-  含 from_top 語意與 ↑ 在第 1 列 wrap 到 `last_line`），同義鍵集合與邊界逐鍵相同，CONFIRMED 2026-09-25）：
+- **Screen = 3 header rows (cached) + the body viewport (a fixed 20 rows tall = `bodyRows = rows-4`) + 1 footer row**.
+  The body viewport (`.listBodyView`, `src/render/screen.js#_patchRows`) holds **the whole filtered
+  sequence** (at most `MAX_LIST_ROWS` ≈ 300 rows), with `overflow-y:auto`, so **scrolling is left entirely to the browser**,
+  the same engine as article easy reading. Header and footer stay direct children of `#mainContainer` (they do not scroll).
+  `mainDisplay.scrollTop=0` still holds (`.main`'s content is exactly 24 rows tall, with no scrollable distance).
+  A sequence shorter than `bodyRows` is padded with blank rows to 20 (keeping the 24-row look without adding scrollable distance).
+- **`data-row` = the lines index passed to `<Screen>`**, so the footer's data-row is `3+N`
+  (it varies with the sequence length and is **no longer fixed at 23**). The only consumers are copy selection (`App.doCopyAnsi` looks up
+  `view._renderedLines`, the copy that `term_view._renderScreenLines` records) and golden snapshots.
+  - **Consequence: in buffer/frozen frames `srow` is not a `buf` row number**, so `#cursor`/`#t` have
+    **no row to anchor to** here. Besides `_gridRender` (true here), `term_view._rowAnchor` also requires
+    `_srowIsBufRow` (false here, derived by `_renderScreenLines` from
+    `cursor_anchor.paintedRowsAreBufRows`, comparing row references one by one); when it cannot measure, it falls back to the bottom-left of `.main`'s
+    visible area = where the native input line will appear. Without this guard, `buf.cur_y` would map to a row deep inside
+    `.listBodyView`, usually scrolled out of view, and `#t` would be written outside the window (the 2026-08-31
+    IME bug, see invariant 12d).
+- **Scroll position = a content anchor**: `(_topNum | _topPinnedKey, _scrollFrac)` = which row is at the top of the viewport and
+  how many px of it are scrolled off. Row height is always `chh`, so position ↔ scrollTop is pure multiplication and division (the pure
+  functions of `src/js/list_scroll.js`, zero DOM). Per-frame order: `captureScrollAnchor()` (captured from the DOM before the redraw) →
+  `accumulateListLines()` (merge/evict/prune; the sequence may shift as a whole) → `buildListWindowLines()`
+  → render → `applyScrollAfterRender()` (anchor → new position → write scrollTop + consume the reveal).
+  Frozen frames use the snapshot and do none of these steps (the screen is frozen pixel for pixel).
+  When the anchor is lost (that row was removed by evict / blacklist / pinned gating), the fallback has three tiers: anchor → cursor → 0,
+  and falling to the second or third tier emits the `listSession.scrollAnchorLost` diagnostic (invariant 7f).
+- **Cursor decoupled from scrolling (web-style semantics)**: the cursor = a half-width `>` at the start of the row (`labelListCursor`, covering only cell 0,
+  the leading space of `%7d`, drawn like the server's `STR_CURSOR`; ASCII, so no u2b; **no reverse video**: native
+  lightbar is the `UF_MENU_LIGHTBAR` flag, not the default). Scrolling **does not move the cursor**, and the cursor can be scrolled out of view;
+  after keyboard navigation moves the cursor, one reveal is scheduled to bring it into view. The old "the window pushes the cursor along" and
+  `normalizeListWindow` (re-anchoring the window on the cursor) **are retired**: that coupling was exactly the seam where the v1–v4 hybrid model
+  failed (research doc §4). `list_window.js` keeps only `windowVisibleSequence` /
+  `pruneListToSegment` / `labelListCursor`; read.c's window math (`listCursorPos` /
+  `moveListCursorWindow` / `scrollListWindow` / `normalizeListWindow`) was deleted as a whole.
+  **Two cursor generations**: since pttbbs `b9a5029f` the server draws `>` (it used to be a full-width `●`, covering cells[0,1] including
+  the number's highest digit). **Parsers that read the server's screen must support both** (cassettes are old material, protocol §4),
+  while the fake cursor we draw is always `>`. The map always stores clean rows with a normalised number column (`relabelListCursorRow`
+  rewrites cells[0,7) as `%7d` from the resolved num), and the cursor is drawn only on a render-time clone.
+- The navigation space = **the filtered sequence**: `visibleListIndices` (blacklist) → `windowVisibleSequence`
+  (pinned gating). `_sequence()` is memoised (an O(buffer rows) rowToText, asked on every scroll frame).
+- **Keyboard semantics** (the whitelist is always zero server and zero bytes; serverOp's edge criteria copy read.c:842-880. newui moved them to
+  `read.c#read_nav_cmds` → `read_cmd_up/down/pgup/pgdn/home/end` + `read_move_cursor` (= the old `cursor_pos`,
+  including from_top semantics and ↑ on row 1 wrapping to `last_line`), with identical synonym sets and edges per key, CONFIRMED 2026-09-25):
 
-  | 鍵（含同義鍵） | 游標 | 捲動 |
+  | Key (with synonyms) | Cursor | Scroll |
   |---|---|---|
-  | `↑` `k` `p` | `cursor-1`；第一列 ∧ `_edgeDown` → wrap 到最後一列；`!_edgeDown` → serverOp `end` | 移動前可見 → `nearest`（**instant**）；不可見 → `center`（smooth） |
-  | `↓` `j` `n` | `cursor+1`（到底不 wrap） | 同上 |
-  | `PgUp` `P` / `PgDn` `空白` `N` | `視口頂 ∓ bodyRows`，游標落在那裡 | `start`，smooth |
-  | `Home` / `End` `$` | **一律 serverOp**（送原生鍵；2026-09-05 起無本地捷徑） | `start` / `end`，smooth |
+  | `↑` `k` `p` | `cursor-1`; on the first row ∧ `_edgeDown` → wrap to the last row; `!_edgeDown` → serverOp `end` | Visible before moving → `nearest` (**instant**); not visible → `center` (smooth) |
+  | `↓` `j` `n` | `cursor+1` (no wrap at the bottom) | Same as above |
+  | `PgUp` `P` / `PgDn` `空白` (Space) `N` | `viewport top ∓ bodyRows`, with the cursor landing there | `start`, smooth |
+  | `Home` / `End` `$` | **Always serverOp** (sends the native key; no local shortcut since 2026-09-05) | `start` / `end`, smooth |
 
-  **表中的 smooth 只適用單發**：按住／連發時 block 不變、behavior 一律退成 instant（下一條）。
+  **The table's smooth applies only to single presses**: when held or repeated, the block is unchanged and the behavior always falls back to instant (next item).
 
-  兩個刻意的決定：**PgUp/PgDn/Home/End 以「視口頂」為基準**（游標在視野外時，先瞬移
-  回游標再翻一頁很怪；游標可見時與 read.c 一致）；**↑↓ 的 nearest 一律 instant**。
-  政策收斂在 `list_scroll.js#revealPlan` 一支純函式；`prefers-reduced-motion: reduce`
-  時一律 instant。
-- **連發（按住／連續滾輪刻度）一律 instant**（2026-08-30 第二輪修正）。理由是瀏覽器的
-  能力邊界：programmatic 的 `scrollTo({behavior:'smooth'})` **不保留速度** —— 每次呼叫
-  都取消上一個動畫、從 ease 曲線的**起點**重新起跑（Blink 的 ProgrammaticScrollAnimator；
-  Chrome 自己的鍵盤捲動走 `ScrollAnimator::UpdateTarget`，那個保留速度的 retarget 沒有
-  暴露給 web）。於是按住 PgUp/PgDn 時 keydown 約 30/s 比動畫快，目標又一次往前一整頁 ⇒
-  **按著只慢慢爬、放開後才快速補捲 1~2 頁**（使用者回報）。
-  判定＝`e.repeat`（OS 自動重複；抓得到初次延遲後的第一發）**或**距上一次導覽 <
-  `NAV_BURST_MS`（250ms，補上沒有 repeat 旗標的來源：滾輪一次一頁、貼上的 bytes、
-  使用者自己連按）。單發維持 smooth（＝Chrome 的「慢速捲一下」）。
-  守護：`list_scroll.test.js`「連發」＋`list_session.test.js`「按住 PgUp」／「連發視窗」
-  ＋offline e2e「按住 PgUp（自動重複）」（用 CDP `autoRepeat` 送真 trusted keydown，
-  斷言**送完鍵當下**就到位、放開後 scrollTop 不再動）。
-- **平滑動畫 × 背景補頁：兩個不同的錨，缺一就回捲**（`_scrollAnim`）。實測每按一次
-  PgUp 都會觸發 prefetch，回應約 110ms 後落地，而動畫要 200~400ms ⇒ **必然重疊**。
-  重疊時要同時做到兩件事：
-  1. **補償**：prepend 在上方插入 N 列＝內容整體下移 N 列 ⇒ scrollTop 必須 +N 列才能
-     維持視覺連續。這件事靠**視口錨**（`_topNum`，每幀從 DOM 擷取，動畫期間照樣擷取）。
-  2. **目標跟著內容走**：動畫的終點是「某一列」，`_scrollAnim` 記的是那一列的**內容
-     身分**（序號／pinned key）而不只是 px；序列位移後用 `_animTargetPos` 重算目標 px，
-     只有在真的變了才重發 `scrollListTo`（序列沒動 ⇒ 動畫不被打斷）。
+  Two deliberate decisions: **PgUp/PgDn/Home/End use "the viewport top" as their base** (when the cursor is out of view, jumping
+  back to the cursor before flipping a page would be odd; with the cursor visible this matches read.c); **↑↓'s nearest is always instant**.
+  The policy converges in the single pure function `list_scroll.js#revealPlan`; under `prefers-reduced-motion: reduce`
+  it is always instant.
+- **Repeats (held keys / continuous wheel notches) are always instant** (second round of fixes, 2026-08-30). The reason is a limit of the
+  browser: programmatic `scrollTo({behavior:'smooth'})` **does not keep velocity**: every call
+  cancels the previous animation and restarts from the **beginning** of the ease curve (Blink's ProgrammaticScrollAnimator;
+  Chrome's own keyboard scrolling goes through `ScrollAnimator::UpdateTarget`, whose velocity-keeping retarget is not
+  exposed to the web). So with PgUp/PgDn held, keydown at about 30/s outpaces the animation and the target moves a whole page further each time, so
+  **holding only creeps slowly, and on release it quickly catches up 1~2 pages** (user report).
+  Detection = `e.repeat` (OS auto-repeat; catches the first repeat after the initial delay) **or** less than
+  `NAV_BURST_MS` (250ms) since the previous navigation (covering sources without a repeat flag: one page per wheel notch, pasted bytes,
+  the user pressing repeatedly). Single presses stay smooth (= Chrome's "slow single scroll").
+  Guarded by `list_scroll.test.js` "repeats" + `list_session.test.js` "holding PgUp" / "repeat window"
+  + offline e2e "holding PgUp (auto-repeat)" (sends real trusted keydowns with CDP `autoRepeat`,
+  asserting it is in place **the moment the keys have been sent**, and that scrollTop no longer moves after release).
+- **Smooth animation × background page fill: two different anchors, and missing either one scrolls back** (`_scrollAnim`). Measured: every
+  PgUp press triggers a prefetch whose response lands about 110ms later, while the animation takes 200~400ms, so **they always overlap**.
+  While overlapping, two things must both hold:
+  1. **Compensation**: a prepend inserts N rows above = all content moves down N rows, so scrollTop must grow by N rows to
+     stay visually continuous. This relies on the **viewport anchor** (`_topNum`, captured from the DOM every frame, including during the animation).
+  2. **The target follows the content**: the animation's end is "a certain row"; `_scrollAnim` records that row's **content
+     identity** (number / pinned key), not just px; after the sequence shifts, `_animTargetPos` recomputes the target px,
+     and `scrollListTo` is only reissued when it really changed (sequence unchanged ⇒ the animation is not interrupted).
 
-  **歷史坑（勿重蹈）**：第一版為了修「PgUp 只捲了幾列就停」而在動畫期間**凍結視口錨**
-  （錨＝目標），於是失去「現在顯示哪一列」的資訊、做不了補償 ⇒ 補頁時畫面瞬間往上跳
-  過頭，動畫再把它拉回來 —— 那就是使用者回報的**回捲**（黑名單多寡改變過濾後的位移量，
-  所以各板強弱不同）。正解是「兩個錨各司其職」，不是凍結。
-  逾時逃生門 `SCROLL_ANIM_MAX_MS=1000`（使用者中途自己捲動會取消瀏覽器的動畫，那時
-  永遠到不了目標）。目標那一列被 evict／黑名單拿掉 ⇒ 放棄動畫、停在原地。
+  **A historical pitfall (do not repeat it)**: the first version, to fix "PgUp scrolls only a few rows and stops", **froze the viewport anchor** during the animation
+  (anchor = target), losing the information of "which row is shown now" and with it compensation, so on a page fill the screen instantly jumped up
+  too far, and the animation pulled it back: that is the **scroll-back** users reported (the number of blacklisted rows changes the filtered shift,
+  so its strength varied by board). The right answer is "two anchors, each with its own job", not freezing.
+  Timeout escape hatch `SCROLL_ANIM_MAX_MS=1000` (when the user scrolls midway, the browser cancels its animation, and it would
+  never reach the target). When the target row is removed by evict / blacklist ⇒ the animation is abandoned and stays in place.
 
-  **補償寫入只有在真的要補償時才准做**：同步寫 `scrollTop` 會取消瀏覽器
-  進行中的平滑捲動（`_cancelScroll` 正是靠這個副作用停住畫面的）。`applyScrollAfterRender`
-  原本每一幀都無條件寫一次「與現值相同」的值 ⇒ 動畫被殺，而重發條件又是「目標變了才發」
-  ⇒ **不重發、動畫永久停擺**（症狀：單按一次 PgUp，中途來一幀重繪就捲到一半停住）。
-  現在是 `compensated = |top - 現值| >= 0.5` 才寫，而且**寫過就必定重發**動畫（即使目標
-  px 一格沒變）。instant 的 reveal 則相反：上一發的動畫還在飛時**一定要**寫一次把它殺掉，
-  否則放開手畫面還會被舊動畫帶走。
-  守護：`list_session.test.js`「序列沒位移的幀不得寫 scrollTop」／「補償寫入之後必定重發
-  動畫」。注意 unit 的 mock 量不到「寫入＝取消動畫」這個副作用，所以斷言的是
-  `setListScrollTop` 的**呼叫次數**，別把它改回單純比對數值。
-  翻頁的基準是 `_navTopPos`（動畫在飛時取**動畫終點**，不是中間值），否則連按 PgUp
-  的第二次只會從半路再翻一頁、距離不足。
-  交易凍結（`_freezeForTransaction`／`_beginOpen`／`_beginOpenPinned`）必須
-  `_cancelScroll()`：`overflow:hidden` 不會取消已排定的 `scrollTo({smooth})`。
-  補償的另一半在 CSS：`.listBodyView` 的 `overflow-anchor: none` —— 瀏覽器內建的
-  scroll anchoring 也會在前置插入時調 scrollTop，兩邊各補一次就是補過頭。
-  守護：`list_session.test.js`「平滑捲動 × 背景補頁（回捲的回歸）」六條。
-- **純位移不寫 scrollTop：頂端保留區吸收**（`render/screen.js#absorbListShift`，兩種列表共用）。
-  CONFIRMED（Android 14 模擬器 Chrome 113，`adb input swipe` 真甩動）：**觸控捲動／慣性甩動進行中，
-  JS 寫進捲動容器的 scrollTop 會被 compositor 蓋回去**——`scrollTop=`、`scrollBy`、先切
-  `overflow:hidden` 再寫、改開 `overflow-anchor:auto`（瀏覽器沒有自己補）全部一樣。舊補償因此遺失 ⇒
-  畫面跳一頁，下一幀錨從 DOM 讀成「快到頂」⇒ 又補一頁 ⇒ 無限往上補。
-  機制：視口頂端一段空白（`.listBodyView::before`，高度 css 變數 `--list-reserve`；**不可用 padding-top**，
-  border-box 下 padding 超過指定高度會把視口撐高）。`screen.get/setListScrollTop`／`scrollListTo`
-  一律是**內容座標**（不含保留區，保留區在視野裡時為負）。`applyScrollAfterRender` 用
-  `list_scroll.shiftOnlyDelta` 判斷「差距＝錨上方增減的列」⇒ `absorbListShift` 縮／放保留區，不寫入
-  （同步 `_lastScrollTop`／`_scrollAnim.px` 加 shift）；其餘（落點、還原、clamp、保留區不夠）照舊寫。
-  保留區目標＝`listReservePx`（未到頂 `LIST_RESERVE_PAGES`=4 頁，到頂 0），回補需寫入 ⇒ 只在靜止時做
-  （`LIST_RESERVE_IDLE_MS` 內無 scroll 事件；**不追蹤觸控**：按下的那列被重畫換掉時 touchend 傳不到視口／document，計數會卡住）。
-  守護：`render_list_reserve.test.js`（真 DOM：不寫入、列原地、不撐高視口）、
-  `list_session.test.js`／`board_list_session.test.js`「甩動中補頁」（替身照實測丟掉甩動中的寫入）。
-  e2e 不收：模擬器軟體繪圖下取樣太稀，「甩動位移」與「補頁跳頁」量不出差別（修前修後同紅同綠）。
-- **evict 不砍剛長出來的那一端**（`evictListBuffer` 的 `grewDir`，由 `listGrowthDir` 在合併前算；兩種列表共用）。
-  CONFIRMED：緩衝滿 300、視口在中段時，舊規則「砍離樞紐序號最遠的
-  那端」把剛補進的那頁原樣砍掉（序號距離已平衡），但 demand 水位是**可見**列數 `top < 2B`，刪文／黑名單隱藏列讓
-  可見數永遠不到 ⇒ 長度卡在 230、每 ~90ms 補一頁停不下來；進文章重建緩衝才恢復。另一端只砍到離樞紐
-  保護區為止、其餘退回平衡規則；**保護區不對稱**（樞紐＝視口頂）：砍底端時保住樞紐以下 `EVICT_PROTECT_BELOW`=100 列，
-  砍頂端時只留樞紐以上 `EVICT_PROTECT_ABOVE`=10 列（對稱 100 列時往下補照樣卡死）。守護：`list_session.test.js`「evictListBuffer」、
-  `list_accumulate.test.js`「往上補頁落地：緩衝已滿且視口在中段」。
-- **文章列表的 evict 上限算可見列，不算原始列**（`evictListBuffer` 的 `opts.isHidden`＝`isHiddenListRow`，
-  與 `visibleListIndices` 同一份判斷）：上限是為了重繪成本，隱藏列（刪除文／黑名單）不渲染。CONFIRMED（Test 板
-  每週清板，214..766 幾乎全刪）：算原始列時視口頂 767 以下只有 24 列、保護區失效 ⇒ 剛補的頁離視口 >300 列一進來就被砍，
-  `_edgeUp` 被清、可見列不增 ⇒ 一路 PgUp 到第 1 篇又重來，畫面永遠只有十幾列。隱藏列一列 ≈16KB，另有總列數硬上限
-  `MAX_LIST_TOTAL_ROWS`=1200；撞到它而把剛長的那端整段砍回去（隱藏列連續超過硬上限）⇒ `noteGrowthStalled(dir)`
-  設 `_stallUp`／`_stallDown`，demand／fill 不再往那邊送（**已知限制**：好讀模式捲不過去，原生照常）。stall **不是**
-  邊界旗標（`_edgeDown` 會放出置底文），重建緩衝或那端被 evict 時解除。看板列表沒有隱藏列，維持原規則。
-  守護：`list_accumulate.test.js`「刪除文大量隱藏時往上補頁不得卡死」、`list_session.test.js`「隱藏列不計入上限」「成長停滯」。
-- **錄製檔的列表捲動 tag**（debug 錄製期間才有）：`list.scroll`／`touch`／`list.wheel`（`debug_recorder.js#_watchList`，
-  document capture 層收，視口晚建也收得到；欄位見 `listViewSample` 註解）、`listView.write`（每次程式寫 scrollTop，
-  `busy`＝寫入當下在捲／觸控中）、`listView.absorb`、`listView.reserve`（applied／deferred／detached）、
-  `listView.overflow`（hidden＝使用者捲不動）、`listSession.prefetch`（每次補頁的 origin 與當下 top/B）、
-  `listSession.scrollApply`（吸收或寫入的決策）、`listSession.loading`；看板列表對應 `boardList.fetch`／`boardList.scrollApply`。
-  判讀：「卡住」先看有沒有 `touch` 卻沒有 `list.scroll`（捲不動，查 `ov`）、`prefetch` 的 top 是否隨補頁增加、
-  `write` 之後的 `list.scroll` 是否被蓋回去。
-- **Home/End 一律走 server，且直送原生鍵**（2026-09-05 使用者決定「真的直通原生」）：
-  End→`_requestEnd`（`ESC[4~`，read.c:898-902 `KEY_END`/`$` → `new_ln = last_line`，
-  **含置底文**）；Home→`_requestHome`（`ESC[1~`，read.c:893-896 `KEY_HOME` →
-  `new_ln = 0`）。onDone 確認 edge → 本地套 End/Home（`_anchorOverride` ＋ reveal）。
-  - **零回應由 `fullRepaint` 兜住**：單發 End 在游標已於底端時 PTT 一個 byte 都不送
-    （live-tested），而 queue 對 `fullRepaint` 送的是「鍵 ＋ Ctrl-L」，igetch 的全域
-    熱鍵保證回一個完整幀給 expect 判（協定 §6）。這正是舊碼繞去 `99999999` ＋ Enter
-    的唯一理由，而 `open-pinned-end` 早就用同一招。順帶：跳號的 `search_num(ch, last_line)`
-    夾到的也是含置底的 `last_line`（舊 read.c NEWDIRECT 分支／newui `read.c#read_loader`），超大號
-    會落在最後一個 ★ 列——舊文件寫「只夾到最大編號文章」是錯的。
-  - **前景優先，不再靜默丟棄**：舊碼開頭 `if (!this._queue.idle) return;` 讓佇列忙碌時
-    整個按鍵零 byte 消失（見不變量 18）。現在改為 `flushPendingKind('prefetch')` ＋
-    `expedite(250)` ＋ 排在在飛的那筆後面（**不 flush 它**，不變量 7），並
-    `_setLoading(true)`。連按用 `queue.hasKind('jump-')` 去重；`_prunePivotOverride`
-    改在 `cmd.onSend` 才設（排隊期間設會讓那筆 prefetch 的 prune 用到錯的樞紐）。
-  - **交換條件**：Home/End 從此每次一趟 round-trip（實測 ~100ms），沒有「邊已確認就
-    本地瞬移」的快路徑。換掉的是「`_edgeUp`/`_edgeDown` 被誤設 ⇒ End 只跳到 buffer
-    末列而不是板尾」這一類狀態相依的失效。
-  - **落點頁必須真的進緩衝**：onDone 的「本地套 End/Home」拿的是
-    `_sequence()` 的首/末位置，所以落點頁被 evict/prune 丟掉時它就落在**舊緩衝**的
-    邊上（使用者體感＝「只移到列表頂/底部」），接著 demand prefetch 還會用舊邊界
-    當 anchor 跳號把 server 游標一起拉回舊位置。三道守門見不變量 19。
-  - 看板列表（`board_list_session.js`）一字不差地照做（board.c:1768/1830 CONFIRMED；newui
-    `board.c#board_cmd_home/end`），前綴用 `BRD_CMD_PREFIX`。
-- **pinned 門控**：置底列只在 `_edgeDown`（已確認板尾）時進導航序列（native：置底只存在
-  last page）→ 舊文區往下讀不會先看到置底文。seed/resume 時畫面含 ★ ⇒ `_edgeDown=true`。
-- **缺口 prune**：序號是連續整數，`pruneListToSegment` 在 accumulate（merge 後、**evict 前**）
-  只留 pivot 所在連續段，視窗永不跨缺口。pivot＝`session.prunePivot()`：平常＝selection；
-  End jump 在途＝null（留最大段）；Home jump＝1。**far-jump 必設 `_prunePivotOverride`**，
-  否則 prune 會把剛抓到的目標頁丟掉。而 `evictPivot()` **必須讀同一個覆寫**，
-  「prune 先、evict 後」的順序也是契約——兩者的理由見不變量 19。
-- demand：視口頂/底距 buffer 邊 **< 2×bodyRows（兩頁）** 即補（方向性，方向由 scrollTop
-  的變化量推導；chain 不跨來源 fill/key）。到邊等待＝右下「讀取中…」指示
-  （`view.setListLoading`；prefetch onDone/markEdge 清除）。
-  - **捲不動時也要補頁**（`onWheelAtEdge`，`App.mouse_scroll` 在放行給瀏覽器之前呼叫）：
-    demand 由 scroll 事件驅動，而 buffer 只有一頁時內容高＝視口高 ⇒ **零可捲距離 ⇒ 沒有
-    scroll 事件**，使用者往上滾會看到畫面不動也不補頁（剛進板的常態）。到邊的滾輪本身
-    就是「請給我更多」。補進來的舊文接在上方，畫面**刻意不動**（不變量 6），要再滾一次
-    才會往上看到它們。守護：`list_session.test.js`「滾輪到邊即請求」＋ live spec 的
-    「滾輪原生捲動本地執行」。
-- **滑鼠**：座標一律先換成**渲染後**的列號（`clientToPos` 對 body 區用
-  `floor((y - bodyTop + scrollTop×scaleY)/rowH)`），再經 `LIST_HEADER_ROWS`（=3）換算
-  body index ＝**序列位置**，用 `getListView().seq[idx]` 反查絕對索引。
-  - hover → `term_view.onListMouseMove`：只有「body 區且 idx < seq.length（非補列）」才
-    上游標底色；`cursor:pointer` 另需 `mouseLeftClick` 且落在可點區（列表起點以右、
-    總開關關＝整列，`mouse_regions.clickableColStart`）—— **底色的範圍與可點區相同、
-    條件不同**（底色不看 `mouseLeftClick`），與原生一致。整條路徑受總開關
-    `useMouseBrowsing` gate；frozen 一律清掉。**不得走 `term_buf.onMouse_move`**。
-  - 左鍵單擊 → `ListSession.onMouseClick(renderRow, col)`：寫回序號錨 → `_forceRedraw`
-    → 走鍵盤同一條 reducer（`open`／`open-pinned`）＋ `_beginOpen`。**永遠不得放行到
-    `App.onMouse_click`**（那條依 `buf.mouseAction` 與 server 幾何直送
-    `\x1b[A`×N+`\r`，座標不對應且繞過 CommandQueue）。非 active／frozen 時吞掉＋提示。
-- header/footer 快取：accumulate 時從「像 clean-list 的 live 幀」更新（row0 是文章列表標題列（`screen_titles.isArticleListTitleRow`：有《板名》或左段是 `【板主:…】`／`【徵求中】`——《板名》會被 server 省略，protocol §3）＋row2 含 編號 → header；底列 caption 是文章列表 → footer，判定 `screen_captions.js#isArticleListFooter`，新舊 caption 見 protocol §11.10）——跳號空底列不會污染 footer 快取。
+  **The compensating write is allowed only when compensation is really needed**: writing `scrollTop` synchronously cancels the browser's
+  smooth scroll in progress (that side effect is exactly how `_cancelScroll` stops the screen). `applyScrollAfterRender`
+  used to unconditionally write "the same value as now" every frame, so the animation was killed, and since the reissue condition was "reissue only when the target changed",
+  **it was not reissued and the animation stalled for good** (symptom: one PgUp press, and a redraw frame midway leaves it stuck halfway).
+  Now it writes only when `compensated = |top - current| >= 0.5`, and **after writing it always reissues** the animation (even when the target
+  px has not moved at all). An instant reveal is the opposite: while the previous animation is still in flight it **must** write once to kill it,
+  or the old animation keeps carrying the screen after the key is released.
+  Guarded by `list_session.test.js` "frames whose sequence did not shift must not write scrollTop" / "after a compensating write the animation is always
+  reissued". Note that the unit mock cannot observe the "write = cancel the animation" side effect, so the assertion is on the
+  **call count** of `setListScrollTop`; do not change it back to a plain value comparison.
+  Paging is based on `_navTopPos` (with the animation in flight, the **animation's end**, not an intermediate value); otherwise a second PgUp
+  in quick succession would only page once more from halfway, falling short.
+  Transaction freezes (`_freezeForTransaction`/`_beginOpen`/`_beginOpenPinned`) must
+  `_cancelScroll()`: `overflow:hidden` does not cancel an already scheduled `scrollTo({smooth})`.
+  The other half of compensation is in CSS: `.listBodyView`'s `overflow-anchor: none`. The browser's built-in
+  scroll anchoring also adjusts scrollTop on a prepend, and compensating once on each side overcompensates.
+  Guarded by the six tests of `list_session.test.js` "smooth scrolling × background page fill (scroll-back regression)".
+- **A pure shift does not write scrollTop: the top reserve absorbs it** (`render/screen.js#absorbListShift`, shared by both kinds of list).
+  CONFIRMED (Android 14 emulator, Chrome 113, real flings with `adb input swipe`): **while a touch scroll or inertial fling is in progress,
+  scrollTop written by JS into the scroll container is overwritten by the compositor**: `scrollTop=`, `scrollBy`, switching to
+  `overflow:hidden` before writing, and turning on `overflow-anchor:auto` (the browser does not compensate by itself) all behave the same. The old compensation was lost, so
+  the screen jumped a page, the next frame read the anchor from the DOM as "nearly at the top", compensated another page, and so on upwards forever.
+  Mechanism: a blank stretch at the top of the viewport (`.listBodyView::before`, its height in the CSS variable `--list-reserve`; **padding-top must not be used**:
+  under border-box, padding beyond the given height stretches the viewport taller). `screen.get/setListScrollTop`/`scrollListTo`
+  always use **content coordinates** (excluding the reserve, which is negative while the reserve is in view). `applyScrollAfterRender` uses
+  `list_scroll.shiftOnlyDelta` to decide "the difference = rows added or removed above the anchor", and then `absorbListShift` shrinks or grows the reserve without writing
+  (adding the shift to `_lastScrollTop`/`_scrollAnim.px` in step); everything else (landings, restores, clamps, a reserve too small) is written as before.
+  The reserve target = `listReservePx` (`LIST_RESERVE_PAGES`=4 pages before reaching the top, 0 at the top); topping it back up needs a write, so it is only done at rest
+  (no scroll event within `LIST_RESERVE_IDLE_MS`; **touch is not tracked**: when the pressed row is replaced by a redraw, touchend never reaches the viewport or document, and a counter would get stuck).
+  Guarded by `render_list_reserve.test.js` (real DOM: no write, rows stay in place, the viewport is not stretched),
+  `list_session.test.js`/`board_list_session.test.js` "page fill during a fling" (a stand-in drops writes during a fling, as measured).
+  Not covered by e2e: under the emulator's software rendering, sampling is too sparse to tell "fling movement" from "page-fill jump" (red and green the same before and after the fix).
+- **Evict does not cut the end that just grew** (`evictListBuffer`'s `grewDir`, computed by `listGrowthDir` before merging; shared by both kinds of list).
+  CONFIRMED: with the buffer full at 300 and the viewport in the middle, the old rule "cut the end farthest from the pivot
+  number" cut away the page just filled, as it was (the number distances were balanced), while the demand watermark is the **visible** row count `top < 2B`, and deleted or blacklist-hidden rows kept
+  the visible count from ever reaching it, so the length got stuck at 230 and a page was filled every ~90ms without stopping; only entering an article and rebuilding the buffer recovered. The other end is cut only up to the pivot's
+  protected zone, and the rest falls back to the balance rule; **the protected zone is asymmetric** (pivot = viewport top): when cutting the bottom, `EVICT_PROTECT_BELOW`=100 rows below the pivot are kept,
+  and when cutting the top only `EVICT_PROTECT_ABOVE`=10 rows above the pivot (with a symmetric 100 rows, filling downwards still deadlocked). Guarded by `list_session.test.js` "evictListBuffer",
+  `list_accumulate.test.js` "an upward page fill lands: buffer full and viewport in the middle".
+- **The article list's evict limit counts visible rows, not raw rows** (`evictListBuffer`'s `opts.isHidden` = `isHiddenListRow`,
+  the same check as `visibleListIndices`): the limit exists for redraw cost, and hidden rows (deleted articles / blacklisted) are not rendered. CONFIRMED (the Test board
+  is cleared weekly, with 214..766 almost all deleted): counting raw rows, there were only 24 rows below viewport top 767 and the protected zone stopped working, so a freshly filled page more than 300 rows from the viewport was cut as soon as it arrived,
+  `_edgeUp` was cleared and visible rows did not grow, so it paged up all the way to article 1 and started again, with only a dozen or so rows ever on screen. A hidden row ≈ 16KB, and there is also a hard limit on total rows,
+  `MAX_LIST_TOTAL_ROWS`=1200; when hitting it cuts the end that just grew back entirely (hidden rows contiguous beyond the hard limit), `noteGrowthStalled(dir)`
+  sets `_stallUp`/`_stallDown`, and demand/fill stop going that way (**known limitation**: easy reading cannot scroll past it, while native works as usual). A stall is **not**
+  an edge flag (`_edgeDown` would let the pinned articles in), and it is cleared when the buffer is rebuilt or that end is evicted. The board list has no hidden rows and keeps the original rule.
+  Guarded by `list_accumulate.test.js` "an upward page fill must not deadlock with many deleted articles hidden", `list_session.test.js` "hidden rows do not count towards the limit" "growth stalled".
+- **List scrolling tags in recordings** (only present while debug recording): `list.scroll`/`touch`/`list.wheel` (`debug_recorder.js#_watchList`,
+  collected at the document capture level, so a late viewport is still covered; fields in the `listViewSample` comment), `listView.write` (every programmatic scrollTop write,
+  `busy` = scrolling or touching at the moment of writing), `listView.absorb`, `listView.reserve` (applied / deferred / detached),
+  `listView.overflow` (hidden = the user cannot scroll), `listSession.prefetch` (each page fill's origin and the top/B at that moment),
+  `listSession.scrollApply` (the absorb-or-write decision), `listSession.loading`; for the board list, `boardList.fetch`/`boardList.scrollApply`.
+  Reading them: for "stuck", first check whether there is `touch` without `list.scroll` (cannot scroll; check `ov`), whether `prefetch`'s top grows with page fills, and
+  whether the `list.scroll` after a `write` was overwritten.
+- **Home/End always go to the server, sending the native key directly** (2026-09-05, the user's decision to "really pass straight through to native"):
+  End → `_requestEnd` (`ESC[4~`, read.c:898-902 `KEY_END`/`$` → `new_ln = last_line`,
+  **including pinned articles**); Home → `_requestHome` (`ESC[1~`, read.c:893-896 `KEY_HOME` →
+  `new_ln = 0`). onDone confirms the edge → End/Home applied locally (`_anchorOverride` + reveal).
+  - **A zero response is caught by `fullRepaint`**: a single End with the cursor already at the bottom makes PTT send not one byte
+    (live-tested), while for `fullRepaint` the queue sends "the key + Ctrl-L", and igetch's global
+    hotkey guarantees a full frame for expect to judge (protocol §6). This was the only reason the old code detoured through `99999999` + Enter,
+    and `open-pinned-end` has long used the same trick. Incidentally, a number jump's `search_num(ch, last_line)`
+    also clamps to `last_line` including pinned articles (the old read.c NEWDIRECT branch / newui `read.c#read_loader`), so a huge number
+    lands on the last ★ row; the old document's "only clamps to the largest numbered article" was wrong.
+  - **Foreground first, no longer silently dropped**: the old code's opening `if (!this._queue.idle) return;` made the whole key press vanish with zero bytes
+    while the queue was busy (see invariant 18). Now it is `flushPendingKind('prefetch')` +
+    `expedite(250)` + queued behind the in-flight command (**without flushing it**, invariant 7), plus
+    `_setLoading(true)`. Repeated presses are deduplicated with `queue.hasKind('jump-')`; `_prunePivotOverride`
+    is now set only in `cmd.onSend` (setting it while queued would make that prefetch's prune use the wrong pivot).
+  - **The trade-off**: Home/End now take one round-trip each time (measured ~100ms), with no "edge already confirmed, so
+    jump locally" fast path. What it replaced is the state-dependent class of failures where "`_edgeUp`/`_edgeDown` set by mistake ⇒ End only jumps to the buffer's
+    last row instead of the end of the board".
+  - **The landing page must really enter the buffer**: onDone's "End/Home applied locally" takes
+    `_sequence()`'s first/last position, so when the landing page was dropped by evict/prune, it lands on the edge of the **old buffer**
+    (to the user, "it only moved to the top/bottom of the list"), and then the demand prefetch uses the old edge
+    as the anchor for a number jump, dragging the server cursor back to the old position too. The three guards are in invariant 19.
+  - The board list (`board_list_session.js`) does exactly the same (board.c:1768/1830 CONFIRMED; newui
+    `board.c#board_cmd_home/end`), with the prefix `BRD_CMD_PREFIX`.
+- **Pinned gating**: pinned rows enter the navigation sequence only with `_edgeDown` (end of the board confirmed) (natively, pinned rows only exist on the
+  last page), so reading down through older articles does not show the pinned articles first. A screen with ★ during seed/resume ⇒ `_edgeDown=true`.
+- **Gap prune**: numbers are consecutive integers, and `pruneListToSegment`, during accumulate (after merge, **before evict**),
+  keeps only the contiguous segment containing the pivot, so the window never spans a gap. Pivot = `session.prunePivot()`: normally the selection;
+  with an End jump in flight, null (keep the largest segment); for a Home jump, 1. **A far jump must set `_prunePivotOverride`**,
+  otherwise prune would drop the target page just fetched. And `evictPivot()` **must read the same override**,
+  and the "prune first, evict after" order is part of the contract too; the reasons for both are in invariant 19.
+- Demand: fills when the viewport top/bottom is **< 2×bodyRows (two pages)** from the buffer's edge (directional; the direction is derived from the change in
+  scrollTop; chains do not cross sources fill/key). Waiting at the edge = the 「讀取中…」 ("loading…") indicator at the bottom right
+  (`view.setListLoading`; cleared by prefetch onDone/markEdge).
+  - **Fill even when it cannot scroll** (`onWheelAtEdge`, called by `App.mouse_scroll` before passing to the browser):
+    demand is driven by scroll events, and when the buffer has only one page the content height = the viewport height, so **zero scrollable distance means no
+    scroll events**, and a user scrolling up would see the screen not move and no page fill (the normal state right after entering a board). A wheel at the edge
+    is itself "please give me more". The older articles that arrive are added above, and the screen **deliberately does not move** (invariant 6); one more wheel
+    scrolls up to them. Guarded by `list_session.test.js` "a wheel at the edge requests at once" + the live spec's
+    "native wheel scrolling runs locally".
+- **Mouse**: coordinates are first converted to the **rendered** row number (`clientToPos` for the body area uses
+  `floor((y - bodyTop + scrollTop×scaleY)/rowH)`), then through `LIST_HEADER_ROWS` (=3) to the
+  body index = **the sequence position**, and `getListView().seq[idx]` maps it to the absolute index.
+  - hover → `term_view.onListMouseMove`: the cursor background is drawn only for "the body area and idx < seq.length (not a padding row)";
+    `cursor:pointer` also needs `mouseLeftClick` and a position in the clickable area (from the list start rightwards;
+    with the master switch off, the whole row, `mouse_regions.clickableColStart`). **The highlight's range equals the clickable area, with different
+    conditions** (the highlight ignores `mouseLeftClick`), as native does. The whole path is gated by the master switch
+    `useMouseBrowsing`; frozen always clears it. **Must not go through `term_buf.onMouse_move`**.
+  - Left click → `ListSession.onMouseClick(renderRow, col)`: write back the number anchor → `_forceRedraw`
+    → the same reducer as the keyboard (`open`/`open-pinned`) + `_beginOpen`. **Must never pass through to
+    `App.onMouse_click`** (that path sends `\x1b[A`×N+`\r` straight from `buf.mouseAction` and server geometry, with coordinates that do not correspond, bypassing CommandQueue). When not active, or frozen, it is swallowed with a notice.
+- Header/footer cache: during accumulate it is updated from "live frames that look like clean-list" (row 0 is an article-list title row (`screen_titles.isArticleListTitleRow`: has 《board name》, or its left part is `【板主:…】`/`【徵求中】`; the server may omit 《board name》, protocol §3) + row 2 containing 編號 → header; a bottom-row caption that is an article list → footer, decided by `screen_captions.js#isArticleListFooter`, old and new captions in protocol §11.10). An empty bottom row after a number jump does not pollute the footer cache.
 
-## 狀態機（reducer＝`transitionListSession`，unit 全枚舉為準）
+## State machine (reducer = `transitionListSession`; the full unit enumeration is authoritative)
 
-states：`idle → active ⇄ functionMode`；`active → opening → suspended → active`。
-`listRenderMode` 映射：active→buffer、opening→frozen、其餘→native。**例外：passthrough 的 sync 腿、leave/jump 交易、以及 A 類鍵的凍結交易（`native-inplace`，全程）期間 state=functionMode 但 render=frozen**——frozen∧functionMode 時 onKeyDown 吞所有鍵（含淡出提示「指令處理中」——**吞鍵不得無聲**）。
+States: `idle → active ⇄ functionMode`; `active → opening → suspended → active`.
+`listRenderMode` mapping: active→buffer, opening→frozen, everything else→native. **Exception: during passthrough's sync leg, leave/jump transactions, and A-class keys' frozen transactions (`native-inplace`, throughout), state=functionMode but render=frozen**; with frozen ∧ functionMode, onKeyDown swallows every key (with the fading notice 「指令處理中」 ("command in progress"); **swallowing keys must never be silent**).
 
-- idle：clean-list ∧ pref ∧ rows==24 ∧ `!buf.startedEasyReading` → active（seed＋start-fill）。engage 守門不用 `view.useEasyReadingMode`（article ER 離篇後仍 latch true）。
-- active：clean-list 板名同→continue-fill；異→rebuild；article→suspended；**menu→idle cleanup**（離板可與 in-flight prefetch 的 jump 重繪交錯：jump settle 先把 functionMode 彈回 active，menu settle 若走 catch-all 進 functionMode 會因靜止畫面無下一個 settle 而卡死）；prompt/transient ∧ 無 in-flight ∧ **不在 resume grace 內**→functionMode **＋banner**（`withinResumeGrace`＝剛從原生自動回好讀後 `RESUME_GRACE_MS=400` 內：server 的殘餘半繪／prompt 收尾幀還在路上，打到 catch-all 就是「剛回好讀又被踢回原生」，不變量 N4，與 `consumed` 放寬同型）（失敗顯性化：`isWaterballSettle` 命中（protocol §9 底列 ◆ 指紋）→水球專屬措辭，否則通用「畫面偏離列表」；顯式入口不出 banner——`_enterFunctionMode(facts)` 只在 facts 非 null 時顯示）；有 in-flight→stay。交易 onFail 一律 `_degradeToNative(訊息)`＝banner＋原生鏡像。
-- key（active）：nav（↑↓jk/PgUp/PgDn/Home/End → read.c op）；Enter/→＝opening（selectedNum 有值→begin-open；null＝pinned→begin-open-pinned）；數字＝jump-digit（overlay 收參）；`←`/q/e＝leave 交易（**先 sync-jump 同步 server 游標再送離板鍵**——pttbbs getkeep 記 REAL cursor，不 sync 則再進板落點錯；`_serverNum` 快路徑同 passthrough，共用 `_enqueueCursorSyncJump`）；**A 類鍵（`INPLACE_KEYS`）＝keyClass `native-inplace` → `_beginInplaceTransaction`：凍結交易，全程不切原生**；**其餘鍵（`v` `/` `s` `Z`…）＝keyClass `passthrough` → `_beginNativePassthrough`：一鍵切原生＋代送**（`term_keyboard.keyEventToBytes` 轉 bytes，非 ASCII 單字元 `u2b`）。pref `enableListNativeAutoResume` 關掉時 A 類整組落回 `passthrough`。
-- opening：settle 等 article；timeout→functionMode 自癒；期間吞所有鍵。
-- functionMode：新事件 **`resume-probe`**（靜置探針合成，見下）→ `holdReason==='passthrough'` ∧ 無 in-flight ∧ clean-list ∧ hasNumberedRow ∧ engageEligible 時 →active（`landedNumInBuffer ∧ 板名同`→resume；否則＋rebuild），其餘一律 stay。clean-list **settle**→**`holdReason` 非 null（passthrough/external）時 stay 鏡像**（settle 本身永不解除 hold——一個回應可能 settle 兩次，第一個 settle 內容已新、游標還在舊位置，在它上面 resume 會採用到錯的落點）；無 hold（leave/jump 交易）→active（landedNum∈buffer ∧ 板名同→resume；否則＋rebuild）；article→suspended；menu→idle cleanup。**enter-function-mode（passthrough/自癒/降級——原生 excursion）在 action 層清 `_boardName`** → 回 clean-list 必走 rebuild 分支（不變量 15）；只有保留 `_boardName` 的 frozen 交易（leave/jump）可走純 resume 快路徑；passthrough 屬原生 excursion → 黏性停原生；經 article/menu 回好讀時因 `_boardName` 已清必 rebuild。
-- suspended：clean-list ∧ 落點在緩衝 ∧ 板名同→**`resume-in-place`**（只採用落地幀的游標，**捲動錨一律不動**——文章期間視口不在 DOM 上，錨本來就是使用者離開前的那一個，不變量 N6）；否則 `resume-buffer`＋`rebuild`（畫面要換一份，重新錨定）；menu→idle。
-- 任意：pref-off/斷線→cleanup。
+- idle: clean-list ∧ pref ∧ rows==24 ∧ `!buf.startedEasyReading` → active (seed + start-fill). The engage guard does not use `view.useEasyReadingMode` (article ER stays latched true after leaving the article).
+- active: clean-list with the same board name → continue-fill; a different one → rebuild; article → suspended; **menu → idle cleanup** (leaving the board can interleave with the jump redraw of an in-flight prefetch: the jump's settle first bounces functionMode back to active, and if the menu settle went through catch-all into functionMode, it would hang, because a still screen has no next settle); prompt/transient ∧ nothing in flight ∧ **not within the resume grace** → functionMode **+ banner** (`withinResumeGrace` = within `RESUME_GRACE_MS=400` of having just resumed easy reading automatically from native: the server's leftover half-drawn frames or prompt-closing frames are still on the way, and hitting catch-all would mean "kicked back to native right after resuming", invariant N4, of the same shape as the relaxation for `consumed`) (make failure visible: an `isWaterballSettle` hit (protocol §9, the bottom-row ◆ fingerprint) → waterball-specific wording, otherwise the generic 「畫面偏離列表」 ("screen left the list"); explicit entry points show no banner: `_enterFunctionMode(facts)` only shows one when facts is non-null); something in flight → stay. A transaction's onFail is always `_degradeToNative(message)` = banner + native mirror.
+- key (active): nav (↑↓jk/PgUp/PgDn/Home/End → read.c op); Enter/→ = opening (selectedNum set → begin-open; null = pinned → begin-open-pinned); digits = jump-digit (collected in an overlay); `←`/q/e = leave transaction (**sync-jump first to sync the server cursor, then send the leave key**: pttbbs getkeep records the REAL cursor, and without the sync, re-entering the board lands in the wrong place; the `_serverNum` fast path is the same as passthrough, sharing `_enqueueCursorSyncJump`); **A-class keys (`INPLACE_KEYS`) = keyClass `native-inplace` → `_beginInplaceTransaction`: a frozen transaction, never switching to native**; **all other keys (`v` `/` `s` `Z`…) = keyClass `passthrough` → `_beginNativePassthrough`: switch to native with one key + send on the user's behalf** (`term_keyboard.keyEventToBytes` converts to bytes, non-ASCII single characters through `u2b`). With the pref `enableListNativeAutoResume` off, the whole A class falls back to `passthrough`.
+- opening: the settle waits for an article; timeout → functionMode self-heals; every key is swallowed meanwhile.
+- functionMode: the new event **`resume-probe`** (synthesised by the idle probe, see below) → when `holdReason==='passthrough'` ∧ nothing in flight ∧ clean-list ∧ hasNumberedRow ∧ engageEligible → active (`landedNumInBuffer ∧ same board name` → resume; otherwise + rebuild); everything else stays. A clean-list **settle** → **with a non-null `holdReason` (passthrough/external), stay mirroring** (a settle itself never releases a hold: one response may settle twice, and in the first settle the content is new while the cursor is still in its old position, so resuming on it would adopt the wrong landing); with no hold (leave/jump transactions) → active (landedNum ∈ buffer ∧ same board name → resume; otherwise + rebuild); article → suspended; menu → idle cleanup. **enter-function-mode (passthrough / self-healing / degradation, i.e. a native excursion) clears `_boardName` at the action layer**, so returning to clean-list always takes the rebuild branch (invariant 15); only frozen transactions that keep `_boardName` (leave/jump) can take the pure resume fast path; passthrough is a native excursion, so it stays native (sticky); returning to easy reading through article/menu always rebuilds, since `_boardName` was cleared.
+- suspended: clean-list ∧ leaving the article revealed this list's live layer (`keepsLayer`, `NavigationStack.keptListLayer`; when an external sequence has already cleared the board name, it is looked up by the landing frame's board name, #127) ∧ same board name → **`resume-layer`** ([#120](https://github.com/NoReasonKen/PttChrome/issues/120), see invariant N6c); otherwise clean-list ∧ landing in the buffer ∧ same board name → **`resume-in-place`** (adopting only the landing frame's cursor, **the scroll anchor never moves**: during the article the viewport is not in the DOM, so the anchor is still the one from before the user left, invariant N6); otherwise `resume-buffer` + `rebuild` (the screen has to be replaced, so re-anchor); menu → idle.
+- Any state: pref-off / disconnect → cleanup.
 
-### 落地即回好讀（`resumeOnLanding`；pref `enableListNativeAutoResume`）
+### Resume on landing (`resumeOnLanding`; pref `enableListNativeAutoResume`)
 
-多步序列（`_beginPassthroughBytes(steps, { resumeOnLanding: true })`，經 `submitSerializedSteps` 的 `opts.resumeOnLanding` 傳入）
-改走 `_beginLandingTransaction`：形狀同 A 類凍結交易（frozen＋可選 sync 腿＋逐步送真鍵，步驟改用凍結交易的快速失敗預算；
-比一般按鍵慢的步驟自帶 `timeoutMs`／`probeTimeoutMs`／`hardTimeoutMs`，例：進板與搜尋送出用 `aid_navigation.SLOW_STEP_BUDGET`，
-在飛那一步的 hard＋probe 會撐長凍結後盾 `_frozenStepBudgetMs`，否則後盾 2.5s 會比命令自己的逾時先把畫面降級），
-最後一步的 expect 判定的那一幀交給 `_resumeFromLanding`：條件與 `resume-probe` 逐條相同（clean-list ∧ hasNumberedRow ∧ engageEligible），
-**只差不等 `RESUME_QUIET_MS`** ⇒ `resume-buffer`+`rebuild`（rebuild 前照樣 `_adoptPendingViewport`）；不合格 ⇒ `_enterFunctionMode`（passthrough hold，退回探針）。
-任一步 onFail 而畫面仍凍著 ⇒ 切原生（N8）。
+Multi-step sequences (`_beginPassthroughBytes(steps, { resumeOnLanding: true })`, passed in through `submitSerializedSteps`' `opts.resumeOnLanding`)
+go through `_beginLandingTransaction` instead: shaped like an A-class frozen transaction (frozen + optional sync leg + sending real keys step by step, the steps using the frozen transaction's fast-fail budget;
+steps slower than an ordinary key carry their own `timeoutMs`/`probeTimeoutMs`/`hardTimeoutMs`, e.g. entering a board and submitting a search use `aid_navigation.SLOW_STEP_BUDGET`,
+and the in-flight step's hard + probe stretch the frozen backstop `_frozenStepBudgetMs`, otherwise the 2.5s backstop would degrade the screen before the command's own timeout),
+and the frame judged by the last step's expect goes to `_resumeFromLanding`: its conditions are the same as `resume-probe`'s, one by one (clean-list ∧ hasNumberedRow ∧ engageEligible),
+**except that it does not wait `RESUME_QUIET_MS`** ⇒ `resume-buffer` + `rebuild` (with `_adoptPendingViewport` before the rebuild as usual); not eligible ⇒ `_enterFunctionMode` (passthrough hold, back to the probe).
+If any step's onFail fires while the screen is still frozen ⇒ switch to native (N8).
 
-可以不等靜置的前提＝**最後一步的落點能證明游標是 server 這次 park 的**，二選一：
-- 最後一步從 prompt 送出（getdata、CompleteBoard、跳號的「跳至第幾項」）：送出前游標停在 prompt 那一列的行中，落地幀要過
-  clean-list 就得游標在編號列行首（N9）⇒ 必是 server 重畫完才 park 的，洞 3（settle 兩次、游標還在舊位置）不成立；
-- 最後一步的 expect 本身自證游標：舊位置能過指紋就代表跟真落點同一列（End 的 `endLanded`＝游標在最後一列非空列）。
+Not waiting for quiet is allowed on the premise that **the last step's landing proves the cursor was parked by the server this time**, in one of two ways:
+- The last step is sent from a prompt (getdata, CompleteBoard, the number jump's 「跳至第幾項」 ("jump to item")): before sending, the cursor rests mid-line on the prompt row, and for the landing frame to pass
+  clean-list the cursor must be at the start of a numbered row (N9), so it must have been parked after the server finished redrawing, and hole 3 (settling twice with the cursor still in its old position) cannot occur;
+- The last step's expect proves the cursor itself: an old position passing the fingerprint means it is the same row as the real landing (End's `endLanded` = the cursor on the last non-empty row).
 
-做不到的步驟（PgUp 的 `pageLanded` 只看「在條目區」）標 `trustLanding: false`：它若成了最後一步，落地幀當 null ⇒ 退回探針。
-**整條序列都不符合的不要 opt in**（例：游標本來就在列表上的多步翻頁）。目前用的：右鍵「前已讀後未讀」、「設為全部已讀」、
-重新整理（文章列表 `s<本板>⏎`）、搜尋彈窗送出（`/` `a` `Z` `s` → 關鍵字⏎；第二步 expect＝prompt 消失，回顯幀不算）、
-跳到第一篇未讀（End → PgUp… → `<編號>⏎`，PgUp 標 `trustLanding:false`）。看板列表的重新整理（`/` → ⏎）走
-`board_list_session._beginLandingTransaction`，同一個合約，落地 ⇒ `seed`＋`start-fill`。
-實測三道命令 218ms 就做完，舊流程卻是「切原生 → 空等探針 250ms → 切回」，
-使用者看到畫面翻面兩次。守護：`reading_record_list.test.js`／`reading_record_board_list.test.js`「落地即回」兩組
-（不推進計時器就斷言回到好讀）、offline `list_landing_resume.offline.spec.js`（真 F5：送出板名時仍凍著、全程沒有原生幀）。
+Steps that cannot do this (PgUp's `pageLanded` only checks "in the entry area") are marked `trustLanding: false`: if such a step ends up last, the landing frame is treated as null ⇒ back to the probe.
+**Sequences where none of it qualifies must not opt in** (e.g. multi-step paging with the cursor already on the list). Current users: the right-click 「前已讀後未讀」, 「設為全部已讀」,
+refresh (article list `s<this board>⏎`), submitting the search popup (`/` `a` `Z` `s` → keyword⏎; the second step's expect = the prompt disappears, and echo frames do not count),
+and jump to the first unread (End → PgUp… → `<number>⏎`, with PgUp marked `trustLanding:false`). The board list's refresh (`/` → ⏎) goes through
+`board_list_session._beginLandingTransaction`, under the same contract, and landing ⇒ `seed` + `start-fill`.
+Measured: the three commands complete in 218ms, while the old flow was "switch to native → idle wait for the probe's 250ms → switch back",
+so the user saw the screen flip twice. Guarded by `reading_record_list.test.js`/`reading_record_board_list.test.js`, the two "resume on landing" groups
+(asserting the return to easy reading without advancing the timers), and offline `list_landing_resume.offline.spec.js` (real F5: still frozen while the board name is sent, with no native frame throughout).
 
-### 靜置探針（`resume-probe`，2026-09-03；pref `enableListNativeAutoResume`）
+### Idle probe (`resume-probe`, 2026-09-03; pref `enableListNativeAutoResume`)
 
-`holdReason === 'passthrough'` 期間維護一個計時器（`_scheduleResumeProbe`）：
+While `holdReason === 'passthrough'`, a timer is maintained (`_scheduleResumeProbe`):
 
-- **排定於**：進入 hold 當下、每一次 settle、每一次使用者送 byte（`noteNativeInput()`）。
-- **取消於**：`holdReason` 不再是 `'passthrough'`（resume／seed／handoff／cleanup 都會清）、pref 關掉。
-- **到點時不看事件、直接量當下畫面**（`_collectFacts(null)`，形狀同 `evaluateNow`），
-  **只讀不寫**（不變量 N2：不送 byte、不排命令、不改錨），唯一輸出是一個合成事件。
+- **Scheduled**: on entering the hold, on every settle, and on every byte the user sends (`noteNativeInput()`).
+- **Cancelled**: when `holdReason` is no longer `'passthrough'` (resume / seed / handoff / cleanup all clear it), or the pref is turned off.
+- **When it fires, it ignores events and measures the current screen directly** (`_collectFacts(null)`, shaped like `evaluateNow`),
+  **read-only** (invariant N2: no bytes, no commands, no anchor changes); its only output is one synthetic event.
 
-它只堵三個判定漏洞，**不是體感旋鈕**：
+It only plugs three holes in the decision; **it is not a feel knob**:
 
-| 條件 | 堵哪個洞 |
+| Condition | Which hole it plugs |
 |---|---|
-| `facts.kind === 'clean-list'`（其中的 `curX <= 1`） | 洞 1：PTT 還在等輸入的畫面。**`curX <= 1` 是本功能的承重牆**（不變量 N9）——`v` 的 getdata prompt 畫在 row 22、游標停在提示字後面；`vmsg`/`pressanykey` 的框在 row 23；編輯器／說明根本沒有文章列表 caption 的 footer。放寬它＝使用者在原生 prompt 打字時畫面被搶 |
-| `!queue.inFlightKind` | 洞 2：命令還在線上。`native-key` 的 expect 恆真 ⇒ idle 來得比「PTT 真的做完」早，所以還要下面那條 |
-| `now - max(_lastServerActivityAt, _lastUserByteAt) >= RESUME_QUIET_MS(250)` | 洞 3：**一個回應會 settle 兩次**（`term_buf.js`：內容視窗與游標 park 視窗跨過 `SETTLE_MS` 時）。第一個 settle 的內容已是新清單、游標卻還在舊位置，在它上面 resume 會採用到**錯的落點**（游標跳列）。所以要等「畫面真的不動了」而不是「使用者不動了」。值沿用 `CMD_PROBE_AFTER_MS`，**不要另開新數字、不要拿它調手感** |
-| `hasNumberedRow` | 不變量 17 |
-| `engageEligible` | 母開關／rows==24／不在讀文中 |
+| `facts.kind === 'clean-list'` (including its `curX <= 1`) | Hole 1: screens where PTT is still waiting for input. **`curX <= 1` is this feature's load-bearing wall** (invariant N9): `v`'s getdata prompt is drawn on row 22 with the cursor after the prompt text; the `vmsg`/`pressanykey` boxes are on row 23; the editor and help have no footer with an article-list caption at all. Relaxing it = the screen gets snatched while the user types into a native prompt |
+| `!queue.inFlightKind` | Hole 2: a command is still on the line. `native-key`'s expect is always true, so idle comes earlier than "PTT has really finished", which is why the next condition is also needed |
+| `now - max(_lastServerActivityAt, _lastUserByteAt) >= RESUME_QUIET_MS(250)` | Hole 3: **one response settles twice** (`term_buf.js`: when the content window and the cursor-park window straddle `SETTLE_MS`). In the first settle the content is already the new list while the cursor is still in its old position, and resuming on it would adopt the **wrong landing** (the cursor jumps rows). So it waits for "the screen has really stopped moving", not "the user has stopped". The value reuses `CMD_PROBE_AFTER_MS`; **do not introduce a new number, and do not tune feel with it** |
+| `hasNumberedRow` | Invariant 17 |
+| `engageEligible` | Master switch / rows==24 / not reading an article |
 
-`_lastServerActivityAt` 掛在 settle 上（settle 本身就是「server 活動後靜止 `SETTLE_MS`」）——
-**不要**去 `term_buf` 另開 hook，那會踩到不變量 2/2b。
-`_lastUserByteAt` 的觀測點必須**繞過所有權層**（原生鏡像時 `activeListSession()` 回 null，
-而那正是要記的那段時間）：`term_view.onKeyDown`／`term_view.onTextInput`／
-`App.onPasteDone`／`App.onFunctionKey` 四處**無條件**呼叫 `App.noteListNativeInput()`。
+`_lastServerActivityAt` hangs off the settle (a settle is by definition "quiet for `SETTLE_MS` after server activity");
+**do not** add a separate hook in `term_buf`, which would break invariants 2/2b.
+The observation points of `_lastUserByteAt` must **bypass the ownership layer** (during the native mirror `activeListSession()` returns null,
+and that is exactly the period to record): `term_view.onKeyDown` / `term_view.onTextInput` /
+`App.onPasteDone` / `App.onFunctionKey` call `App.noteListNativeInput()` **unconditionally** in all four places.
 
-回復當下 `flashListHint('操作完成，已回到好讀列表')`——換畫面永不靜默（不變量 N7）。
+On resuming, `flashListHint('操作完成，已回到好讀列表')` ("done, back to the easy-reading list"): a screen change is never silent (invariant N7).
 
-## 關鍵不變量（違反即復發）
+## Key invariants (violating them brings the bugs back)
 
-1. **零內容 settle 不驅動轉移**：`_onScreenSettled` 開頭 `changedRows.size===0 → return`（本地 `_forceRedraw` 也 re-arm settle）。
-2. **`_settleChangedRows` 只在 server 寫入點 add**（統一走 `_touchRows`），不可掛 `lineChangeds`。`needUpdate` 已於 2026-08 去 sticky ⇒ `lineChangeds` 現在**是**真的 dirty 集合，但視窗與語意都不對：它由 `term_view.redraw` 清除（一個 settle 視窗可跨多次 redraw），而且本地強制重繪（`lineChangeds.fill(true)`）會餵它，混進去就是 2b 的「按住 nav 鍵永遠不 settle」。
-2b. **settle timer 只由 server 活動 re-arm**（`_serverActivity`：`_touchRows`＋游標 escape 的 posChanged；notify 的 changed 分支 gated）。本地 `_forceRedraw` 不得推遲 pending settle——否則按住 nav 鍵（~30ms 一次重繪）永遠不 settle → queue expect 餓死 → prefetch timeout →「按住 PgUp 無效」＋ markEdge 假邊界（置底文顯示異常的來源）。守護：`settle_gating.test.js`。
-3. **跳號回應 settle 底列是空的**（classify=transient 永不 clean-list）→ jump 類 expect 用「park 在 entry 區 col≤1 ∧ 游標列=目標序號」。`_requestEnd` 落點可為置底列（cursorRowNum null 也接受）；**prefetch 向下翻頁腿同理**：真板尾 PgDn 游標落置底列（cursorRowNum null ∧ clean-list）＝`{edge, landed:null}`，不可 miss——miss 的 hard timeout 會讓 \f 探針回應變無主 settle → catch-all 誤降級「畫面偏離列表格式」。向上腿 null 仍 false（置底只在板尾）。另有三道放寬，皆為「板尾/完成幀的無主 settle 不得誤降級」：
-   - (a) `classifyListScreen` 板尾短頁規則——編號列 <3 時，若游標列本身是列表形（編號/loose/置底/刪除）∧ entry 區每個非空列都是列表形 → 仍 clean-list（板尾最後一頁可能只剩 1 列編號＋置底＋空白；舊 `●` 游標蓋掉最高位時僅 loose 可讀，新 `>` 游標 strict/loose 同值——**loose 仍須 strip `>`**，否則此規則失效、板尾無主 settle 全數誤降級）。
-   - (b) prefetch 翻頁腿 expect 第二道防線——facts 非 clean-list 但 park（entry 區 col≤1）∧ cursorRowNum 相對 base 位移確定 → 照收 moved/edge（null 在 transient 幀不得判 edge，等探針幀）。
-   - (c) **consumed 標記**——`queue.onSettle` 回傳 `'done'|'miss'|null`，settle event 帶 `consumed`，active 的 prompt/transient catch-all 對 consumed settle 一律 stay（完成當下 inFlightKind 已 post-account 成 null，板尾 edge 探針幀＝jump-park 後底列空的 transient，會被當無主 settle 誤降級 functionMode＋黏性 hold）。miss 也算 consumed（onFail 自己善後，否則 catch-all double-banner）。
-   守護：`list_session.test.js`「板尾短頁」×3、「transient 幀但 park 指紋」、「被完成指令消費的 settle」（真 CommandQueue 全鏈）＋reducer 枚舉 consumed case＋`command_queue.test.js` onSettle 回傳三態。
-4. demand 只朝移動方向。
-5. pinned map key＝`pinnedRowKey`（author|title）；`_pinnedKeyAt` 必須同函式。游標停置底列（有★）仍收錄、游標格還原空白（`blankListCursorMark`，依 `row[0].isLeadByte` 判 1 格（`>`）或 2 格（`●`））；無★游標列排除。**loose-parse guard**：`parseListArticleNumLoose`（**只 strip 游標標記 `●`/`>` ＋空白、不 strip `★`**，之後有行首數字）非 null 的列永不進 pinned map——mid-response 幀（jump 回應寫入中）游標標記可畫在非 cur_y 列，該列 num 無法回推＋作者欄有效會誤檔成置底，標記未還原永久殘留（●52880 污染 bug）。**不得 strip `★`**：★ 之後緊接推文數欄，常為純整數（`★    4 …`、`★   35 …`——無 m/M/=/+ 標記的公告），strip ★ 會露出推文數→pinned 列被誤判成編號列而排除→該公告固定消失（使用者實測「部分置底文固定消失」）；★ 天生屏蔽推文數（`^(\d+)` 不 match 仍以 ★ 開頭的列）。守護：`comment_parse.test.js`（純數字推文數→null）＋`list_accumulate.test.js`（純數字推文數置底列收錄）。
-5b. **frozen 讓位 pageState 3**（redraw list 分支條件 `pageState !== 3`）。
-5c. **`accumulateListLines` 只掃 entry 區 `[LIST_HEADER_ROWS, rows-2]`**（與看板列表、list_session 各掃描點同範圍）。標題列會通過 `isPinnedListRow`：PttCurrent row 0 前 17 字 4 個全形 ⇒ realign 後作者欄切到敘述「Current」的 `C` ⇒ 被收成置底文、排在序列最尾，點它走 open-pinned 然後 timeout 降級。只在「標題列 col 28 附近恰為 ASCII」的看板發作。守護：`list_accumulate.test.js`「看板標題列不得被當成置底文收錄」。
-5c. **預讀＝錨定命令對或鏈式單腿**：首次＝jump 到 `bufferEdgeNum(方向)` → PgUp/PgDn；同方向連補＝`_chainState={dir,lastLanded}` 跳過 jump 直送翻頁（moved/edge 判準改以 lastLanded 為基準——PgDn 落新頁**頂**、anchor 在新頁**底**，用 anchor 等值判 edge 會誤判）。**鏈失效點必須齊全**（漏一個＝錯位翻頁）：所有 flush 呼叫點、任何非 prefetch enqueue（End/Home/open/passthrough）、無 in-flight 的 server settle（`_onScreenSettled` 在 `queue.onSettle` **前**檢查）、seed/rebuild/resume/cleanup、markEdge、noteEvicted。錨定失敗 onFail flush。回退開關＝`_chainState` 恆 null。offline 門控支援省略的同位置 jump（replay.js「先餵 jump 回應再餵翻頁」分支）。
-6. 選取以序號為身分；pinned 選取以標題 key；**視口頂同理以 `_topNum`／`_topPinnedKey`
-   錨定**——prepend/evict 不動畫面（PgUp 不被新文往下擠的機制）。原生捲動下的形式＝
-   「重繪前 `captureScrollAnchor` 從 scrollTop 擷取錨、重繪後 `applyScrollAfterRender`
-   把錨換算回 scrollTop」，列高恆定所以是一次乘法。守護：`list_session.test.js`
-   「錨定還原」（prepend 20 列 ⇒ scrollTop 恰 +20 列；evict 10 列 ⇒ 恰 -10 列；錨遺失
-   三層退路）＋ offline e2e「demand 落地後視口第一列的序號不變」。
-6b. **evict 的樞紐＝視口，不是選取**（`ListSession.evictPivot()`＝`_topNum`，退路才是
-   `_selectedNum`）。游標與捲動解耦後使用者可以把畫面捲到離游標兩百多列外，樞紐若還
-   綁著選取，撞到 `MAX_LIST_ROWS` 時被丟掉的正是**眼前那一段**（症狀：列突然消失、
-   畫面跳）。**刻意不做「選取那一列一定留著」**：留一列孤島會讓 buffer 不連續，隨後
-   的 `pruneListToSegment` 本來就會把它丟掉；選取被淘汰的降級是既有且正確的
-   （`_cursorPos` snap 到最近存活列，開文走序號 jump 不依賴 buffer）。守護：
-   `list_session.test.js`「evictListBuffer」＋「evictPivot」。
-6c. **錨的真相源是 DOM 的 scrollTop —— 但只有 `.listBodyView` 還在 DOM 上時才成立。**
-   視口節點是 `ScreenController._bodyView` 上的常駐快取；切到文章／原生鏡像時
-   `_patchRows` 把它移出容器（節點還在，只是 detached），而 **detached 節點的
-   scrollTop 恆為 0**——那是「沒有資訊」，不是「捲到最上面」。兩道防線：
-   - `captureScrollAnchor` 開頭問 `screen.hasListViewport()`，false 就整幀不擷取。
-   - 凡是「這一幀的錨由 action 指定」的路徑都要設 `_anchorOverride`：`_requestEnd`／
-     `_requestHome`／**`_resumeBuffer`**（退文回列表）。錨的三個欄位
-     （`_topNum`/`_topPinnedKey`/`_scrollFrac`）一律一起重設，同 `_seedAnchors`。
-   漏掉任一道的症狀＝**退出文章後視野跑掉**：`_resumeBuffer` 剛採用的 server 落點
-   被緊接著的 `_forceRedraw` 那一幀覆寫成序列位置 0，畫面跳到緩衝最舊那一列、剛讀
-   的文章捲出視野（緩衝只有一頁時 0 剛好正確 ⇒ 症狀「有時候」）。另一半：程式化定位（補償寫入／instant reveal）必須
-   同步 `_lastScrollTop`，否則它引發的 scroll 事件會被 `_onScrollFrame` 讀成
-   「使用者往下捲」而偷送一次反方向 demand（違反不變量 4）。
-   守護：`list_session.test.js`「退文回列表：視野停在 server 落點那一頁」三條＋
-   「視口不在 DOM 上（文章期間）→ 完全不動錨」，`render_list_scroll.test.js`
-   「hasListViewport()」。**offline e2e 的 cchat-list-nav 卷測不到這條**：它錄的開文
-   目標恰好是緩衝最舊一篇 ⇒ 落點頁頂＝序列位置 0，覆寫與否同值。
-7. 預讀 timeout＝良性到邊；開文 timeout＝functionMode 自癒；flush 靜默（**flush 不觸發 onFail → `_prunePivotOverride` 要在 flush 出口手動重置**）。timeout 一律只是 **\f 探針觸發器**（`command_queue.js`），非訊號（**勿再引入 RTT 自適應 timeout**）。**交易前導用 `flushPending`（保留 in-flight 配對，序列化排隊）**；全量 `flush` 只准在退原生鏡像路徑（`_enterFunctionMode`/`_handoffArticle`/`_cleanup`）——flush 掉 in-flight 會讓在線回應變無主 settle、提早滿足下一交易的 expect（live race）。prefetch anchor onFail 用 `flushPendingKind('prefetch')`，不誤殺排隊中的交易。
-7b. **凍結延遲必須有界**（2026-08「畫面停住、顯示處理中，過一陣子才復原」）。三道，缺一即復發：
-   - **`_timedOut` 的探針分支只重新武裝 soft**（`probeTimeoutMs` 預設 2000），**不得 `_armBoth`**——舊碼在探針時重給一份完整 hard ⇒ 單一命令最壞 2×hard（~20s）。hard 是送出當下就定死的絕對截止。上限＝`max(hard, soft+probe)`。
-   - **前景交易凍結畫面時要 `queue.expedite(250)` 催 in-flight 的背景 prefetch**（`_expediteBackground`，只對 `kind` 以 `prefetch` 開頭者；`_freezeForTransaction`/`_beginOpen`/`_beginOpenPinned` 三處）。`_freezeForTransaction` 只 `flushPending`（不變量 7 禁止 flush in-flight）⇒ 交易只是排進 pending，畫面卻已 frozen＋吞鍵，得等背景 prefetch 走完整個 soft/hard 預算才送出第一個 byte（連按翻頁後開文／離板必踩）。`expedite` 只縮短 soft → 觸發既有 `\f` 探針（必有回應），**刻意不提前 `_finish`**（提前 finish＝無主 settle，正是不變量 7 的 live race）。
-   - **全面快速失敗預算**：PTT 正常 RTT 約 90ms＋`SETTLE_MS` 50ms，超過這個量級的沉默就該馬上問一次，而不是坐等秒級 timeout。列表側具名常數（`list_session.js`）：`CMD_PROBE_AFTER_MS=250`（soft＝探針觸發器）、`CMD_PROBE_WINDOW_MS=600`、`CMD_HARD_MS=1200`；背景 prefetch 同樣 250/600 但 `PREFETCH_HARD_MS=1500`。**例外：`native-key`／`native-paste`／`native-input` 維持 `NATIVE_PASSTHROUGH_MS=3000`**——它們不凍畫面（原生鏡像已在畫面上），唯一職責是撐住 functionMode 的 settle 吸收直到自己的回應落地，砍短就是 state churn。舊的「縮 soft 會提高 markEdge 假邊界風險」由不變量 7g 的完整幀守門抵銷。
-   守護：`command_queue.test.js`「探針不得重新武裝 hard」「expedite …不提前 finish」＋`list_session.test.js`「背景 prefetch 在線時開文」＋`list_command_budget.test.js`（表格式：每一腿的預算與 \f 契約）。
-7c. **frozen 看門狗＝「無進展」計時**（`_armFrozenWatchdog`，`FROZEN_WATCHDOG_MS=2500`，**每完成一腿（`queue.onSettle` 回 `'done'`）就重新武裝**，`_freezeForTransaction`/`_beginOpen`/`_beginOpenPinned` 武裝，只 `_cleanup` 拆）：任何「回呼從未觸發」或「reducer 對該事件無轉移」的路徑都會永久 frozen＝畫面永遠不重繪＋全吞鍵。已知洞：`_openFailed` 的 `open-timeout` 只有 `opening` 有轉移，其他狀態 `return stay` ⇒ actions 空。到期若仍 frozen／opening → `_degradeToNative('指令逾時…')`。不在 frozen 時＝no-op ⇒ 不需在每個解凍點清除。**改成「有進展就重算」是把 12s 砍到 2.5s 的前提**：`_beginOpenPinned` 一次交易可能排十幾腿（每列一個 `open-pinned-step`），固定絕對上限會誤殺合法的多腿開文。
-7d. **「讀取中…」膠囊的擁有權**：`_moveSelection` 在到邊且 queue 非 idle 時 `_setLoading(true)`，**其 serverOp 出口 `_requestEnd`/`_requestHome` 的 onDone 與 onFail 都必須 `_setLoading(false)`**——onDone 會設 `_edgeUp/_edgeDown`，之後不再重新評估該分支 ⇒ 膠囊永久卡在右下角直到開文／切原生／離板。↑ 在 buffer 頂端的 wrap 語意就會送 `jump-end`，極易踩到。
-7e. **共用 queue 的 `flush()` 靜默會洩漏別人的旗標**：`CommandQueue` 由 ListSession 與 `AidNavigation` 共用，list 的 `_cleanup`/`_enterFunctionMode`/`_handoffArticle`/斷線都 `flush()`（不呼叫 onFail）⇒ in-flight 的 AID 命令被丟掉、`aidNavigation.active` 永遠 true ⇒ `term_view.onKeyDown` 吞掉**全部**鍵盤並一直閃「AID 跳文中」，無法自行復原。修法＝命令層 opt-in 的 `onFlushed`（flush 對其他命令仍靜默）。守護：`aid_navigation.test.js`。
-7f. **診斷**：`CommandQueue` 的 `opts.onEvent` 接到 `app.debugRecorder?.log('queue.'+name, info)`（`pttchrome.jsx`），info 帶 `{kind, sinceSentMs, pendingLen, probed}`。recorder 預設 null＝零成本；下次回報卡住時請對方按 Debug 錄製鈕重現，時間軸直接指出哪個 kind 卡住、多久、done/miss/timeout。
-7g. **跳號腿一律 `fullRepaint: true`，且 miss 只能由完整幀定讞**（2026-08-25「開文偶發凍四秒」）。兩半缺一不可：
-   - **零回應跳號**：跳到真游標**已經所在**的序號時畫面零差異 ⇒ server 不寫任何一格 ⇒ `term_buf` 的 settle timer 只由 server 活動 re-arm（不變量 2b）⇒ 沒 settle ⇒ expect 永不被評估，只能苦等軟逾時。（**2026-09 起「零回應」不再等於「零 byte」**：PTT 的 DEC 2026 同步輸出讓每個 `doupdate()` 都吐一對 `ESC[?2026h/l`，連 `!ft.dirty` 早退也吐 ⇒ 線上會看到 16 bytes。但那兩條序列不觸發 `_touchRows`／`posChanged` ⇒ **依然零 settle**，所以下面的結論與 `fullRepaint` 解法完全不變。細節見 `docs/pttbbs-screen-protocol.md` §1.1。）prefetch 錨定腿剛把游標跳到 2381，open-jump 又跳 2381 ⇒ 凍 4094ms（其中 4002ms 純空等）。→ **keys 形如 `<數字>\r` 的每一腿都必須 `fullRepaint: true`**（目前八腿：`open-jump`、`open-pinned-jump`、`jump-number`、`jump-end`、`jump-home`、`prefetch-anchor-*`、`native-sync-jump`、`leave-sync-jump`），另加 `open-pinned-end`（游標已在底部時 End 同樣零回應）。**expect 不變**：協定 §6 M1——`redrawwin` 重繪的是 server 虛擬螢幕「現狀」，跳號後底列仍空 ⇒ 永遠不會變成 clean-list，park 指紋（不變量 3）仍是唯一判準。**翻頁腿（`prefetch-up/down`）刻意不掛**：有動的翻頁本來就確定性回應，附 \f 只是流量×2；`native-key`／`native-paste`／`native-input` 也不掛（bytes 是使用者任意輸入，且 §8.2 明訂 `view_postinfo` 這類交易不可帶 `fullRepaint`）。
-   - **`isCompleteFrame` 守門**（`command_queue.js` 可注入，預設 `() => true`；`pttchrome.jsx` 注入 `changedRows.size >= rows`）：探針從 4000ms 提前到 250ms 之後，「探針送出後的下一個 settle 就是探針的答案」不再成立——慢速連線上指令自己的真回應常常晚於探針才到，而**部分幀不是「我在哪」的答案**。沒這道守門，那種幀會被判定讞 miss → 常態誤降級原生。判準來源：\f 的 `redrawwin` 回應固定以 `ESC[H ESC[2J` 開頭，而 `term_buf` 的 erase-display `case 2` 走 `_touchRows(0, rows-1)` ⇒ 全螢幕清除必然讓 `changedRows` 涵蓋所有列。非完整幀改用**探針窗**重新武裝並計數，上限 `MAX_PROBE_EXTENSIONS=1`（最壞 ≈ 250+600+600，仍在 2500ms 看門狗之內，沒有無限延長的路）。守門失效的退路是 hard timeout → `onFail('timeout')`，只可能把 miss 延後到硬上限，**不可能卡死**。
-   守護：`list_command_budget.test.js`（跳號腿 \f 契約＋真 CommandQueue 的零回應重現）、`command_queue.test.js`「isCompleteFrame…」一組。
-8. CommandQueue timer 要包 wrapper（Illegal invocation）。
-9. `_renderScreenLines` list 分支傳 `{pageState:2}`；**dropHidden=false**（黑名單已在 `visibleListIndices` 前置過濾，視窗切片本來就不含隱藏列）。
-10. `visibleListIndices` 與 `screen_annotations#computeAnnotations` PAGE_LIST 分支同規則——**此同步只在好讀列表視窗（`enhance.listEasyReading` 為 true）成立**：好讀視窗刪除文＋黑名單無條件隱藏（`isDeletedListRow`＝作者欄 `-`；刪除文開文永無 article → 必 wedge，故比照黑名單隱藏）。**原生模式（無 listEasyReading）刻意分歧**：刪除文原生顯示（不隱藏不反黑）、黑名單改渲染成被刪除樣式通知列「（本文已被黑名單） <作者>」（`blacklistNoticeText`；作者＋標題黑名單皆適用；全形括號＋raw 前綴保留游標標記 → 不歪不位移）。`listEasyReading` **只在 term_view 的 buffer/frozen 視窗 render 呼叫傳入**（`:442`/`:446`）；native／functionMode 鏡像**不傳** → 走原生規則（通知列），故「好讀暫時切回原生」與純原生一致（不再變回反黑）。守護：`screen_dropHidden.test.js`（雙模）＋`row_render.test.js`（通知列渲染＋forceWidth）＋`comment_parse.test.js`（`blacklistNoticeText` raw 前綴/全形括號）。
-12. **非白名單鍵＝keyClass `passthrough` → `_beginNativePassthrough`**：reducer 先轉 functionMode（sync 腿在途吸收 settle＋frozen 吞鍵——非 native！閃現原生一幀＝黑名單/刪除文裸露），有序號選取且 ≠`_serverNum` 時先 `_enqueueCursorSyncJump('native-sync-jump')`（jump＋key **不可同 tick 直送**：pttbbs typeahead 跳繪，協定 §2），onDone/onFail 皆 `_enterFunctionMode`＋raw 代送原鍵（onFail 也送＝顯性降級，原生鏡像所見即所得）。**`_serverNum` 快路徑**沿用：選取＝`_serverNum`（seed/re-seed/resume facts、prefetch 落地都會教；native 出走/article/探針 fail＝null）→ 免 sync 腿零 round-trip 直切。pinned 選取＝走 `_enqueuePinnedCursorSync`（見下方子項）；無選取＝免 sync 直切＋代送。**勿再為個別鍵寫模擬交易**（relative 配對／mark／search 模擬都試過並移除）。守護：`list_keys.test.js`。
+1. **A settle with no content does not drive transitions**: `_onScreenSettled` starts with `changedRows.size===0 → return` (a local `_forceRedraw` also re-arms the settle).
+2. **`_settleChangedRows` is only added to at server write points** (all through `_touchRows`), and must not hang off `lineChangeds`. `needUpdate` stopped being sticky in 2026-08, so `lineChangeds` now **is** the real dirty set, but both its window and its meaning are wrong: `term_view.redraw` clears it (one settle window can span several redraws), and a local forced redraw (`lineChangeds.fill(true)`) feeds it; mixing it in gives 2b's "holding a nav key never settles".
+2b. **The settle timer is re-armed only by server activity** (`_serverActivity`: `_touchRows` + the cursor escape's posChanged; notify's changed branch is gated). A local `_forceRedraw` must not postpone a pending settle; otherwise holding a nav key (a redraw every ~30ms) never settles → queue expects starve → prefetch timeouts → "holding PgUp does nothing" + markEdge false edges (the source of the broken pinned-article display). Guarded by `settle_gating.test.js`.
+3. **A number jump's response settles with an empty bottom row** (classify=transient, never clean-list), so jump-class expects use "parked in the entry area with col≤1 ∧ cursor row = target number". `_requestEnd` may land on a pinned row (cursorRowNum null is also accepted); **the prefetch's page-down leg likewise**: at the real end of the board, PgDn lands the cursor on a pinned row (cursorRowNum null ∧ clean-list) = `{edge, landed:null}`, and must not be a miss: a miss's hard timeout turns the `\f` probe response into an ownerless settle → catch-all wrongly degrades with 「畫面偏離列表格式」 ("screen left the list format"). For the upward leg null is still false (pinned rows only exist at the end of the board). Three more relaxations, all of the form "ownerless settles of end-of-board / completion frames must not wrongly degrade":
+   - (a) `classifyListScreen`'s end-of-board short-page rule: with fewer than 3 numbered rows, if the cursor row itself is list-shaped (numbered / loose / pinned / deleted) ∧ every non-empty row in the entry area is list-shaped → still clean-list (the last page at the end of a board may have only 1 numbered row + pinned + blank; when the old `●` cursor covers the highest digit only loose can read it, while with the new `>` cursor strict and loose agree; **loose must still strip `>`**, otherwise this rule fails and every ownerless end-of-board settle wrongly degrades).
+   - (b) The prefetch page leg's expect, second line of defence: facts not clean-list but parked (entry area, col≤1) ∧ cursorRowNum's offset from base is definite → accept moved/edge anyway (null must not be judged edge on a transient frame; wait for the probe frame).
+   - (c) **The consumed flag**: `queue.onSettle` returns `'done'|'miss'|null`, the settle event carries `consumed`, and active's prompt/transient catch-all always stays on a consumed settle (at completion, inFlightKind has already been post-accounted to null, and the end-of-board edge probe frame = a transient with an empty bottom row after jump-park, which would be taken as an ownerless settle and wrongly degrade to functionMode + a sticky hold). A miss also counts as consumed (onFail cleans up itself; otherwise catch-all would double the banner).
+   Guarded by `list_session.test.js` "end-of-board short page" ×3, "transient frame but park fingerprint", "settle consumed by a completed command" (the whole chain with a real CommandQueue) + the reducer enumeration's consumed cases + `command_queue.test.js` onSettle returning three states.
+4. Demand only goes in the direction of movement.
+5. Pinned map key = `pinnedRowKey` (author|title); `_pinnedKeyAt` must use the same function. With the cursor on a pinned row (with ★) it is still collected, with the cursor cell restored to blank (`blankListCursorMark`, deciding 1 cell (`>`) or 2 cells (`●`) by `row[0].isLeadByte`); a cursor row without ★ is excluded. **Loose-parse guard**: rows where `parseListArticleNumLoose` (**stripping only the cursor marks `●`/`>` + whitespace, not `★`**, with a leading number after that) is non-null never enter the pinned map. In a mid-response frame (a jump response being written) the cursor mark can be drawn on a row other than cur_y; that row's num cannot be recovered + a valid author column would file it as pinned, and the unrestored mark would linger forever (the ●52880 pollution bug). **`★` must not be stripped**: ★ is directly followed by the comment-count column, often a plain integer (`★    4 …`, `★   35 …`: announcements without an m/M/=/+ mark), and stripping ★ would expose the comment count → the pinned row is misread as a numbered row and excluded → that announcement disappears permanently (the user measured "some pinned articles disappear permanently"); ★ naturally shields the comment count (rows still starting with ★ do not match `^(\d+)`). Guarded by `comment_parse.test.js` (plain-number comment count → null) + `list_accumulate.test.js` (pinned rows with plain-number comment counts are collected).
+5b. **Frozen yields to pageState 3** (the redraw list branch's condition `pageState !== 3`).
+5c. **`accumulateListLines` only scans the entry area `[LIST_HEADER_ROWS, rows-2]`** (the same range as the board list and every scan point in list_session). The title row passes `isPinnedListRow`: on PttCurrent, row 0's first 17 characters include 4 full-width ones, so after realignment the author column cuts into the `C` of the description "Current" ⇒ it is collected as a pinned article, sorted at the very end of the sequence, and clicking it goes through open-pinned and then degrades on timeout. It only happens on boards where "the title row is ASCII right around col 28". Guarded by `list_accumulate.test.js` "a board's title row must not be collected as a pinned article".
+5c. **Prefetch = an anchored command pair or a chained single leg**: the first time = jump to `bufferEdgeNum(direction)` → PgUp/PgDn; consecutive fills in the same direction = `_chainState={dir,lastLanded}` skips the jump and pages directly (the moved/edge criterion uses lastLanded as its base instead: PgDn lands on the new page's **top** while the anchor is at the new page's **bottom**, so judging edge by anchor equality would misjudge). **The chain's invalidation points must be complete** (missing one = paging from the wrong place): every flush call site, any non-prefetch enqueue (End/Home/open/passthrough), a server settle with nothing in flight (`_onScreenSettled` checks this **before** `queue.onSettle`), seed/rebuild/resume/cleanup, markEdge, noteEvicted. An anchoring failure flushes in onFail. Fallback switch = `_chainState` always null. Offline gating supports omitted same-position jumps (replay.js's "feed the jump response first, then the page" branch).
+6. The selection's identity is its number; a pinned selection's is its title key; **the viewport top is anchored the same way, by `_topNum`/`_topPinnedKey`**: prepend/evict does not move the screen (the mechanism that keeps PgUp from being pushed down by new articles). Under native scrolling the form is
+   "before the redraw, `captureScrollAnchor` captures the anchor from scrollTop; after the redraw, `applyScrollAfterRender`
+   converts the anchor back to scrollTop", and with constant row height that is a single multiplication. Guarded by `list_session.test.js`
+   "anchored restore" (prepend 20 rows ⇒ scrollTop exactly +20 rows; evict 10 rows ⇒ exactly -10 rows; the anchor-loss
+   three-tier fallback) + offline e2e "the number of the viewport's first row is unchanged after demand lands".
+6b. **Evict's pivot = the viewport, not the selection** (`ListSession.evictPivot()` = `_topNum`, with
+   `_selectedNum` only as the fallback). Once the cursor is decoupled from scrolling, the user can scroll the screen two hundred-odd rows away from the cursor, and if the pivot were still
+   tied to the selection, hitting `MAX_LIST_ROWS` would drop exactly **the stretch in front of them** (symptom: rows suddenly vanish and the
+   screen jumps). **"Always keep the selected row" is deliberately not done**: keeping a single-row island would make the buffer discontinuous, and the
+   subsequent `pruneListToSegment` would drop it anyway; the degradation when the selection is evicted already exists and is correct
+   (`_cursorPos` snaps to the nearest surviving row, and opening an article goes through a number jump without relying on the buffer). Guarded by
+   `list_session.test.js` "evictListBuffer" + "evictPivot".
+6c. **The anchor's source of truth is the DOM's scrollTop, but only while `.listBodyView` is still in the DOM.**
+   The viewport node is a resident cache on `ScreenController._bodyView`; when switching to the article or the native mirror,
+   `_patchRows` moves it out of the container (the node still exists, only detached), and **a detached node's
+   scrollTop is always 0**: that means "no information", not "scrolled to the top". Two lines of defence:
+   - `captureScrollAnchor` first asks `screen.hasListViewport()`, and skips capturing for the whole frame when it is false.
+   - Every path where "this frame's anchor is set by the action" must set `_anchorOverride`: `_requestEnd`/
+     `_requestHome`/**`_resumeBuffer`** (back from an article to the list). The anchor's three fields
+     (`_topNum`/`_topPinnedKey`/`_scrollFrac`) are always reset together, as in `_seedAnchors`.
+   The symptom of missing either one = **the view drifts after leaving an article**: the server landing that `_resumeBuffer` just adopted
+   is overwritten to sequence position 0 by the `_forceRedraw` frame right after it, the screen jumps to the buffer's oldest row, and the article just
+   read scrolls out of view (when the buffer has only one page, 0 happens to be right, so the symptom is "sometimes"). The other half: programmatic positioning (compensating writes / instant reveals) must
+   update `_lastScrollTop` in step, otherwise the scroll event it causes is read by `_onScrollFrame` as
+   "the user scrolled down", sneaking out one demand in the opposite direction (violating invariant 4).
+   Guarded by `list_session.test.js` "back from an article to the list: the view stays on the server landing's page", three tests, +
+   "viewport not in the DOM (during the article) → the anchor does not move at all", and `render_list_scroll.test.js`
+   "hasListViewport()". **The offline e2e cassette cchat-list-nav cannot detect this**: the article it opens
+   happens to be the oldest one in the buffer, so the top of the landing page = sequence position 0, and overwritten or not gives the same value.
+7. Prefetch timeout = benign edge; open-article timeout = functionMode self-heals; flush is silent (**flush does not trigger onFail → `_prunePivotOverride` must be reset by hand at the flush exits**). A timeout is always just a **`\f` probe trigger** (`command_queue.js`), not a signal (**do not reintroduce RTT-adaptive timeouts**). **Transaction preambles use `flushPending` (keeping the in-flight pairing, queueing serially)**; a full `flush` is only allowed on the paths back to the native mirror (`_enterFunctionMode`/`_handoffArticle`/`_cleanup`): flushing the in-flight command turns the response on the line into an ownerless settle that satisfies the next transaction's expect too early (a live race). The prefetch anchor's onFail uses `flushPendingKind('prefetch')`, so it does not kill queued transactions by mistake.
+7b. **Freeze delays must be bounded** (2026-08, "the screen stops, shows processing, and recovers only after a while"). Three parts; missing any brings it back:
+   - **The probe branch of `_timedOut` only re-arms soft** (`probeTimeoutMs`, default 2000), and **must not `_armBoth`**: the old code gave a full hard again on probing, so a single command took 2×hard (~20s) at worst. Hard is an absolute deadline fixed at sending. Upper bound = `max(hard, soft+probe)`.
+   - **When a foreground transaction freezes the screen, `queue.expedite(250)` hurries the in-flight background prefetch** (`_expediteBackground`, only for `kind`s starting with `prefetch`; in the three places `_freezeForTransaction`/`_beginOpen`/`_beginOpenPinned`). `_freezeForTransaction` only does `flushPending` (invariant 7 forbids flushing the in-flight command), so the transaction is merely queued in pending while the screen is already frozen + swallowing keys, and its first byte waits until the background prefetch has spent its whole soft/hard budget (always hit when opening an article or leaving the board right after repeated paging). `expedite` only shortens soft → triggering the existing `\f` probe (which always gets a response), and **deliberately does not `_finish` early** (finishing early = an ownerless settle, exactly invariant 7's live race).
+   - **A fast-fail budget everywhere**: PTT's normal RTT is about 90ms + `SETTLE_MS` 50ms, so silence well beyond that order should be queried at once instead of waiting for a seconds-long timeout. Named constants on the list side (`list_session.js`): `CMD_PROBE_AFTER_MS=250` (soft = probe trigger), `CMD_PROBE_WINDOW_MS=600`, `CMD_HARD_MS=1200`; the background prefetch uses the same 250/600 but `PREFETCH_HARD_MS=1500`. **Exception: `native-key`/`native-paste`/`native-input` keep `NATIVE_PASSTHROUGH_MS=3000`**: they do not freeze the screen (the native mirror is already on screen), and their only job is to keep functionMode's settle absorption going until their own response lands; cutting it short means state churn. The old "shortening soft raises the risk of markEdge false edges" is offset by invariant 7g's complete-frame guard.
+   Guarded by `command_queue.test.js` "the probe must not re-arm hard" "expedite … does not finish early" + `list_session.test.js` "opening an article with a background prefetch on the line" + `list_command_budget.test.js` (table-driven: each leg's budget and `\f` contract).
+7c. **The frozen watchdog = a "no progress" timer** (`_armFrozenWatchdog`, `FROZEN_WATCHDOG_MS=2500`, **re-armed every time a leg completes (`queue.onSettle` returns `'done'`)**, armed by `_freezeForTransaction`/`_beginOpen`/`_beginOpenPinned`, torn down only by `_cleanup`): any path where "a callback never fires" or "the reducer has no transition for that event" would stay frozen forever = the screen never redraws + every key swallowed. Known hole: `_openFailed`'s `open-timeout` only has a transition in `opening`, and other states `return stay`, so the actions are empty. On expiry, if still frozen/opening → `_degradeToNative('指令逾時…')` ("command timed out…"). When not frozen it is a no-op, so it need not be cleared at every unfreeze point. **Changing to "recompute on progress" is what allowed cutting 12s down to 2.5s**: one `_beginOpenPinned` transaction may queue a dozen-odd legs (one `open-pinned-step` per row), and a fixed absolute limit would wrongly kill a legitimate multi-leg open.
+7d. **Ownership of the 「讀取中…」 ("loading…") pill**: `_moveSelection` calls `_setLoading(true)` at the edge with a non-idle queue, and **both onDone and onFail of its serverOp exits `_requestEnd`/`_requestHome` must `_setLoading(false)`**: onDone sets `_edgeUp/_edgeDown`, after which that branch is never re-evaluated, so the pill would stay stuck at the bottom right until an article opens, native takes over or the board is left. ↑'s wrap semantics at the top of the buffer sends `jump-end`, which hits this very easily.
+7e. **A silent `flush()` of the shared queue leaks other owners' flags**: `CommandQueue` is shared by ListSession and `AidNavigation`, and the list's `_cleanup`/`_enterFunctionMode`/`_handoffArticle`/disconnect all `flush()` (without calling onFail), so an in-flight AID command is dropped and `aidNavigation.active` stays true forever, so `term_view.onKeyDown` swallows **every** key and keeps flashing 「AID 跳文中」 ("AID jump in progress"), with no way to recover by itself. Fix = an opt-in `onFlushed` at the command level (flush stays silent for other commands). Guarded by `aid_navigation.test.js`.
+7f. **Diagnostics**: `CommandQueue`'s `opts.onEvent` is wired to `app.debugRecorder?.log('queue.'+name, info)` (`pttchrome.jsx`), with info carrying `{kind, sinceSentMs, pendingLen, probed}`. The recorder is null by default = zero cost; next time someone reports a hang, ask them to press the Debug record button and reproduce it, and the timeline shows directly which kind got stuck, for how long, and done/miss/timeout.
+7g. **Number-jump legs always use `fullRepaint: true`, and a miss can only be settled by a complete frame** (2026-08-25, "opening an article occasionally freezes for four seconds"). Both halves are required:
+   - **Zero-response number jumps**: jumping to the number the real cursor **is already on** makes no screen difference, so the server writes no cell at all, and `term_buf`'s settle timer is only re-armed by server activity (invariant 2b), so there is no settle, and expect is never evaluated, leaving only the soft timeout to wait for. (**Since 2026-09, "zero response" no longer equals "zero bytes"**: PTT's DEC 2026 synchronised output emits a pair of `ESC[?2026h/l` around every `doupdate()`, even on the `!ft.dirty` early return, so 16 bytes show up on the line. But those two sequences do not trigger `_touchRows`/`posChanged`, so there is **still zero settle**, and the conclusion and the `fullRepaint` fix below are unchanged. Details in `docs/pttbbs-screen-protocol.md` §1.1.) The prefetch anchor leg had just jumped the cursor to 2381, and open-jump jumped to 2381 again, so it froze for 4094ms (4002ms of it pure idle waiting). → **Every leg whose keys look like `<digits>\r` must use `fullRepaint: true`** (currently eight legs: `open-jump`, `open-pinned-jump`, `jump-number`, `jump-end`, `jump-home`, `prefetch-anchor-*`, `native-sync-jump`, `leave-sync-jump`), plus `open-pinned-end` (End with the cursor already at the bottom is also a zero response). **expect does not change**: protocol §6 M1, `redrawwin` redraws the server's virtual screen "as it is", and after a number jump the bottom row is still empty, so it never becomes clean-list, and the park fingerprint (invariant 3) remains the only criterion. **Page legs (`prefetch-up/down`) deliberately do not get it**: a page that moves already responds deterministically, and appending `\f` would only double the traffic; `native-key`/`native-paste`/`native-input` do not get it either (the bytes are arbitrary user input, and §8.2 states that transactions like `view_postinfo` must not carry `fullRepaint`).
+   - **The `isCompleteFrame` guard** (injectable in `command_queue.js`, default `() => true`; `pttchrome.jsx` injects `changedRows.size >= rows`): once the probe moved from 4000ms up to 250ms, "the next settle after the probe is the probe's answer" stopped holding: on slow connections the command's own real response often arrives after the probe, and **a partial frame is not an answer to "where am I"**. Without this guard such a frame would be judged a definite miss → routinely wrong degradation to native. Basis of the criterion: `\f`'s `redrawwin` response always starts with `ESC[H ESC[2J`, and `term_buf`'s erase-display `case 2` goes through `_touchRows(0, rows-1)`, so a full-screen clear always makes `changedRows` cover every row. A non-complete frame re-arms with the **probe window** instead and is counted, up to `MAX_PROBE_EXTENSIONS=1` (worst case ≈ 250+600+600, still within the 2500ms watchdog, with no path to extend forever). If the guard fails, the fallback is the hard timeout → `onFail('timeout')`, which can only delay a miss to the hard limit and **can never hang**.
+   Guarded by `list_command_budget.test.js` (the number-jump legs' `\f` contract + a zero-response reproduction with a real CommandQueue) and the `command_queue.test.js` group "isCompleteFrame…".
+7h. **A settle carrying no server data newer than the in-flight command's send is no answer to it.** `TermBuf.serverWrites` counts the chunks the parser has written and is frozen into each settle snapshot; `CommandQueue` (`opts.serverWrites`, injected by `pttchrome.jsx`) notes the count at send and ignores (`queue.stale`) any settle that does not exceed it. Local repaints (the reveal of a live layer, list repaints) keep the settle timer re-armed, so the settle of an answer that arrived just before a send can fire after it: a flushed prefetch's answer on search results once satisfied the board jump of Back to the source, and the jump's follow-up ← left the board for the main menu. Guarded by `command_queue.test.js` "a settle of data received before the send never answers the command", `term_buf_settle_snapshot.test.js` and the offline `mobile_stack_search_source` "… still settle after the board jump went out".
+8. CommandQueue timers need a wrapper (Illegal invocation).
+9. `_renderScreenLines`' list branch passes `{pageState:2}`; **dropHidden=false** (the blacklist is already filtered upfront in `visibleListIndices`, so the window slice never contains hidden rows).
+10. `visibleListIndices` follows the same rules as the PAGE_LIST branch of `screen_annotations#computeAnnotations`. **This agreement only holds in the easy-reading list window (`enhance.listEasyReading` true)**: in the easy-reading window, deleted articles + the blacklist are hidden unconditionally (`isDeletedListRow` = author column `-`; opening a deleted article never yields an article → it always wedges, so it is hidden like the blacklist). **Native mode (no listEasyReading) deliberately differs**: deleted articles are shown natively (neither hidden nor reverse-video), and blacklisted rows render instead as a deleted-style notice row 「（本文已被黑名單） <作者>」 ("(this article is blacklisted) <author>") (`blacklistNoticeText`; applies to both author and title blacklists; full-width parentheses + the raw prefix keep the cursor mark → no skew or shift). `listEasyReading` **is passed only by term_view's buffer/frozen window render calls** (`:442`/`:446`); the native/functionMode mirror **does not pass it** → native rules (the notice row), so "easy reading temporarily switched back to native" matches pure native (it no longer turns back into reverse video). Guarded by `screen_dropHidden.test.js` (both modes) + `row_render.test.js` (notice row rendering + forceWidth) + `comment_parse.test.js` (`blacklistNoticeText` raw prefix / full-width parentheses).
+12. **Non-whitelisted keys = keyClass `passthrough` → `_beginNativePassthrough`**: the reducer first moves to functionMode (with the sync leg in flight, settles are absorbed + frozen swallows keys; not native! a single frame of native = blacklisted / deleted articles exposed); with a numbered selection ≠ `_serverNum`, `_enqueueCursorSyncJump('native-sync-jump')` first (jump + key **must not be sent in the same tick**: pttbbs typeahead skips the redraw, protocol §2); both onDone and onFail call `_enterFunctionMode` + send the original key raw (onFail sends it too = explicit degradation, and the native mirror shows exactly what happens). **The `_serverNum` fast path** carries over: selection = `_serverNum` (taught by seed / re-seed / resume facts and prefetch landings; a native excursion / article / probe fail = null) → no sync leg, switching directly with zero round-trips. A pinned selection goes through `_enqueuePinnedCursorSync` (see the sub-item below); no selection = switch directly without sync + send on the user's behalf. **Do not write simulated transactions for individual keys again** (relative pairing / mark / search simulations were all tried and removed). Guarded by `list_keys.test.js`.
 
-    - **Ctrl 組合與 Alt 重映射鍵一律代送**（2026-09-13 修「查詢作者會跑去其它文章」）。舊碼兩處把它們擋在 passthrough 序列之外，因而**跳過 sync 腿**：`_beginNativePassthrough` 開頭寫死 `e.ctrlKey ? null : keyEventToBytes(e)`；`onKeyDown` 開頭 `if (clipboard || e.altKey || e.metaKey) return;` 把 Alt remap 鍵整個早退（那條更隱蔽——連原生鏡像都不切，好讀畫面完全不動而 server 狀態已變）。但 read.c 有一整組**對真游標那一列**動作的 Ctrl 鍵，`:904 Ctrl-Q` `my_query(headers[crs_ln - top_ln].owner)`、`:911 Ctrl-S`、`:957 Ctrl-T` TagThread、`:970 Ctrl-D`（看板列表對應 board.c `:1890 Ctrl-S`、`:2044 Ctrl-T`、`:1731 Ctrl-W`）；T1 導覽零網路，真游標通常停在背景 prefetch 的落點 ⇒ 查到別人，按 ← 退出後 resume 又以那個錯游標 re-seed ⇒ 選取一起跑掉。證據 pointer：`#t=5926` 裸送 `^Q`（前面零 `queue.enqueue`）／`#t=5940` 是另一位作者的 my_query。**判準是「這個鍵會不會吃真游標」，不是「它是不是 Ctrl」** —— 新增 cursor-relative 鍵時先查 pttbbs source（表在 `docs/pttbbs-screen-protocol.md` §11.7）。
-    - `bytes == null` 分支現在**只服務算不出 bytes 的鍵**（Ctrl+Shift 組合、`CtrlShiftMap` 沒對應的 Ctrl+數字／Ctrl+F1）。
-    - **Ctrl 組合的 bytes 不可過 `u2b`**：它們是控制碼（`CtrlShiftMap` 全 < 0x80，2026-09-23 修掉 upstream `[`/`\`/`]`＝219/220/221 的 keyCode bug，理由見 `docs/pttbbs-screen-protocol.md` §11.8「不在範圍內」），原生鍵盤路徑也不轉碼。守門條件 `!e.ctrlKey &&` 保留作合約表達，勿拿掉。
-    - Alt remap 的判定**唯一來源是 `term_keyboard.isAltRemapEvent`**（2026-09-15 收斂；在那之前同一組條件在 `TermKeyboard._onKeyDown`／`list_session`／`board_list_session` 三處手抄，註解還要求「必須逐項對齊」——手抄必定漂移，症狀是**啞巴鍵**：這裡接手了、原生那邊卻不送）。攔截點在 `state !== 'active'` gate **之後**（交易在飛時與其他鍵一樣吞掉＋提示）、`_classifyKey` **之前**（兩個理由：`keyEventToBytes` 對 altKey 回 null ⇒ 會被誤判成 T0 `ignore`；而且 `j/k/n/p`（看板列表另有 `b`）同時是導覽白名單的同義鍵，順序一反 `Alt+J` 會變成本地移游標而不是送 `^J`）。
-    - **`keyEventToBytes` 對 `altKey` 回 null 是刻意的，不要「順手」讓它支援 Alt remap**：它緊接著就被 `_classifyKey` 按 `e.key` 分派白名單，一旦回傳 byte，`Alt+J/K/N/P` 落進 `nav`、`Alt+M` 落進開文、`Alt+0~9` 落進 jump-digit ⇒ 全部變成本地動作而非送鍵，整組 remap 靜默失效。守護 `tests/unit/alt_ctrl_remap.test.js`、`tests/unit/list_keys.test.js`（全 26 字母表驅動）。
-    - **置底列選取（`_selectedNum == null`、`_selectedPinnedKey` 有值）走 `_enqueuePinnedCursorSync`**：跳號 `search_num` 到不了置底列（§11.6），改用 `_beginOpenPinned` 原本的走位——`<緩衝最大編號>\r`→End→逐格方向鍵，最後一格以 `pinnedRowKey` 內容驗身分。三個入口（passthrough／inplace／leave）與開文共用，kind＝`<native|inplace|leave|open>-pinned-<jump|end|step>`。規則：
-      - **失敗不送鍵**（與編號腿「onFail 照送」相反）：多腿走到一半失敗時真游標在任意中間列，Ctrl-D／Ctrl-X 落錯列無法收回 ⇒ `_degradeToNative`。
-      - **無「真游標已在該置底列」快路徑**（刻意）：需與 `_serverNum` 並行的欄位，`_serverNum` 十幾個賦值點漏清一處＝過期快路徑＝破壞性鍵落錯列。序列開始即 `_serverNum=null`（停在置底列＝無編號）。
-      - 緩衝無任何編號列（無 jump 錨，`_canPinnedCursorSync` false）＝舊行為直切代送；實際 engage 必有編號列，只剩測試的空緩衝會走到。
-      - inplace 落點是緩衝內已有的置底列 ⇒ 算 `inBuf` 走 `_resumeInPlace`（選取改記該 pinned key、錨不動，N6），不 rebuild。
-      - 成本 4+N 腿（N＝End 落點到目標列格數），每腿 250/600/1200；`FROZEN_WATCHDOG_MS` 每腿 done re-arm，**不是**整串總預算。
-      - 守護：`tests/unit/list_pinned_cursor_sync.test.js`（行為）、`list_command_budget.test.js`（\f／預算）。
-12b. **剪貼簿鍵不得進 passthrough，貼上不得裸送**（2026-08「AID 文章碼要貼兩次」）。兩半缺一即復發：
-   - `onKeyDown` 的剪貼簿早退是 Ctrl-C/A/V ＋ **Shift+Insert**（app 自己的 i18n `alert_pasteShortcutText` 就是叫使用者用它）。Shift+Insert 不是 ctrl 組合 ⇒ 舊碼落 `passthrough` → `_beginNativePassthrough` 的 **`e.preventDefault()` 會取消瀏覽器的貼上預設動作** ⇒ `#t` 收不到 `paste` 事件、`App.onDOMPaste` 永不觸發，PTT 只收到 `keyEventToBytes` 產出的 `\x1b[2~`。畫面切原生卻沒貼上任何東西，使用者得貼第二次（那次才成功——此時 `listRenderMode` 已是 native、hook 根本不被呼叫）。**純 `Insert`（無 shift）維持 passthrough**。
-   - **成員資格條件＝「真的有人接手這顆鍵」，不是「看起來像剪貼簿快捷鍵」**（2026-09-19「Ctrl+X 轉錄轉到別篇」）：`c`/`a` 有 `term_view.onKeyDown` 的 `doCopy`/`doSelectAll`、`v` 與 `Shift+Insert` 有 `term_keyboard._onKeyDown` 的 `return false`（讓給瀏覽器）。**`x` 三不管**——終端機畫面不可編輯、focus 在恆空的隱藏 input `#t` ⇒ 瀏覽器「剪下」沒有作用對象，而早退**不 preventDefault** ⇒ 事件一路落到 `term_keyboard` 的 `CtrlShiftMap['x'] = 24` **裸送 `^X`**、跳過 cursor-sync 腿。`^X` 在文章列表是 `read_comms` 的 `{ 1, cross_post }`（`bbs.c:4555`，`needitem=1` ⇒ 吃真游標那一列）⇒ 轉錄到背景 prefetch 的落點那一篇。**`x` 已移出白名單，別加回去**；判定收斂在 `term_keyboard.isBrowserClipboardEvent`（以前在 `list_session`／`board_list_session` 兩處手抄，與 Alt remap 當年同型的漂移風險）。守護：`list_keys.test.js`「Ctrl-X（轉錄）不是剪貼簿鍵」、`board_list_session.test.js` 同名案例。
-   - 貼上本身要走 `ListSession.onPaste`（T3b）而非 `view.onTextInput` 裸送：裸送會與 in-flight prefetch/jump 競態（typeahead，協定 §2），且 buffer 模式渲染的是累積清單 ⇒ **PTT 畫的 prompt 看不見**，要等某個 settle 觸發 catch-all 才現形。使用者讀成「沒反應」再貼一次 → AID 被 append 進同一個 prompt（`#1gIeu-3A1gIeu-3A` → 找不到文章）。
-   - 正規化規則放 `string_util.normalizePasteText`（`term_view.onTextInput` 與 `onPaste` 共用），兩條路徑必須送出**逐 byte 相同**的內容；`CommandQueue` 的 send 綁 raw `conn.send`（不做 u2b）⇒ `onPaste` 自行 `u2b`＋`ansiHalfColorConv`，順序照 `telnet.js#convSend`。
-   守護：`list_keys.test.js`（Shift+Insert 放行＋純 Insert 反向）、`list_paste.test.js`（sync 腿／快路徑／降級／吞鍵有提示／回傳值／bytes 等值）、`string_util.test.js`（normalizePasteText）、`easy-reading-list.offline.spec.js`（真瀏覽器一次貼上只送一次、無 `\x1b[2~`）。
-   文章好讀同源缺口：`_onKeyDown` 只對 `e.key.length === 1` 進 functionMode，貼上不是按鍵 ⇒ prompt 被長頁蓋住。修在 `App.onPasteDone`（送出前先 `easyReading._enterFunctionMode()`）。
-   序列化操作（AID 跳文／長推文）在途時**連 `ListSession.onPaste` 都不准進**（那會排進同一條 CommandQueue）：守門在 `App.onPasteDone` 開頭，條件走 `serialized_op_gate.serializedOpHint`（四條送字入口共用，見 12d 末）。
-12c. **送不出 byte 的鍵不得進 passthrough**（2026-08「按 Caps Lock/F2 畫面跑掉」；與 12b 同型，該處是 Shift+Insert）：`_classifyKey` 開頭 `keyEventToBytes(e) == null → keyClass 'ignore'`（吞掉、不轉態、**不 preventDefault**——F12 開發者工具／CapsLock 的 OS 行為留給瀏覽器）。舊碼把 CapsLock／F1–F12／NumLock／ScrollLock／不可映射 Ctrl+Shift 全歸 passthrough → 落 `bytes == null` 分支 → **跳過 cursor sync 腿直接 `_enterFunctionMode()`**：畫面瞬間換成 server 真實 24 行（本地導覽零網路，真游標通常停在背景 prefetch 的遠處頁面）＝畫面跑掉，外加黏性 hold＋拋 cache（不變量 15），而 server 從頭到尾沒動——該分支假設的「事件放行後原生鍵盤路徑會送出去」對這些鍵不成立（`TermKeyboard._onKeyDown` 對 KeyMap miss 且 `key.length !== 1` 一律回 false）。判準必須綁 `keyEventToBytes`（＝送出路徑本身），**不可改成硬列鍵清單**（會與送出路徑漂移）。文章好讀的同源守門是 `e.key.length === 1`（`easy_reading.js`）。同批修的還有白名單缺 read.c 導覽同義鍵（`空白`/`N`/`P`/`n`/`p`/`$` 原本落 passthrough，翻頁被當成切原生）。守護：`list_keys.test.js`（dead keys／同義鍵等價／Ctrl-P 反向）、`easy-reading-list.offline.spec.js`。
-12d. **IME 送字不得裸送**（2026-08-31「切到中文輸入法打字，整個畫面就卡住」；與 12b 同型，只是 payload 來自組字而非剪貼簿）。兩半缺一即復發：
-   - 送出要走 `ListSession.noteTextInput`（T3c）而非 `view.onTextInput` 裸 `_convSend`。IME 的 keydown `e.key` 是 `'Process'`（keyCode 229），`term_view.keyEventFilter` 第一條就把它擋在 `onKeyDown` 之外 ⇒ `_classifyKey` 的 passthrough（一鍵切原生）**對 IME 永遠不觸發**。裸送的後果與 12b 逐字相同：與 in-flight prefetch/jump 競態（typeahead，協定 §2），且 buffer 模式渲染的是累積清單 ⇒ **PTT 畫的 prompt 看不見**。使用者這次讀成「整個畫面卡住」。
-   - `term_view.onTextInput` 的 `isPasting` 分支**不得重複攔截**：貼上已經在 `App.onPasteDone` 問過 `listSession.onPaste`，這裡再問一次就是同一段文字送兩次。
-   - **序列化操作（AID 跳文／長推文）在途時，四條送字入口一律吞掉並給提示**：`term_view.onKeyDown`／`onTextInput`、`App.onFunctionKey`／`onPasteDone`，條件與提示文字統一在 `serialized_op_gate.serializedOpHint(core)`（2026-09-01；在那之前只有前兩條有守門，IME 與貼上照樣裸送——長推文期間 IME 是被進度遮罩的 `modalShown` **間接**擋住的巧合，AID 跳文不開 modal ⇒ 整段裸送）。守護 `tests/unit/serialized_op_gate.test.js`＋`aid_back_ui.offline.spec.js`／`long_push.offline.spec.js`。
-   同一次修法還補了 `#t`（注音組字框）的落點：buffer/frozen 幀沒有可錨的列，見「視圖模型」節與 `docs/easy-reading.md`「游標／`#t` 的錨點契約」禁止事項 4。守護：`list_text_input.test.js`、`term_view_text_input.test.js`、`row_anchor.test.js`、`easy-reading-list.offline.spec.js`「中文輸入法（離線）」。
+    - **Ctrl combinations and Alt-remapped keys are always sent on the user's behalf** (fixed 2026-09-13: "looking up the author goes to another article"). The old code kept them out of the passthrough sequence in two places, and so **skipped the sync leg**: `_beginNativePassthrough` started with a hard-coded `e.ctrlKey ? null : keyEventToBytes(e)`; `onKeyDown` started with `if (clipboard || e.altKey || e.metaKey) return;`, returning early on Alt remap keys entirely (the more hidden one: not even switching to the native mirror, so the easy-reading screen did not move at all while the server state had changed). But read.c has a whole set of Ctrl keys that **act on the real cursor's row**: `:904 Ctrl-Q` `my_query(headers[crs_ln - top_ln].owner)`, `:911 Ctrl-S`, `:957 Ctrl-T` TagThread, `:970 Ctrl-D` (for the board list, board.c `:1890 Ctrl-S`, `:2044 Ctrl-T`, `:1731 Ctrl-W`); T1 navigation is zero network, and the real cursor usually rests on a background prefetch's landing, so it looked up someone else, and after ← to exit, resume re-seeded from that wrong cursor, so the selection moved too. Evidence pointer: `#t=5926` sends a bare `^Q` (with zero `queue.enqueue` before it) / `#t=5940` is another author's my_query. **The criterion is "does this key act on the real cursor", not "is it Ctrl"**: when adding cursor-relative keys, check the pttbbs source first (the table is in `docs/pttbbs-screen-protocol.md` §11.7).
+    - The `bytes == null` branch now **only serves keys whose bytes cannot be computed** (Ctrl+Shift combinations, Ctrl+digit / Ctrl+F1 without a `CtrlShiftMap` entry).
+    - **The bytes of Ctrl combinations must not go through `u2b`**: they are control codes (`CtrlShiftMap` is all < 0x80; on 2026-09-23 the upstream keyCode bug of `[`/`\`/`]` = 219/220/221 was fixed, reasons in `docs/pttbbs-screen-protocol.md` §11.8 「不在範圍內」 (out of scope)), and the native keyboard path does not convert them either. The guard condition `!e.ctrlKey &&` stays as an expression of the contract; do not remove it.
+    - **The only source** for detecting the Alt remap is `term_keyboard.isAltRemapEvent` (consolidated 2026-09-15; before that, the same condition was hand-copied in three places, `TermKeyboard._onKeyDown`/`list_session`/`board_list_session`, with comments demanding they "must match item by item"; hand copies always drift, and the symptom is **mute keys**: taken over here while the native side does not send). The interception point is **after** the `state !== 'active'` gate (with a transaction in flight it is swallowed with a notice like other keys) and **before** `_classifyKey` (two reasons: `keyEventToBytes` returns null for altKey, so it would be misjudged as T0 `ignore`; and `j/k/n/p` (plus `b` on the board list) are also synonyms on the navigation whitelist, so with the order reversed `Alt+J` would move the cursor locally instead of sending `^J`).
+    - **`keyEventToBytes` returning null for `altKey` is deliberate; do not "helpfully" make it support the Alt remap**: it is immediately followed by `_classifyKey` dispatching the whitelist on `e.key`, and once it returns a byte, `Alt+J/K/N/P` fall into `nav`, `Alt+M` into opening an article and `Alt+0~9` into jump-digit, so all of them become local actions instead of sent keys, and the whole remap silently stops working. Guarded by `tests/unit/alt_ctrl_remap.test.js`, `tests/unit/list_keys.test.js` (table-driven over all 26 letters).
+    - **A pinned-row selection (`_selectedNum == null`, `_selectedPinnedKey` set) goes through `_enqueuePinnedCursorSync`**: a number jump's `search_num` cannot reach pinned rows (§11.6), so it uses `_beginOpenPinned`'s original walk: `<largest number in the buffer>\r` → End → arrow keys cell by cell, verifying the identity by `pinnedRowKey` content at the last cell. The three entry points (passthrough / inplace / leave) share it with opening, with kind = `<native|inplace|leave|open>-pinned-<jump|end|step>`. Rules:
+      - **No key on failure** (the opposite of the numbered leg's "onFail sends anyway"): when a multi-leg walk fails halfway, the real cursor is on an arbitrary intermediate row, and Ctrl-D/Ctrl-X on the wrong row cannot be undone, so `_degradeToNative`.
+      - **No "the real cursor is already on that pinned row" fast path** (deliberate): it would need a field parallel to `_serverNum`, and `_serverNum` has a dozen-odd assignment points; missing one clear = a stale fast path = a destructive key on the wrong row. The sequence starts with `_serverNum=null` (resting on a pinned row = no number).
+      - A buffer with no numbered rows (no jump anchor, `_canPinnedCursorSync` false) = the old behaviour of switching directly and sending; an actual engage always has numbered rows, so only the empty buffer in tests gets here.
+      - An inplace landing on a pinned row already in the buffer counts as `inBuf` and goes through `_resumeInPlace` (the selection records that pinned key instead, the anchor does not move, N6), with no rebuild.
+      - Cost 4+N legs (N = cells from the End landing to the target row), each 250/600/1200; `FROZEN_WATCHDOG_MS` re-arms on each leg's done, and is **not** a total budget for the whole chain.
+      - Guarded by `tests/unit/list_pinned_cursor_sync.test.js` (behaviour), `list_command_budget.test.js` (`\f` / budget).
+12b. **Clipboard keys must not enter passthrough, and pastes must not be sent bare** (2026-08, "the AID article code has to be pasted twice"). Missing either half brings it back:
+   - `onKeyDown`'s clipboard early return covers Ctrl-C/A/V + **Shift+Insert** (the app's own i18n `alert_pasteShortcutText` tells users to use it). Shift+Insert is not a ctrl combination, so the old code put it in `passthrough` → **`e.preventDefault()` in `_beginNativePassthrough` cancelled the browser's default paste action**, so `#t` never received the `paste` event, `App.onDOMPaste` never fired, and PTT received only the `\x1b[2~` produced by `keyEventToBytes`. The screen switched to native without pasting anything, and the user had to paste a second time (that one worked: by then `listRenderMode` was already native and the hook was not called at all). **Plain `Insert` (without shift) stays passthrough**.
+   - **The membership condition = "someone really takes over this key", not "it looks like a clipboard shortcut"** (2026-09-19, "Ctrl+X reposted a different article"): `c`/`a` have `term_view.onKeyDown`'s `doCopy`/`doSelectAll`, and `v` and `Shift+Insert` have `term_keyboard._onKeyDown`'s `return false` (deferring to the browser). **`x` belongs to no one**: the terminal screen is not editable and focus is on the always-empty hidden input `#t`, so the browser's "cut" has nothing to act on, and the early return **does not preventDefault**, so the event falls all the way through to `term_keyboard`'s `CtrlShiftMap['x'] = 24`, **sending a bare `^X`** and skipping the cursor-sync leg. `^X` on the article list is `read_comms`' `{ 1, cross_post }` (`bbs.c:4555`, `needitem=1`, so it acts on the real cursor's row), so it reposted the article at the background prefetch's landing. **`x` has been removed from the whitelist; do not add it back**; the check converges in `term_keyboard.isBrowserClipboardEvent` (formerly hand-copied in two places, `list_session`/`board_list_session`, the same kind of drift risk as the Alt remap had). Guarded by `list_keys.test.js` "Ctrl-X (repost) is not a clipboard key" and the same-named case in `board_list_session.test.js`.
+   - The paste itself must go through `ListSession.onPaste` (T3b) rather than being sent bare by `view.onTextInput`: sending bare races the in-flight prefetch/jump (typeahead, protocol §2), and buffer mode renders the accumulated list, so **the prompt PTT draws is invisible**, only showing once some settle triggers catch-all. The user read it as "no reaction" and pasted again → the AID was appended into the same prompt (`#1gIeu-3A1gIeu-3A` → article not found).
+   - The normalisation rules live in `string_util.normalizePasteText` (shared by `term_view.onTextInput` and `onPaste`), and both paths must send **byte-for-byte identical** content; `CommandQueue`'s send is bound to raw `conn.send` (no u2b), so `onPaste` does `u2b` + `ansiHalfColorConv` itself, in the order of `telnet.js#convSend`.
+   Guarded by `list_keys.test.js` (Shift+Insert passes + plain Insert as the reverse), `list_paste.test.js` (sync leg / fast path / degradation / swallowed keys with a notice / return value / equal bytes), `string_util.test.js` (normalizePasteText), `easy-reading-list.offline.spec.js` (a real browser sends one paste only once, with no `\x1b[2~`).
+   The same gap in article easy reading: `_onKeyDown` only enters functionMode for `e.key.length === 1`, and a paste is not a key press, so the prompt was covered by the long page. Fixed in `App.onPasteDone` (calling `easyReading._enterFunctionMode()` before sending).
+   While a serialised operation (AID jump / long comment) is in flight, **not even `ListSession.onPaste` may be entered** (it would queue into the same CommandQueue): the guard is at the start of `App.onPasteDone`, with the condition from `serialized_op_gate.serializedOpHint` (shared by the four text-sending entry points, see the end of 12d).
+12c. **Keys that cannot send a byte must not enter passthrough** (2026-08, "pressing Caps Lock/F2 makes the screen jump"; the same shape as 12b, where it was Shift+Insert): `_classifyKey` starts with `keyEventToBytes(e) == null → keyClass 'ignore'` (swallowed, no transition, **no preventDefault**: F12 developer tools and CapsLock's OS behaviour are left to the browser). The old code put CapsLock / F1–F12 / NumLock / ScrollLock / unmappable Ctrl+Shift all in passthrough → the `bytes == null` branch → **skipping the cursor sync leg and calling `_enterFunctionMode()` directly**: the screen instantly became the server's real 24 rows (local navigation is zero network, and the real cursor usually rests on a far page from the background prefetch) = the screen jumped, plus a sticky hold + dropped cache (invariant 15), while the server never moved at all. That branch's assumption that "once the event passes, the native keyboard path will send it" does not hold for these keys (`TermKeyboard._onKeyDown` always returns false on a KeyMap miss with `key.length !== 1`). The criterion must be tied to `keyEventToBytes` (= the send path itself), **never changed to a hard-coded key list** (it would drift from the send path). Article easy reading's guard for the same gap is `e.key.length === 1` (`easy_reading.js`). The same batch also fixed the whitelist missing read.c's navigation synonyms (`空白` (Space)/`N`/`P`/`n`/`p`/`$` used to fall into passthrough, so paging was treated as switching to native). Guarded by `list_keys.test.js` (dead keys / synonym equivalence / Ctrl-P as the reverse), `easy-reading-list.offline.spec.js`.
+12d. **IME text must not be sent bare** (2026-08-31, "switching to a Chinese input method and typing freezes the whole screen"; the same shape as 12b, except that the payload comes from composition rather than the clipboard). Missing either half brings it back:
+   - Sending must go through `ListSession.noteTextInput` (T3c) rather than `view.onTextInput`'s bare `_convSend`. The IME's keydown `e.key` is `'Process'` (keyCode 229), and the first rule of `term_view.keyEventFilter` stops it before `onKeyDown`, so `_classifyKey`'s passthrough (switch to native with one key) **never triggers for the IME**. Sending bare has exactly the consequences of 12b: it races the in-flight prefetch/jump (typeahead, protocol §2), and buffer mode renders the accumulated list, so **the prompt PTT draws is invisible**. This time the user read it as "the whole screen froze".
+   - The `isPasting` branch of `term_view.onTextInput` **must not intercept a second time**: a paste has already asked `listSession.onPaste` in `App.onPasteDone`, and asking again here would send the same text twice.
+   - **While a serialised operation (AID jump / long comment) is in flight, all four text-sending entry points swallow input with a notice**: `term_view.onKeyDown`/`onTextInput`, `App.onFunctionKey`/`onPasteDone`, with the condition and notice text unified in `serialized_op_gate.serializedOpHint(core)` (2026-09-01; before that, only the first two had the guard, and the IME and paste were still sent bare: during a long comment the IME was blocked only **indirectly**, by the coincidence of the progress veil's `modalShown`, and an AID jump opens no modal, so everything went out bare). Guarded by `tests/unit/serialized_op_gate.test.js` + `aid_back_ui.offline.spec.js`/`long_push.offline.spec.js`.
+   The same fix also placed `#t` (the Zhuyin composition box) correctly: buffer/frozen frames have no row to anchor to; see the "View model" section and prohibition 4 of `docs/easy-reading.md` 「游標／`#t` 的錨點契約」 (the cursor/`#t` anchor contract). Guarded by `list_text_input.test.js`, `term_view_text_input.test.js`, `row_anchor.test.js`, `easy-reading-list.offline.spec.js` "Chinese input method (offline)".
 
-12e. **使用者 byte 的唯一出口＝線路出口的 fail-closed 守門**（2026-09-19，治本層；12b/12c/12d 與 2026-09-13 的 `^Q` 全是同一個形狀的第 1~4 次復發）。
+12e. **The only exit for user bytes = a fail-closed gate at the wire exit** (2026-09-19, the root-cause layer; 12b/12c/12d and the 2026-09-13 `^Q` were the 1st to 4th recurrences of the same shape).
 
-   **為什麼一直復發**：`term_view.onKeyDown` 對「session 沒接手」只有**一種**表達方式（不 `preventDefault`），它卻同時承載兩種語意 ——
-   (a)「這顆鍵歸瀏覽器／app，PTT 不該收到任何 byte」、(b)「放行給原生鍵盤路徑送出去」。
-   被歸到 (a) 卻**實際上沒有 handler 接手**的鍵，會靜默退化成 (b)＝繞過 cursor-sync 腿裸送。
-   「哪些鍵要跑 sync」過去是**每個按鍵分派點各自 opt-in**，漏一個就靜默壞掉，而漏的症狀最嚴重的一種（`^X`）連原生鏡像都不切：好讀畫面完全不動，server 卻已經對別篇動作。
+   **Why it kept coming back**: `term_view.onKeyDown` has only **one** way to say "the session did not take over" (not calling `preventDefault`), yet it carries two meanings:
+   (a) "this key belongs to the browser/app, and PTT must not receive any byte", and (b) "let it through for the native keyboard path to send".
+   A key classified as (a) that **no handler actually takes over** silently degrades into (b) = sent bare, bypassing the cursor-sync leg.
+   "Which keys must run the sync" used to be **opted into by each key dispatch point separately**, so missing one broke things silently, and the most severe symptom of a miss (`^X`) did not even switch to the native mirror: the easy-reading screen did not move at all, while the server had already acted on another article.
 
-   **不變量**：列表好讀的 `buffer`/`frozen` render 期間，任何**使用者來源**的 byte 只能經 `_beginPassthroughBytes`（內含 sync 腿）上線。
-   守門在 `term_view._send` / `_convSend` —— **真鍵盤／IME** 的唯一出口（`vtkbd_send_state.js` 檔頭列出全部六個出口，`user_key_send_wiring.test.js` 靜態守住「只有 term_view 可以叫 `conn.sendUserKey`」）：
-   `bbscore.adoptUserBytes(data)` → `App.activeListSession()` → `session.adoptUserBytes()` → 決策在純函式 `list_user_bytes.decideUserBytes({ renderMode, state })`（`native`→pass／`opening`・`frozen+functionMode`→swallow＋提示／`active`→adopt／其餘→pass；分支與 `onKeyDown` 既有兩道守門同源）。
+   **Invariant**: while the article-list easy reading renders `buffer`/`frozen`, any byte from a **user source** may only go onto the wire through `_beginPassthroughBytes` (which includes the sync leg).
+   The gate is at `term_view._send` / `_convSend`, the only exit for **the real keyboard/IME** (the file header of `vtkbd_send_state.js` lists all six exits, and `user_key_send_wiring.test.js` statically guards "only term_view may call `conn.sendUserKey`"):
+   `bbscore.adoptUserBytes(data)` → `App.activeListSession()` → `session.adoptUserBytes()` → the decision is in the pure function `list_user_bytes.decideUserBytes({ renderMode, state })` (`native`→pass / `opening`, `frozen+functionMode`→swallow + notice / `active`→adopt / everything else→pass; the branches share their source with the two existing gates in `onKeyDown`).
 
-   - **界線是送出入口，不是位元組內容**：刻意**不看 bytes 是哪一顆鍵**。內容判準正是前四次復發的來源（每次都要有人記得把新鍵加進 §11.7 那張表）。代價只是對「不吃真游標的鍵」多跑一次跳號，而那一腿本來就有 `_serverNum` 快路徑。形狀照抄 2026-09-17 立的同一條先例（`guardEscSequence`）。
-   - **`_convSend` 要帶 `{ conv: true }`**：它的 payload 是 **Unicode 文字不是 byte**，接手方必須走會做 `u2b`＋`ansiHalfColorConv` 的 `_beginTextPassthrough`（與 IME／貼上共用），直接丟進 `_beginPassthroughBytes` 送出去是亂碼（`CommandQueue` 的 send 綁 raw `conn.send`）。
-   - **這道網對使用者按鍵今天幾乎攔不到東西**（分派點都已自己走 sync 腿），價值在下一次 ⇒ 最容易被「順手簡化掉」，而拿掉之後的症狀是靜默的。靜態守護 `user_key_send_wiring.test.js`「使用者 byte 上線前必經列表好讀的 cursor-sync 守門」（含**順序**：`adoptUserBytes` 必須在 `conn.*UserKey` 之前）；行為守護 `list_keys.test.js` 的三條 `adoptUserBytes`；決策層 `list_user_bytes.test.js`。
-   - ⚠️ **但它一開始攔到的是「機器 byte」，而且天天攔**（2026-09-20 更正，`78c276a` 的回歸）。本條原本寫的是「`term_view._send` 是全專案**唯一**的使用者 byte 出口」—— 錯，而且是承重的錯：機器狀態機當時也走 `view._send`。兩個實測症狀：
-     | 症狀 | 判定 | 觸發頻率 | 後果 |
+   - **The boundary is the send entry point, not the byte content**: it deliberately **does not look at which key the bytes are**. A content criterion is exactly where the first four recurrences came from (each time someone had to remember to add the new key to the table in §11.7). The only cost is one extra number jump for "keys that do not act on the real cursor", and that leg already has the `_serverNum` fast path. The shape copies the precedent set on 2026-09-17 (`guardEscSequence`).
+   - **`_convSend` must carry `{ conv: true }`**: its payload is **Unicode text, not bytes**, so the taker must go through `_beginTextPassthrough`, which does `u2b` + `ansiHalfColorConv` (shared with IME/paste); throwing it straight into `_beginPassthroughBytes` sends garbage (`CommandQueue`'s send is bound to raw `conn.send`).
+   - **Today this net catches almost nothing from user key presses** (the dispatch points already run the sync leg themselves); its value is in the next recurrence ⇒ it is the easiest thing to "simplify away while you're at it", and the symptom after removing it is silent. Statically guarded by `user_key_send_wiring.test.js` "user bytes must pass the article-list easy reading cursor-sync gate before going onto the wire" (including the **order**: `adoptUserBytes` must come before `conn.*UserKey`); behaviour guarded by the three `adoptUserBytes` tests in `list_keys.test.js`; the decision layer by `list_user_bytes.test.js`.
+   - ⚠️ **But what it caught at first were "machine bytes", and every day** (corrected 2026-09-20, the regression from `78c276a`). This item originally said "`term_view._send` is the **only** user-byte exit in the whole project", which was wrong, and load-bearingly so: the machine state machines also went through `view._send` back then. Two measured symptoms:
+     | Symptom | Decision | Frequency | Consequence |
      |---|---|---|---|
-     | 從好讀列表進文章，第一次自動翻頁卡 ~620ms＋閃假的「開啟文章中，請稍候…」 | `SWALLOW`（`frozen`+`opening`） | **每篇文章**（窗口決定性，見下） | 好讀的 PageDown 零 byte 上線，只剩 watchdog 救；燒掉 `PAGE_DOWN_MAX_RETRIES=1` |
-     | 在好讀列表上開設定頁再關掉 → 被踢到原生鏡像＋閃「已切至原生操作」 | `ADOPT`（`buffer`+`active`） | **每次關設定頁**（`switchToEasyReadingMode` 末尾的 `^L` 無條件送） | `_beginPassthroughBytes('\x0c')` → `_enterFunctionMode()`，連 cache 一起丟（不變量 15） |
+     | Entering an article from the easy-reading list, the first automatic page turn stalls ~620ms + a false 「開啟文章中，請稍候…」 ("opening the article, please wait…") flashes | `SWALLOW` (`frozen`+`opening`) | **Every article** (the window is deterministic, see below) | Easy reading's PageDown puts zero bytes on the wire, leaving only the watchdog to rescue it; it burns `PAGE_DOWN_MAX_RETRIES=1` |
+     | Opening the settings page on the easy-reading list and closing it → kicked to the native mirror + 「已切至原生操作」 ("switched to native operation") flashes | `ADOPT` (`buffer`+`active`) | **Every time the settings page closes** (the `^L` at the end of `switchToEasyReadingMode` is sent unconditionally) | `_beginPassthroughBytes('\x0c')` → `_enterFunctionMode()`, dropping the cache with it (invariant 15) |
 
-     第一條的窗口為何是決定性的：`_onScreenSettled` 裡 `_queue.onSettle` → `queue.done` → `_maybeIdle` → `easyReading.onWireIdle()` 是**同步**跑的，而它在 `_dispatch`（`handoff-article` 清 owner）**之前**（`list_session.js` 的「Command completion first」）⇒ 好讀補送那一刻 owner 必然還是 `article-list`、state 必然還是 `opening`。
-   - ⇒ **這一層只管使用者來源的 byte**。機器 byte 走 `App.sendMachineBytes`（`conn.send`），不經這裡。`decideUserBytes` 的四個分支**刻意不動**：它不看內容也不看來源，來源的分辨屬於**入口**（同「界線是送出入口」那條先例）。守護 `tests/e2e/offline/pref_close_in_list.offline.spec.js`（第二條症狀，還原 code 即紅）、`tests/unit/easy_reading_send_gate.test.js`（第一條）。
-   - **其餘仍走 `view._send` 的 `pttchrome.jsx` 呼叫點都查過了**，不需要搬：`ACT_EXIT`/`ACT_EXIT_ARTICLE`/`ACT_ENTER` 的方向鍵、aux-click 返回、`onFunctionKey` 是**真的由使用者觸發**（該過守門）；滑鼠 report（`encodeClick`/`encodeWheel`）與 dismiss bytes 都在 `buffer||frozen` 早退**之後**或 `listRenderMode === 'native'` 的條件內 ⇒ 這道守門對它們本來就是 no-op；開燈的 pmore 設定鍵只在文章畫面（owner 為 null ⇒ `PASS`）。
+     Why the first one's window is deterministic: in `_onScreenSettled`, `_queue.onSettle` → `queue.done` → `_maybeIdle` → `easyReading.onWireIdle()` runs **synchronously**, and it comes **before** `_dispatch` (`handoff-article` clears the owner) ("Command completion first" in `list_session.js`) ⇒ at the moment easy reading sends its follow-up, the owner is necessarily still `article-list` and the state necessarily still `opening`.
+   - ⇒ **This layer only handles bytes from user sources**. Machine bytes go through `App.sendMachineBytes` (`conn.send`) and do not pass here. The four branches of `decideUserBytes` are **deliberately unchanged**: it looks at neither content nor source, and telling sources apart belongs to the **entry point** (the same precedent as "the boundary is the send entry point"). Guarded by `tests/e2e/offline/pref_close_in_list.offline.spec.js` (the second symptom; reverting the code turns it red) and `tests/unit/easy_reading_send_gate.test.js` (the first).
+   - **The other `pttchrome.jsx` call sites still going through `view._send` have all been checked**, and need not move: the arrow keys of `ACT_EXIT`/`ACT_EXIT_ARTICLE`/`ACT_ENTER`, aux-click back and `onFunctionKey` are **really triggered by the user** (they should pass the gate); mouse reports (`encodeClick`/`encodeWheel`) and dismiss bytes are all **after** the `buffer||frozen` early return or inside a `listRenderMode === 'native'` condition ⇒ the gate is already a no-op for them; the pmore settings key for turning the light on only exists on the article screen (owner is null ⇒ `PASS`).
 
-12f. **cursor-sync 腿落地要驗身分，不是只驗編號**（2026-09-19，與 12e 同批）：`<編號>\r` 只保證真游標停在那個**編號**。pttbbs 的 `crs_ln` 是 `.DIR` 純行號、**不綁文章身分**，一般刪文（`record.c#delete_record2`）把後面每一筆 index 往前搬 ⇒ 我們幾秒前累積進緩衝的編號可能已指向別篇（完整推導見 `docs/long-push.md:86-130`）。這一腿的下游正是對那一列動作的破壞性指令（`^X` 轉錄、`^E` 管理、`%` 推文），誤動作無法收回。
-   `_enqueueCursorSyncJump` 在 `onDone` 比對落地列與本地選取列的作者／主題（重用 `long_push_anchor.listRowIdentity` / `checkCursorAnchor`，零額外 round-trip）：
-   - **只在明確 `'moved'` 時擋** → 不送下游那顆鍵，`_degradeToNative('列表已變動，游標對不上選取的文章，已切至原生模式')`。
-   - **`'unknown'` 照舊放行**（置底列／已刪除列／呼叫端 facts 沒帶 `rowTexts`）——一起擋掉會製造一批「按了就切原生」的假陽性，比原問題更常見。這是**純粹加法**的安全網。
-   守護：`list_cursor_identity.test.js`（相符／moved／兩條 unknown 反向／列表截斷的 `…` 前綴比對）。
+12f. **A cursor-sync leg's landing must verify identity, not just the number** (2026-09-19, the same batch as 12e): `<number>\r` only guarantees that the real cursor rests on that **number**. pttbbs's `crs_ln` is a plain `.DIR` line number, **not bound to an article's identity**, and an ordinary deletion (`record.c#delete_record2`) moves every later index forward ⇒ a number we accumulated into the buffer a few seconds ago may already point to another article (the full derivation is in `docs/long-push.md:86-130`). Downstream of this leg are exactly the destructive commands acting on that row (`^X` repost, `^E` manage, `%` comment), and a wrong action cannot be undone.
+   `_enqueueCursorSyncJump` compares the landing row's author/title with the local selected row in `onDone` (reusing `long_push_anchor.listRowIdentity` / `checkCursorAnchor`, zero extra round-trips):
+   - **Block only on a definite `'moved'`** → do not send the downstream key, `_degradeToNative('列表已變動，游標對不上選取的文章，已切至原生模式')` ("the list has changed, the cursor does not match the selected article, switched to native mode").
+   - **`'unknown'` still passes** (pinned rows / deleted rows / the caller's facts without `rowTexts`): blocking those too would create a batch of "press it and it switches to native" false positives, more common than the original problem. This is a **purely additive** safety net.
+   Guarded by `list_cursor_identity.test.js` (match / moved / two unknown reverse cases / matching the `…` prefix of truncated list titles).
 
-13. `relabelListCursorRow` ＝**依 resolved num 把 cells[0,7) 重寫成 `%7d` 右對齊**（pttbbs `readdoent` 的 `prints("%7d", num)`），且對**每一列編號列**都跑（不只游標列）。一次覆蓋三種污染：(a) 兩代游標蓋格；(b) partial-redraw 留白的高位格（`"  51281"` ← 351281——`pageArticleNums` 的 monotonicity repair 只修 `nums` 不修 cell；舊全形 `●` 佔兩格剛好蓋住此瑕疵，換半形 `>` 後露出成「> 51281」）；(c) 短序號（`/` 搜尋結果 531 → `"    531"`）。**勿再回頭用 prefix 拼接**——舊法會把序號末兩位灌進行首並存進 map（污染跨頁殘留）。
-11. edge 確認（markEdge/_requestEnd）後要 `_forceRedraw`——pinned 門控開啟需要重繪才可見。
-15. **原生 excursion＝cache 失效**：`_enterFunctionMode` 一律清 `_boardName`（與 `_serverNum=null` 對稱）——原生任意鍵可改寫清單內容/序號空間（Z/a/A/`/` 的 MODE_SELECT 皆獨立序號空間，協定 §8），回 clean-list 若板名同＋落點恰在舊 buffer 內走純 resume 會把舊條目 merge 進新清單（症狀：多輪搜尋後清單混雜、點舊序號開文 jump expect 永不中→timeout）。守護：`list_keys.test.js`「native excursion 一律拋棄 cache」（含反向守護：leave 交易 resume 不 rebuild）。passthrough 走 `_enterFunctionMode` → 自動涵蓋。
-16. **last-read 高亮＝title-match（pttbbs 真實邏輯）＋normalize-on-store＋decorate-on-render**：真實邏輯在 `3rd_script/pttbbs/mbbsd/bbs.c` `readdoent`——`strcmp(currtitle, subject_ex(title))==0` 的**每一列**都塗 `1;3c`（c 依該列自身 title_type：`□`=1紅 `R:`=3黃 `轉`=6青 `鎖`=5紫 `ˇ`=2綠），範圍 mark→行尾、**不含 author 欄**；author 亮白 `1;37`＝`isonline`（作者在線），與 last-read 無關；currtitle per-login 全域、讀完文即設 subject。⇒ **同主題多列同亮是正常行為**，單一列號游標模型必然殘紅（勿再回頭做 `_lastReadNum`）。現行模型：map 永存去色列（`normalizeLastReadListRow`；**雙豁免＝[8,12) 推文數欄 ＋ [17,29) 作者欄**——`paintLastReadListRow` 只重畫 [29,)，作者欄若被壓回預設就再也還原不了 isonline 亮白）；session 記 **`_lastReadTitle`**（`subjectOfListRow`＝title 區去 mark＋防禦性 loop 剝 `Re:`/`Fw:`，＝pttbbs `subject_ex` 等價）；教學雙路——frame-taught（`isLastReadStyledListRow` 命中 fg∈{1,2,3,5,6}→`noteLastRead(subject)`）＋**主動教學**（`_beginOpen`/`_beginOpenPinned` 開文成功 onDone 直教，堵 partial 幀無樣式列的洞）；render（`buildListWindowLines`）對 subject 命中的**每列** clone 重上 `paintLastReadListRow`（色＝`listRowMarkFg` 由該列自身 mark 推，author 欄不動；subject 以 `row._subject` memoize）。生命週期：只有 cleanup 歸零；seed/rebuild/resume 一律保留（currtitle 全域、title 與序號空間無關，新幀自動重教）。守護：`list_accumulate.test.js`（殘留＋欄位豁免＋游標共存＋同主題多列紅黃並亮＋換篇退色＋isonline 不誤觸＋**isonline＋last-read 同列作者亮白保留（accumulate/游標實況/render 三面）**＋subject/markFg 純函式）、`list_session.test.js` 生命週期。
-14. **T2 輸入 overlay（`promptListInput`）鍵收束要焦點無關**：input.focus() 在 setTimeout，focus 生效前的 Esc/Enter 落在 `#t`、被全域 handler 的 overlay 守門整個忽略（防鍵漏 server）→ overlay 卡死。修法＝overlay 期間掛 window **capture** keydown：Esc/Enter 直接 finish、其他鍵導焦點回 input（`term_view.js`；soak 站 7 曾穩定踩中）。
-17. **無編號列的 clean-list 幀不得驅動 seed／rebuild／resume**（2026-08-20 錄製檔 `20260820-015809`「列表好讀卡在一頁、PgUp 沒反應」）：進板時 pttbbs getkeep 還原的閱讀位置若剛好在板尾，`readdoent` 只畫得出那幾列**置底文**就 `clrtobot`（該幀 entry 區零編號列，但通過不變量 3a 的板尾短頁放寬 → 判 clean-list）。seed 之後 `listLineNums` 全 null ⇒ `bufferEdgeNum` 回 null ⇒ **錨定式 prefetch 的每一條腿都在 `_enqueuePrefetch` 的 `base == null` 靜默 return**（`_startFill`／`_maybeFill`／`_maybeDemand` 全走這裡），`_requestEnd` 的 `anchor == null` 同理，`_demandDownIfWindowShort` 又被「畫面有 ★ ⇒ `_edgeDown=true`」擋掉。使用者端的症狀＝導覽鍵在那兩三列裡原地打轉、**零網路、零重繪、連「讀取中…」膠囊都不亮**（`_moveSelection` 的 `!queue.idle` 不成立），唯一逃生口是 Home 的 `serverOp`；切原生（flush＋鏡像）或進出文章（re-seed）才會恢復——正是回報的三個現象。
-   修法＝reducer 事件帶 `hasNumberedRow`（`hasNumberedEntryRow(facts)`，單點推導自 `facts.nums`；**勿改成由 `_collectFacts` 預先塞進 facts**——呼叫端會手組 facts）：idle 不 engage、functionMode／suspended 的 clean-list 一律 stay 鏡像原生、active 板名同 stay／板名異 `enter-function-mode`。停在原生無風險：使用者原生翻一頁就拿到有編號的幀，下一個 settle 自動 engage。
-   **與不變量 3a 的分界**：3a 放寬的是「板尾最後一頁只剩 1 列編號＋置底＋空白」，**編號列 ≥1 是底線**；分類器本身**不動**（改它會讓板尾無主 settle 回頭誤降級）。`_enqueuePrefetch` 的無錨點分支另留一則 `listSession.noAnchor` 診斷（不變量 7f），下次同型卡死可直接在錄製檔看到。守護：`list_session.test.js`「無編號列的 clean-list 幀…」三條（分類器不變／落點只有置底文不 engage／板尾 1 列編號仍 engage）＋ reducer 全枚舉的 `hasNumberedRow:false` 四列。
-   **2026-09-05 補洞**：`_requestEnd` 的 `anchor == null` 靜默 return 已移除——沒有錨點就純粹不拿它當 expect 條件，命令照樣送得出去。文中說的「唯一逃生口是 Home 的 serverOp」在當時其實也是壞的（`!queue.idle` 會把它一起丟掉，見不變量 18）。
+13. `relabelListCursorRow` = **rewrites cells[0,7) as right-aligned `%7d` from the resolved num** (pttbbs `readdoent`'s `prints("%7d", num)`), and runs on **every numbered row** (not only the cursor row). One pass covers three kinds of pollution: (a) both generations of cursor covering cells; (b) high-order cells left blank by a partial redraw (`"  51281"` ← 351281: the monotonicity repair in `pageArticleNums` only fixes `nums`, not the cells; the old full-width `●` took two cells and happened to cover this flaw, and switching to the half-width `>` exposed it as 「> 51281」); (c) short sequence numbers (`/` search result 531 → `"    531"`). **Do not go back to prefix splicing**: the old way pushed the last two digits of the number into the start of the row and stored them in the map (pollution persisting across pages).
+11. After an edge is confirmed (markEdge/_requestEnd), `_forceRedraw` is needed: opening the pinned gate only becomes visible after a redraw.
+15. **A native excursion = cache invalidation**: `_enterFunctionMode` always clears `_boardName` (symmetric with `_serverNum=null`). Any native key can rewrite the list's content/number space (Z/a/A/`/`'s MODE_SELECT are each an independent number space, protocol §8), and on returning to clean-list with the same board name + a landing that happens to be inside the old buffer, a pure resume would merge the old entries into the new list (symptom: after several rounds of searching the list is mixed, and opening an article by an old number never satisfies the jump expect → timeout). Guarded by `list_keys.test.js` "a native excursion always discards the cache" (including the reverse guard: a leave transaction's resume does not rebuild). Passthrough goes through `_enterFunctionMode` → covered automatically.
+16. **Last-read highlight = title-match (pttbbs's real logic) + normalize-on-store + decorate-on-render**: the real logic is in `3rd_script/pttbbs/mbbsd/bbs.c` `readdoent`: **every row** with `strcmp(currtitle, subject_ex(title))==0` is painted `1;3c` (c follows that row's own title_type: `□`=1 red, `R:`=3 yellow, `轉`=6 cyan, `鎖`=5 magenta, `ˇ`=2 green), from the mark to the end of the row, **excluding the author column**; the author's bright white `1;37` = `isonline` (the author is online), unrelated to last-read; currtitle is global per login and set to the subject as soon as an article is read. ⇒ **several rows of the same subject lit together is normal behaviour**, and a single-row-number cursor model necessarily leaves stale red (do not go back to `_lastReadNum`). The current model: the map always stores decoloured rows (`normalizeLastReadListRow`; **two exemptions = [8,12) the comment-count column + [17,29) the author column**: `paintLastReadListRow` only repaints [29,), and once the author column is pressed back to default, isonline's bright white can never be restored); the session records **`_lastReadTitle`** (`subjectOfListRow` = the title area with the mark removed + a defensive loop stripping `Re:`/`Fw:`, equivalent to pttbbs's `subject_ex`); two teaching paths: frame-taught (an `isLastReadStyledListRow` hit with fg∈{1,2,3,5,6} → `noteLastRead(subject)`) + **active teaching** (`_beginOpen`/`_beginOpenPinned` teach directly in the onDone of a successful open, plugging the hole of partial frames without styled rows); render (`buildListWindowLines`) clones **every row** matching the subject and reapplies `paintLastReadListRow` (colour = `listRowMarkFg`, derived from that row's own mark, author column untouched; the subject memoised as `row._subject`). Lifecycle: only cleanup resets it; seed/rebuild/resume always keep it (currtitle is global, the title is unrelated to the number space, and new frames teach it again automatically). Guarded by `list_accumulate.test.js` (residue + column exemptions + coexisting with the cursor + red and yellow lit together on several rows of one subject + fading when switching articles + isonline not mistriggering + **isonline + last-read on the same row keeping the author's bright white (accumulate / live cursor / render, all three)** + subject/markFg pure functions) and the lifecycle in `list_session.test.js`.
+14. **Key handling in the T2 input overlay (`promptListInput`) must not depend on focus**: input.focus() runs in a setTimeout, and Esc/Enter before focus takes effect land on `#t`, where the global handler's overlay gate ignores them entirely (to keep keys from leaking to the server) → the overlay wedges. Fix = during the overlay, hang a window **capture** keydown: Esc/Enter finish directly, and other keys steer focus back to the input (`term_view.js`; soak station 7 used to hit it reliably).
+17. **A clean-list frame without numbered rows must not drive seed/rebuild/resume** (2026-08-20 recording `20260820-015809`, "article-list easy reading stuck on one page, PgUp does nothing"): on entering a board, if the reading position restored by pttbbs getkeep happens to be at the end of the board, `readdoent` can only draw those few **pinned article** rows and then `clrtobot` (that frame has zero numbered rows in the entry area, but passes invariant 3a's end-of-board short-page relaxation → judged clean-list). After the seed, `listLineNums` is all null ⇒ `bufferEdgeNum` returns null ⇒ **every leg of the anchored prefetch silently returns at `_enqueuePrefetch`'s `base == null`** (`_startFill`/`_maybeFill`/`_maybeDemand` all go through it), `_requestEnd`'s `anchor == null` likewise, and `_demandDownIfWindowShort` is in turn blocked by "★ on screen ⇒ `_edgeDown=true`". The user-side symptom = nav keys circle in place among those two or three rows, **zero network, zero redraws, not even the 「讀取中…」 ("loading…") pill lights up** (`_moveSelection`'s `!queue.idle` does not hold), and the only escape is Home's `serverOp`; switching to native (flush + mirror) or entering and leaving an article (re-seed) recovers it, which are exactly the three reported phenomena.
+   Fix = the reducer event carries `hasNumberedRow` (`hasNumberedEntryRow(facts)`, derived at a single point from `facts.nums`; **do not change it to be pre-filled into facts by `_collectFacts`**: callers build facts by hand): idle does not engage, functionMode/suspended's clean-list always stays mirroring native, and active stays with the same board name / `enter-function-mode` with a different one. Staying native is risk-free: once the user pages natively they get a frame with numbers, and the next settle engages automatically.
+   **The boundary with invariant 3a**: 3a relaxes "the last page at the end of the board has only 1 numbered row + pinned + blank", and **≥1 numbered row is the floor**; the classifier itself **does not change** (changing it would bring back wrong degradation of ownerless end-of-board settles). `_enqueuePrefetch`'s no-anchor branch also leaves a `listSession.noAnchor` diagnostic (invariant 7f), so the next wedge of this kind is directly visible in a recording. Guarded by `list_session.test.js` "a clean-list frame without numbered rows…" ×3 (classifier unchanged / a landing with only pinned articles does not engage / 1 numbered row at the end of the board still engages) + the four `hasNumberedRow:false` rows of the reducer's full enumeration.
+   **Hole fixed 2026-09-05**: `_requestEnd`'s silent return on `anchor == null` has been removed: without an anchor it simply does not use it as an expect condition, and the command still goes out. The "only escape is Home's serverOp" mentioned above was in fact also broken at the time (`!queue.idle` dropped it too, see invariant 18).
 
-18. **前景導覽鍵不得因佇列忙碌而靜默丟棄**（2026-09-05 回報「好讀列表有時 Home/End 會失效」）：`_requestHome`／`_requestEnd`（以及 `board_list_session` 的同名函式）開頭是 `if (!this._queue.idle) return;` ⇒ **零 byte、零重繪、零提示，也不排隊重試**（`queue.onIdle` 只接給 EasyReading，ListSession 沒有補做機制）。而 `_moveSelection` 是 `return this._requestHome()`，early return 讓 reveal／`_forceRedraw`／`_maybeDemand`／`_setLoading(true)` 全部不執行。
-   觸發窗口極寬：`_moveSelection` 尾端必定 `_maybeDemand` → `_enqueuePrefetch`，**剛按過任何一次 ↑↓/PgUp/PgDn，佇列通常就非 idle**；進板後 `_startFill` 最多鏈式 3 頁（錄製檔 t=4480~4962 就是連續 4 筆 prefetch，每筆 ~100ms），前 1–3 秒的 Home 幾乎必掉。直接違反本文開頭的「失敗顯性化，禁止靜默墜落」與「吞鍵不得無聲」。
-   **通則**：使用者按的鍵是前景意圖，背景 prefetch 是投機工作 —— 衝突時讓背景讓路（`flushPendingKind` 丟未送出的、`expedite` 縮短在飛的），不是把前景意圖丟掉。新增任何走 queue 的按鍵路徑時，`!idle` 只能用來**排隊或去重**，不能用來**丟棄**。守護：`list_session.test.js`「Home/End 不得因佇列忙碌而靜默丟棄」六條、`board_list_session.test.js` 兩條、`command_queue.test.js` 的 `onSend`／`hasKind` 三條。
+18. **Foreground nav keys must not be silently dropped because the queue is busy** (reported 2026-09-05: "Home/End in the easy-reading list sometimes stop working"): `_requestHome`/`_requestEnd` (and the same-named functions in `board_list_session`) started with `if (!this._queue.idle) return;` ⇒ **zero bytes, zero redraws, zero notices, and no queued retry** (`queue.onIdle` is only wired to EasyReading; ListSession has no make-up mechanism). And `_moveSelection` does `return this._requestHome()`, so the early return skips reveal/`_forceRedraw`/`_maybeDemand`/`_setLoading(true)` entirely.
+   The trigger window is very wide: the tail of `_moveSelection` always does `_maybeDemand` → `_enqueuePrefetch`, so **right after pressing any ↑↓/PgUp/PgDn, the queue is usually not idle**; after entering a board, `_startFill` chains up to 3 pages (recording t=4480~4962 is 4 prefetches in a row, ~100ms each), so Home in the first 1–3 seconds is almost always dropped. This directly violates "make failure visible, no silent fall-through" and "swallowing keys must never be silent" at the top of this document.
+   **General rule**: the key the user presses is foreground intent, and background prefetch is speculative work; on conflict the background yields (`flushPendingKind` drops what has not been sent, `expedite` shortens what is in flight), rather than dropping the foreground intent. When adding any key path that goes through the queue, `!idle` may only be used to **queue or deduplicate**, never to **drop**. Guarded by `list_session.test.js` "Home/End must not be silently dropped because the queue is busy" ×6, `board_list_session.test.js` ×2, and `command_queue.test.js`'s three `onSend`/`hasKind` tests.
 
-19. **遠跳落點頁的保護必須同時覆蓋 prune 與 evict，而且 prune 在前**（2026-09-10 回報「好讀列表 Home/End 有時失效，體感變成單純移到列表頂/底部」）：錄製檔證實**鍵送得出去、server 也回對的畫面**（End → 真板尾 `351832..351846`），但約 300~600ms 後 `prefetch-anchor-down` 用**舊**緩衝邊界當 anchor 跳號（送 `340111` ＋ CR，回的是 8/18 的舊頁），把 server 游標一起拉回舊位置 ⇒ 整個跳躍被抹平。七次 Home/End 全是同一形狀，End 的 anchor 逐輪 `340111 → 340180 → 340229`（＝被 prefetch 撐大的舊緩衝）。
-   根因在 `term_view.accumulateListLines`：它原本**先 evict 再 prune**，而 `evictPivot()` 回的是 `_topNum`＝**跳之前的視口頂**，`evictListBuffer` 砍的是「離樞紐最遠的那一端」⇒ 遠跳時那一端恰好就是剛落地的那一頁。緩衝一旦吃滿 `MAX_LIST_ROWS=300`，落點頁就在遠跳專用的 `prunePivot()` 覆寫（End=`null` 留最大段／Home=`1` 留第 1 篇段）輪到之前被砍掉。連鎖：`noteEvicted` 把 `_edgeDown`／`_edgeUp` 清回 false（onDone 剛設的 true 被它自己的 `_forceRedraw` 廢掉）→ onDone 的 `_setCursorPos(seq, seq.length - 1)` 落在**舊緩衝**末列（＝使用者說的「只移到列表底部」）→ `_maybeDemand` 看到 edge 未確認就用 `bufferEdgeNum(舊緩衝)` 跳號。**「有時」的條件就是緩衝已達 300 列**；剛進板列少時 evict 不觸發，覆寫正常生效 ⇒ 能用。
-   三道一起修：(a) `accumulateListLines`／`accumulateBoardListLines` 改成 **prune 先、evict 後**（不相干的舊段先整段丟掉，evict 才量到對的列數，遠跳時通常直接變 no-op；無洞時 prune 是 early-return、evict 只剔兩端不可能製造洞 ⇒ 非遠跳路徑逐位元不變）；(b) `evictPivot()` 與 `prunePivot()` 共用同一個 `_prunePivotOverride`（落點頁與緩衝**連續**時沒有洞可 prune，(a) 救不了）；(c) onDone 最後一道 `_adoptJumpLandingIfDropped(landed, edge)`：落點編號真的不在 `listLineNums` 就照已驗證的 `_beginJumpNumber` 模式 `_rebuild(landed, edge)`（落點頁 wholesale），並留一則 `listSession.jumpLandingDropped` 診斷。`_rebuild` 的 `edge` 參數必須在 `_demandDownIfWindowShort` **之前**生效，否則板上沒有置底文時會在真板尾送一個零回應的 PgDn（見「已知限制」的滿版落點）。
-   守護：`list_accumulate.test.js`「遠跳落點頁不得被 evict 砍掉」三條（真的呼叫 `TermView.prototype.accumulateListLines`，stub 的 `evictPivot` 刻意回舊視口 ⇒ 驗的就是順序本身）、`list_session.test.js`「遠跳在飛時樞紐改成落點那一側」＋「遠跳落點頁被丟掉時改成重建」五條、`board_list_session.test.js` 的同構兩條。
-20. **`_boardName`／`facts.boardName` 是看板身分鍵，不是真板名**：「看板《X》」會被 server 省略（看板描述太長，protocol §3），此時身分鍵＝整條標題列（`screen_titles.parseBoardKey`，以「【」起頭）。只拿來比「同一板嗎」；要真板名（`s` 跳板、nav_history 錨點）一律過 `boardNameFromKey`（省略時回 null，呼叫端已有 null 退路）。新增「這是文章列表嗎」的判斷不准再寫 `indexOf('《')`，走 `isArticleListTitleRow`。
-21. **認不出 ⇒ 原生，是功能的一部分**：任何指紋要素壞掉（PTT 改版／解錯）只准落到「idle 不 engage、不送命令」或「active → functionMode 鏡像」，不准「認錯 ⇒ 送鍵／畫錯清單」。突變矩陣守護：`tests/unit/parse_failure_degrade.test.js`（真實 C_Chat／LoL 畫面 × 逐一破壞指紋要素，含看板列表、文章好讀狀態列、跳過進板畫面）。新增指紋要素時同步補一條突變。
+19. **Protection of a long jump's landing page must cover both prune and evict, with prune first** (reported 2026-09-10: "Home/End in the easy-reading list sometimes stop working, feeling like they just move to the top/bottom of the list"): the recording confirmed that **the key goes out and the server returns the right screen** (End → the real end of the board `351832..351846`), but about 300~600ms later `prefetch-anchor-down` number-jumps using the **old** buffer edge as its anchor (sending `340111` + CR, which returns the old page from 8/18), dragging the server cursor back to the old position too ⇒ the whole jump is flattened. All seven Home/End presses had the same shape, with End's anchor going `340111 → 340180 → 340229` round by round (= the old buffer, inflated by prefetch).
+   The root cause is in `term_view.accumulateListLines`: it used to **evict first, then prune**, and `evictPivot()` returns `_topNum` = **the viewport top before the jump**, while `evictListBuffer` cuts "the end farthest from the pivot" ⇒ on a long jump, that end is exactly the page that just landed. Once the buffer fills to `MAX_LIST_ROWS=300`, the landing page is cut before the long-jump-specific `prunePivot()` override (End=`null` keeps the largest segment / Home=`1` keeps the segment with article 1) gets its turn. The chain: `noteEvicted` clears `_edgeDown`/`_edgeUp` back to false (the true onDone just set is undone by its own `_forceRedraw`) → onDone's `_setCursorPos(seq, seq.length - 1)` lands on the last row of the **old buffer** (= what the user called "just moves to the bottom of the list") → `_maybeDemand` sees the edge unconfirmed and number-jumps with `bufferEdgeNum(old buffer)`. **The "sometimes" condition is that the buffer has reached 300 rows**; right after entering a board there are few rows, evict does not trigger, and the override works ⇒ it works.
+   Three fixes together: (a) `accumulateListLines`/`accumulateBoardListLines` now **prune first, evict after** (unrelated old segments are dropped whole first, so evict measures the right row count, and on a long jump it usually becomes a no-op; with no hole, prune returns early and evict only trims the two ends and cannot create a hole ⇒ the non-long-jump path is bit-for-bit unchanged); (b) `evictPivot()` and `prunePivot()` share the same `_prunePivotOverride` (when the landing page is **contiguous** with the buffer there is no hole to prune, and (a) cannot save it); (c) a last line of defence in onDone, `_adoptJumpLandingIfDropped(landed, edge)`: if the landed number really is not in `listLineNums`, follow the proven `_beginJumpNumber` pattern with `_rebuild(landed, edge)` (the landing page wholesale), and leave a `listSession.jumpLandingDropped` diagnostic. `_rebuild`'s `edge` parameter must take effect **before** `_demandDownIfWindowShort`, otherwise on a board without pinned articles it sends a zero-response PgDn at the real end of the board (see the full-page landing in "Known limitations").
+   Guarded by `list_accumulate.test.js` "a long jump's landing page must not be evicted" ×3 (really calling `TermView.prototype.accumulateListLines`, with the stub `evictPivot` deliberately returning the old viewport ⇒ it tests the order itself), `list_session.test.js` "with a long jump in flight the pivot moves to the landing side" + "rebuild when a long jump's landing page has been dropped" ×5, and the two isomorphic tests in `board_list_session.test.js`.
+20. **`_boardName`/`facts.boardName` is a board identity key, not the real board name**: 「看板《X》」 ("board 《X》") is omitted by the server (when the board description is too long, protocol §3), and the identity key is then the whole title row (`screen_titles.parseBoardKey`, starting with 「【」). Use it only to compare "is this the same board"; whenever the real board name is needed (`s` board jump, nav_history anchors), always go through `boardNameFromKey` (it returns null when omitted, and callers already have a null fallback). New "is this an article list" checks must not use `indexOf('《')` again; use `isArticleListTitleRow`.
+21. **Not recognising it ⇒ native is part of the feature**: when any fingerprint element breaks (a PTT revision / a parse error), it may only fall to "idle does not engage, sends no commands" or "active → functionMode mirroring", never "misrecognise ⇒ send keys / draw the wrong list". Guarded by the mutation matrix `tests/unit/parse_failure_degrade.test.js` (real C_Chat/LoL screens × breaking fingerprint elements one by one, including the board list, the article easy-reading status row, and skipping the board-entry screen). When adding a fingerprint element, add a mutation for it at the same time.
 
-### 不變量（2026-09-03 自動回好讀新增；違反即復發）
+### Invariants (added 2026-09-03 with automatic resume to easy reading; violating them brings the bugs back)
 
-- **N1 external hold 永不自動解除**：`_holdReason` 有兩種語意，`'external'`（`beginExternalNavigation()`，
-  呼叫者＝`aid_navigation.js`（AID 跳文的逃生前導）與 `long_push_session.js`（長推文））要的是
-  「在我這條多步序列跑完之前，你不准自己彈回 buffer、不准自己排命令」。序列途中 clean-list 幀很多、
-  命令與命令之間 `inFlightKind` 也會是 null ⇒ 讓靜置探針看到就會**從中間截斷別人的序列**（靜默壞掉，
-  只在特定時序復現）。`'passthrough'`（非白名單鍵／自癒降級）才吃自動回復。
-- **N2 回復探針只讀不寫**：計時器到點時除了「量畫面 + dispatch」不得有任何副作用（不送 byte、不排命令、不改錨）。
-- **N3 回復必須同時滿足「內容 OK」與「畫面/使用者都停了」**：兩者 AND，缺一即回到 2026-07-10 黏性當初要解的問題。
-- **N4 回復後有 grace window**：`active` 的 prompt/transient catch-all 在 `RESUME_GRACE_MS` 內不得 banner／不得切原生
-  （事件欄位 `withinResumeGrace`，純函式全枚舉守護）。
-- **N5 A 類集合＝枚舉即合約**（`INPLACE_KEYS`，來源 read.c/board.c 的 case 表），**不得**改成啟發式；新增鍵要同步 unit。
-- **N6 A 類交易與退文不得動捲動錨**：`_resumeInPlace` 只採用落點＋reveal，**不重設** `_topNum`/`_topPinnedKey`/`_scrollFrac`、
-  不設 `_anchorOverride`（那是 `_resumeBuffer` 給「畫面本來就是 server 那一頁」用的；套在凍住的 buffer 上＝視野瞬間跳走）。
-  **退出文章回列表同組**：文章期間視口不在 DOM 上（不變量 6c）⇒ 錨與緩衝原封不動，
-  `suspended --clean-list--> active` 走 `resume-in-place`（落點在緩衝∧板名同）。舊行為採用 server
-  落地幀的視窗頂列，等於把畫面釘回 read.c 的 20 列分頁：把某篇捲到視口最下面、進去再退出，
-  那篇跳回畫面中間（使用者回報）。守護：`list_session.test.js`
-  「退文回列表：視野停在使用者自己捲到的位置」。**落點不在緩衝／板名異仍走 `resume-buffer`+`rebuild`**
-  （畫面本來就要換一份，重新錨定才是對的）。
-- **N6b 編號空間不變的原生交易回好讀時還原捲動錨**（2026-10 起泛化：由閱讀紀錄 `reading_record` 的決策表決定哪些交易還原，涵蓋設已讀、重新整理、`s` 取消、身後的列表——**模型與決策表見 `docs/reading-record.md`**；下面是執行端的細節）：
-  落地一律 `resume-buffer`+`rebuild`（opt in 的序列是落地即回好讀，其餘是靜置探針），而 `_resumeBuffer`／`_seedAnchors` 會改採
-  PTT 分頁頂端 ⇒ 閱讀進度丟失。閱讀紀錄在交易收尾時存 `_pendingViewport`；`rebuild` 之前
-  `_adoptPendingViewport` 驗證「同板∧落點游標＝發起那篇」（否則丟棄＝舊行為）；`applyScrollAfterRender`
-  裡 `_tryApplyPendingViewport` 等**錨列進緩衝且捲得到**（`pos*rowH+frac<=maxScrollTop` 或 `_edgeDown`）
-  才套用——rebuild 後緩衝只有一頁，捲不到時 capture 會把錨改寫成被夾住的那列。期間 `_maybeFill` 無視預抓
-  目標往上補（≤2 頁，**自己的 `upFills` 計數，不可共用 `_fillPages`**——往下的 demand 每頁也累加它）、
-  `_demandDownIfWindowShort` 以待還原錨為頂往下補，而且**往下的鏈到邊（`markEdge`）時要把工作交回 `_maybeFill`**：
-  rebuild 當下佇列常被往下的 demand 佔住、`_maybeFill` 直接返回，到邊的鏈不會自己回頭 ⇒ 錨在落點頁之上時
-  永遠等不到（實測只往下補 4 頁、4.4 秒零往上）。
-  生命週期進 debug 錄製檔：`listSession.viewportRestore`（saved／adopted／applied／dropped＋reason）。作廢：使用者按鍵／滾輪／點擊、
-  `_seed`／`_handoffArticle`／`_cleanup`、到頂仍找不到、逾時 `PENDING_VIEWPORT_MAX_MS`。
-  **只對決策表上的交易開**：`/` 搜尋、`s` 換板等會改編號空間，舊錨不可信（驗證另含編號空間 `mode`）。守護 `tests/unit/list_mark_read_viewport.test.js`、`tests/unit/reading_record_list.test.js`。
-- **N7 吞鍵/換畫面永不靜默**：切原生、回好讀、逾時降級都要 `flashListHint`。
-- **N8 判定失誤不得造成「完全不可操作」**：凍結交易必須同時具備 `onFail → _degradeToNative`、`hardTimeoutMs=CMD_HARD_MS`、
-  `_armFrozenWatchdog(FROZEN_WATCHDOG_MS=2500)` 三重保護 ⇒ 最壞情況是「2.5s 後掉回原生＋banner，再由靜置探針自己回好讀」，
-  **不存在**「畫面永久凍住／鍵永久失效」的路徑。**pref 是最後一道，不是唯一一道**，不要因為有了 pref 就省掉它們。
-- **N9 `classifyListScreen` 的 `curX <= 1` 是本功能的承重牆**：它是「PTT 正在等輸入」的唯一判準，
-  放寬它＝使用者在原生 prompt 打字時畫面被搶。
+- **N1 An external hold is never released automatically**: `_holdReason` has two meanings. `'external'` (`beginExternalNavigation()`,
+  called by `aid_navigation.js` (the escape preamble of an AID jump) and `long_push_session.js` (long comments)) means
+  "until my multi-step sequence has finished, you may not bounce back to buffer by yourself or queue commands by yourself". Mid-sequence there are many clean-list frames,
+  and between commands `inFlightKind` is also null ⇒ if the idle probe saw them, it would **cut someone else's sequence off in the middle** (a silent break,
+  reproducible only with specific timing). Only `'passthrough'` (non-whitelisted keys / self-healing degradation) gets automatic resume.
+- **N2 The resume probe is read-only**: when the timer fires, it must have no side effect beyond "measure the screen + dispatch" (no bytes, no commands, no anchor changes).
+- **N3 Resuming must satisfy both "the content is OK" and "the screen and the user have both stopped"**: an AND of the two; missing either brings back the problem the 2026-07-10 stickiness was meant to solve.
+- **N4 There is a grace window after resuming**: `active`'s prompt/transient catch-all must not show a banner or switch to native within `RESUME_GRACE_MS`
+  (event field `withinResumeGrace`, guarded by the full enumeration of the pure function).
+- **N5 The A-class set = the enumeration is the contract** (`INPLACE_KEYS`, sourced from the case tables in read.c/board.c), and **must not** be changed to a heuristic; adding a key requires updating the unit tests at the same time.
+- **N6 A-class transactions and leaving an article must not move the scroll anchor**: `_resumeInPlace` only adopts the landing + reveal, **does not reset** `_topNum`/`_topPinnedKey`/`_scrollFrac`,
+  and does not set `_anchorOverride` (that is for `_resumeBuffer`, when "the screen already is the server's page"; applied to a frozen buffer, the view jumps away instantly).
+  **Leaving an article back to the list belongs to the same group**: during the article the viewport is not in the DOM (invariant 6c) ⇒ the anchor and the buffer are untouched,
+  and `suspended --clean-list--> active` goes through `resume-in-place` (landing in the buffer ∧ same board name). The old behaviour adopted the top row of the window of the server's
+  landing frame, which pinned the screen back to read.c's 20-row pages: scroll an article to the bottom of the viewport, enter it and leave,
+  and that article jumped back to the middle of the screen (user report). Guarded by `list_session.test.js`
+  "leaving an article back to the list: the view stays where the user scrolled it". **A landing outside the buffer / a different board name still goes through `resume-buffer`+`rebuild`**
+  (the screen has to be replaced anyway, so re-anchoring is right).
+- **N6c When leaving an article reveals the live layer, the list stays as the reader left it** ([#120](https://github.com/NoReasonKen/PttChrome/issues/120);
+  the live layer is not updated in the background): `resume-layer` (`_resumeFromLayer`) **does not merge in** PTT's landing page.
+  Every row's text, the order, the selection (staying on the article opened from this list; switching articles does not carry it along, #123) and the scroll position all equal what was seen on the layer,
+  and only the articles read (the one opened, plus every article read along the way through same-thread jumps / next article, `readRows`) are changed to read by PTT's rules (`readListRow`: bbs.c#readdoent's
+  type characters `+`/`~`→blank, `#`→`*`, `M`/`=`→`m`, `S`→`s`, default colour). The layer marks them itself as they are read, so a revealed layer already shows them read
+  ([#128](https://github.com/NoReasonKen/PttChrome/issues/128)): `StackListLayer.follow` tracks PTT's cursor on the layer's rows by direction, and once following is lost
+  (`noteRead`) each article read is matched by identity (`identityRows`: author and subject, then reply or not, then the header's date). One matching row is marked read;
+  several matching rows are left as they are and retaken from PTT on return (`unsureRows` → `retakeListRow`), so a read mark is never put on the wrong row.
+  The last-read subject colour follows the subject read last (`lastReadSubject` → `noteLastRead`), as PTT does: every row of that subject takes it, and when the subject read last is not on the list, no row does.
+  「+N」 (the new-recommendation badge) is recomputed from the record made when reading finished. After that, term_view's `holdListRows` holds this batch of rows
+  (one hold per list: the article list's and the board list's are separate, and `NavigationStack.spend` releases only the hold of the list it acts on):
+  PTT's landing page adds nothing, and other pages (page fills upward / downward) **only add rows not yet shown**; shown rows are never replaced.
+  When the landing page lists articles newer than every row kept, scrolling down past the rows kept loads them, even after the list had confirmed its bottom edge
+  (`_newerBelow`, story 14); nothing is sent until the reader scrolls down. A list already scrolled to its end gives no scroll event, so on a phone they load only after the reader scrolls up and down again (a wheel at the edge still asks).
+  `resetListAccumulation` (rebuild / refresh / entering a board), `_resumeBuffer` and a non-resize `_resumeInPlace`
+  (identity mismatch on opening, `_openMismatched`) release the hold, and PTT's page is merged in as before. **Which actions "spend" the layer**
+  ([#125](https://github.com/NoReasonKen/PttChrome/issues/125), `page_stack.js#spendsLayer`,
+  `NavigationStack.spend`): refresh, mark read (前已讀後未讀 ("read up to here") / 全部已讀 ("mark all read")), number jumps beyond the loaded rows (including A-class key landings outside the buffer; a number jump within the loaded rows only moves the selection, `_selectLoaded`, and sends nothing),
+  native passthrough keys: these ask PTT for fresh data, drop what the layer had not finished and release the hold; scroll page fills, opening an article and
+  A-class keys (`_resumeInPlace(…, { keepRows: true })`) do **not** spend the layer, and the held rows stay put. Exception: a `t` tag changes the row the user
+  acted on (`retakeListRow`), so that row takes PTT's new look while the other rows stay put. The identity check before opening an article is unchanged:
+  when the held rows differ from PTT's current state, it still stays on the list and shows a notice. If PTT's cursor rests on another article (after switching articles), `_alignServerCursor` number-jumps back to the selected article (`align-sync-jump`, the landing verified by author + title); when that article has been renumbered / deleted the screen does not move, `_serverNum` is recorded as unaligned, and later opening still goes through the identity check and notice. Next article (`beginExternalNavigation`) clears `_boardName`, `_settleEvent` looks up the kept layer by the landing frame's board name instead, and `_resumeFromLayer` restores the board name.
+  **Where PTT's cursor is does not matter** ([#127](https://github.com/NoReasonKen/PttChrome/issues/127)): long-distance same-thread jumps (`hidden_article_route`),
+  jumping / pulling to an article the layer did not list, refreshing the article being read (`aid_navigation.refresh`) and searching from the article being read (the results reuse the same session)
+  all still reveal the layer (`NavigationStack._revealIn` no longer requires `_selects`, and once `follow` loses track it simply stops tracking), and going back takes `resume-layer`:
+  all these paths clear the board name through `beginExternalNavigation`, and in suspended `_settleEvent` looks up the kept layer by the landing frame's board name.
+  Before opening an article, `NavigationStack.captureList` puts this page (`ListSession.listPage`: a copy of the row map from term_view's `snapshotListBuffer`
+  + header/footer, board name, number space, page-fill edges, anchor and selection) together with the layer, and `_resumeFromLayer` restores it first
+  (`_restoreListPage`/`restoreListBuffer`), then marks read, holds rows and aligns PTT's cursor as before. When the layer is redrawn for a width change while PTT's native list mirror is up,
+  a parked layer does not re-measure its reading position (`fitViewport`), so that a clamped scroll position is not carried back.
+  An article not on the layer (reached by a long-distance jump) is not marked read; scrolling to it brings it in with PTT's page; the last-read subject colour stays on the last article read on the layer.
+  Guarded by `mobile_stack_list_kept.offline.spec.js`, `mobile_stack_in_place.offline.spec.js`,
+  `list_accumulate.test.js` "held list rows".
+  **New-articles notice** ([#128](https://github.com/NoReasonKen/PttChrome/issues/128)): when the landing page (the frame PTT sends anyway, with no extra key sent)
+  lists articles newer than the revealed live layer's newest number (`StackListLayer.newestNum`), `onSettle`, before dispatch (while the layer is still
+  the page on display), flashes 「有新文章」 ("new articles") once through `NavigationStack.noticeNewContent` (`flashListHint`, plain text, `STACK_NOTICE_MS`).
+  It compares against the layer, not the buffer: when a same-author / same-title search is made from the article being read, the search results replace the session's buffer (going back to the list restores
+  the page the layer carried, #127), and what the reader saw when leaving was the layer's page.
+  When the held rows already reach the end of the board, scrolling cannot load these new articles; only a refresh brings them in.
+  Each held page notices only once (`_newArticlesNoticed`; after the hold is released (refresh, rebuild) it counts as a new page).
+  Search results (the handoff's `results`) do not notice.
+- **N6b Native transactions that keep the number space restore the scroll anchor when returning to easy reading** (generalised from 2026-10: the reading record `reading_record`'s decision table decides which transactions restore it, covering mark read, refresh, `s` cancel and the list behind; **the model and the decision table are in `docs/reading-record.md`**; below are the execution-side details):
+  The landing always goes through `resume-buffer`+`rebuild` (opted-in sequences use Resume on landing, the rest the idle probe), and `_resumeBuffer`/`_seedAnchors` would adopt
+  the top of PTT's page instead ⇒ reading progress lost. The reading record saves `_pendingViewport` when the transaction wraps up; before the `rebuild`,
+  `_adoptPendingViewport` verifies "same board ∧ landing cursor = the article that started it" (otherwise it is dropped = the old behaviour); in `applyScrollAfterRender`,
+  `_tryApplyPendingViewport` waits until **the anchor row is in the buffer and can be scrolled to** (`pos*rowH+frac<=maxScrollTop` or `_edgeDown`)
+  before applying it: after a rebuild the buffer holds only one page, and when it cannot be scrolled to, capture would rewrite the anchor to the clamped row. Meanwhile `_maybeFill` ignores the prefetch
+  target and fills upward (≤2 pages, **with its own `upFills` count; it must not share `_fillPages`**: each downward demand page also adds to that),
+  `_demandDownIfWindowShort` fills downward with the pending anchor as the top, and **when the downward chain reaches the edge (`markEdge`), it must hand the work back to `_maybeFill`**:
+  at rebuild time the queue is often occupied by downward demand and `_maybeFill` returns immediately, and a chain that reaches the edge does not turn back by itself ⇒ when the anchor is above the landing page
+  it waits forever (measured: only 4 pages filled downward, 4.4 seconds with zero upward).
+  The lifecycle goes into the debug recording: `listSession.viewportRestore` (saved/adopted/applied/dropped + reason). Invalidated by: a user key / wheel / click,
+  `_seed`/`_handoffArticle`/`_cleanup`, still not found at the top, or timing out at `PENDING_VIEWPORT_MAX_MS`.
+  **Only on for transactions in the decision table**: `/` search, `s` board switch and the like change the number space, so the old anchor cannot be trusted (the verification also includes the number space's `mode`). Guarded by `tests/unit/list_mark_read_viewport.test.js`, `tests/unit/reading_record_list.test.js`.
+- **N7 Swallowing keys / changing the screen is never silent**: switching to native, returning to easy reading and timeout degradation all need `flashListHint`.
+- **N8 A misjudgement must not make things "completely inoperable"**: a frozen transaction must have all three protections, `onFail → _degradeToNative`, `hardTimeoutMs=CMD_HARD_MS` and
+  `_armFrozenWatchdog(FROZEN_WATCHDOG_MS=2500)` ⇒ the worst case is "fall back to native + banner after 2.5s, then the idle probe resumes easy reading by itself",
+  and **there is no** path to "the screen frozen forever / keys dead forever". **The pref is the last line, not the only one**; do not drop these because the pref exists.
+- **N9 `classifyListScreen`'s `curX <= 1` is this feature's load-bearing wall**: it is the only criterion for "PTT is waiting for input",
+  and relaxing it = the screen gets snatched while the user types into a native prompt.
 
-守護：`tests/unit/list_native_resume.test.js`（reducer 全枚舉＋假時鐘的探針行為＋凍結交易全鏈＋pref 關掉的逐位元回退）、
-`tests/unit/list_keys.test.js`（A/B 分類）、`tests/unit/board_list_session.test.js`（看板列表版）、
-`tests/e2e/offline/easy-reading-list.offline.spec.js`（`/`／`v` 兩條的自動回復）、`tests/e2e/offline/scenario_navigation.offline.spec.js`（A 類鍵全程不見原生，素材 `scn-list-bracket`）。
+Guarded by `tests/unit/list_native_resume.test.js` (the reducer's full enumeration + probe behaviour with a fake clock + the whole frozen-transaction chain + bit-for-bit fallback with the pref off),
+`tests/unit/list_keys.test.js` (A/B classification), `tests/unit/board_list_session.test.js` (the board-list version),
+`tests/e2e/offline/easy-reading-list.offline.spec.js` (automatic resume for `/` and `v`), `tests/e2e/offline/scenario_navigation.offline.spec.js` (A-class keys never show native throughout, cassette `scn-list-bracket`).
 
-## 已知限制
+## Known limitations
 
-`buf.rows < 24` 不 engage（下界＝server clamp，`mbbsd/term.c:55`）——**≥24 的任意列數都可以**。
-2026-09-11 之前是 `=== 24`，於是設定頁「固定字體大小」（列數由視窗高度反推）會讓列表好讀
-與右鍵「前已讀後未讀」一起靜默消失；見 `docs/terminal-size.md`。MODE_SELECT（`/` 搜尋清單）＝`_selectMode` 子狀態：序號空間獨立（協定 §8），進出各強制 rebuild（`_boardName=null`）；**退出落點＝帳號已讀進度，非進 select 前位置**（協定 §8 live 事實）——fill 只向上，退回後 buffer 可能整段低於進板頁；**seed／rebuild 落點頁不滿版（下方空白列）時自動 demand-down 補頁**（共用 `_demandDownIfWindowShort`）——不補頁時，初次進版落在看板中段會導致向下 prefetch 的 markEdge 不觸發→`_edgeDown` 停 false→置底文整條被門控隱藏；**滿版落點不得探測**——板尾零回應 PgDn 的 timeout→`\f` 探針會與 hard timeout race 出無主 settle → 誤入 functionMode（live 實測）。（`/` 搜尋走 passthrough 原生打字，convSend 自帶 u2b；passthrough 代送的非 ASCII 單字元同樣先 `u2b`。）
+`buf.rows < 24` does not engage (the lower bound = the server clamp, `mbbsd/term.c:55`); **any row count ≥24 works**.
+Before 2026-09-11 it was `=== 24`, so the settings page's "fixed font size" (row count derived from the window height) made article-list easy reading
+and the right-click 「前已讀後未讀」 ("read up to here") silently disappear together; see `docs/terminal-size.md`. MODE_SELECT (the `/` search list) = the `_selectMode` sub-state: an independent number space (protocol §8), forcing a rebuild on entering and on leaving (`_boardName=null`); **the landing on leaving = the account's read progress, not the position before entering select** (a live fact, protocol §8): fill only goes upward, so after going back the whole buffer may be below the board-entry page; **when the seed/rebuild landing page is not a full page (blank rows below), demand-down fills pages automatically** (shared `_demandDownIfWindowShort`): without page fill, a first entry landing in the middle of a board kept the downward prefetch's markEdge from triggering → `_edgeDown` stays false → the whole stretch of pinned articles is hidden by the gate; **a full-page landing must not probe**: at the end of the board, a zero-response PgDn's timeout → the `\f` probe races the hard timeout into an ownerless settle → wrongly entering functionMode (measured live). (`/` search goes through passthrough with native typing, where convSend does its own u2b; non-ASCII single characters sent on the user's behalf by passthrough also go through `u2b` first.)
 
-非 userid 作者（`[系統]`、匿名 `xxx.`、站方改過的「系統」，見 `docs/pttbbs-screen-protocol.md` 列表欄位表）：有編號的列累積／導覽／開文都正常，但 `isListShapedRow`＝false ⇒ **不套標題關鍵字黑名單**；若這種作者的文章被**置底**（★），`isPinnedListRow` 要求 userid ⇒ 不會被收進緩衝。目前未修（實務罕見）。
+Non-userid authors (`[系統]` ("[system]"), anonymous `xxx.`, a 「系統」 ("system") altered by the site, see the list column table in `docs/pttbbs-screen-protocol.md`): numbered rows accumulate / navigate / open normally, but `isListShapedRow` = false ⇒ **the title keyword blacklist is not applied**; if such an author's article is **pinned** (★), `isPinnedListRow` requires a userid ⇒ it is not collected into the buffer. Not fixed for now (rare in practice).
 
-## 素材再錄
+## Re-recording cassettes
 
-`$env:RECORD_MODE='list'; $env:RECORD_BOARD='C_Chat'; $env:RECORD_NAME='cchat-list-nav'; $env:RECORD_LIST_SCRIPT='nav'; yarn record:cassette`（guest 滿加 `RECORD_ALLOW_LOGIN=1`）。
-pinned 卷＝`RECORD_NAME='cchat-list-pinned' RECORD_LIST_SCRIPT='pinned'`（要求該板置底 ≥3 篇）。
-mark 卷＝`RECORD_NAME='cchat-list-mark' RECORD_LIST_SCRIPT='mark'`；search 卷＝`RECORD_NAME='cchat-list-search' RECORD_LIST_SCRIPT='search'`（需 `RECORD_ALLOW_LOGIN=1`＋帳密）。
-**素材世代**：主名四卷（`cchat-list-{nav,pinned,mark,search}`）是 2026-08-12 重錄的**新 `>` 游標**世代，所有 offline 測試預設吃它們；`-wide` 四卷是重錄前的**舊 `●`** 世代，改名保留，只被「舊 ● 游標素材仍能 engage（雙支援）」那一條測試使用。重錄時**只換主名、不要動 `-wide`**——那是 `parseListArticleNum`/`parseListArticleNumLoose`/`serverCursorWidth` 三處兩代分支的唯一真瀏覽器覆蓋（實測：拿掉 loose 的 `●` strip，該條就會在 listLen=20 餓死）。
-nav 腳本＝10 step（start/jump/pageup/jump/pageup/jump/open/back/jumpsame/pageup）。重放門控 map 在 `tests/e2e/helpers/replay.js#replayListCassette`（**jump/jumpsame 按 step.num 精確比對**）。offline 編排與 runtime 決策耦合：改 fill/demand 邏輯時 spec 內 prefetchCount／按鍵序列要重算（例：視窗 demand 觸發比舊選取邊距早——PgUp 一次即觸發，spec 只按一次就吃掉一對錨定命令，見 spec 內註解）。
+`$env:RECORD_MODE='list'; $env:RECORD_BOARD='C_Chat'; $env:RECORD_NAME='cchat-list-nav'; $env:RECORD_LIST_SCRIPT='nav'; yarn record:cassette` (add `RECORD_ALLOW_LOGIN=1` when guest is full).
+The pinned cassette = `RECORD_NAME='cchat-list-pinned' RECORD_LIST_SCRIPT='pinned'` (requires ≥3 pinned articles on the board).
+The mark cassette = `RECORD_NAME='cchat-list-mark' RECORD_LIST_SCRIPT='mark'`; the search cassette = `RECORD_NAME='cchat-list-search' RECORD_LIST_SCRIPT='search'` (needs `RECORD_ALLOW_LOGIN=1` + credentials).
+**Cassette generations**: the four main-named cassettes (`cchat-list-{nav,pinned,mark,search}`) are the **new `>` cursor** generation re-recorded on 2026-08-12, and every offline test uses them by default; the four `-wide` cassettes are the **old `●`** generation from before the re-recording, kept under a new name and used only by the one test "old ● cursor cassettes can still engage (dual support)". When re-recording, **replace only the main names and leave `-wide` alone**: they are the only real-browser coverage of the two-generation branches in three places, `parseListArticleNum`/`parseListArticleNumLoose`/`serverCursorWidth` (measured: removing loose's `●` strip makes that test starve at listLen=20).
+The nav script = 10 steps (start/jump/pageup/jump/pageup/jump/open/back/jumpsame/pageup). The replay gating map is in `tests/e2e/helpers/replay.js#replayListCassette` (**jump/jumpsame compare step.num exactly**). The offline choreography is coupled to runtime decisions: when changing fill/demand logic, the spec's prefetchCount / key sequence must be recomputed (e.g. the window demand triggers earlier than the old selection margin: a single PgUp triggers it, so pressing it once in the spec consumes a pair of anchored commands; see the comments in the spec).

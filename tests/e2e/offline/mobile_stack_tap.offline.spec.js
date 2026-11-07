@@ -5,7 +5,7 @@ const { waitRectStable } = require('../helpers/layout');
 const { beginArticleTouch } = require('../helpers/article_gestures');
 const ptt = require('../helpers/ptt');
 const { loadCassette, bootScenario, waitFed } = require('../helpers/replay');
-const { MAIN, holdBackReply, heldBack } = require('../helpers/stack_routes');
+const { MAIN, holdBackReply, heldBack, recordKeys } = require('../helpers/stack_routes');
 
 const reopen = loadCassette('scn-stack-article-reopen');
 const LAYER = '[data-stack-layer]:not([data-stack-parked])';
@@ -107,7 +107,7 @@ test('a tapped article missing from the refreshed list gives a notice, keeps the
   expect(await page.evaluate(n => window.__replay.sent.slice(n), sentBefore)).toEqual([]);
 });
 
-test('keys and toolbar actions other than Back are blocked until the swap', async ({ page }) => {
+test('keypad keys on the revealed list wait for the swap and then reach the list in order', async ({ page }) => {
   await openRecordedArticle(page);
   // Leave by ← on the keypad, which stays open over the revealed list.
   await page.locator('#mobileToolbar [data-key="__keys"]').tap();
@@ -115,19 +115,24 @@ test('keys and toolbar actions other than Back are blocked until the swap', asyn
   await page.locator('.mobileKeypadKey[data-key="ArrowLeft"]').tap();
   await heldBack(page);
   await expect(page.locator(LAYER)).toBeVisible();
+  await recordKeys(page);
   const sentBefore = await page.evaluate(() => window.__replay.sent.length);
+  // The hardware keyboard stays behind the handoff's modal gate.
   await page.keyboard.press('End');
   await page.keyboard.press('j');
-  for (const key of ['ArrowUp', 'PageDown', 'Enter'])
+  // The toolbar is the revealed list's own.
+  for (const key of ['__end', '__keys', '__more'])
+    await expect(page.locator(`#mobileToolbar [data-key="${key}"]`)).toBeEnabled();
+  for (const key of ['ArrowDown', 'PageDown'])
     await page.locator(`.mobileKeypadKey[data-key="${key}"]`).tap();
   expect(await page.evaluate(n => window.__replay.sent.slice(n), sentBefore)).toEqual([]);
-  for (const key of ['__end', '__keys', '__more'])
-    await expect(page.locator(`#mobileToolbar [data-key="${key}"]`)).toBeDisabled();
   await reply();
   await expect(page.locator(UNDERLAY)).toHaveCount(0, { timeout: 10000 });
   await listActive(page);
+  await expect.poll(() => page.evaluate(() => window.__keys)).toEqual([
+    ['ArrowDown', true], ['PageDown', true], ['ArrowDown', false], ['PageDown', false]
+  ]);
   expect(await page.evaluate(() => window.__app.buf.pageState)).toBe(2);
-  await expect(page.locator('#mobileToolbar [data-key="__more"]')).toBeEnabled();
 });
 
 test('system Back during the handoff neither leaves the site nor reaches PTT', async ({ page }) => {

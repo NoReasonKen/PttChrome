@@ -6,10 +6,10 @@ const { touchDrag, nextFrames } = require('../helpers/real_input');
 const { beginArticleTouch } = require('../helpers/article_gestures');
 const { waitScrollStable, installPaintedFrameProbe } = require('../helpers/layout');
 const ptt = require('../helpers/ptt');
-const { loadCassette, waitFed } = require('../helpers/replay');
+const { loadCassette, waitFed, bootScenario } = require('../helpers/replay');
 const {
   fedBefore, openNextArticle, holdBackReply, heldBack, homeBoard, boardList, listActive, dashboardVisible, bootDashboard, boardOpened,
-  MAIN, boardListEngaged, bootBoardList, watchReveals, revealedSinceWatch
+  MAIN, boardListEngaged, bootBoardList, watchReveals, revealedSinceWatch, recordHints, recordedHints
 } = require('../helpers/stack_routes');
 
 const HOME_LAYER = '[data-stack-layer="home"]';
@@ -268,4 +268,216 @@ test('after switching to the next article, its list still reveals the dashboard'
   await waitFed(page, fedBefore(homeNext, 'back', 2));
   await listActive(page);
   await backRevealsDashboard(page, homeNext);
+});
+
+// A board list shown again from its live layer stays as the reader left it
+// (#122): PTT's answer to Back only brings PTT into step with it.
+
+// The recorded route with PTT's replies rewritten, as if the list had changed
+// while the reader was in the board: `edits[step]` lists [from, to] byte
+// strings (Big5 as latin1) replaced in that step's reply.
+function withReplies(cassette, edits) {
+  const copy = JSON.parse(JSON.stringify(cassette));
+  for (const [step, pairs] of Object.entries(edits)) {
+    let recv = Buffer.from(copy.steps[step].recv, 'base64').toString('latin1');
+    for (const [from, to] of pairs) {
+      if (!recv.includes(from)) throw new Error(`step ${step} has no ${JSON.stringify(from)}`);
+      recv = recv.split(from).join(to);
+    }
+    copy.steps[step].recv = Buffer.from(recv, 'latin1').toString('base64');
+  }
+  return copy;
+}
+
+// A board row's unread mark ˇ (Big5 A3BE), between its number and its name.
+const markUnread = (num, board) => [`${num}   ${board}`, `${num} \xa3\xbe${board}`];
+// MayClass (21) is the recorded board. Its newest article, 338, is read in the
+// recording; this marks it unread.
+const NEWEST_UNREAD = ['>   338  \x1b', '>   338 +\x1b'];
+// MayClass unread on every page PTT showed before it was opened.
+const MAYCLASS_UNREAD = { 0: [markUnread(21, 'MayClass')], 1: [markUnread(21, 'MayClass')], 3: [markUnread(21, 'MayClass')] };
+// PTT's answer to Back (step 5) also shows MayClass's popularity, from the
+// reader's own visit, which the list had not shown.
+const BACK = 5;
+
+async function bootBoardListOf(page, route) {
+  await bootScenario(page, ptt, route);
+  await ptt.applyPrefs(page, { enableEasyReadingList: true, enableBoardListSmoothScroll: true, refreshMinIntervalSec: 0 });
+  await boardListEngaged(page);
+}
+
+// What each board card shows, which board is selected, and the reading
+// position: the first card in view and its offset from the top of the view.
+// The view's scrollTop is no measure of it: it also counts the blank reserve
+// above the first row, which the article list read meanwhile can leave larger
+// until the list is next at rest.
+const boardPage = (page, root = MAIN) => page.locator(root).evaluate(el => {
+  const cards = [...el.querySelectorAll('.listCard[data-list-board]')];
+  const viewTop = el.querySelector('.listBodyView').getBoundingClientRect().top;
+  const top = cards.find(card => card.getBoundingClientRect().bottom > viewTop + 1);
+  return {
+    boards: cards.map(card => {
+      const rest = card.cloneNode(true);
+      rest.querySelector('.listCardMark')?.remove();
+      return {
+        board: card.dataset.listBoard,
+        unread: !!card.querySelector('.listCardMark')?.textContent.includes('ˇ'),
+        text: rest.textContent
+      };
+    }),
+    selected: cards.find(card => card.querySelector('.listCardCursor')?.textContent.trim() === '>')?.dataset.listBoard,
+    top: { board: top?.dataset.listBoard, offset: top && top.getBoundingClientRect().top - viewTop }
+  };
+});
+
+// Open the selected board, then go back with PTT's answer held until the
+// board list is revealed; returns the board list once the real one took over.
+async function openAndBack(page, route) {
+  await ptt.sendKey(page, 'Enter');
+  await listActive(page);
+  const release = await holdBackReply(page);
+  await ptt.sendKey(page, 'ArrowLeft');
+  await heldBack(page);
+  await expect(page.locator(BOARD_LAYER)).toBeVisible();
+  await release();
+  await expect(page.locator(BOARD_LAYER)).toHaveCount(0, { timeout: 10000 });
+  await boardListEngaged(page);
+  await waitFed(page, route.steps.length);
+  return boardPage(page);
+}
+
+// Every row's text and order, the selection and the reading position equal
+// `before`, except the unread marks in `unread`.
+function expectKept(after, before, unread) {
+  expect(after.boards).toEqual(before.boards.map(b => (b.board in unread ? { ...b, unread: unread[b.board] } : b)));
+  expect(after.selected).toBe(before.selected);
+  expect(after.top.board).toBe(before.top.board);
+  expect(Math.abs(after.top.offset - before.top.offset)).toBeLessThanOrEqual(1);
+}
+
+test('Back to a board list keeps every row as it was; the visited board shows read once its newest article was read', async ({ page }) => {
+  // PTT's answer marks NTUHI unread and still marks MayClass unread.
+  const route = withReplies(boardList, { ...MAYCLASS_UNREAD, [BACK]: [markUnread(21, 'MayClass'), markUnread(23, 'NTUHI')] });
+  await bootBoardListOf(page, route);
+  const before = await boardPage(page);
+  expect(before.selected).toBe('MayClass');
+  expect(before.boards.find(b => b.board === 'MayClass').unread).toBe(true);
+  expectKept(await openAndBack(page, route), before, { MayClass: false });
+});
+
+test('Back to a board list marks the visited board unread when its newest article is unread', async ({ page }) => {
+  const route = withReplies(boardList, { 4: [NEWEST_UNREAD] });
+  await bootBoardListOf(page, route);
+  const before = await boardPage(page);
+  expect(before.boards.find(b => b.board === 'MayClass').unread).toBe(false);
+  expectKept(await openAndBack(page, route), before, { MayClass: true });
+});
+
+test('refreshing the board list shown again replaces its rows with PTT\'s current ones', async ({ page }) => {
+  const route = withReplies(boardList, { [BACK]: [markUnread(23, 'NTUHI')] });
+  await bootBoardListOf(page, route);
+  const kept = await openAndBack(page, route);
+  expect(kept.boards.find(b => b.board === 'NTUHI').unread).toBe(false);
+  // The keyword prompt, then the reloaded list: PTT's page of MayClass with
+  // NTUHI unread.
+  const reloaded = withReplies(boardList, { 3: [markUnread(23, 'NTUHI')] }).steps[3].recv;
+  await page.evaluate(reloaded => {
+    const big5 = text => [...text].map(ch => {
+      const c = ch.charCodeAt(0);
+      return c < 0x80 ? ch : String.fromCharCode(window.lib.u2bArray[2 * c], window.lib.u2bArray[2 * c + 1]);
+    }).join('');
+    const send = window.__stubWSSent;
+    window.__stubWSSent = data => {
+      send(data);
+      const keys = data.replace(/\f$/, '');
+      if (keys === '/') window.__app.onData('\x1b[23;1H\x1b[K' + big5('請輸入看板中文關鍵字: '));
+      else if (keys === '\r') window.__app.onData(atob(reloaded));
+    };
+  }, reloaded);
+  await page.locator('[data-key="__refresh"]').tap();
+  await expect.poll(async () => (await boardPage(page)).boards.find(b => b.board === 'NTUHI').unread).toBe(true);
+});
+
+// PTT answers each key in `replies` ({ keys: recv }) with that recorded
+// reply, base64 as in a cassette.
+const answerKeys = (page, replies) => page.evaluate(replies => {
+  const send = window.__stubWSSent;
+  window.__stubWSSent = data => {
+    send(data);
+    const keys = data.replace(/\f$/, '');
+    if (keys in replies) window.__app.onData(atob(replies[keys]));
+  };
+}, replies);
+
+// An in-place key acts on the selected board only (#125): its row takes PTT's
+// rendering, and every other row stays as the reader left it.
+test('marking the selected board unread on the board list shown again changes only its row', async ({ page }) => {
+  const route = withReplies(boardList, { ...MAYCLASS_UNREAD, [BACK]: [markUnread(21, 'MayClass'), markUnread(23, 'NTUHI')] });
+  await bootBoardListOf(page, route);
+  const kept = await openAndBack(page, route);
+  expect(kept.selected).toBe('MayClass');
+  expect(kept.boards.find(b => b.board === 'MayClass').unread).toBe(false);
+  expect(kept.boards.find(b => b.board === 'NTUHI').unread).toBe(false);
+  // `V` marks the board unread; PTT redraws its page, NTUHI unread there too.
+  await answerKeys(page, { V: route.steps[BACK].recv });
+  await ptt.sendKey(page, 'V');
+  await expect.poll(async () => (await boardPage(page)).boards.find(b => b.board === 'MayClass').unread).toBe(true);
+  await boardListEngaged(page);
+  // MayClass's row is PTT's now, with the popularity of the reader's visit.
+  const now = await boardPage(page);
+  expect(now.boards.find(b => b.board === 'MayClass')).toMatchObject({ unread: true, text: expect.stringContaining('MayClass課程1') });
+  const others = page => ({ ...page, boards: page.boards.filter(b => b.board !== 'MayClass') });
+  expectKept(others(now), others(kept), {});
+});
+
+// PTT's answer to Back lists boards whose unread marks differ from the board
+// list shown again: a brief notice says so (#128), without asking PTT for
+// anything more. The visited board's own mark follows what was read there.
+const NEW_ARTICLES = 'New articles';
+
+// Opens the selected board and goes back as openAndBack does; returns the
+// notices shown and what was sent to PTT from Back on.
+async function noticesOnBack(page, route) {
+  await bootBoardListOf(page, route);
+  await recordHints(page);
+  await ptt.sendKey(page, 'Enter');
+  await listActive(page);
+  const from = await sentCount(page);
+  const release = await holdBackReply(page);
+  await ptt.sendKey(page, 'ArrowLeft');
+  await heldBack(page);
+  await release();
+  await expect(page.locator(BOARD_LAYER)).toHaveCount(0, { timeout: 10000 });
+  await boardListEngaged(page);
+  await waitFed(page, route.steps.length);
+  await page.waitForTimeout(500); // sleep-ok: anything sent or shown after the swap is by now
+  // A Back PTT answers after 250 ms is followed by the command queue's bare
+  // redraw probe (\f), as when the held reply waits on the test's polling: it
+  // asks PTT for nothing new, so it is not counted.
+  const sent = (await sentSince(page, from)).filter(data => data !== '\f');
+  return { hints: await recordedHints(page), sent };
+}
+
+test('Back to a board list whose boards PTT now marks differently shows a brief notice, and sends nothing more', async ({ page }) => {
+  const { hints, sent } = await noticesOnBack(page, withReplies(boardList, { [BACK]: [markUnread(23, 'NTUHI')] }));
+  expect(hints.filter(text => text === NEW_ARTICLES)).toHaveLength(1);
+  await expect(page.locator('.ListHint')).toHaveText(NEW_ARTICLES);
+  expect(sent).toEqual(['\x1b[D']);
+});
+
+test('Back to a board list shows no notice when only the visited board is marked differently', async ({ page }) => {
+  const route = withReplies(boardList, { ...MAYCLASS_UNREAD, [BACK]: [markUnread(21, 'MayClass')] });
+  const { hints, sent } = await noticesOnBack(page, route);
+  expect(hints).not.toContain(NEW_ARTICLES);
+  expect(sent).toEqual(['\x1b[D']);
+});
+
+test('Back to the home dashboard shows no new-articles notice', async ({ page }) => {
+  await enterBoardFromDashboard(page);
+  await recordHints(page);
+  await ptt.sendKey(page, 'ArrowLeft');
+  await dashboardVisible(page);
+  await expect(page.locator(HOME_LAYER)).toHaveCount(0, { timeout: 10000 });
+  await waitFed(page, homeBoard.steps.length);
+  expect(await recordedHints(page)).not.toContain(NEW_ARTICLES);
 });

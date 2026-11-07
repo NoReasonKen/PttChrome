@@ -106,7 +106,9 @@ export function buildContextMenuEntries(p) {
       p.onMenuSelect("copyAnsi", e),
     );
   }
-  if (p.normalEnabled)
+  // A card of a list revealed before PTT has caught up takes no paste: it
+  // would go to the screen PTT still shows (#124).
+  if (p.normalEnabled && p.pasteEnabled !== false)
     item("paste", i18n("cmenu_paste"), (e) => p.onMenuSelect("paste", e), {
       right: "Shift+Insert",
     });

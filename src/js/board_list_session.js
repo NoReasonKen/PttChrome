@@ -33,9 +33,13 @@ import {
   isBoardListSeparatorRow,
   isBoardListBlockedRow,
   parseBoardListName,
-  boardMarkReadTargetOfText
+  boardMarkReadTargetOfText,
+  setBoardListRowUnread,
+  boardListRowUnread,
+  boardListRowNums
 } from './board_list_parse';
-import { bufferEdgeNum } from './list_session';
+import { articleListBoard, newestArticleUnread } from './home_dashboard';
+import { bufferEdgeNum, noticeNewArticles } from './list_session';
 import { rowToText } from './comment_parse';
 import {
   topPosFromScrollTop,
@@ -312,6 +316,12 @@ export function BoardListSession(core, view, termBuf, queue) {
   this._seqCache = null;
 
   this._anchorOverride = false;
+  // While a board opened from the list is read: whether its newest article is
+  // unread, as last shown on its article list ({ board, unread } / null).
+  this._visited = null;
+  // Whether the list kept from its live layer has shown the new-articles
+  // notice (#128): once per kept page, until PTT's rows replace it.
+  this._newArticlesNoticed = false;
   // 採用原生落點時那一頁最後一列的編號。下一次 applyScrollAfterRender 用
   // landingTopPos 把視口調到游標可見（手機卡片一屏放不下原生一頁）後清掉。
   this._landingLastNum = null;
@@ -350,7 +360,19 @@ BoardListSession.prototype = {
     if (consumed === 'done' && (this._renderMode === 'frozen' || this.state === 'opening'))
       this._armFrozenWatchdog();
     this._dispatch(this._settleEvent(facts, consumed), facts);
+    if (this.state === 'suspended') this._noteVisited(facts);
     this._scheduleResumeProbe();
+  },
+
+  // The board opened from the list shows its article list: note whether its
+  // newest article is unread, the fact the home dashboard reads too
+  // (home_dashboard.newestArticleUnread). A frame that cannot tell keeps the
+  // last answer.
+  _noteVisited: function(facts) {
+    if (facts.ctx !== 'article-list') return;
+    const board = articleListBoard(facts.rowTexts, facts.rows);
+    const unread = board ? newestArticleUnread(facts.rowTexts, facts.rows) : null;
+    if (unread != null) this._visited = { board: board, unread: unread };
   },
 
   _collectFacts: function(snap) {
@@ -403,13 +425,22 @@ BoardListSession.prototype = {
   // 就會把兩份清單 merge 進同一個緩衝（靜默錯誤）。所以整頁掃一遍：落地頁每一列
   // 只要在緩衝裡有同編號的列，板名就必須一致；有任一列矛盾就不是同一份清單。
   // 緩衝沒有的編號不算證據（落地頁本來就可能比緩衝多出邊界列）。
+  //
+  // Shown again from its live layer (#122), the list is the page the reader
+  // left: only a confirmed mismatch rebuilds it. When PTT's cursor row cannot
+  // be checked (its number is not in the buffer, or its name is unreadable),
+  // the other rows of PTT's page decide, and a page with nothing to check
+  // keeps the list.
   _landedSameList: function(facts) {
     const brd = facts && facts.brd;
-    if (!brd || brd.cursorNum == null) return false;
-    const buffered = this._rowTextOf(brd.cursorNum);
-    if (!buffered) return false;
-    const name = parseBoardListName(facts.rowTexts[facts.curY] || '');
-    if (!name || name !== parseBoardListName(buffered)) return false;
+    if (!brd) return false;
+    const buffered = brd.cursorNum != null ? this._rowTextOf(brd.cursorNum) : null;
+    const name = buffered ? parseBoardListName(facts.rowTexts[facts.curY] || '') : null;
+    if (!name) {
+      if (!this._core.articleGestures?.showsLayerOf?.(PAGE.BOARD_LIST)) return false;
+      return !this._listContradicts(facts);
+    }
+    if (name !== parseBoardListName(buffered)) return false;
     return !this._listContradicts(facts);
   },
 
@@ -527,7 +558,7 @@ BoardListSession.prototype = {
       case 'suspend':
         return this._suspend({ flush: true });
       case 'resume-in-place':
-        this._resumeInPlace(facts);
+        this._resumeShown(facts);
         this._presented();
         // 進板時被 flush 掉的背景填充要接回去（緩衝可能還沒填到 _fillTarget）。
         return this._maybeFill();
@@ -893,6 +924,8 @@ BoardListSession.prototype = {
   // :2044 Ctrl('T')），本地導覽零網路 ⇒ server 對錯的那列動作。理由與實證同
   // list_session._beginNativePassthrough 的標頭。
   _beginNativePassthrough: function(e) {
+    // Keys sent in native mode ask PTT for the list anew (#125).
+    this._core.articleGestures?.stack?.spend('nativePassthrough', 'board');
     let bytes = keyEventToBytes(e);
     // **Ctrl 組合一律不過 u2b**：控制碼（CtrlShiftMap 全 < 0x80），與原生鍵盤路徑
     // 同樣不轉碼；`!e.ctrlKey` 是合約表達，見 list_session 同處。
@@ -1054,6 +1087,9 @@ BoardListSession.prototype = {
       keyClass: 'native-inplace'
     });
     this.state = r.next; // functionMode（吸收 settle／吞鍵），render 仍是 frozen
+    // The key acts on the selected board: only its row takes PTT's rendering
+    // while the list's rows are held (#125).
+    this._view.retakeListRow?.(this._selectedNum, null, 'board');
     this._freezeForTransaction();
     const self = this;
     const send = function() {
@@ -1111,7 +1147,7 @@ BoardListSession.prototype = {
   // 凍結交易落地後回到 buffer。**不可以用 _adoptLanding**：那一支會把 _topNum
   // 重設成原生畫面頂端那一列（給「從原生鏡像回來」設計的）；A 類交易期間畫面是
   // 凍住的 buffer，套用會讓視野瞬間跳走。錨一律不動（不變量 N6），只 reveal。
-  _resumeInPlace: function(facts) {
+  _resumeInPlace: function(facts, opts) {
     this._holdReason = null;
     this._cancelResumeProbe();
     this._resumedAt = performance.now();
@@ -1121,7 +1157,7 @@ BoardListSession.prototype = {
     const brd = facts && facts.brd;
     if (brd && brd.cursorNum != null) {
       this._serverNum = brd.cursorNum;
-      this._selectedNum = brd.cursorNum;
+      if (!(opts && opts.keepSelection)) this._selectedNum = brd.cursorNum;
     }
     // 同步重繪：把落地那一頁併回緩衝（tag／未讀標記的逐列變化靠這一趟生效）。
     this._forceRedraw();
@@ -1130,6 +1166,52 @@ BoardListSession.prototype = {
       this._pendingReveal = { pos: pos, block: 'nearest', behavior: 'auto' };
       this._forceRedraw();
     }
+  },
+
+  // Back from the board opened from this list landed on the list again. Shown
+  // from its live layer, the list is the page the reader left (#122): its rows
+  // and selection stay, PTT's answer only tells where PTT's cursor is, and the
+  // visited board's unread mark follows what was read there. Otherwise PTT's
+  // page is merged in as before.
+  _resumeShown: function(facts) {
+    const fromLayer = !!this._core.articleGestures?.showsLayerOf?.(PAGE.BOARD_LIST);
+    const visited = this._visited;
+    this._visited = null;
+    // A list just shown from its layer is a page the reader has not been told
+    // of new articles on yet.
+    const freshPage = !this._view.holdsListRows?.('board');
+    // Shown again from its live layer (#122): the rows the list holds stay as
+    // the reader left them, and only rows it never held are taken from PTT,
+    // until the layer is spent (NavigationStack.spend) or the list rebuilt.
+    if (fromLayer) this._view.holdListRows?.(null, 'board');
+    else this._view.releaseListRows?.('board');
+    const num = this._selectedNum;
+    if (fromLayer && visited && num != null &&
+        parseBoardListName(this._rowTextOf(num)).toLowerCase() === visited.board.toLowerCase())
+      this._view.editBoardListRow?.(num, cells => setBoardListRowUnread(cells, visited.unread));
+    const newer = fromLayer && this._landsOtherUnreadMarks(facts, num);
+    this._resumeInPlace(facts, { keepSelection: fromLayer });
+    noticeNewArticles(this, freshPage, newer);
+  },
+
+  // Whether PTT's landing page marks a board the list holds unread or read
+  // other than the list shows it (#128), which a refresh would show. The
+  // board opened from the list (`openedNum`) follows the reader's own visit.
+  _landsOtherUnreadMarks: function(facts, openedNum) {
+    if (!facts || !facts.rowTexts) return false;
+    const nums = boardListRowNums(facts.rowTexts, facts.rows);
+    for (let r = 0; r < nums.length; ++r) {
+      const num = nums[r];
+      if (num == null || num === openedNum) continue;
+      const held = this._rowTextOf(num);
+      const landed = facts.rowTexts[r];
+      const name = parseBoardListName(held);
+      if (!name || name.toLowerCase() !== parseBoardListName(landed).toLowerCase()) continue;
+      const before = boardListRowUnread(held);
+      const now = boardListRowUnread(landed);
+      if (before != null && now != null && before !== now) return true;
+    }
+    return false;
   },
 
   // 貼上（App.onPasteDone）與 IME 送字（term_view.onTextInput）。回 true ＝接手了。
@@ -1729,6 +1811,7 @@ BoardListSession.prototype = {
     if (opts && opts.flush) this._queue.flushKind(BRD_CMD_PREFIX);
     this._setLoading(false);
     this.state = 'suspended';
+    this._visited = null;
     // 板內 server 游標會亂跑 ⇒ 不確定；退板落地幀會重教（同 _enterNative）。
     this._serverNum = null;
     this._prunePivotOverride = undefined;

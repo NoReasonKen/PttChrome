@@ -1,4 +1,4 @@
-// 「浮層不准蓋住文末」的通用幾何檢查（docs/next-article.md「卡片的位置」的通則版）。
+// 「浮層不准蓋住文末」的通用幾何檢查（docs/next-article.md「The card's position」的通則版）。
 //
 // 為什麼要有它：每個功能的 offline spec 預設把別的功能關掉（helpers/replay.js 的
 // bootOffline），各自單獨看都對，疊在一起才壞 —— 例：底部推文列（fixed）壓在下一篇

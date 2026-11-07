@@ -76,7 +76,7 @@ so these tests never ran in CI before #101. See
 - `launchBrowser` 會自己略過 Chrome FRE；`addInitScript`、`context.route`、`baseURL`、`args` 都可用。
 - 映像內建 Chrome **113**（固定版本，無 Play Store 不會升級）。app 照常 boot。
 - 慣性甩動中 JS 寫入捲動容器的 scrollTop 會被 compositor 蓋回去（寫法全試過，見
-  `docs/easy-reading-list.md`「純位移不寫 scrollTop」）。量法：`adb shell input swipe … 60` 連甩，
+  `docs/easy-reading-list.md`「A pure shift does not write scrollTop」）。量法：`adb shell input swipe … 60` 連甩，
   頁面掛 scroll listener＋包 `setListScrollTop` 記寫入前後值。
 - `Emulation.setDeviceMetricsOverride` 在 Android Chrome 可用來湊手機版面列數（列數＝視窗高 / 16，
   要對上 cassette 的 rows）；寬度給 `screen.width` 觸控 x 才 1:1，**y 仍會偏**（壓到 24 列時實測偏 ~5%），

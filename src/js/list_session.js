@@ -26,6 +26,7 @@ import {
   parseListTitleRaw,
   subjectOfListRow,
   subjectOfListText,
+  readListRow,
   articleContextFromListRow,
   LIST_AUTHOR_COL_START,
   LIST_AUTHOR_COL_END,
@@ -75,6 +76,8 @@ import {
 import { isArticleListFooter, isSubListFooter } from './screen_captions';
 import { recordFor, listRecordMatches } from './reading_record';
 import { markReadPromptShown } from './mark_read_prompt';
+import { readSearchResultsContext, recordSearchResults } from './search_results_context';
+import { repeatSearch } from './repeat_search';
 import {
   windowVisibleSequence,
   LIST_HEADER_ROWS,
@@ -578,6 +581,21 @@ export function transitionListSession(state, event) {
             // 退文落點只剩置底文時同樣不能 re-seed（不變量 17）：停在原生鏡像
             //（_handoffArticle 已把 renderMode 設 native），等下一幀。
             if (!event.hasNumberedRow) return stay;
+            // Back revealed this list's live layer (#120): the real list keeps
+            // the layer's rows, selection and reading position instead of
+            // merging PTT's landing page; only the article read changes.
+            if (event.keepsLayer && event.boardNameMatch) {
+              // PTT left the layer's search results on the way: their
+              // numbers name other articles on its list. Their search runs
+              // again; a search that cannot shows PTT's list now.
+              if (event.layerResultsLeft) {
+                if (event.inFlightKind || event.layerSearch === 'running') return stay;
+                return event.layerSearch === 'repeatable'
+                  ? { next: 'suspended', actions: ['repeat-layer-search'] }
+                  : { next: 'active', actions: ['resume-buffer', 'rebuild'] };
+              }
+              return { next: 'active', actions: ['resume-layer'] };
+            }
             return event.landedNumInBuffer && event.boardNameMatch
               ? { next: 'active', actions: ['resume-in-place'] }
               : { next: 'active', actions: ['resume-buffer', 'rebuild'] };
@@ -684,7 +702,7 @@ export function isLastReadStyledListRow(row) {
 // long-push cursor anchor needs the same key and must not pull this DOM-coupled
 // module in. Re-exported here so the existing consumers (term_view, the
 // accumulate tests, aid_navigation) keep their import site unchanged.
-export { subjectOfListRow, subjectOfListText };
+export { subjectOfListRow, subjectOfListText, readListRow };
 
 const LIST_MARK_FG = { 'R': 3, '轉': 6, '鎖': 5, 'ˇ': 2 };
 
@@ -881,6 +899,12 @@ export function ListSession(core, view, termBuf, queue) {
   this.state = 'idle';
   this._renderMode = 'native';
   this._boardName = null;
+  // The board of the list a number-keeping route above it left (#123): its
+  // live layer resumes the list although that route cleared _boardName.
+  this._layerBoard = null;
+  // The search of results Back revealed, run again in PTT:
+  // { layer, failed }. See _repeatLayerSearch.
+  this._layerSearch = null;
   this._selectedNum = null; // numbered selection (article number)
   // Article number WE opened (set in _beginOpen). Unlike _selectedNum this is
   // never a stale echo of a cursor that moved natively — see currentAnchor.
@@ -902,6 +926,7 @@ export function ListSession(core, view, termBuf, queue) {
   this._fillPages = 0;
   this._edgeUp = false;
   this._edgeDown = false;
+  this._newerBelow = false;
   this._stallUp = false;
   this._stallDown = false;
   // Contiguity-prune pivot override while a far jump is in flight (End/Home):
@@ -956,6 +981,9 @@ export function ListSession(core, view, termBuf, queue) {
   // independent from the main list (protocol §8) — entering/leaving forces a
   // rebuild (via _boardName=null) so numbers never alias.
   this._selectMode = false;
+  // Whether the list kept from its live layer has shown the new-articles
+  // notice (#128): once per kept page, until PTT's rows replace it.
+  this._newArticlesNoticed = false;
   // Absolute frozen-render backstop (see _armFrozenWatchdog). null = disarmed.
   this._frozenWatchdog = null;
   // 這一次凍結裡在飛的那一步自帶的預算（hard + probe 窗，ms；0 ＝沒有）。比
@@ -1056,6 +1084,8 @@ ListSession.prototype = {
     // race the cap once the per-command budgets got short).
     if (consumed === 'done' && (this._renderMode === 'frozen' || this.state === 'opening'))
       this._armFrozenWatchdog();
+    // While the layer Back revealed is still the page shown.
+    noticeNewArticles(this, !this._view.holdsListRows?.('article'), this._landsNewerArticles(facts));
     this._dispatch(this._settleEvent(facts, consumed), facts);
     this._scheduleResumeProbe();
     this._core.listResize?.pump();
@@ -1088,10 +1118,19 @@ ListSession.prototype = {
   },
 
   _settleEvent: function(facts, consumed) {
+    let board = this._boardName ?? this._layerBoard;
+    let layer = this.state === 'suspended' && this._keptLayer(board);
+    // A route through PTT's own keys (a far jump, an article refresh, a search
+    // from the article) cleared the list's board; the layer Back revealed
+    // still says which list PTT's answer is (#127).
+    if (this.state === 'suspended' && board == null && facts.boardName != null) {
+      layer = this._keptLayer(facts.boardName);
+      if (layer) board = facts.boardName;
+    }
     return {
       type: 'settle',
       kind: facts.kind,
-      boardNameMatch: facts.boardName != null && facts.boardName === this._boardName,
+      boardNameMatch: facts.boardName != null && facts.boardName === board,
       inFlightKind: this._queue.inFlightKind,
       consumed: !!consumed,
       landedNumInBuffer:
@@ -1100,8 +1139,66 @@ ListSession.prototype = {
       holdReason: this._holdReason,
       withinResumeGrace: performance.now() - this._resumedAt < RESUME_GRACE_MS,
       hasNumberedRow: hasNumberedEntryRow(facts),
-      engageEligible: this._engageEligible()
+      engageEligible: this._engageEligible(),
+      keepsLayer: !!layer,
+      layerResultsLeft: this._layerResultsLeft(facts, layer),
+      layerSearch: this._layerSearchState(layer)
     };
+  },
+
+  // The live layer shows search results, and PTT's answer is a list of
+  // another number space: its full list.
+  _layerResultsLeft: function(facts, layer) {
+    return !!(layer && layer.listPage && layer.listPage.selectMode) && listModeOf(facts) !== 'select';
+  },
+
+  // Whether the search of `layer`'s results can run again in PTT: 'repeatable',
+  // 'running', or null once it ran and failed, or when there is no search.
+  _layerSearchState: function(layer) {
+    const run = this._layerSearch;
+    if (run && run.layer === layer) return run.failed ? null : 'running';
+    return layer && layer.listPage && layer.listPage.search ? 'repeatable' : null;
+  },
+
+  // Runs the search of the results Back revealed again on PTT's full list
+  // (repeat_search.js). The layer stays shown meanwhile; PTT's results then
+  // settle and the list takes over from the layer as usual. A failure shows
+  // PTT's list now.
+  _repeatLayerSearch: function(facts, layer) {
+    const self = this;
+    const run = { layer: layer, failed: false };
+    const search = layer && layer.listPage && layer.listPage.search;
+    this._layerSearch = run;
+    const started = repeatSearch(this._core, search, function(ok) {
+      if (self._layerSearch !== run) return;
+      if (ok) {
+        recordSearchResults(self._core, search);
+        self._layerSearch = null;
+        return;
+      }
+      run.failed = true;
+      // A dismissed turn-down settles on the full list right after this. Any
+      // other failure decides on the screen as it is, once nothing else has.
+      setTimeout(function() {
+        if (self._layerSearch !== run || self.state !== 'suspended' || self._queue.inFlightKind) return;
+        const now = self._collectFacts(null);
+        self._dispatch(self._settleEvent(now), now);
+      });
+    });
+    if (!started) run.failed = true;
+  },
+
+  // The live layer a Back revealed over the list of `board` (a board key;
+  // this list's by default), while PTT's answer is on its way
+  // (NavigationStack.keptListLayer), or null.
+  _keptLayer: function(board = this._boardName) {
+    return this._core.articleGestures?.stack?.keptListLayer?.(boardNameFromKey(board)) || null;
+  },
+
+  // The reader's `action` on this list may spend the live layer it was shown
+  // from (#125, page_stack.js#spendsLayer).
+  _spendLayer: function(action) {
+    this._core.articleGestures?.stack?.spend(action);
   },
 
   // pref 開著＝本功能（L1 凍結交易 ＋ L2 自動回復）生效；關掉＝**逐位元回到
@@ -1240,11 +1337,18 @@ ListSession.prototype = {
       case 'enter-function-mode':
         return this._enterFunctionMode(facts);
       case 'resume-buffer':
+        this._layerSearch = null;
         this._resumeBuffer(facts);
         return this._presented();
       case 'resume-in-place':
         this._resumeInPlace(facts);
         return this._presented();
+      case 'resume-layer':
+        this._layerSearch = null;
+        this._resumeFromLayer(facts, this._keptLayer(this._boardName ?? this._layerBoard ?? facts.boardName));
+        return this._presented();
+      case 'repeat-layer-search':
+        return this._repeatLayerSearch(facts, this._keptLayer(this._boardName ?? this._layerBoard ?? facts.boardName));
       case 'cleanup':
         return this._cleanup();
       // 'move-selection' / 'begin-open*' carry key context; executed in onKeyDown.
@@ -1303,10 +1407,14 @@ ListSession.prototype = {
     const pos = this.readingPosition();
     if (pos && pos.board != null) recordFor(this._core).noteBehindList(pos);
     this.state = 'functionMode';
+    const board = this._boardName ?? this._layerBoard;
     // 'external'：**永不自動解除**（不變量 N1）。序列途中的 clean-list 幀很多，
     // 命令與命令之間 inFlightKind 也會是 null ⇒ 讓靜置探針看到就會把別人的序列
     // 從中間截斷（deep link 跳文、長推文）。
     this._enterFunctionMode(null, { hold: 'external' });
+    // A route that keeps the list's number space (the next-article pull in the
+    // full list) leaves the list it left kept: its layer says which list it is (#123).
+    if (opts && opts.keepsListing) this._layerBoard = board;
   },
 
   // 外部序列收尾（reading_record.releaseExternal）：停在列表上時把 'external' hold
@@ -1631,6 +1739,8 @@ ListSession.prototype = {
   // 'ignore' (they would take the same branch and hand over to a native path that
   // also sends nothing).
   _beginNativePassthrough: function(e) {
+    // Keys sent in native mode ask PTT for the list anew (#125).
+    this._spendLayer('nativePassthrough');
     let bytes = keyEventToBytes(e);
     // A printable non-ASCII char must go out as Big5 (raw UTF-16 = mojibake).
     // **Ctrl 組合一律不過 u2b**：它們是控制碼（CtrlShiftMap 全 < 0x80），原生鍵盤路徑
@@ -1995,6 +2105,11 @@ ListSession.prototype = {
     });
   },
 
+  // A sync jump that continues with `next` however it lands.
+  _enqueueCursorSyncJumpThen: function(kind, next) {
+    this._enqueueCursorSyncJump(kind, next, next, next);
+  },
+
   // Shared sync-jump leg: park the server's REAL cursor on the local selection
   // before a command that acts FROM the cursor ([ ] = / v mark / ← leave —
   // pttbbs remembers the board position via the real cursor, getkeep). Expect
@@ -2003,7 +2118,9 @@ ListSession.prototype = {
   // (redrawwin repaints the server's CURRENT virtual screen — protocol §6 M1
   // correction). Timeout recovery = the queue's \f probe. Callers gate on
   // `_selectedNum != null` and the `_serverNum` fast path themselves.
-  _enqueueCursorSyncJump: function(kind, onSynced, onFail) {
+  // `onMoved`: runs instead of the native degrade when the landed row lists
+  // another article.
+  _enqueueCursorSyncJump: function(kind, onSynced, onFail, onMoved) {
     const num = this._selectedNum;
     const self = this;
     // 身分基準＝**跳之前**使用者畫面上那一列的作者／主題（見 onDone 的驗證）。
@@ -2055,6 +2172,7 @@ ListSession.prototype = {
         // 「讀得出來、而且確定是別篇」時才拒絕。
         if (anchor && checkCursorAnchor(landed, anchor) === 'moved') {
           self._serverNum = null;
+          if (onMoved) return onMoved();
           self._degradeToNative('列表已變動，游標對不上選取的文章，已切至原生模式');
           return;
         }
@@ -2108,10 +2226,9 @@ ListSession.prototype = {
       this._enqueueLeaveKey();
       return;
     }
-    // A jump that lands elsewhere (the selected number is gone) still leaves.
-    this._enqueueCursorSyncJump('leave-sync-jump', function() {
-      self._enqueueLeaveKey();
-    }, function() {
+    // A jump that lands elsewhere (the selected number is gone, or lists
+    // another article now) still leaves.
+    this._enqueueCursorSyncJumpThen('leave-sync-jump', function() {
       self._enqueueLeaveKey();
     });
   },
@@ -2156,6 +2273,10 @@ ListSession.prototype = {
   _enqueueInplaceKey: function(bytes) {
     const self = this;
     let landed = null;
+    // Tagging changes the row it acts on, the selected one PTT's cursor was
+    // synced to: that row takes PTT's rendering even while the rows the reader
+    // left are kept (#125).
+    if (bytes === 't') this._view.retakeListRow?.(this._selectedNum, this._selectedPinnedKey);
     this._queue.enqueue({
       keys: bytes,
       kind: 'native-inplace',
@@ -2191,8 +2312,12 @@ ListSession.prototype = {
         // 落點不在緩衝（`[` 跳到很遠的舊文）＝畫面本來就要換一份 ⇒ 走既有的
         // resume+rebuild（那時視野跳一下是合理的）。落在緩衝裡已有的置底列（對置底列
         // 按 t 之類）算在緩衝內：錨不動（不變量 N6）。
-        if (inBuf) self._resumeInPlace(landed);
+        // An in-place key does not spend the live layer the list was shown
+        // from (#125): the rows the reader left stay as they were.
+        if (inBuf) self._resumeInPlace(landed, { keepRows: true });
         else {
+          // Landing beyond the rows loaded rebuilds the list from PTT.
+          self._spendLayer('jumpBeyondRows');
           self._resumeBuffer(landed);
           self._rebuild(landed);
         }
@@ -2212,6 +2337,10 @@ ListSession.prototype = {
   // _anchorOverride ⇒ 使用者自己捲出來的位置被 read.c 的分頁蓋掉，視野瞬間跳走。
   // 這裡只做兩件事：採用落點當選取／server 游標，然後把它帶進視野（不變量 N6）。
   _resumeInPlace: function(facts, opts) {
+    // PTT's page merges into the buffer again. A resize repaints the same
+    // page, and an in-place key leaves the rows as they were (#125): both keep
+    // rows held for the reader.
+    if (!opts?.preserveSelection && !opts?.keepRows) this._view.releaseListRows?.('article');
     this._holdReason = null;
     this._cancelResumeProbe();
     this._resumedAt = performance.now();
@@ -2254,6 +2383,154 @@ ListSession.prototype = {
     }
   },
 
+  // Back from an article over this list's live layer (#120). The real list is
+  // the page the layer shows: its rows, selection and reading position stay
+  // as the reader left them, and PTT's landing page merges nothing. Only the
+  // articles read are shown read, as PTT lists them now. Rows loaded later
+  // and a refresh show PTT's current list (term_view holdListRows).
+  //
+  // Each layer is independent (#123): after thread jumps or next-article
+  // pulls above it, the selection stays on the article opened from it, every
+  // article read on the way shows read, and PTT's selection is moved back to
+  // that article in the background (_alignServerCursor). An in-board external
+  // route above it (the next-article pull, a far jump, an article refresh)
+  // cleared the board identity; the layer of this board's list restores it,
+  // wherever PTT's selection landed (#127). A route that reused the session
+  // for another list (search results from the article) replaced its rows too;
+  // the list page kept with the layer gives them back.
+  // Whether the page `facts` lists an article newer than every row the
+  // buffer holds: PTT's landing page is held out of a list shown again from
+  // its layer, and those articles load as the reader scrolls down to them.
+  _listsNewerThanBuffer: function(facts) {
+    const newest = bufferEdgeNum(this._termBuf.listLineNums, 1);
+    if (!facts || !facts.nums || newest == null) return false;
+    for (let r = 3; r <= facts.rows - 2; ++r) if (facts.nums[r] != null && facts.nums[r] > newest) return true;
+    return false;
+  },
+
+  _resumeFromLayer: function(facts, layer) {
+    if (layer && layer.listPage) this._restoreListPage(layer.listPage);
+    if (this._boardName == null) {
+      this._boardName = this._layerBoard ?? (facts && facts.boardName);
+      this._layerBoard = null;
+      // The list behind that route is the layer itself, not a record to restore.
+      recordFor(this._core).takeBehindList();
+    }
+    this._holdReason = null;
+    this._cancelResumeProbe();
+    this._resumedAt = performance.now();
+    this._breakChain();
+    this._renderMode = 'buffer';
+    this._setLoading(false);
+    this._view.hideCursor();
+    this._serverNum = facts ? facts.cursorRowNum : null;
+    const text = layer && layer.selectedText();
+    const num = text ? parseListArticleNumLoose(text) : null;
+    const pinnedKey = text && num == null && isPinnedListRow(text) ? pinnedRowKey(text) : null;
+    if (num != null && (this._termBuf.listLineNums || []).indexOf(num) !== -1) {
+      this._selectedNum = num;
+      this._selectedPinnedKey = null;
+    } else if (pinnedKey != null && this._pinnedIndexOf(pinnedKey) !== -1) {
+      this._selectedNum = null;
+      this._selectedPinnedKey = pinnedKey;
+    }
+    // The article opened from the list and each one read above it that the
+    // layer shows were read; PTT now colours the subject read last, whether
+    // the list shows it or not (#128). Rows an article read may be, which the
+    // layer could not tell apart, show PTT's own data once it lists them.
+    const rowKey = function(row) {
+      const text = rowToText(row);
+      const num = parseListArticleNumLoose(text);
+      return { num: num, pinnedKey: num == null && isPinnedListRow(text) ? pinnedRowKey(text) : null };
+    };
+    for (const row of layer ? layer.readRows() : []) {
+      const key = rowKey(row);
+      this._view.markListArticleRead(key.num, key.pinnedKey);
+    }
+    const lastRead = layer && layer.lastReadSubject();
+    if (lastRead) this.noteLastRead(lastRead);
+    this._view.holdListRows(facts && facts.rowTexts);
+    this._newerBelow = this._listsNewerThanBuffer(facts);
+    for (const row of layer ? layer.unsureRows() : []) {
+      const key = rowKey(row);
+      this._view.retakeListRow(key.num, key.pinnedKey);
+    }
+    this._forceRedraw();
+    this._alignServerCursor();
+  },
+
+  // The list page as it is now: its rows and what the session knows of them
+  // (board, number space, fill edges, reading position, selection). Kept with
+  // the list's live layer when an article is opened from it (#127).
+  listPage: function() {
+    const buffer = this._view.snapshotListBuffer && this._view.snapshotListBuffer();
+    if (!buffer || this._boardName == null) return null;
+    return {
+      buffer: buffer,
+      boardName: this._boardName,
+      selectMode: this._selectMode,
+      // The search that found these results, to run again when PTT has left
+      // them by the time Back shows them.
+      search: this._selectMode ? readSearchResultsContext(this._core, boardNameFromKey(this._boardName)) : null,
+      edgeUp: this._edgeUp,
+      edgeDown: this._edgeDown,
+      stallUp: this._stallUp,
+      stallDown: this._stallDown,
+      fillPages: this._fillPages,
+      topNum: this._topNum,
+      topPinnedKey: this._topPinnedKey,
+      scrollFrac: this._scrollFrac,
+      selectedNum: this._selectedNum,
+      selectedPinnedKey: this._selectedPinnedKey,
+      landingFit: this._landingFit
+    };
+  },
+
+  _restoreListPage: function(page) {
+    this._view.restoreListBuffer(page.buffer);
+    this._boardName = page.boardName;
+    this._layerBoard = null;
+    // The list behind the route is this page, not a record to restore.
+    recordFor(this._core).takeBehindList();
+    this._selectMode = page.selectMode;
+    this._edgeUp = page.edgeUp;
+    this._edgeDown = page.edgeDown;
+    this._stallUp = page.stallUp;
+    this._stallDown = page.stallDown;
+    this._fillPages = page.fillPages;
+    this._topNum = page.topNum;
+    this._topPinnedKey = page.topPinnedKey;
+    this._scrollFrac = page.scrollFrac;
+    this._selectedNum = page.selectedNum;
+    this._selectedPinnedKey = page.selectedPinnedKey;
+    this._landingFit = page.landingFit;
+  },
+
+  // Move PTT's selection back to the article the list shows selected, by its
+  // number, once a page above moved it (#123). The landed row's author and
+  // title are checked against the selected row: on a mismatch (the article
+  // was deleted or renumbered meanwhile) the list stays as it is and PTT's
+  // selection counts as unknown; opening an article runs its own check.
+  _alignServerCursor: function() {
+    if (this._selectedNum == null || this._selectedNum === this._serverNum) return;
+    this._enqueueCursorSyncJumpThen('align-sync-jump', function() {});
+  },
+
+  // Whether PTT's answer to Back lists an article newer than the newest the
+  // list's live layer shows (#128). The layer is the page the reader left,
+  // whether the real list then keeps its rows or, its own rows given up on
+  // the way (a search from the article read), rebuilds from PTT.
+  _landsNewerArticles: function(facts) {
+    if (this.state !== 'suspended' || facts.kind !== 'clean-list' || !facts.nums) return false;
+    const layer = this._keptLayer(facts.boardName);
+    // Numbers of another number space tell nothing of what is newer.
+    if (this._layerResultsLeft(facts, layer)) return false;
+    const newest = layer?.newestNum?.();
+    if (newest == null) return false;
+    for (let r = 3; r <= facts.rows - 2; ++r) if (facts.nums[r] != null && facts.nums[r] > newest) return true;
+    return false;
+  },
+
   _enqueueLeaveKey: function() {
     const self = this;
     this._serverNum = null; // the landing (menu / main list) re-teaches it
@@ -2273,6 +2550,7 @@ ListSession.prototype = {
         if (self._selectMode) {
           self._selectMode = false;
           self._boardName = null;
+          self._layerBoard = null;
         }
       },
       onFail: function() {
@@ -2349,10 +2627,28 @@ ListSession.prototype = {
     this._view.promptListInput('跳至第幾項：', firstDigit, function(val) {
       const num = val ? parseInt(val, 10) : NaN;
       if (!num || num <= 0) return; // cancelled / not a number: zero server
+      if (self._selectLoaded(num)) return;
       const r = transitionListSession(self.state, { type: 'key', keyClass: 'transact' });
       self.state = r.next;
+      // A number beyond the rows loaded asks PTT for another part of the list.
+      if ((self._termBuf.listLineNums || []).indexOf(num) === -1) self._spendLayer('jumpBeyondRows');
       self._beginJumpNumber(num);
     });
+  },
+
+  // A number jump to a row the list shows moves the selection there and asks
+  // PTT for nothing: the rows stay as they are (#125), and PTT's selection
+  // follows before anything acts on it, as after any local move. Returns
+  // whether the row was shown.
+  _selectLoaded: function(num) {
+    const seq = this._sequence();
+    const pos = seq.indexOf((this._termBuf.listLineNums || []).indexOf(num));
+    if (pos === -1) return false;
+    const wasVisible = this._isPosVisible(seq, pos);
+    this._setCursorPos(seq, pos);
+    this._scheduleReveal(pos, revealPlan('down', { wasVisible: wasVisible, reducedMotion: prefersReducedMotion() }));
+    this._forceRedraw();
+    return true;
   },
 
   _beginJumpNumber: function(num) {
@@ -2396,7 +2692,7 @@ ListSession.prototype = {
   },
 
   // Key → whitelist class (the enumeration IS the contract —
-  // docs/easy-reading-list.md §操作分類). Whitelist = navigation / open /
+  // docs/easy-reading-list.md §Operation classes). Whitelist = navigation / open /
   // number jump / leave; anything else is 'passthrough' (one-key switch to
   // native + resend, _beginNativePassthrough) — never a SILENT passthrough,
   // and never a swallowed dead key (the retired noop/airlock pair).
@@ -2490,7 +2786,7 @@ ListSession.prototype = {
     const atEdge = dir < 0 ? px <= 0 : px >= this._maxScrollTop() - 1;
     if (!atEdge) return; // 還捲得動 ⇒ scroll 事件會處理
     this._maybeDemand(dir);
-    const moreExpected = dir > 0 ? !this._edgeDown : !this._edgeUp;
+    const moreExpected = dir > 0 ? this._moreBelow() : !this._edgeUp;
     if (moreExpected && !this._queue.idle) this._setLoading(true);
   },
 
@@ -2531,7 +2827,7 @@ ListSession.prototype = {
       dir > 0
         ? px >= this._maxScrollTop() - 1
         : px <= 0;
-    const moreExpected = dir > 0 ? !this._edgeDown : !this._edgeUp;
+    const moreExpected = dir > 0 ? this._moreBelow() : !this._edgeUp;
     if (atEdge && moreExpected && !this._queue.idle) this._setLoading(true);
   },
 
@@ -2669,6 +2965,7 @@ ListSession.prototype = {
     }
     if (this.state !== 'active') return false;
     if (num == null) return false;
+    this._spendLayer('markRead');
 
     // 先把選取移到目標並**同步重畫**：_beginPassthroughBytes 會立刻凍住畫面，
     // 少了這一步凍住的是點擊前的游標位置（看起來像點錯列）。同 onMouseClick。
@@ -2756,6 +3053,7 @@ ListSession.prototype = {
     this._selectMode = listModeOf(facts) === 'select';
     this._edgeUp = false;
     this._edgeDown = false;
+    this._newerBelow = false;
     this._stallUp = false;
     this._stallDown = false;
     this._fillPages = 0;
@@ -2782,7 +3080,7 @@ ListSession.prototype = {
   // intentional: an unconditional demand would probe past a FULL landing page — at
   // a board end that is a zero-response PgDn whose timeout→\f probe races the hard
   // timeout into an ownerless settle (spurious functionMode banner). See
-  // docs/easy-reading-list.md 已知限制「滿版落點不得探測」.
+  // docs/easy-reading-list.md Known limitations「a full-page landing must not probe」.
   _demandDownIfWindowShort: function() {
     const seq = this._sequence();
     if (!seq.length) return;
@@ -2802,7 +3100,7 @@ ListSession.prototype = {
   // `edge`（選用）＝'up'／'down'，落點已經**確定**是那一端的邊界時帶。
   // 必須在這裡套而不是讓呼叫端事後補：下面的 _demandDownIfWindowShort 就看
   // `_edgeDown`，板上沒有置底文時 _seedAnchors 確認不了邊界 ⇒ 會在真板尾送一個
-  // 零回應的 PgDn（docs/easy-reading-list.md「滿版落點不得探測」那條已知限制）。
+  // 零回應的 PgDn（docs/easy-reading-list.md「a full-page landing must not probe」那條 Known limitations）。
   _rebuild: function(facts, edge) {
     this._breakChain();
     // _lastReadTitle kept: title keys are number-space independent (see _seed).
@@ -2813,6 +3111,7 @@ ListSession.prototype = {
     if (facts) this._selectMode = listModeOf(facts) === 'select';
     this._edgeUp = false;
     this._edgeDown = false;
+    this._newerBelow = false;
     this._stallUp = false;
     this._stallDown = false;
     this._fillPages = 0;
@@ -2916,6 +3215,13 @@ ListSession.prototype = {
     this._enqueuePrefetch(true, 'fill');
   },
 
+  // Whether PTT may list rows below the buffer: no bottom edge confirmed, or
+  // the landing page of a list shown again from its live layer listed
+  // articles newer than the rows kept (story 14).
+  _moreBelow: function() {
+    return !this._edgeDown || !!this._newerBelow;
+  },
+
   // Demand prefetch: keep TWO full pages of rows buffered beyond the window in
   // the direction of travel (one page was too late — the fetch only started
   // once the user was about to hit the edge, so every boundary crossing waited
@@ -2937,7 +3243,7 @@ ListSession.prototype = {
     else if (
       direction > 0 &&
       seq.length - (top + B) < 2 * B &&
-      !this._edgeDown &&
+      this._moreBelow() &&
       !this._stallDown
     )
       this._enqueuePrefetch(false, 'key');
@@ -3044,6 +3350,9 @@ ListSession.prototype = {
   //   'key'  → _maybeDemand (stops once the headroom margin is buffered)
   _enqueuePrefetch: function(up, origin) {
     const dir = up ? -1 : 1;
+    // One page past a confirmed bottom edge answers whether PTT still lists
+    // articles there (_moreBelow).
+    if (!up) this._newerBelow = false;
     const chained = this._chainState !== null && this._chainState.dir === dir;
     const base = chained
       ? this._chainState.lastLanded
@@ -3512,6 +3821,7 @@ ListSession.prototype = {
   // opts.hold: 'passthrough'（預設，靜置後自動回好讀）| 'external'（永不自動解除）。
   _enterFunctionMode: function(facts, opts) {
     this._externalResumeNotice = null;
+    this._layerBoard = null;
     // 閱讀紀錄凍結：下面會清掉看板身分、鏡像期間也沒有列表視口 ⇒ 之後任何人問
     // 「使用者在看哪裡」都拿這一刻的視野（reading_record.freeze）。
     const pos = this.readingPosition();
@@ -3611,6 +3921,7 @@ ListSession.prototype = {
   },
 
   _resumeBuffer: function(facts) {
+    this._view.releaseListRows?.('article');
     this._holdReason = null;
     this._cancelResumeProbe();
     this._resumedAt = performance.now(); // 不變量 N4：殘餘幀不得打到 active 的 catch-all
@@ -3716,6 +4027,7 @@ ListSession.prototype = {
     if (this._view.hideListOverlay) this._view.hideListOverlay();
     this._renderMode = 'native';
     this._boardName = null;
+    this._layerBoard = null;
     this._selectedNum = null;
     this._openedNum = null;
     this._selectedPinnedKey = null;
@@ -3728,6 +4040,7 @@ ListSession.prototype = {
     this._seqCache = null;
     this._edgeUp = false;
     this._edgeDown = false;
+    this._newerBelow = false;
     this._stallUp = false;
     this._stallDown = false;
     this._fillPages = 0;
@@ -4318,7 +4631,7 @@ ListSession.prototype = {
     // an earlier chain) — show the loading indicator until rows arrive
     // (prefetch onDone/markEdge clear it).
     const atEdge = direction > 0 ? next === len - 1 : next === 0;
-    const moreExpected = direction > 0 ? !this._edgeDown : !this._edgeUp;
+    const moreExpected = direction > 0 ? this._moreBelow() : !this._edgeUp;
     if (atEdge && moreExpected && !this._queue.idle) this._setLoading(true);
   },
 
@@ -4742,6 +5055,17 @@ export function listGrowthDir(numMap, entries) {
     if (n > prevMax) down = true;
   }
   return up === down ? 0 : up ? -1 : 1;
+}
+
+// The brief new-articles notice on a list shown again from its live layer,
+// once per page: `freshPage` is a list that had not kept its rows from the
+// layer yet (a refresh or a rebuild makes a new page), and `newer` whether
+// PTT's landing page lists something the kept rows do not. Shared by the
+// article list and the board list sessions.
+export function noticeNewArticles(session, freshPage, newer) {
+  if (freshPage) session._newArticlesNoticed = false;
+  if (newer && !session._newArticlesNoticed)
+    session._newArticlesNoticed = !!session._core.articleGestures?.stack?.noticeNewContent?.();
 }
 
 // The article number at a buffer edge: smallest (direction<0, the "older" top)

@@ -91,6 +91,21 @@ The enabled-by-default `articleHorizontalGestures` preference applies only to mo
     推文 `X` 是單字元：`sendKeyAsUser` 在 keydown 沒人接手時補走 `_keyboard.onKeyPress`。
   - `mousedown` preventDefault（不搶 `#t` 焦點）＋ mousedown/mouseup/click stopPropagation
     （App 的滑鼠入口在 window）。守護 `tests/unit/mobile_toolbar.test.jsx`。
+  - A touch tap on a bar or keypad button acts on its pointerup (#119), when it lifts within `ARTICLE_TAP_SLOP` of where it landed on an
+    enabled button: on Android, a tap that stops native momentum left by another page gets pointer events but no click. A click that still
+    reaches the toolbar within `TAP_CLICK_MS` is swallowed in the capture phase, so the action runs once. The browser hit-tests the tap's
+    own click only after the action ran, so it may land on whatever the action opened under the finger, such as the search dialog: a
+    trusted click outside the toolbar within `ARTICLE_TAP_SLOP` of the lift point and within `TAP_CLICK_MS` is swallowed on `window`
+    too. A tap has one click, so whichever swallow takes it ends the other: the "more" sheet sits in the toolbar's React tree, and a click
+    on it right after the tap (Settings by keyboard) would otherwise be taken for the tap's. The tap's `touchend` is left alone, because Android shows the soft keyboard for a field focused by a tap (the keypad's ⌨).
+    Mouse and keyboard activation keep the click.
+  - A debug recording traces the toolbar (`js/toolbar_diag.js`, #119): every pointerdown, pointerup, pointercancel and click on `#mobileToolbar`
+    (`toolbar.input`: button key, disabled, the context id the bar rendered against the App's current one, its source and the handoff state),
+    each context the App gives it (`toolbar.context`, old → new id) and renders (`toolbar.rendered`), and what each action did:
+    `toolbar.action` (handler steps and early returns), `toolbar.key` (`sendKeyAsUser`: handled, held for a handoff, or dropped with the reason),
+    `toolbar.refresh` and `stack.action` (remembered, run or dropped during a handoff). A click landing outside the toolbar within a second
+    of a toolbar pointerup is logged as `toolbar.strayClick`; toolbar contacts log their `touchstart` too, whose `cancelable` is false while
+    the browser holds a scroll or fling. Entries carry keys, states and ids only, never screen text.
   - 按鍵面板（`#mobileKeypad`，6 欄 grid 貼在工具列上方）：`MOBILE_KEYPAD_ROWS` ＋ ⌨（`toggleSoftKeyboard`）＋ Ctrl ＋
     `MOBILE_KEYPAD_EXTRA_ROW`（Esc／Tab／Del：Gboard 等軟鍵盤打不出來）。每個 key 必須在 `term_keyboard.KeyMap`。
     展開時以 `App.setMobileKeysPanelInset(offsetHeight)` 回報 ⇒ 終端機排到面板上方（暫態，不改列數、不重送 NAWS）。

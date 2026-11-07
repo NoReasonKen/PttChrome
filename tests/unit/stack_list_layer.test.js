@@ -1,10 +1,10 @@
-import { articleRow } from '../../src/js/stack_list_layer';
+import { articleRow, identityRows } from '../../src/js/stack_list_layer';
 
 // An article list frame as the list layer keeps it: three header rows, the
 // entries (bbs.c readdoent columns) and the footer.
 const row = text => [...text].map(ch => ({ ch, isLeadByte: false }));
-const entry = (num, author, title) =>
-  row(`${String(num).padStart(7)} +  11/20 ${author.padEnd(13)}${title.startsWith('Re: ') ? 'R: ' + title.slice(4) : '□ ' + title}`);
+const entry = (num, author, title, date = '11/20') =>
+  row(`${String(num).padStart(7)} + ${date.padStart(6)} ${author.padEnd(13)}${title.startsWith('Re: ') ? 'R: ' + title.slice(4) : '□ ' + title}`);
 const frame = entries => [row('header'), row('keys'), row('columns'), ...entries, row(' 文章選讀 ')];
 const BODY = 3;
 
@@ -44,4 +44,20 @@ test('among rows naming the article, the nearest in the direction the selection 
 
 test('the topmost row above for the first article of the thread', () => {
   expect(articleRow(replies, BODY, DAVE, { from: BODY + 2, up: true, first: true })).toBe(BODY);
+});
+
+// With PTT's selection no longer followed, an article read is found by what
+// it says of itself (#128).
+test('an article found by its identity alone: author and subject, then reply or not, then post date', () => {
+  const lines = frame([entry(1, 'dave', '[Talk] Far topic', '11/18'), entry(2, 'dave', 'Re: [Talk] Far topic', '11/19'),
+    entry(3, 'dave', 'Re: [Talk] Far topic', '11/20'), entry(4, 'erin', 'Re: [Talk] Far topic', '11/20')]);
+  expect(identityRows(lines, BODY, { author: 'dave', title: '[Talk] Far topic', time: 'Wed Nov 18 10:00:00 2026' })).toEqual([BODY]);
+  expect(identityRows(lines, BODY, { author: 'dave', title: 'Re: [Talk] Far topic', time: 'Fri Nov 20 10:00:00 2026' })).toEqual([BODY + 2]);
+  expect(identityRows(lines, BODY, { author: 'Erin', title: 'Re: [Talk] Far topic', time: null })).toEqual([BODY + 3]);
+});
+
+test('rows an article cannot be told from, and none when the list lacks it', () => {
+  const lines = frame([entry(1, 'dave', 'Re: [Talk] Far topic'), entry(2, 'dave', 'Re: [Talk] Far topic')]);
+  expect(identityRows(lines, BODY, { author: 'dave', title: 'Re: [Talk] Far topic', time: 'Fri Nov 20 10:00:00 2026' })).toEqual([BODY, BODY + 1]);
+  expect(identityRows(lines, BODY, { author: 'dave', title: '[Talk] Other topic' })).toEqual([]);
 });

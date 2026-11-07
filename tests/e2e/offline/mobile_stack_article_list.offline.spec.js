@@ -5,7 +5,7 @@ const { test, expect } = require('@playwright/test');
 const { waitRectStable } = require('../helpers/layout');
 const { beginArticleTouch } = require('../helpers/article_gestures');
 const { touchDrag } = require('../helpers/real_input');
-const { MAIN, ARTICLE_CARD, bootArticleListAtCard, waitArticleOpened, sampleFrames, framesBringingBackArticle } = require('../helpers/stack_routes');
+const { MAIN, ARTICLE_CARD, bootArticleListAtCard, waitArticleOpened, sampleFrames, framesBringingBackArticle, recordKeys } = require('../helpers/stack_routes');
 
 const LAYER = '[data-stack-layer]:not([data-stack-parked])';
 const UNDERLAY = '[data-article-exit-underlay]';
@@ -217,19 +217,19 @@ for (const [name, back] of Object.entries(BACKS)) {
   });
 }
 
-test("the toolbar offers the list's actions only once the real list is usable", async ({ page }) => {
-  // "To the end" acts on the article or the list; neither is usable meanwhile.
+test("the toolbar offers the revealed list's actions at once, and To the end reaches the real list", async ({ page }) => {
   const END = '#mobileToolbar [data-key="__end"]';
   const box = await swipeOutWithSlowBack(page, 600);
-  await expect(page.locator(END)).toBeDisabled();
+  await recordKeys(page);
+  await page.locator(END).tap();
   const x = box.left + box.width / 2;
   const contact = await beginArticleTouch(page, { x, y: box.top + box.height - 40 });
   await contact.move({ x, y: box.top + box.height - 80 });
   // PTT's list has arrived, but the reader still holds the revealed copy.
   await page.waitForFunction(() => window.__app.buf.pageState === 2 && window.__app.commandQueue.idle, null, { timeout: 10000 });
   await expect(page.locator(UNDERLAY)).toHaveCount(1);
-  await expect(page.locator(END)).toBeDisabled();
+  expect(await page.evaluate(() => window.__keys)).toEqual([['End', true]]);
   await contact.release({ pause: false });
   await expect(page.locator(UNDERLAY)).toHaveCount(0, { timeout: 5000 });
-  await expect(page.locator(END)).toBeEnabled();
+  await expect.poll(() => page.evaluate(() => window.__keys)).toEqual([['End', true], ['End', false]]);
 });

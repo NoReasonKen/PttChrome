@@ -88,6 +88,12 @@ export function CommandQueue(opts) {
     function() {
       return true;
     };
+  // Optional count of the server data written so far (TermBuf.serverWrites,
+  // also frozen into each settle snapshot). With it, a settle that carries no
+  // data received after the in-flight command went out is no answer to it:
+  // the screen it shows predates the command (a flushed command's late answer,
+  // or a settle held back by local repaints past the send).
+  this._serverWrites = opts.serverWrites || null;
   this._inFlight = null;
   this._pending = [];
   this._softTimer = null;
@@ -145,6 +151,10 @@ CommandQueue.prototype = {
   onSettle: function(snapshot, facts) {
     const cmd = this._inFlight;
     if (!cmd) return null;
+    if (this._predatesSend(cmd, snapshot)) {
+      this._emit('stale', cmd);
+      return null;
+    }
     const result = cmd.expect(snapshot, facts);
     if (result) {
       this._emit('done', cmd);
@@ -274,6 +284,7 @@ CommandQueue.prototype = {
     cmd._probed = false;
     cmd._probeExtensions = 0;
     cmd._sentAt = Date.now();
+    cmd._sentWrites = this._serverWrites ? this._serverWrites() : null;
     this._armBoth(cmd);
     this._emit('send', cmd);
     // See cmd.onSend: last chance to derive state, and the ONLY point at which a
@@ -281,6 +292,11 @@ CommandQueue.prototype = {
     // still pending must never have run it.
     if (cmd.onSend) cmd.onSend();
     this._send(cmd.fullRepaint ? cmd.keys + '\f' : cmd.keys);
+  },
+
+  _predatesSend: function(cmd, snapshot) {
+    const writes = snapshot && snapshot.serverWrites;
+    return cmd._sentWrites != null && typeof writes === 'number' && writes <= cmd._sentWrites;
   },
 
   _armBoth: function(cmd) {

@@ -1509,8 +1509,13 @@ export const en_US = {
     "message": "In mobile easy reading, swipe left on an article to reveal its shortcuts, and swipe right on an article or an article list to go back. Normal vertical scrolling, taps and long presses remain available."
   },
   "stack_articleGone": { "message": "That article is no longer in the list" },
+  "stack_articleUpdated": { "message": "The article has been updated" },
   "stack_boardGone": { "message": "That board is no longer in the list" },
   "stack_handoffTimeout": { "message": "Returning to the list timed out; staying on the current PTT screen" },
+  "stack_newArticles": { "message": "New articles" },
+  "stack_commentSourceUnverified": { "message": "Could not verify the original article; the comment was not sent" },
+  "stack_commentNotSent": { "message": "PTT was not ready; the comment was not sent" },
+  "stack_actionNotRun": { "message": "PTT was not ready; the action was not run" },
   "articleShortcutDrawer_title": {
     "message": "Article shortcuts"
   },
@@ -1529,7 +1534,6 @@ export const en_US = {
   "articleShortcutSearch_empty": { "message": "No matching articles. Returned to the source article." },
   "articleShortcutSearch_failed": { "message": "Article search stopped because the current screen could not be verified." },
   "articleShortcutSearch_missing": { "message": "The source article could not be verified or was deleted. Stopped safely without opening a replacement." },
-  "articleShortcutSearch_returned": { "message": "Returned to the source article." },
   "articleShortcutSearch_recovered": { "message": "Search trail restored. Back retraces the search trail." },
   "articleShortcutSearch_recoveryInactive": { "message": "The search trail was not restored because the article or search could not be verified. Back works normally." },
   "searchResults_resumeFailed": { "message": "The previous search results could not be restored. Navigation has stopped safely; search again to continue." },

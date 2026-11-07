@@ -1,4 +1,4 @@
-// 手機的「下拉重新整理」（docs/screen-refresh.md「下拉重整」）。
+// 手機的「下拉重新整理」（docs/screen-refresh.md「Pull-to-refresh」）。
 //
 // **為什麼這裡自己做、不接瀏覽器原生的 pull-to-refresh**（「原生行為不准模擬」原則
 // 的例外，理由逐條對照該規範）：
@@ -102,11 +102,15 @@ export function installPullRefresh(core, doc) {
 
   const onStart = function(e) {
     track = null;
-    if (!core.mobile || core.mobileSelectMode || core.modalShown) return;
+    if (!core.mobile || core.mobileSelectMode) return;
     if (!e.touches || e.touches.length !== 1) return;
     if (ignoredTarget(e.target)) return;
     const refresh = core.screenRefresh;
-    if (!refresh || !refresh.target()) return;
+    const target = refresh && refresh.target();
+    if (!target) return;
+    // A Back's handoff holds the modal gate; a list it revealed can still be
+    // pulled to refresh (#124).
+    if (core.modalShown && target.kind !== 'revealed') return;
     const sp = scrollParentOf(e.target);
     if (sp && sp.scrollTop > 0) return;
     const t = e.touches[0];

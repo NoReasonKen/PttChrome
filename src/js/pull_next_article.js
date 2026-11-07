@@ -1,4 +1,4 @@
-// 「讀到文末再多拉一段 ⇒ 開下一篇」（docs/next-article.md「往下拉」）。兩條入口：
+// 「讀到文末再多拉一段 ⇒ 開下一篇」（docs/next-article.md「Pull past the end」）。兩條入口：
 //
 // 手機（installPullNextArticle）：捲到底再往上拉。與下拉重整（pull_refresh.js）同一個例外
 // 理由：瀏覽器的 overscroll 沒有任何入口告訴頁面「使用者在底部又拉了一段」，而觸控事件有

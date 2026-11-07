@@ -36,6 +36,8 @@ import {
   THREAD_NAV_KEYS,
   toolbarSlots,
 } from "../../js/mobile_toolbar";
+import { toolbarDiag, toolbarContextId } from "../../js/toolbar_diag";
+import { ARTICLE_TAP_SLOP } from "../../js/article_horizontal_gesture";
 import "./MobileToolbar.css";
 
 // 手機底部導覽（docs/mobile.md「底部導覽」）。只在 pttchrome.mobile 時渲染。
@@ -74,6 +76,10 @@ const keepFocus = (e) => {
 
 // 觸覺回饋：短震一下（Android Chrome；沒有 API／APK 沒給 VIBRATE 權限時靜默）。
 export const HAPTIC_MS = 8;
+// How long after a tap acted on its pointerup the click that may follow it is
+// swallowed.
+export const TAP_CLICK_MS = 800;
+
 const haptic = () => {
   try {
     if (typeof navigator !== "undefined" && navigator.vibrate)
@@ -143,6 +149,12 @@ export const MobileToolbar = ({
     );
   }, [pttchrome]);
 
+  // The context the toolbar's buttons now show, for debug recordings: the
+  // App's current context can differ while a render is pending.
+  useLayoutEffect(() => {
+    toolbarDiag(pttchrome, "rendered", { context: toolbarContextId(context) });
+  }, [pttchrome, context]);
+
   useEffect(() => {
     if (!confirmLogout) return undefined;
     const t = setTimeout(() => setConfirmLogout(false), LOGOUT_CONFIRM_MS);
@@ -168,6 +180,21 @@ export const MobileToolbar = ({
     [pttchrome],
   );
 
+  // An action on a page revealed during a handoff waits for the real page to
+  // take over (#119); the toolbar itself responds at once.
+  const whenReady = useCallback(
+    (run) => {
+      const stack = pttchrome.articleGestures?.stack;
+      toolbarDiag(pttchrome, "action", {
+        step: "whenReady",
+        outcome: stack?.handingOff ? "toStack" : "runNow",
+      });
+      if (stack?.handingOff) stack.whenReady(run);
+      else run();
+    },
+    [pttchrome],
+  );
+
   const sendKey = useCallback(
     (key, mods) => {
       // 等待進度條：接著真的送出 byte 才會亮（mobile_busy.js）。
@@ -182,11 +209,17 @@ export const MobileToolbar = ({
   const sendAction = useCallback(
     (name) => {
       const k = TOOLBAR_KEYS[name];
+      toolbarDiag(pttchrome, "action", {
+        step: "sendAction",
+        action: name,
+        outcome: "sendKey",
+        sent: k.key,
+      });
       setPanel(null);
       setConfirmLogout(false);
       sendKey(k.key, k.mods);
     },
-    [sendKey],
+    [pttchrome, sendKey],
   );
 
   // 推文：推文列收進底部導覽（js/comment_bar.js 收合模式）時展開它並叫出鍵盤，不送 X；
@@ -194,7 +227,37 @@ export const MobileToolbar = ({
   const pushAction = useCallback(() => {
     const bar = pttchrome.commentBar;
     const s = bar && bar.state;
+    // An article shown from its live layer before PTT takes over opens its
+    // comment bar at once (#121); a source that cannot be confirmed refuses
+    // the comment.
+    const stack = pttchrome.articleGestures?.stack;
+    if (stack?.showsArticleLayer?.()) {
+      if (stack.refusesComment()) {
+        toolbarDiag(pttchrome, "action", {
+          step: "push",
+          outcome: "dropped",
+          reason: "commentRefused",
+        });
+        return;
+      }
+      if (s && s.available) {
+        toolbarDiag(pttchrome, "action", {
+          step: "push",
+          outcome: "barExpanded",
+          on: "layer",
+        });
+        bar.expand();
+        setPanel(null);
+        setConfirmLogout(false);
+        return;
+      }
+    }
     if (s && s.available && s.folded && bar.expand()) {
+      toolbarDiag(pttchrome, "action", {
+        step: "push",
+        outcome: "barExpanded",
+        on: "page",
+      });
       setPanel(null);
       setConfirmLogout(false);
       return;
@@ -223,7 +286,14 @@ export const MobileToolbar = ({
         });
       }
       pressSelectionRef.current = "";
-      setPanel((cur) => (cur === p ? null : p));
+      setPanel((cur) => {
+        toolbarDiag(pttchrome, "action", {
+          step: "panel",
+          panel: p,
+          outcome: cur === p ? "closed" : "opened",
+        });
+        return cur === p ? null : p;
+      });
     },
     [pttchrome],
   );
@@ -231,6 +301,120 @@ export const MobileToolbar = ({
   const onToolbarPointerDown = useCallback(() => {
     pressSelectionRef.current = readSelectionText();
   }, []);
+
+  // A touch tap on a button of the bar or the keypad acts when the finger
+  // lifts (#119): on Android, a tap that stops native momentum left by another
+  // page gets its pointer events but no click. A click that still follows is
+  // swallowed, so the action runs once; mouse and keyboard keep the click.
+  // The tap's own click is hit-tested where the finger lifted only after the
+  // action ran, so it may land on what the action opened there, such as the
+  // search dialog: such a click outside the toolbar is swallowed too. Either
+  // swallow ends both, since a tap has one click: the "more" sheet sits in the
+  // toolbar's React tree, so a later click on it would otherwise be taken for
+  // the tap's. The tap itself goes on (its touchend is not canceled), since
+  // Android shows the soft keyboard for a field focused by a tap.
+  const rootRef = useRef(null);
+  const tapRef = useRef(null);
+  const tapClickUntilRef = useRef(0);
+  const tapClickingRef = useRef(false);
+  const strayClickRef = useRef(null);
+  const tapButton = (target) => {
+    const button = target?.closest?.("button");
+    return button && rootRef.current?.contains(button) ? button : null;
+  };
+  const stopSwallowingStrayClick = () => {
+    const pending = strayClickRef.current;
+    strayClickRef.current = null;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    window.removeEventListener("click", pending.swallow, true);
+  };
+  const swallowStrayClick = (x, y) => {
+    stopSwallowingStrayClick();
+    const swallow = (e) => {
+      if (!e.isTrusted || rootRef.current?.contains(e.target)) return;
+      if (Math.hypot(e.clientX - x, e.clientY - y) > ARTICLE_TAP_SLOP) return;
+      stopSwallowingStrayClick();
+      tapClickUntilRef.current = 0;
+      e.preventDefault();
+      e.stopPropagation();
+      toolbarDiag(pttchrome, "action", {
+        step: "click",
+        outcome: "swallowedStrayAfterTap",
+      });
+    };
+    window.addEventListener("click", swallow, true);
+    const timer = setTimeout(stopSwallowingStrayClick, TAP_CLICK_MS);
+    strayClickRef.current = { swallow, timer };
+  };
+  useEffect(() => stopSwallowingStrayClick, []);
+  const onTapDown = useCallback((e) => {
+    tapClickUntilRef.current = 0;
+    stopSwallowingStrayClick();
+    const button =
+      e.pointerType === "mouse" || !e.isPrimary ? null : tapButton(e.target);
+    tapRef.current = button
+      ? {
+          id: e.pointerId,
+          x: e.clientX,
+          y: e.clientY,
+          button,
+        }
+      : null;
+  }, []);
+  const onTapUp = useCallback(
+    (e) => {
+      const tap = tapRef.current;
+      tapRef.current = null;
+      if (!tap || tap.id !== e.pointerId) return;
+      if (Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > ARTICLE_TAP_SLOP)
+        return;
+      const key = tap.button.getAttribute("data-key");
+      // A re-render may have replaced the button under the finger.
+      const button = tap.button.isConnected
+        ? tap.button
+        : key &&
+          [
+            ...(rootRef.current?.querySelectorAll("button[data-key]") || []),
+          ].find((b) => b.getAttribute("data-key") === key);
+      if (!button || button.disabled) return;
+      toolbarDiag(pttchrome, "action", {
+        step: "tapUp",
+        key,
+        outcome: "click",
+      });
+      swallowStrayClick(e.clientX, e.clientY);
+      tapClickUntilRef.current = performance.now() + TAP_CLICK_MS;
+      tapClickingRef.current = true;
+      try {
+        button.click();
+      } finally {
+        tapClickingRef.current = false;
+      }
+    },
+    [pttchrome],
+  );
+  const onTapCancel = useCallback(() => {
+    tapRef.current = null;
+  }, []);
+  const onTapClick = useCallback(
+    (e) => {
+      if (
+        tapClickingRef.current ||
+        performance.now() >= tapClickUntilRef.current
+      )
+        return;
+      tapClickUntilRef.current = 0;
+      stopSwallowingStrayClick();
+      e.preventDefault();
+      e.stopPropagation();
+      toolbarDiag(pttchrome, "action", {
+        step: "click",
+        outcome: "swallowedAfterTap",
+      });
+    },
+    [pttchrome],
+  );
 
   const onExternalSearch = useCallback(
     (item) => {
@@ -269,21 +453,31 @@ export const MobileToolbar = ({
 
   // 不開子選單：直接開搜尋彈窗，預設種類＝這個畫面可用的第一種（文章列表＝標題，
   // 看板列表／主功能表＝看板），要換種類在彈窗上方切。
+  // On a page revealed during a handoff the dialog opens at once with that
+  // page's kinds; only its search waits for the real page (#119).
   const onSearch = useCallback(() => {
     setPanel(null);
     setConfirmLogout(false);
-    if (onOpenSearch && context.search.length) onOpenSearch(context.search[0]);
-  }, [onOpenSearch, context]);
+    if (!onOpenSearch || !context.search.length) return;
+    if (pttchrome.articleGestures?.stack?.handingOff)
+      onOpenSearch(context.search[0], { kinds: context.search });
+    else onOpenSearch(context.search[0]);
+  }, [pttchrome, onOpenSearch, context]);
 
   // 系統分享面板（Web Share API）。**同步**呼叫：免費路徑要在這個 click 的 user
   // activation 內叫出 navigator.share（deep_link_controller.shareCurrentPostLink）。
+  // A revealed article whose post is known shares at once, without PTT (#119).
   const onShare = useCallback(() => {
     setPanel(null);
     setConfirmLogout(false);
     const dl = pttchrome.deepLinkController;
-    if (dl && typeof dl.shareCurrentPostLink === "function")
-      dl.shareCurrentPostLink(context.appBar ? context.appBar.title : "");
-  }, [pttchrome, context]);
+    const title = context.appBar ? context.appBar.title : "";
+    const post = pttchrome.articleGestures?.stack?.revealedPost?.();
+    if (post && dl && typeof dl.sharePostLink === "function")
+      dl.sharePostLink(post, title);
+    else if (dl && typeof dl.shareCurrentPostLink === "function")
+      whenReady(() => dl.shareCurrentPostLink(title));
+  }, [pttchrome, context, whenReady]);
 
   // 跳到第一篇未讀：與桌機快捷鍵（預設 F7）同一個入口（unread_jump.js）。
   const onUnreadJump = useCallback(() => {
@@ -291,10 +485,12 @@ export const MobileToolbar = ({
     setConfirmLogout(false);
     const u = pttchrome.unreadJump;
     if (!u || typeof u.start !== "function") return;
-    if (typeof pttchrome.noteUserAction === "function")
-      pttchrome.noteUserAction();
-    u.start();
-  }, [pttchrome]);
+    whenReady(() => {
+      if (typeof pttchrome.noteUserAction === "function")
+        pttchrome.noteUserAction();
+      u.start();
+    });
+  }, [pttchrome, whenReady]);
 
   // 設為全部已讀：與桌機右鍵選單同一個入口（mark_all_read.js）。
   const onMarkAllRead = useCallback(() => {
@@ -302,10 +498,12 @@ export const MobileToolbar = ({
     setConfirmLogout(false);
     const m = pttchrome.markAllRead;
     if (!m || typeof m.start !== "function") return;
-    if (typeof pttchrome.noteUserAction === "function")
-      pttchrome.noteUserAction();
-    m.start();
-  }, [pttchrome]);
+    whenReady(() => {
+      if (typeof pttchrome.noteUserAction === "function")
+        pttchrome.noteUserAction();
+      m.start();
+    });
+  }, [pttchrome, whenReady]);
 
   // 操作說明：送 h（與實體鍵盤同一條分派）；好讀開著時 PTT 的說明選單會變成 bottom sheet
   // （components/HelpMenu）。
@@ -339,7 +537,14 @@ export const MobileToolbar = ({
     setPanel(null);
     setConfirmLogout(false);
     const r = pttchrome.screenRefresh;
-    if (!r || typeof r.refresh !== "function") return;
+    if (!r || typeof r.refresh !== "function") {
+      toolbarDiag(pttchrome, "action", {
+        step: "refresh",
+        outcome: "dropped",
+        reason: "noScreenRefresh",
+      });
+      return;
+    }
     if (typeof pttchrome.noteUserAction === "function")
       pttchrome.noteUserAction();
     r.refresh("toolbar");
@@ -376,8 +581,9 @@ export const MobileToolbar = ({
   const onLogoutYes = useCallback(() => {
     setConfirmLogout(false);
     setPanel(null);
-    if (typeof pttchrome.startLogout === "function") pttchrome.startLogout();
-  }, [pttchrome]);
+    if (typeof pttchrome.startLogout === "function")
+      whenReady(() => pttchrome.startLogout());
+  }, [pttchrome, whenReady]);
 
   if (!visible) return null;
 
@@ -507,6 +713,13 @@ export const MobileToolbar = ({
         aria-expanded={o.expanded}
         data-key={key}
         onClick={() => {
+          toolbarDiag(pttchrome, "action", {
+            step: "click",
+            key,
+            outcome: "handler",
+            disabled: !!o.disabled,
+            context: toolbarContextId(context),
+          });
           haptic();
           onClick();
         }}
@@ -736,7 +949,13 @@ export const MobileToolbar = ({
     <div
       id="mobileToolbar"
       className="nomouse_command mobileToolbar"
+      ref={rootRef}
+      data-context-id={toolbarContextId(context)}
       onPointerDownCapture={onToolbarPointerDown}
+      onPointerDown={onTapDown}
+      onPointerUp={onTapUp}
+      onPointerCancel={onTapCancel}
+      onClickCapture={onTapClick}
       onMouseDown={keepFocus}
       onMouseUp={swallow}
       onClick={swallow}

@@ -101,6 +101,8 @@ test('home dashboard → board → title search → back → back replays end to
   await waitFed(page, homeSearch.steps.length);
 });
 
+// The list kept behind a next-article pull only moves PTT's selection back to
+// the article opened from it (#123): Back sends no rebuild.
 test('home dashboard → board → article → next article → back → back replays end to end', async ({ page }) => {
   await openBoardFromDashboard(page, homeNext);
   for (let i = 0; i < 2; i++) await ptt.sendKey(page, 'ArrowUp');
