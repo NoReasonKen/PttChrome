@@ -229,8 +229,20 @@ const watchReveals = page => page.evaluate(() => {
 });
 const revealedSinceWatch = page => page.evaluate(() => window.__revealed);
 
+// Records each key reaching the key dispatch in window.__keys, as [key,
+// whether a handoff was on]: a key made on a revealed page and its replay.
+const recordKeys = page => page.evaluate(() => {
+  const view = window.__app.view;
+  const down = view.onKeyDown.bind(view);
+  window.__keys = [];
+  view.onKeyDown = e => {
+    window.__keys.push([e.key, !!window.__app.articleGestures.stack.handingOff]);
+    return down(e);
+  };
+});
+
 module.exports = {
   MAIN, ARTICLE_CARD, homeBoard, boardList, bootArticleList, bootArticleListAtCard, holdRepliesUntilEntryRests, dropReplies, recordHints, recordedHints, listActive, dashboardVisible, bootDashboard, boardOpened, boardListEngaged, bootBoardList,
   fedBefore, openNextArticle, holdBackReply, heldBack, holdLeaves, heldLeaves, releaseLeave, sentLeaves, articleRead, waitArticleOpened,
-  sampleFrames, framesBringingBackArticle, watchReveals, revealedSinceWatch
+  sampleFrames, framesBringingBackArticle, watchReveals, revealedSinceWatch, recordKeys
 };

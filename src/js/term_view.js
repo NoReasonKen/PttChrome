@@ -12,8 +12,8 @@ import { renderOverlayRow, renderScreen } from './term_ui';
 import { i18n } from './i18n';
 import { setTimer, TRACE } from './util';
 import { textCellWidth, parseStatusRow, statusSignature, normalizePasteText, parseStatusUserid } from './string_util';
-import { rowToText, articleContextFromScreen, findPageOverlap, resolvePageOverlap, decideAccumulateBranch, classifyPageTransition, decideReverseBranch, resolveJoinOverlap, locateScreenInPage, pageArticleNums, isPinnedListRow, parseListArticleNumLoose, hasServerCursorMark } from './comment_parse';
-import { mergeListPage, flattenListBuffer, evictListBuffer, listGrowthDir, listNumRange, isHiddenListRow, pinnedRowKey, MAX_LIST_ROWS, MAX_LIST_TOTAL_ROWS, isLastReadStyledListRow, normalizeLastReadListRow, paintLastReadListRow, subjectOfListRow } from './list_session';
+import { rowToText, cloneRow, articleContextFromScreen, findPageOverlap, resolvePageOverlap, decideAccumulateBranch, classifyPageTransition, decideReverseBranch, resolveJoinOverlap, locateScreenInPage, pageArticleNums, isPinnedListRow, parseListArticleNumLoose, hasServerCursorMark } from './comment_parse';
+import { mergeListPage, flattenListBuffer, evictListBuffer, listGrowthDir, listNumRange, isHiddenListRow, pinnedRowKey, MAX_LIST_ROWS, MAX_LIST_TOTAL_ROWS, isLastReadStyledListRow, normalizeLastReadListRow, paintLastReadListRow, subjectOfListRow, readListRow } from './list_session';
 import { labelListCursor, pruneListToSegment, LIST_HEADER_ROWS } from './list_window';
 import { BRD_HEADER_ROWS, boardListRowNums } from './board_list_parse';
 import { BOARD_LIST, isArticleListTitleRow, rowHasTitle, parseBoardName } from './screen_titles';
@@ -39,6 +39,7 @@ import { keyEventPredatesModalClose } from './modal_key_gate';
 import icon128 from '../icon/icon_128.png';
 import { MOUSE_CURSOR_URLS } from './mouse_cursors';
 import { isAndroidApp, androidNotify } from './android_bridge';
+import { toolbarDiag, handoffState } from './toolbar_diag';
 
 const DEFINE_INPUT_BUFFER_SIZE = 12;
 
@@ -136,19 +137,6 @@ function blankRowLike(src) {
     row[i].resetAttr();
   }
   return row;
-}
-
-// Snapshot-clone a screen row (TermChar[]) for retention in buf.pageLines. The live
-// 24-row buffer is overwritten as PTT repaints, so accumulated rows must be copied.
-// A JSON clone would strip the TermChar PROTOTYPE methods (isStartOfURL / getColor /
-// getFg…) that <Row>/LinkSegmentBuilder call at render time — the easy-reading page
-// is now drawn through <Screen>, so those methods must survive. Copy each char's own
-// (primitive) data props onto a fresh object that keeps the same prototype: a real
-// content snapshot that is still a method-bearing TermChar.
-function cloneRow(row) {
-  return row.map(function(ch) {
-    return Object.assign(Object.create(Object.getPrototypeOf(ch)), ch);
-  });
 }
 
 // How many cells the SERVER's cursor mark covers on this row. Two generations
@@ -640,11 +628,19 @@ export function TermView() {
   });
 
   addEventListener('keydown', (e) => {
-    // A Back while a leave is on its way to PTT is queued (#34); the leave's
-    // own modal gate holds every other key.
+    // A Back while a leave is on its way to PTT reveals the next lower page at
+    // once, and PTT follows it (#125); the leave's own modal gate holds every
+    // other key.
     if (this.bbscore.articleGestures?.holdsInput() && isPlainBack(e)) {
       e.preventDefault();
-      this.bbscore.articleGestures.queueBack();
+      this.bbscore.articleGestures.backDuringHandoff();
+      return;
+    }
+    // A refresh key then refreshes a revealed list once PTT shows it (#124).
+    if (this.bbscore.articleGestures?.holdsInput() && isRefreshKeyEvent(e) &&
+        readEffectivePrefs().refreshKeyIntercept && this.bbscore.screenRefresh?.target()?.kind === 'revealed') {
+      e.preventDefault();
+      this.bbscore.screenRefresh.refresh('key');
       return;
     }
     if (!shouldAcceptInput() || belongsToClosedModal(e) || !keyEventFilter(e))
@@ -1523,7 +1519,16 @@ TermView.prototype = {
     var down = new KeyboardEvent('keydown', {
       key: keyName, ctrlKey: ctrl, altKey: alt, cancelable: true
     });
+    this._keyOutcome = null;
     this.onKeyDown(down);
+    // What became of a toolbar or keypad key, for debug recordings. A single
+    // character is named only when it is a toolbar key, never typed text.
+    toolbarDiag(this.bbscore, 'key', {
+      key: keyName.length > 1 || /^[yXph]$/.test(keyName) ? keyName : 'char', ctrl: ctrl, alt: alt,
+      outcome: this._keyOutcome || (down.defaultPrevented ? 'handled' : 'passed'),
+      ...handoffState(this.bbscore)
+    });
+    this._keyOutcome = null;
     // 單一字元（手機工具列的推文 X）：真鍵盤的字元是 keypress 送的
     // （term_keyboard._onKeyDown 對單字元 return false），合成的 keydown 沒有後續
     // keypress ⇒ 沒人接手（例如 pushKeyOpensLongPush 關掉時）就補走同一條 keypress。
@@ -1533,21 +1538,42 @@ TermView.prototype = {
   },
 
   onKeyDown: function(e) {
+    // A deleted source kept shown over its board list (#121): PTT already
+    // shows that list, so Back only removes the article and no key reaches PTT.
+    if (this.bbscore.articleGestures?.holdsGoneArticle()) {
+      this._keyOutcome = isPlainBack(e) ? 'leftGoneArticle' : 'droppedGoneArticle';
+      if (isPlainBack(e)) this.bbscore.articleGestures.leaveGoneArticle();
+      e.preventDefault();
+      return;
+    }
+    // Leaving a page for the page revealed under it (#28, #30): only that
+    // leave reaches PTT until the real page takes over. A Back reveals the
+    // next lower page at once (#125), whatever PTT is busy with meanwhile;
+    // other keys made on the revealed page are sent once it takes over
+    // (#119). Toolbar and keypad keys come through here, past the modal gate
+    // that holds the hardware keyboard.
+    var gestures = this.bbscore.articleGestures;
+    if (gestures?.holdsInput()) {
+      e.preventDefault();
+      if (isPlainBack(e)) {
+        this._keyOutcome = 'backDuringHandoff';
+        gestures.backDuringHandoff();
+      } else if (gestures.stack.handingOff && MODIFIER_KEY_NAMES.indexOf(e.key) < 0) {
+        this._keyOutcome = 'heldForHandoff';
+        gestures.holdKey(e.key, { ctrlKey: e.ctrlKey, altKey: e.altKey });
+      } else {
+        this._keyOutcome = gestures.stack.handingOff ? 'droppedModifier' : 'droppedBeforeHandoff';
+      }
+      return;
+    }
     // 序列化操作（AID 跳文／長推文）在途：程式化的鍵序列擁有這條線路，使用者的鍵
     // 會與它競態（typeahead，協定 §2）。吞掉並給提示——條件與提示文字四條入口共用，
     // 見 serialized_op_gate.js。
     var busyHint = serializedOpHint(this.bbscore);
     if (busyHint) {
       e.preventDefault();
+      this._keyOutcome = 'droppedBusy';
       this.flashListHint(busyHint);
-      return;
-    }
-    // Leaving an article for its revealed list (#28, #30): only that leave may
-    // reach PTT until the real list takes over. Toolbar keys come through here
-    // too, past the modal gate that holds the hardware keyboard.
-    if (this.bbscore.articleGestures?.holdsInput()) {
-      if (isPlainBack(e)) this.bbscore.articleGestures.queueBack();
-      e.preventDefault();
       return;
     }
     // 手機黏滯 Ctrl：下一個按鍵改送組合鍵（用一次就解除）。重新走 sendKeyAsUser ⇒
@@ -2945,6 +2971,19 @@ TermView.prototype = {
     // (easy_reading.nextEasyReadingRowState), so both agree on what "settled" means.
     var complete = this.buf.cur_y === this.buf.rows - 1 &&
                    this.buf.cur_x === this.buf.cols - 1;
+    // An article kept over PTT's edited copy (StackArticleLayer._adopt, #126):
+    // the shown rows are not what PTT's pager accumulated. The page PTT already
+    // accounted for adds nothing; any other page rebuilds from PTT's copy first.
+    var over = this._showsOverCopy;
+    if (over && this.buf.pageLines !== over.shown) over = this._showsOverCopy = null;
+    if (over && complete && result) {
+      if (statusSignature(result) === this._lastAccumulatedSig) {
+        this._mirrorStatusRowToFooter();
+        return;
+      }
+      this.buf.pageLines = over.copy;
+      this._showsOverCopy = null;
+    }
     var newRows = this.buf.lines.slice(0, -1); // drop the status row
     // Only the last `newRows.length` accumulated rows can overlap, so map just
     // the tail to text (keeps it O(screen), not O(article)).
@@ -3407,6 +3446,10 @@ TermView.prototype = {
         });
       }
     }
+    // Rows kept as the reader left them (holdListRows): PTT's landing page adds
+    // only the rows marked to retake, and any other page also adds the rows
+    // not shown yet (retakeListRow).
+    entries = this._heldOut('article', entries, rowTexts);
     // 合併前量「緩衝往哪端長」：evict 不砍剛長出來的那一端（evictListBuffer 註解）。
     var grewDir = listGrowthDir(this._listNumMap, entries);
     var prevRange = grewDir ? listNumRange(this._listNumMap) : null;
@@ -3455,9 +3498,7 @@ TermView.prototype = {
       var stalled = grewDir < 0 ? !(after.lo < prevRange.lo) : !(after.hi > prevRange.hi);
       if (stalled && ls.noteGrowthStalled) ls.noteGrowthStalled(grewDir);
     }
-    var flat = flattenListBuffer(this._listNumMap, this._listPinnedMap);
-    buf.listLines = flat.lines;
-    buf.listLineNums = flat.nums;
+    this._flattenList('article');
     // Cache the surrounding chrome for the window render off clean-list-shaped
     // live frames only (a jump response blanks the bottom row — protocol §4 ✚ —
     // and must not poison the footer cache).
@@ -3567,14 +3608,135 @@ TermView.prototype = {
     return this._listBlankRow;
   },
 
+  // Keep the accumulated rows of `list` ('article', the default, or 'board')
+  // as the reader left them: the list comes back from a page above as its
+  // live layer showed it (#120, #122). One hold per list buffer, released by
+  // releaseListRows (NavigationStack.spend) or a fresh accumulation. `landing`
+  // is PTT's page on that return (row texts), or null: it adds only the rows
+  // marked to retake, and other pages also add the rows not held yet.
+  holdListRows: function(landing, list) {
+    this._holdsByList()[list || 'article'] = {
+      landing: landing ? landing.join('\n') : null, retakeNums: new Set(), retakeKeys: new Set()
+    };
+  },
+
+  // The row of `num` (or of the pinned row `pinnedKey`) in `list` takes PTT's
+  // rendering while the rows are held: the reader's own in-place action, such
+  // as tagging (`t`), changed it on PTT (#125), or the list cannot tell
+  // whether it is an article just read (#128).
+  retakeListRow: function(num, pinnedKey, list) {
+    var hold = this._holdsByList()[list || 'article'];
+    if (!hold) return;
+    if (num != null) hold.retakeNums.add(num);
+    else if (pinnedKey != null) hold.retakeKeys.add(pinnedKey);
+  },
+
+  // Release the hold of `list`, or of both lists without one.
+  releaseListRows: function(list) {
+    if (list) this._holdsByList()[list] = null;
+    else this._holds = null;
+  },
+
+  holdsListRows: function(list) {
+    return !!this._holdsByList()[list || 'article'];
+  },
+
+  _holdsByList: function() {
+    return this._holds || (this._holds = { article: null, board: null });
+  },
+
+  // The page `entries` ({ num, key }) of `list` that may replace or add to
+  // its rows, as its hold allows (holdListRows).
+  _heldOut: function(list, entries, rowTexts) {
+    var hold = this._holdsByList()[list];
+    if (!hold) return entries;
+    var board = list === 'board';
+    var numMap = board ? this._brdNumMap : this._listNumMap;
+    var pinnedMap = board ? EMPTY_PINNED_MAP : this._listPinnedMap;
+    var landing = hold.landing != null && rowTexts.join('\n') === hold.landing;
+    return entries.filter(function(e) {
+      if (e.num != null ? hold.retakeNums.has(e.num) : hold.retakeKeys.has(e.key)) return true;
+      return !landing && !(e.num != null ? numMap.has(e.num) : pinnedMap.has(e.key));
+    });
+  },
+
+  // Show the kept row of article `num` (or of the pinned row `pinnedKey`) as
+  // read, as PTT lists it once it was read.
+  markListArticleRead: function(num, pinnedKey) {
+    return this._editListRow('article', num, pinnedKey, readListRow);
+  },
+
+  // Change the buffered row of board `num` with `edit(cells)`, which returns
+  // whether it changed them.
+  editBoardListRow: function(num, edit) {
+    return this._editListRow('board', num, null, function(row) {
+      var copy = cloneRow(row);
+      return edit(copy) ? copy : null;
+    });
+  },
+
+  // Replace the buffered row of `num` (or of the pinned row `pinnedKey`) in
+  // `list` with `edit(row)`, a changed copy or null. Rows are never changed
+  // in place: they are shared with frames already rendered, such as a live
+  // layer's.
+  _editListRow: function(list, num, pinnedKey, edit) {
+    var board = list === 'board';
+    var map = board ? this._brdNumMap : num != null ? this._listNumMap : this._listPinnedMap;
+    var key = num != null ? num : pinnedKey;
+    if (!map || key == null || !map.has(key)) return false;
+    var copy = edit(map.get(key));
+    if (!copy) return false;
+    map.set(key, copy);
+    this._flattenList(list);
+    return true;
+  },
+
+  // Flatten the buffer maps of `list` into the rows the session reads.
+  _flattenList: function(list) {
+    if (list === 'board') {
+      var brd = flattenListBuffer(this._brdNumMap, EMPTY_PINNED_MAP);
+      this.buf.brdListLines = brd.lines;
+      this.buf.brdListLineNums = brd.nums;
+      return;
+    }
+    var flat = flattenListBuffer(this._listNumMap, this._listPinnedMap);
+    this.buf.listLines = flat.lines;
+    this.buf.listLineNums = flat.nums;
+  },
+
   // Clear the list-accumulation maps (fresh board entry / board switch rebuild).
   resetListAccumulation: function() {
+    this._holdsByList().article = null;
     this._listNumMap = null;
     this._listPinnedMap = null;
     this._listHeaderRows = null;
     this._listFooterRow = null;
     this._listWindowLines = null;
     this._listBlankRow = null;
+  },
+
+  // The accumulated article list as it is now, for its live layer to give back
+  // (#127). The maps are copied; their rows are shared, since a stored row is
+  // never changed in place (accumulation and markListArticleRead replace it).
+  snapshotListBuffer: function() {
+    if (!this._listNumMap || !this._listHeaderRows || !this._listFooterRow) return null;
+    return {
+      numMap: new Map(this._listNumMap),
+      pinnedMap: new Map(this._listPinnedMap || []),
+      headerRows: this._listHeaderRows,
+      footerRow: this._listFooterRow
+    };
+  },
+
+  // Show the list of `snap` (snapshotListBuffer) again, whatever was
+  // accumulated since, such as search results that reused the session.
+  restoreListBuffer: function(snap) {
+    this.resetListAccumulation();
+    this._listNumMap = new Map(snap.numMap);
+    this._listPinnedMap = new Map(snap.pinnedMap);
+    this._listHeaderRows = snap.headerRows;
+    this._listFooterRow = snap.footerRow;
+    this._flattenList('article');
   },
 
   // ---- 看板列表（BoardListSession）的累積與視窗 -------------------------------
@@ -3599,8 +3761,10 @@ TermView.prototype = {
     for (var j = BRD_HEADER_ROWS; j <= buf.rows - 2; ++j)
       if (nums[j] != null) pageEntries.push({ num: nums[j] });
     var grewDir = listGrowthDir(this._brdNumMap, pageEntries);
+    // A list shown again from its live layer keeps the rows it showed (#122).
+    var taken = new Set(this._heldOut('board', pageEntries, rowTexts).map(function(e) { return e.num; }));
     for (var i = BRD_HEADER_ROWS; i <= buf.rows - 2; ++i) {
-      if (nums[i] == null) continue;
+      if (nums[i] == null || !taken.has(nums[i])) continue;
       var row = cloneRow(buf.lines[i]);
       // 把 `%7d` 序號欄由解析出的編號重寫一次：server 的游標 `>` 蓋著 cell 0，
       // 存進 map 的列必須長得跟乾淨的原生列一模一樣（游標由 render 端自己畫）。
@@ -3617,9 +3781,7 @@ TermView.prototype = {
     var ev = evictListBuffer(this._brdNumMap, bs ? bs.evictPivot() : null, MAX_LIST_ROWS, grewDir);
     if (bs && ev.evictedUp) bs.noteEvicted(-1);
     if (bs && ev.evictedDown) bs.noteEvicted(1);
-    var flat = flattenListBuffer(this._brdNumMap, EMPTY_PINNED_MAP);
-    buf.brdListLines = flat.lines;
-    buf.brdListLineNums = flat.nums;
+    this._flattenList('board');
     // 只在「長得像乾淨看板列表」的活幀更新 header/footer 快取：跳號回應會先把
     // 底列清成 prompt，污染快取就會讓視窗畫出半條 footer。
     if (
@@ -3688,6 +3850,7 @@ TermView.prototype = {
 
   // 進入／離開看板列表、或整份重建時清掉累積（BoardListSession._resetBuffer）。
   resetBoardListAccumulation: function() {
+    this._holdsByList().board = null;
     this._brdNumMap = null;
     this._brdHeaderRows = null;
     this._brdFooterRow = null;
@@ -3733,6 +3896,7 @@ TermView.prototype = {
     // article's first page-down (see accumulatePageLines / resolvePageOverlap).
     this._accEndRow = null;
     this._lastAccumulatedSig = null;
+    this._showsOverCopy = null;
     // 反向讀取的 head/tail 事實跟著累積頁一起丟（同 clearReverse('dropped')；這裡
     // 內聯是因為本函式也被當成獨立函式呼叫，見 easy_reading_overlay_reset.test.js）。
     if (this._reverse) {

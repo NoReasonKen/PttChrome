@@ -874,7 +874,7 @@ server 送的是編碼後的 ANSI，client 看不到 flag，只看得到結果�
 「設為全部已讀」（`src/js/mark_all_read.js`，右鍵選單／手機「更多」）走同一個 prompt 的 `v` 分支：
 `v` → 等 prompt → `v⏎` ⇒ `brc_toggle_all_read(currbid, 1)`。該分支**不看** `fhdr`，游標在哪一篇都一樣
 （仍需有一篇可當 needitem），所以不送游標同步以外的跳號；沒有拒絕路徑（不像 `w` 的 `vmsg`）。
-兩者在列表好讀時都是凍結交易、step 3 的 FULLUPDATE 落地即回好讀（`docs/easy-reading-list.md`「落地即回好讀」）：
+兩者在列表好讀時都是凍結交易、step 3 的 FULLUPDATE 落地即回好讀（`docs/easy-reading-list.md`「Resume on landing」）：
 step 2 的判定＝prompt 消失（打字回顯那一幀 prompt 還在）**或**出現 `vmsg` 拒絕句（`vmsg` 畫在底列，prompt 那一列還留著）。
 守護 `tests/unit/mark_all_read.test.js`。
 
@@ -1059,7 +1059,7 @@ underline** ⇒ reverse 更早就被攤平成 fg/bg 互換），所以擦除條�
 
 ## 11.6 Home / End 的原生語意（2026-09-05 全部 CONFIRMED）
 
-列表好讀的 Home/End 直通原生鍵（`docs/easy-reading-list.md`「導覽」）的依據。三個消費點各自對應
+列表好讀的 Home/End 直通原生鍵（`docs/easy-reading-list.md`「Home/End always go to the server」）的依據。三個消費點各自對應
 一份 source，改任何一邊前先回來對一次：
 
 | 畫面 | source | `KEY_HOME`（同義 `0`） | `KEY_END`（同義 `$`） |

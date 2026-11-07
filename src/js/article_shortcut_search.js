@@ -98,7 +98,7 @@ export class ArticleShortcutSearch {
     };
     this.pending = origin;
     const fast = this._fastKeystrokeRoute(origin);
-    core.articleGestures?.captureArticleLayer();
+    const layerPage = core.articleGestures?.captureArticleLayer();
     this._cover();
     // A failed forward search adds no origin; its source stays where it was.
     this._begin({ missing: stoppedAtBoardList, emptied: trail => reopenedAfterEmptySearch(trail, origin) });
@@ -114,6 +114,7 @@ export class ArticleShortcutSearch {
           return;
         }
         origin.aid = info.aid;
+        if (layerPage) core.articleGestures.stack.notePost(layerPage, info);
         if (fast && !meta.boxOpen) this._fastQuery(origin);
         else this._selectThenQuery(origin, meta.boxOpen, 'forward');
       }
@@ -277,7 +278,8 @@ export class ArticleShortcutSearch {
       clearSearchResultsContext(core);
       this.pending = null;
       this._begin({ missing: returnMissing });
-      this._reopen(step.origin, 'articleShortcutSearch_returned', returned);
+      // The source article shown again needs no notice.
+      this._reopen(step.origin, null, returned);
       return true;
     }
     const at = this.trail.at;
@@ -320,10 +322,12 @@ export class ArticleShortcutSearch {
     return boardList(facts, board) ? 'full' : null;
   }
 
+  // Reopens the source by its code, then shows `notice` if any. This is no
+  // resume after a disconnect: the notices are this search's own.
   _reopen(origin, notice, transition) {
     const bookmark = { ...origin.position, feature: 'article-shortcut-return' };
     if (!this.core.aidNavigation.startResume({
-      kind: 'article', board: origin.board, aid: origin.aid, bookmark
+      kind: 'article', board: origin.board, aid: origin.aid, bookmark, quiet: true
     }, result => {
       if (!result.ok) return this._stopMissing(origin);
       this.trail = transition(this.trail);
@@ -331,7 +335,7 @@ export class ArticleShortcutSearch {
       this._finish();
       this._uncover();
       this.core.articleGestures?.pagePresented(PAGE.ARTICLE);
-      this._hint(notice);
+      if (notice) this._hint(notice);
     })) this._fail();
   }
 
@@ -346,10 +350,15 @@ export class ArticleShortcutSearch {
 
   _stopMissing(origin) {
     const missing = this.op.missing;
+    // A revealed source stays shown, deleted, over the list (#121).
+    const stop = () => {
+      this._fail('articleShortcutSearch_missing', missing);
+      this.core.articleGestures?.sourceGone();
+    };
     // Leave the known message before handing control back, never press Enter
     // on the replacement selection.
-    if (this._missingPause(origin)) this._dismissToList(origin, () => this._fail('articleShortcutSearch_missing', missing));
-    else this._fail('articleShortcutSearch_missing', missing);
+    if (this._missingPause(origin)) this._dismissToList(origin, stop);
+    else stop();
   }
 
   // The source could not be selected, but its query can still run from the
@@ -373,6 +382,7 @@ export class ArticleShortcutSearch {
   _cover() {
     this._uncover();
     this.coverAppBar = this.core._screenContext?.appBar || null;
+    this.coverTitle = document.querySelector('#mobileAppBar .mobileAppBarTitle')?.textContent || '';
     this.cover = coverWithArticle(this.core.view);
     this.core._refreshScreenContext?.();
   }
@@ -394,9 +404,18 @@ export class ArticleShortcutSearch {
     this._uncoverTimer = setTimeout(() => this._uncover(), COVER_BOUND_MS);
   }
 
-  // The easy-reading list presented a page.
+  // The easy-reading list presented a page: the results slide in from the
+  // right over the cover, the way an opened page does (#36).
   listPresented() {
-    if (!this.active) this._uncover();
+    if (this.active) return;
+    const gestures = this.core.articleGestures;
+    if (!this.cover || !gestures) return this._uncover();
+    clearTimeout(this._uncoverTimer);
+    this._uncoverTimer = null;
+    const cover = this.cover;
+    this.cover = null;
+    this.core._refreshScreenContext?.();
+    gestures.slideInOver(cover, this.coverTitle, this.coverAppBar);
   }
 
   // While the cover is up, the toolbar and App Bar stay those of the article

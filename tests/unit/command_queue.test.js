@@ -558,4 +558,21 @@ describe("CommandQueue", () => {
       expect(onFlushed).toHaveBeenCalled();
     });
   });
+  // A settle that only carries screen data received before the command went
+  // out (a flushed command's late answer, held back by local repaints) is no
+  // answer to it: the aid board jump once took the search results its Back
+  // left for the board it asked for, and sent PTT a stray ←.
+  test("a settle of data received before the send never answers the command", () => {
+    const sent = [];
+    let writes = 4;
+    const q = new CommandQueue({ send: k => sent.push(k), serverWrites: () => writes });
+    const done = vi.fn();
+    q.enqueue(cmd("A", { onDone: done }));
+    expect(q.onSettle({ serverWrites: 4 }, { __result: true })).toBeFalsy();
+    expect(done).not.toHaveBeenCalled();
+    expect(q.inFlightKind).toBe("test");
+    writes = 5;
+    expect(q.onSettle({ serverWrites: 5 }, { __result: true })).toBe("done");
+    expect(done).toHaveBeenCalled();
+  });
 });

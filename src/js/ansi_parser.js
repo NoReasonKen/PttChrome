@@ -78,6 +78,8 @@ AnsiParser.prototype.feed = function(data) {
   var term = this.termbuf;
   if (!term)
     return;
+  // Server data, as opposed to local repaints (see TermBuf.serverWrites).
+  term.serverWrites = (term.serverWrites || 0) + 1;
   var s = '';
   var n = data.length;
   for (var i = 0; i < n; ++i) {

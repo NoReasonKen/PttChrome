@@ -92,6 +92,14 @@ DeepLinkController.prototype = {
     return this._resolveCurrentPost({ share: true, title: title || '' });
   },
 
+  // The same share for a post already known (board and AID), such as an
+  // article revealed before PTT shows it again: nothing is asked of PTT, so
+  // the tap's user activation still holds. Same synchronous rule.
+  sharePostLink: function(post, title) {
+    this._deliverLink(post, { share: true, title: title || '' });
+    return true;
+  },
+
   _resolveCurrentPost: function(deliverOpts) {
     const nav = this._core.aidNavigation;
     if (!nav || nav.active || this._core.connectState !== 1) return false;

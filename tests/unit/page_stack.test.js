@@ -1,6 +1,6 @@
 import {
   createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, HANDOFF_IDLE_MS, HANDOFF_TIMEOUT_MS, HANDOFF_REACH_POLL_MS,
-  queueBack, takeQueuedBack, dropQueuedBacks, boundLayers, LIVE_LAYER_BOUND, pageShown
+  backPastRevealed, spendsLayer, boundLayers, LIVE_LAYER_BOUND, pageShown
 } from '../../src/js/page_stack';
 
 const list = (board, extra) => ({ kind: 'articleList', board, layer: true, ...extra });
@@ -70,28 +70,45 @@ const homeListArticle = () => {
   return pushPage(stack, article('C_Chat'), { fromBelow: true });
 };
 
-describe('Back during a handoff', () => {
-  test('is queued once for each page below the revealed one, and runs once after the swap', () => {
-    let stack = homeListArticle();
-    // Leaving the article reveals the list; only the dashboard is below it.
-    stack = queueBack(queueBack(queueBack(stack)));
-    const swapped = popPage(stack).stack;
-    const next = takeQueuedBack(swapped);
-    expect(next.back).toBe(true);
-    expect(takeQueuedBack(next.stack).back).toBe(false);
+// Rapid Backs (#125): a Back made while PTT still answers an earlier one
+// reveals the next lower page at once; there is no queue of Backs waiting for
+// each swap, since PTT follows the Backs in order.
+describe('Back while PTT still answers an earlier Back', () => {
+  test('reveals the page below the revealed one at once, and the revealed page\'s layer is spent', () => {
+    const next = backPastRevealed(homeListArticle());
+    expect(next.revealed).toMatchObject({ kind: 'home', board: 'C_Chat' });
+    expect(next.stack.pages.map(page => [page.kind, !!page.layer])).toEqual([['home', true], ['articleList', false]]);
+    // The swap that ends the Backs pops the page PTT left last.
+    expect(popPage(next.stack).stack.pages.map(page => page.kind)).toEqual(['home']);
   });
 
-  test('is not queued when nothing is below the revealed page', () => {
+  test('a third quick Back has nothing below the bottom page to reveal', () => {
+    expect(backPastRevealed(backPastRevealed(homeListArticle()).stack)).toBeNull();
+  });
+
+  test('a page below without a live layer is followed to without a reveal', () => {
+    const { stack } = boundLayers(homeListArticle(), 1);
+    const next = backPastRevealed(stack);
+    expect(next.revealed).toBeNull();
+    expect(next.stack.pages.map(page => page.kind)).toEqual(['home', 'articleList']);
+  });
+
+  test('a revealed stack base has nothing below to follow to', () => {
     let stack = withLayer(pushPage(createPageStack(), list('C_Chat')));
     stack = pushPage(stack, article('C_Chat'), { fromBelow: true });
-    const swapped = popPage(queueBack(stack)).stack;
-    expect(takeQueuedBack(swapped).back).toBe(false);
+    expect(backPastRevealed(stack)).toBeNull();
+  });
+});
+
+// Which actions spend the live layer of the page shown from it (#119, #125):
+// asking PTT for the page's data anew does; using the page as it is does not.
+describe('a page shown from its live layer', () => {
+  test.each(['refresh', 'markRead', 'jumpBeyondRows', 'nativePassthrough'])('is spent by %s', action => {
+    expect(spendsLayer(action)).toBe(true);
   });
 
-  test('is dropped when the handoff breaks or another page is entered', () => {
-    const queued = queueBack(homeListArticle());
-    expect(takeQueuedBack(popPage(dropQueuedBacks(queued)).stack).back).toBe(false);
-    expect(takeQueuedBack(pushPage(queued, list('Gossiping'))).back).toBe(false);
+  test.each(['loadMoreRows', 'openEntry', 'inPlaceKey'])('is not spent by %s', action => {
+    expect(spendsLayer(action)).toBe(false);
   });
 });
 

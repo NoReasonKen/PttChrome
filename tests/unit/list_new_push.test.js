@@ -1,4 +1,4 @@
-// 文章列表的「+N」（src/js/new_comments.js#listNewPush、docs/new-comments.md「列表的 +N」）：
+// 文章列表的「+N」（src/js/new_comments.js#listNewPush、docs/new-comments.md「+N on the article list」）：
 // 讀完時記下推噓分＋作者＋主題，列表上推文數欄是精確數字、作者＋主題對得上唯一一筆紀錄時，
 // 顯示多出來的分數。一個 byte 都不送。
 const prefOverride = vi.hoisted(() => ({}));

@@ -124,7 +124,7 @@ export function toolbarContextFromFacts(facts, pageState, opts) {
 }
 
 export function mobileToolbarContext(core) {
-  // A revealed lower page is not usable for actions until it takes over.
+  // A page revealed during a handoff, until its real page takes over.
   const revealed = core && core.articleGestures && core.articleGestures.toolbarContext();
   if (revealed) return revealed;
   // A far thread jump keeps its source article on screen until it lands, so
@@ -151,7 +151,8 @@ export function mobileToolbarContext(core) {
 }
 
 const FLAGS = [
-  'push', 'reply', 'mail', 'share', 'threadNav', 'post', 'unreadJump', 'markAllRead', 'help', 'contentTools', 'refresh', 'end'
+  'push', 'reply', 'mail', 'share', 'threadNav', 'post', 'unreadJump', 'markAllRead', 'help', 'contentTools', 'refresh', 'end',
+  'locked'
 ];
 
 export function sameToolbarContext(a, b) {

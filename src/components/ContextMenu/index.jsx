@@ -97,6 +97,7 @@ import {
   setMenuTargetHighlight,
 } from "../../js/menu_target_highlight";
 import { menuAnchorRect } from "../../js/sheet_placement";
+import { realEntryRow } from "../../js/stack_list_layer";
 
 function noop() {}
 
@@ -197,6 +198,25 @@ const menuHandlerByEventKey = {
   uploadHistory: (pttchrome) => pttchrome.imageUpload.openPanel(),
 };
 
+// Menu actions on an entry of a list shown again from its live layer (#124).
+// They act through PTT or on the list, so they wait until PTT shows the real
+// list, then act on the same entry there, found by identity. Other items, such
+// as copying, do not need PTT and run at once.
+const layerEntryHandlerByEventKey = {
+  addAuthorBlacklist: menuHandlerByEventKey.addAuthorBlacklist,
+  markReadUnread: (pttchrome, { layerEntry }) => {
+    const row = realEntryRow(pttchrome, layerEntry);
+    const target =
+      row != null && pttchrome.listSession.markReadTargetAtRow(row);
+    if (target) pttchrome.listSession.markReadUnreadBefore(target.num);
+  },
+  boardMarkRead: (pttchrome, { layerEntry }) => {
+    const row = realEntryRow(pttchrome, layerEntry);
+    const target = row != null && pttchrome.boardMarkRead.targetAtRow(row);
+    if (target) pttchrome.boardMarkRead.start(target);
+  },
+};
+
 const initialState = {
   // --- Menu state ---
   open: false,
@@ -230,6 +250,9 @@ const initialState = {
   markAllReadEnabled: false,
   // 看板列表右鍵那一列的看板（{ num, name } / null），boardMarkRead.targetAtRow。
   boardMarkReadTarget: null,
+  // The live layer's entry the menu was opened on (#124; NavigationStack
+  // layerEntryAt), or null when it was opened on the screen PTT shows.
+  layerEntry: null,
   // 選單作用的那篇文章（列表列／手機卡片；js/menu_target_highlight.js）。選單開著
   // 時在畫面上標出來，避免對錯的文章操作。null ＝ 不是在文章列上開的。
   menuTarget: null,
@@ -277,6 +300,9 @@ const initialState = {
   showsSearch: false,
   searchKind: "title",
   searchKinds: [],
+  // Opened on a page revealed during a handoff (#119): the search waits for
+  // the real page, and the board kind opens no native prompt meanwhile.
+  searchHeld: false,
   // 沒寫看板的 #AID（js/aid_board_choice.js）：aidChoice＝二選一彈窗 { aid, currentBoard }；
   // 選「指定看板」後搜尋彈窗以看板種類開啟，searchAidTarget＝{ aid } 讓它只挑板名。
   aidChoice: null,
@@ -572,6 +598,13 @@ export const ContextMenu = ({ pttchrome }) => {
       const pos = normalEnabled
         ? pttchrome.clientToPos(event.clientX, event.clientY)
         : null;
+      // A list shown again from its live layer while PTT has not caught up
+      // (#124): the menu acts on the layer's card, not on the screen PTT
+      // still shows below it.
+      const layerEntry =
+        (normalEnabled &&
+          pttchrome.articleGestures?.stack?.layerEntryAt?.(target)) ||
+        null;
       let blacklistAuthorTarget = null;
       let blacklistAuthorExists = false;
       let blacklistTitleTarget = null;
@@ -597,7 +630,7 @@ export const ContextMenu = ({ pttchrome }) => {
         } else {
           // 手機卡片（view.listCards）：整張卡片＝同一組，作者與標題一起給
           // （context_menu_items.listBlacklistTargets）；桌機看 col 落在哪一欄。
-          const cards = !!pttchrome.view.listCards;
+          const cards = !!layerEntry || !!pttchrome.view.listCards;
           const t = listBlacklistTargets({
             cards,
             region: cards ? null : listColRegion(col),
@@ -627,11 +660,13 @@ export const ContextMenu = ({ pttchrome }) => {
 
       // 「前已讀後未讀」（列表好讀）：只要列號，可行與否由 listSession 判定
       // ——它一併擋掉非 active／非 buffer、header 列、空白列與置底文。
-      const markReadTarget =
-        (normalEnabled &&
-          pttchrome.listSession &&
-          pttchrome.listSession.markReadTargetAtRow(pos.row)) ||
-        null;
+      const markReadTarget = layerEntry
+        ? layerEntry.markRead || null
+        : (normalEnabled &&
+            pttchrome.listSession &&
+            pttchrome.listSession.markReadTargetAtRow(pos.row)) ||
+          null;
+      const onScreen = !layerEntry;
 
       update({
         open: true,
@@ -652,12 +687,15 @@ export const ContextMenu = ({ pttchrome }) => {
         blacklistTitleTarget,
         replyCommentTarget,
         markReadTarget,
-        boardMarkReadTarget:
-          (normalEnabled &&
-            pttchrome.boardMarkRead &&
-            pttchrome.boardMarkRead.targetAtRow(pos.row)) ||
-          null,
+        boardMarkReadTarget: layerEntry
+          ? layerEntry.boardMarkRead || null
+          : (normalEnabled &&
+              pttchrome.boardMarkRead &&
+              pttchrome.boardMarkRead.targetAtRow(pos.row)) ||
+            null,
+        layerEntry,
         markAllReadEnabled:
+          onScreen &&
           !!normalEnabled &&
           !!pttchrome.markAllRead &&
           pttchrome.markAllRead.available(),
@@ -670,7 +708,7 @@ export const ContextMenu = ({ pttchrome }) => {
         externalSearchQuery,
         // 「複製本篇連結」只在文章畫面有意義（要按 Q 問文章資訊框）。pageState 3
         // = READING，與 term_view 判「可切回好讀模式」用的是同一個值。
-        articleLinkEnabled: pttchrome.buf.pageState === 3,
+        articleLinkEnabled: onScreen && pttchrome.buf.pageState === 3,
         // 圖片上傳與兩個小幫手的選項各自跟著自己的開關走（同樣是現讀）。
         imageUploadEnabled: !!prefs.enableImageUpload,
         inputHelperEnabled: !!prefs.enableInputHelper,
@@ -678,11 +716,13 @@ export const ContextMenu = ({ pttchrome }) => {
         // 長推文要真的按得到 X。判準與「攔截推文鍵」共用**同一個**函式，兩處不可能
         // 分歧（見 long_push_gate.js；push_screen 的分歧是前車之鑑）。攔截那邊多一
         // 道 atPagerStatusRow 是刻意的不對稱：吞掉按鍵比多畫一個選單項嚴重。
-        longPushEnabled: longPushAvailable({
-          prefs,
-          pageState: pttchrome.buf.pageState,
-          lastRowText,
-        }),
+        longPushEnabled:
+          onScreen &&
+          longPushAvailable({
+            prefs,
+            pageState: pttchrome.buf.pageState,
+            lastRowText,
+          }),
         commandPaletteEnabled: !!prefs.enableCommandPalette,
         commandPaletteKey: prefs.commandPaletteKey || "",
       });
@@ -716,6 +756,7 @@ export const ContextMenu = ({ pttchrome }) => {
         markReadTarget: null,
         markAllReadEnabled: false,
         boardMarkReadTarget: null,
+        layerEntry: null,
         menuTarget: null,
         menuAnchor: null,
         externalSearchItems: [],
@@ -735,7 +776,13 @@ export const ContextMenu = ({ pttchrome }) => {
 
   const onMenuSelect = useCallback(
     (eventKey, event) => {
-      menuHandlerByEventKey[eventKey](pttchrome, stateRef.current);
+      const state = stateRef.current;
+      const onLayer = state.layerEntry && layerEntryHandlerByEventKey[eventKey];
+      if (onLayer)
+        pttchrome.articleGestures.stack.whenReady(() =>
+          onLayer(pttchrome, state),
+        );
+      else menuHandlerByEventKey[eventKey](pttchrome, state);
       event.stopPropagation();
       pttchrome.contextMenuShown = false;
       update(initialState);
@@ -849,6 +896,15 @@ export const ContextMenu = ({ pttchrome }) => {
       const body = String(text || "");
       if (!body.trim()) return false;
       writeDraft(body);
+      // An article shown from its live layer (#121): nothing is sent when the
+      // source cannot be confirmed. Before PTT takes over, the comment is
+      // remembered and sent once it does (the last one wins); on a timeout, a
+      // notice says it was not sent.
+      const held = pttchrome.articleGestures?.stack?.holdComment?.(() =>
+        pttchrome.openQuickPush({ text: body, type }),
+      );
+      if (held === "refused") return false;
+      if (held === "held") return true;
       const session = pttchrome.longPush;
       if (session && session.startPreflight)
         quickPushRef.current = { text: body, type: type || "push" };
@@ -1036,6 +1092,7 @@ export const ContextMenu = ({ pttchrome }) => {
   // 替 #AID 挑看板時（searchAidTarget）：取消＝原生 `s` 取消落在文章列表 ⇒ 重開原文、
   // 閱讀紀錄還原原列（aid_navigation.reopenPicked）。
   const pickTarget = state.searchAidTarget;
+  const searchHeld = state.searchHeld;
   const createBoardSearch = useCallback(
     (onUpdate) => {
       if (!pickTarget) return new BoardSearchBridge(pttchrome, onUpdate);
@@ -1090,10 +1147,16 @@ export const ContextMenu = ({ pttchrome }) => {
       };
       // 背景的看板 prompt 已經開著：直接在上面送出。開不出來／已丟失才走一般兩步。
       if (bridge && bridge.submit(value, cb)) return;
-      const sent = submitSearch(pttchrome, kind, value, cb);
-      if (!sent) hint(serializedOpHint(pttchrome) || i18n("searchModal_busy"));
+      const submit = () => {
+        const sent = submitSearch(pttchrome, kind, value, cb);
+        if (!sent)
+          hint(serializedOpHint(pttchrome) || i18n("searchModal_busy"));
+      };
+      const stack = pttchrome.articleGestures?.stack;
+      if (searchHeld && stack?.handingOff) stack.whenReady(submit);
+      else submit();
     },
-    [pttchrome, update],
+    [pttchrome, update, searchHeld],
   );
 
   // 指令面板挑了一項：每一類都接到既有入口（送鍵、閱讀紀錄、忙碌提示由它們負責）。
@@ -1187,14 +1250,24 @@ export const ContextMenu = ({ pttchrome }) => {
 
   // 手機底部工具列（MobileToolbar）的兩個入口：與鍵盤／右鍵選單同一個實作。
   const onToolbarSearch = useCallback(
-    (kind) => {
+    (kind, revealed) => {
+      if (revealed) {
+        update({
+          ...initialState,
+          showsSearch: true,
+          searchKind: kind,
+          searchKinds: revealed.kinds,
+          searchHeld: true,
+        });
+        return;
+      }
       if (!openSearch(kind))
         pttchrome.view?.flashListHint?.(
           serializedOpHint(pttchrome) || i18n("searchModal_busy"),
           3000,
         );
     },
-    [pttchrome, openSearch],
+    [pttchrome, openSearch, update],
   );
   const onToolbarSettings = useCallback(() => {
     pttchrome.onDisableLiveHelperModalState();
@@ -1395,6 +1468,7 @@ export const ContextMenu = ({ pttchrome }) => {
     markReadTarget,
     markAllReadEnabled,
     boardMarkReadTarget,
+    layerEntry,
     replyCommentTarget,
     articleLinkEnabled,
     contextArticle,
@@ -1443,6 +1517,7 @@ export const ContextMenu = ({ pttchrome }) => {
         pageY={pageY}
         urlEnabled={urlEnabled}
         normalEnabled={normalEnabled}
+        pasteEnabled={!layerEntry}
         selEnabled={selEnabled}
         externalSearchItems={externalSearchItems}
         externalSearchQuery={externalSearchQuery}
@@ -1527,7 +1602,7 @@ export const ContextMenu = ({ pttchrome }) => {
           kinds={searchKinds}
           onHide={onSearchHide}
           onConfirm={onSearchConfirm}
-          createBoardSearch={createBoardSearch}
+          createBoardSearch={searchHeld ? null : createBoardSearch}
           aidTarget={searchAidTarget}
           mobile={mobile}
           pttchrome={pttchrome}

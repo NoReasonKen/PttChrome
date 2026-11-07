@@ -31,7 +31,7 @@
 - `<編號>⏎`：`read.c#read_cmd_num` → `stuff.c#search_num`（「跳至第幾項」），不受「目標在不在這頁」影響。
 - 序列**邊走邊長**：每讀完一頁才 push 下一步；送出路徑是 `article_search.submitSerializedSteps`
   （列表好讀時走 list_session 的凍結交易、原生時走 CommandQueue），兩條都在第 i 步 onDone 之後才讀第 i+1 步。
-- 列表好讀時是**落地即回好讀**（`resumeOnLanding`，`docs/easy-reading-list.md` 同名節）：翻頁過程不畫給使用者看，
+- 列表好讀時是**落地即回好讀**（`resumeOnLanding`，`docs/easy-reading-list.md`「Resume on landing」）：翻頁過程不畫給使用者看，
   跳號落地那一幀直接回好讀，不切原生、不等靜置探針。End（`endLanded`）與跳號（`numJumpLanded`）的指紋自證游標；
   PgUp（`pageLanded`）不能 ⇒ 標 `trustLanding:false`，翻到上限放棄時照舊停原生交給探針。
 - 每一步都補 `\f`（`fullRepaint`）：PgUp 已在第一頁、跳號目標就是游標列時 PTT 送零 byte，沒有 settle 只能等逾時。

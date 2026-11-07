@@ -99,8 +99,11 @@ export class StackHomeLayer {
     if (!home.openBoard(id.board) && home.state.fetching) core.view.flashListHint?.(i18n('home_updating'), STACK_NOTICE_MS);
   }
 
+  // Unmounted once the current task's code has run: React refuses to unmount
+  // a root while it renders, and a layer may go from a layout effect.
   destroy() {
     this.hide();
-    this.reactRoot.unmount();
+    const root = this.reactRoot;
+    queueMicrotask(() => root.unmount());
   }
 }

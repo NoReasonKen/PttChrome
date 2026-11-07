@@ -1,6 +1,6 @@
 // 列表好讀模式下，滑鼠點畫面上的功能鍵按鈕（`[←]回上層` / `[→]閱讀` / `[c]新文章`）。
 //
-// 合約（v5 封閉互動，docs/easy-reading-list.md §操作分類）：白名單以外的鍵＝一鍵切
+// 合約（v5 封閉互動，docs/easy-reading-list.md §Operation classes）：白名單以外的鍵＝一鍵切
 // 原生，**永不靜默**。滑鼠點功能鍵語意上完全等同按下那個鍵，所以必須走同一條路 ——
 // 直送 byte 會讓它落在使用者看不見的畫面上，而且繞過 CommandQueue。
 import { ListSession } from "../../src/js/list_session";

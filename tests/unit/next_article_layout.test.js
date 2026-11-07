@@ -1,5 +1,5 @@
 // @unit-env browser
-// 「下一篇」標題卡的位置（src/js/next_article.js、docs/next-article.md「卡片的位置」），真版面＋
+// 「下一篇」標題卡的位置（src/js/next_article.js、docs/next-article.md「The card's position」），真版面＋
 // main.css 真樣式：
 //   1. 推文很少的文章：PTT 畫面把文章後面剩下的列畫成空白，卡片要往上蓋住這段空白，不用捲就
 //      看得到（28 列內容＋10 列空白，卡片排在空白後面要捲）；

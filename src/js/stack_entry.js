@@ -3,7 +3,7 @@
 // and shows only the loading state until PTT answers. A failed open slides it
 // back out over that page.
 import { HANDOFF_TIMEOUT_MS } from './page_stack';
-import { createUnderlay, holdSurfaces, releaseSurfaces, paintSurfaces, slideDuration } from './stack_motion';
+import { createUnderlay, holdSurfaces, releaseSurfaces, paintSurfaces, slideDuration, freezeScroll } from './stack_motion';
 
 // The loading state's owner while a page slides in.
 const LOADING_OWNER = 'stackEntry';
@@ -24,6 +24,8 @@ export class StackEntry {
     this.underlay = createUnderlay(core, from.layer, from.title, from.appBar);
     this.underlay.setAttribute('data-stack-entry-underlay', '');
     this.surfaces = holdSurfaces(core);
+    // The screen still holds the page opened from, and any fling on it.
+    freezeScroll(core.view.mainDisplay);
     for (const { node } of this.surfaces) node.classList.add('stackEntryLoading');
     core.view.setListLoading?.(true, LOADING_OWNER);
     paintSurfaces(this.surfaces, window.innerWidth);

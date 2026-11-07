@@ -37,6 +37,7 @@ import { serializedOpHint } from './serialized_op_gate';
 import { readValuesWithDefault } from './pref_storage';
 import { HINT_ERROR } from './status_hint';
 import { recordFor } from './reading_record';
+import { toolbarDiag } from './toolbar_diag';
 
 export const DEFAULT_REFRESH_MIN_INTERVAL_SEC = 5;
 
@@ -217,6 +218,8 @@ ScreenRefresh.prototype = {
   target: function() {
     const core = this._core;
     if (!core.conn || !core.conn.isConnected) return null;
+    // A page revealed from its live layer before PTT has caught up (#124).
+    if (core.articleGestures?.stack?.refreshesRevealed?.()) return { kind: 'revealed' };
     return refreshTargetOf(core);
   },
 
@@ -244,21 +247,42 @@ ScreenRefresh.prototype = {
   refresh: function(source) {
     const core = this._core;
     const target = this.target();
+    const diag = function(outcome) {
+      toolbarDiag(core, 'refresh', { source: source || null, kind: target ? target.kind : null, outcome: outcome });
+    };
     if (!target) {
+      diag('unsupported');
       if (source !== 'key') this._hint('這個畫面不支援重新整理');
       return false;
     }
+    // It is refreshed once PTT shows it, through this same path.
+    if (target.kind === 'revealed') {
+      const self = this;
+      diag(core.articleGestures.stack.refreshWhenReady(function() {
+        self.refresh(source);
+      }) ? 'remembered' : 'dropped');
+      return true;
+    }
     const busy = serializedOpHint(core);
     if (busy) {
+      diag('droppedBusy');
       this._hint(busy);
       return true;
     }
     const left = this.cooldownLeftMs();
     if (left > 0) {
+      diag('droppedCooldown');
       this._hint('請稍候 ' + Math.ceil(left / 1000) + ' 秒再重新整理');
       return true;
     }
-    if (this._dispatch(target)) {
+    const dispatched = this._dispatch(target);
+    diag(dispatched ? 'dispatched' : 'notDispatched');
+    if (dispatched) {
+      // A refresh replaces a list's content with PTT's current data: the live
+      // layer it was shown from is spent (#125). The home dashboard keeps
+      // sharing its state with its layer.
+      if (target.kind === 'article-list' || target.kind === 'board-list')
+        core.articleGestures?.stack?.spend('refresh', target.kind === 'board-list' ? 'board' : 'article');
       this._lastAt = this._now();
       const next = this.cooldownLeftMs();
       this._listeners.forEach(function(fn) {

@@ -1302,3 +1302,35 @@ export function subjectOfListText(text) {
   t = t.trim();
   return t || null;
 }
+
+// Snapshot-clone a screen row (TermChar[]) for retention in buf.pageLines. The live
+// 24-row buffer is overwritten as PTT repaints, so accumulated rows must be copied.
+// A JSON clone would strip the TermChar PROTOTYPE methods (isStartOfURL / getColor /
+// getFg…) that <Row>/LinkSegmentBuilder call at render time — the easy-reading page
+// is now drawn through <Screen>, so those methods must survive. Copy each char's own
+// (primitive) data props onto a fresh object that keeps the same prototype: a real
+// content snapshot that is still a method-bearing TermChar.
+export function cloneRow(row) {
+  return row.map(function(ch) {
+    return Object.assign(Object.create(Object.getPrototypeOf(ch)), ch);
+  });
+}
+
+
+// An article row's read-mark cell (pttbbs bbs.c#readdoent's type character)
+// once the reader has read it: unread `+`, updated `~`, unread marked `M`,
+// updated marked `=`, unread digest `#` and unread solved `S` turn read.
+// readdoent prints the type in default colours, except a gray `+`.
+const LIST_MARK_COL = 8;
+const READ_LIST_MARK = { '+': ' ', '~': ' ', '#': '*', M: 'm', '=': 'm', S: 's' };
+
+// A copy of `row` (TermChar[]) as PTT lists it once read, or null when it
+// already reads as read. Stored rows are never changed in place.
+export function readListRow(row) {
+  const cell = row && row[LIST_MARK_COL];
+  const read = cell && READ_LIST_MARK[cell.ch];
+  if (read == null || cell.isLeadByte) return null;
+  const copy = cloneRow(row);
+  Object.assign(copy[LIST_MARK_COL], { ch: read, fg: 7, bg: 0, bright: false });
+  return copy;
+}

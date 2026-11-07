@@ -161,12 +161,16 @@ const NESTED_ARTICLES = [
 // `alphaLines`: Alpha runs that many lines, over several PTT pages.
 // `urls`: articles end with their URL line, so the app knows an article's
 //   AID without asking PTT.
-async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false, legacyCaptions = false, extraArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false } = {}) {
+// `images`: short articles show an image link near their top, previewed inline.
+// `ptList`: screens behave as PTT's do where the default server simplifies: a
+//   list's footer names its keys, (y)回應 among them, `s<board>` from a list
+//   lands on the board's full list, and the main menu has its title bar.
+async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false, legacyCaptions = false, extraArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false, images = false, ptList = false } = {}) {
   await bootGestureArticle(page, { resumeLastPlace });
   // The image-article boot disables the easy-reading list; the reader's
   // default enables it before any list from this server is seen.
   if (easyList) await ptt.applyPrefs(page, { enableEasyReadingList: true });
-  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article', legacyCaptions, extraArticles, homeMenu, dynamicRows, pinned, alphaLines, urls });
+  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article', legacyCaptions, extraArticles, homeMenu, dynamicRows, pinned, alphaLines, urls, images, ptList });
   if (loggedIn) {
     await waitScreenSettled(page, { 0: '主功能表' });
     await page.evaluate(() => {
@@ -235,7 +239,7 @@ async function installNestedServer(page, session) {
       return data + `\x1b[${Math.min(screen.cursor[0], state.terminalRows)};${screen.cursor[1]}H`;
     };
     // Long rows wrap on a phone, so the article scrolls and has a position.
-    const bodyLine = (article, row) => `${article.body} line ${String(row).padStart(2, '0')}: ` + 'reading text '.repeat(5);
+    const bodyLine = (article, row) => (`${article.body} line ${String(row).padStart(2, '0')}: ` + 'reading text '.repeat(5)).slice(0, 80);
     const articleRows = (article, termRows) => {
       if (article.lines) return longArticleRows(article, termRows);
       const rows = {
@@ -246,20 +250,25 @@ async function installNestedServer(page, session) {
           (state.squeezedFooter ? '(h)說明 (←/q)離開 ' : '(y)回應(X%)推文(h)說明(←)離開 ')
       };
       for (let row = 4; row < Math.min(22, termRows - 1); row++) rows[row] = bodyLine(article, row);
+      if (session.images) rows[5] = `https://i.urusai.cc/viewer-${article.body.toLowerCase()}.png`;
       if (session.urls && article.fn) rows[Math.min(21, termRows - 2)] = `※ 文章網址: https://www.ptt.cc/bbs/Test/${article.fn}.html`;
       return rows;
     };
     // `lines`: an article that long, its header on the first page, paged a
-    // screen at a time from `state.line`.
+    // screen at a time from `state.line`. `text`: lines by number that read
+    // otherwise, such as its sign-off and comments.
     const longArticleRows = (article, termRows) => {
       const page = termRows - 1;
       const end = Math.min(article.lines, state.line + page - 1);
-      const line = n => n === 1 ? `作者  ${article.author} (${article.author}) 看板 Test`
+      const line = n => article.text?.[n] != null ? article.text[n]
+        : n === 1 ? `作者  ${article.author} (${article.author}) 看板 Test`
         : n === 2 ? '標題  ' + article.title : n === 3 ? '時間  Mon Sep  1 12:00:00 2025'
           : n === 4 ? '' : bodyLine(article, n - 1);
       const rows = {
         [termRows - 1]: `  瀏覽 第 ${Math.ceil(end / page)}/${Math.ceil(article.lines / page)} 頁 (${Math.floor(end * 100 / article.lines)}%)  ` +
-          `目前顯示: 第 ${String(state.line).padStart(2, '0')}~${end} 行  (y)回應(X%)推文(h)說明(←)離開 `
+          `目前顯示: 第 ${String(state.line).padStart(2, '0')}~${end} 行  ` +
+          // Past line 99 the full hints no longer fit the row.
+          (state.line < 100 ? '(y)回應(X%)推文(h)說明(←)離開 ' : '(y)回應(h)說明(←)離開 ')
       };
       for (let n = state.line; n <= end; n++) rows[n - state.line] = line(n);
       return rows;
@@ -273,6 +282,8 @@ async function installNestedServer(page, session) {
       } else if (state.surface === 'main') {
         rows = { 0: '【主功能表】', 3: '  (B)oard 看板列表', [termRows - 1]: '我是測試主選單' };
         if (session.homeMenu) rows[4] = '  (F)avorite 我 的 最愛';
+        // PTT's menu title fills its row, as the app's menu screen expects.
+        if (session.ptList) inverse = [0];
         cursor = [4, 1];
       } else if (state.surface === 'boardPrompt') {
         // CompleteBoard asks on row two; cancellation preserves this list.
@@ -285,7 +296,8 @@ async function installNestedServer(page, session) {
           1: '[←]離開 [→]閱讀 [^P]發表文章 [b]備忘錄',
           2: '  編號    日 期 作  者       文  章  標  題',
           [termRows - 1]: session.legacyCaptions ? ' 文章選讀 [←]離開 [→]閱讀'
-            : state.filter ? ' 系列文章  [←]離開 [→]閱讀' : ' 文章列表  [←]離開 [→]閱讀'
+            : (state.filter ? ' 系列文章 ' : ' 文章列表 ') +
+              (session.ptList ? ' (^P)發表 (y)回應 (X)推文 (→)閱讀 (←)離開' : ' [←]離開 [→]閱讀')
         };
         inverse = [0, 2];
         const start = Math.max(0, Math.min(state.cursor - Math.floor(bodyRows / 2), entries.length - bodyRows));
@@ -388,6 +400,13 @@ async function installNestedServer(page, session) {
       }
       const nav = ['\x1b[1~', '\x1b[4~', '\x1b[5~', '\x1b[6~', '\x1b[A', '\x1b[B'].find(key => rest.startsWith(key));
       const lines = state.surface === 'article' && state.open.lines;
+      // pmore's goto line (`:N`): line N at the top, at most the last page.
+      const goto = /^:(\d+)\r/.exec(rest);
+      if (goto && lines) {
+        const page = (session.dynamicRows ? state.applicationRows : 24) - 1;
+        state.line = Math.min(Math.max(1, Number(goto[1])), Math.max(1, lines - page + 1));
+        return rest.slice(goto[0].length);
+      }
       if ((nav || rest[0] === ' ') && lines) {
         const page = (session.dynamicRows ? state.applicationRows : 24) - 1;
         const last = Math.max(1, lines - page + 1);
@@ -433,7 +452,7 @@ async function installNestedServer(page, session) {
         const value = rest.slice(1, end);
         if (head === 's') {
           // From an article the board jump keeps its subset (aid_navigation).
-          if (state.surface === 'main') state.filter = null;
+          if (state.surface === 'main' || (session.ptList && state.surface === 'list')) state.filter = null;
           state.board = value;
           state.surface = 'list';
         } else if (!state.filter) {

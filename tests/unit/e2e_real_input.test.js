@@ -76,6 +76,7 @@ const TOUCH_LONG_PRESS =
 const E2E_EXEMPT = [
   { file: "tests/e2e/offline/mobile_reflow.offline.spec.js", event: "contextmenu", reason: TOUCH_LONG_PRESS },
   { file: "tests/e2e/offline/mobile_list_cards.offline.spec.js", event: "contextmenu", reason: TOUCH_LONG_PRESS },
+  { file: "tests/e2e/offline/mobile_stack_layer_actions.offline.spec.js", event: "contextmenu", reason: TOUCH_LONG_PRESS },
 ];
 
 const e2eFiles = walk(E2E_DIR).filter((p) => /\.js$/.test(p));
