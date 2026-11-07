@@ -876,3 +876,16 @@ test('the toolbar of the revealed source opens its panels at once, and a key fro
   await expect.poll(() => page.evaluate(() => window.__ends)).toEqual([false]);
   expect(await pendingShown(page)).toBe(false);
 });
+
+test('search backtracking back to the source article shows it without a notice', async ({ page }) => {
+  await sourceFromList(page);
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+  await recordHints(page);
+  await nativeBack(page);
+  await waitArticle(page, 'Alpha');
+  await settled(page);
+  await page.waitForTimeout(500); // sleep-ok: a notice after the takeover would show by now
+  expect(await recordedHints(page)).toEqual([]);
+});

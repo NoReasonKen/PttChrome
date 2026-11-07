@@ -1533,7 +1533,6 @@
   "articleShortcutSearch_empty": { "message": "找不到符合條件的文章，已返回原文。" },
   "articleShortcutSearch_failed": { "message": "無法確認目前畫面，已停止文章搜尋。" },
   "articleShortcutSearch_missing": { "message": "無法確認原文章或文章已刪除，已安全停止，不會開啟其他文章。" },
-  "articleShortcutSearch_returned": { "message": "已返回原文。" },
   "articleShortcutSearch_recovered": { "message": "已恢復搜尋路徑，返回會沿著搜尋路徑往回走。" },
   "articleShortcutSearch_recoveryInactive": { "message": "無法確認文章或搜尋，未恢復搜尋路徑；返回維持一般行為。" },
   "searchResults_resumeFailed": { "message": "無法恢復先前的搜尋結果，已安全停止導覽；請重新搜尋。" },

@@ -1534,7 +1534,6 @@ export const en_US = {
   "articleShortcutSearch_empty": { "message": "No matching articles. Returned to the source article." },
   "articleShortcutSearch_failed": { "message": "Article search stopped because the current screen could not be verified." },
   "articleShortcutSearch_missing": { "message": "The source article could not be verified or was deleted. Stopped safely without opening a replacement." },
-  "articleShortcutSearch_returned": { "message": "Returned to the source article." },
   "articleShortcutSearch_recovered": { "message": "Search trail restored. Back retraces the search trail." },
   "articleShortcutSearch_recoveryInactive": { "message": "The search trail was not restored because the article or search could not be verified. Back works normally." },
   "searchResults_resumeFailed": { "message": "The previous search results could not be restored. Navigation has stopped safely; search again to continue." },

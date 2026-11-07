@@ -277,7 +277,8 @@ export class ArticleShortcutSearch {
       clearSearchResultsContext(core);
       this.pending = null;
       this._begin({ missing: returnMissing });
-      this._reopen(step.origin, 'articleShortcutSearch_returned', returned);
+      // The source article shown again needs no notice.
+      this._reopen(step.origin, null, returned);
       return true;
     }
     const at = this.trail.at;
@@ -320,8 +321,8 @@ export class ArticleShortcutSearch {
     return boardList(facts, board) ? 'full' : null;
   }
 
-  // Reopens the source by its code. This is no resume after a disconnect: the
-  // notices are this search's own.
+  // Reopens the source by its code, then shows `notice` if any. This is no
+  // resume after a disconnect: the notices are this search's own.
   _reopen(origin, notice, transition) {
     const bookmark = { ...origin.position, feature: 'article-shortcut-return' };
     if (!this.core.aidNavigation.startResume({
@@ -333,7 +334,7 @@ export class ArticleShortcutSearch {
       this._finish();
       this._uncover();
       this.core.articleGestures?.pagePresented(PAGE.ARTICLE);
-      this._hint(notice);
+      if (notice) this._hint(notice);
     })) this._fail();
   }
 
