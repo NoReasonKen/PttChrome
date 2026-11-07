@@ -39,6 +39,17 @@ or record video for every test. A test can opt into a review screenshot only whe
 `E2E_ARTIFACT_DIR` is set. Keep the output in a scratch or gitignored directory and
 inspect the saved image before claiming visual verification.
 
+## Errors in a capture
+
+While recording, uncaught errors, unhandled rejections and `console.error` calls
+are logged as `error` events, so `yarn debug:screens` shows them in the timeline
+next to the keys and screens around them. Each carries a `kind` (`uncaught`,
+`rejection`, `console`, or `resize-observer-loop` for Chrome's
+"ResizeObserver loop completed with undelivered notifications"), the message and
+up to four stack frames. The text is bounded and ASCII only: each non-ASCII run
+becomes an ellipsis and objects other than errors are named by type, so screen
+and account text stays out.
+
 ## Reuse a capture's viewport
 
 Debug recordings include a numeric/boolean `record.environment` snapshot at the

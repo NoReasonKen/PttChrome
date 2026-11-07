@@ -139,6 +139,51 @@ test.describe('Debug 錄製模式（offline）', () => {
   // tests/unit/debug_recorder.test.js；這裡守真瀏覽器下 wheel 真的到得了捲動容器
   //（原生 24 列模式下 window capture 的滾輪 handler 會 stopPropagation，到不了 ——
   // 所以這條必須在好讀裡跑）。
+  test('errors the page reports while recording are in the timeline', async ({ page }) => {
+    await boot(page);
+    await openAboutTab(page);
+    await page.locator('#pref-debug-mode').check();
+    await page.locator('.PrefModal [aria-label="Close"]').click();
+    await expect(page.locator('.PrefModal')).toBeHidden();
+    const btn = page.locator('#debugRecordBtn');
+    await hoverFloatTools(page);
+    await btn.click();
+    await expect(btn).toContainText(await label(page, 'debugRecord_stop'));
+
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+    await page.evaluate(() => {
+      setTimeout(() => { throw new Error('uncaught from a timer'); });
+      Promise.reject(new Error('rejected promise'));
+      console.error('logged error', new Error('console error'));
+      // A size change inside the observer's own callback is Chrome's
+      // "ResizeObserver loop completed with undelivered notifications".
+      const box = document.body.appendChild(document.createElement('div'));
+      let width = 10;
+      window.__loopObserver = new ResizeObserver(() => { box.style.width = `${width += 10}px`; });
+      window.__loopObserver.observe(box);
+    });
+    await expect.poll(() => pageErrors.length).toBeGreaterThanOrEqual(2);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => {
+      window.__loopObserver.disconnect();
+      resolve();
+    }))));
+
+    await hoverFloatTools(page);
+    const [download] = await Promise.all([page.waitForEvent('download'), btn.click()]);
+    const chunks = [];
+    for await (const c of await download.createReadStream()) chunks.push(c);
+    const json = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    const errors = json.events.filter(e => e.dir === 'log' && e.tag === 'error').map(e => e.info);
+    expect(errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'uncaught', message: expect.stringContaining('uncaught from a timer') }),
+      expect.objectContaining({ kind: 'rejection', message: 'Error: rejected promise' }),
+      expect.objectContaining({ kind: 'console', message: 'logged error Error: console error' }),
+      expect.objectContaining({ kind: 'resize-observer-loop' }),
+    ]));
+    expect(errors.find(info => info.kind === 'uncaught').stack.length).toBeGreaterThan(0);
+  });
+
   test('錄製期間：好讀長頁的真滾輪與捲動位置寫進錄製檔', async ({ page }) => {
     test.skip(!article, '尚無 article cassette；先 yarn record:cassette');
     test.setTimeout(90000);
