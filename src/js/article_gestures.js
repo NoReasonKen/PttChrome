@@ -361,7 +361,7 @@ export class ArticleGestures {
   // An article shortcut search keeps its source article alive under the
   // results (#49); its results slide in once they present (slideInOver).
   captureArticleLayer() {
-    this.stack.captureArticle();
+    return this.stack.captureArticle();
   }
 
   // The real screen, which PTT has already answered, slides in from the right

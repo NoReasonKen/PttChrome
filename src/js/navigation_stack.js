@@ -167,11 +167,24 @@ export class NavigationStack {
   }
 
   // An article shortcut search is about to start from the shown article
-  // (#49): the article stays alive under its results.
+  // (#49): the article stays alive under its results. Returns the captured
+  // page, or null. Its post (board and AID) is kept when the article shows
+  // its URL, so Share on the revealed article needs nothing of PTT.
   captureArticle() {
     const page = this._articlePage();
-    if (!this.core.mobile || !page.id) return this.dropPending();
+    if (!this.core.mobile || !page.id) {
+      this.dropPending();
+      return null;
+    }
     this._capture(PAGE.ARTICLE, page.board, () => StackArticleLayer.capture(this.core.view), page.id);
+    if (!this.pending) return null;
+    this.notePost(this.pending, this.core.aidNavigation?.findLocalPostAid?.());
+    return this.pending;
+  }
+
+  // The post `captured` (a page captureArticle returned) shows, once known.
+  notePost(captured, post) {
+    if (captured && post?.aid && post.board) captured.post = { board: post.board, aid: post.aid };
   }
 
   // `board` is about to be opened from the shown home dashboard. Its article
@@ -427,6 +440,13 @@ export class NavigationStack {
     return { ...EMPTY_TOOLBAR_CONTEXT, appBar, push, refresh, locked: true };
   }
 
+  // The post (board and AID) of the article shown before it is usable as a
+  // real page, when known: Share needs nothing of PTT then (#119).
+  revealedPost() {
+    const shown = this.gone || this.handoff;
+    return shown && this.showsArticleLayer() ? shown.post || null : null;
+  }
+
   // The shown page is an article not usable as a real page yet: revealed while
   // search backtracking reopens it, or a deleted source kept shown (#121).
   showsArticleLayer() {
@@ -541,7 +561,7 @@ export class NavigationStack {
     const layer = h.layer;
     for (const type of LOCAL_INPUT) layer.el.addEventListener(type, stopLocal);
     this.gone = {
-      layer, appBar: h.appBar,
+      layer, appBar: h.appBar, post: h.post,
       off: () => LOCAL_INPUT.forEach(type => layer.el.removeEventListener(type, stopLocal))
     };
   }
@@ -637,6 +657,7 @@ export class NavigationStack {
     h.layer = revealed?.layer || null;
     h.appBar = revealed?.appBar || null;
     h.toolbar = revealed?.toolbar || null;
+    h.post = revealed?.post || null;
     h.reveal?.(h.layer, revealed?.title || '', h.appBar);
     if (h.layer) {
       h.layer.show(true);
@@ -687,6 +708,7 @@ export class NavigationStack {
       results: !!revealed?.page.results,
       board: this._top()?.board || core.view._articleBoard,
       identity: openArticleKey(core), appBar: revealed?.appBar || null, toolbar: revealed?.toolbar || null,
+      post: revealed?.post || null,
       sentAt: performance.now(), presentedAt: null, touches: 0, holds: 0, lastScrollAt: -Infinity,
       timer: null, followTimer: null, listeners: [], layerListeners: [], finish, follow, reveal, hint, action: null,
       // The Backs PTT is still to follow after this one, in order: the page each

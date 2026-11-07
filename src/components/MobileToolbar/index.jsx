@@ -291,23 +291,30 @@ export const MobileToolbar = ({
 
   // 不開子選單：直接開搜尋彈窗，預設種類＝這個畫面可用的第一種（文章列表＝標題，
   // 看板列表／主功能表＝看板），要換種類在彈窗上方切。
+  // On a page revealed during a handoff the dialog opens at once with that
+  // page's kinds; only its search waits for the real page (#119).
   const onSearch = useCallback(() => {
     setPanel(null);
     setConfirmLogout(false);
-    if (onOpenSearch && context.search.length)
-      whenReady(() => onOpenSearch(context.search[0]));
-  }, [onOpenSearch, context, whenReady]);
+    if (!onOpenSearch || !context.search.length) return;
+    if (pttchrome.articleGestures?.stack?.handingOff)
+      onOpenSearch(context.search[0], { kinds: context.search });
+    else onOpenSearch(context.search[0]);
+  }, [pttchrome, onOpenSearch, context]);
 
   // 系統分享面板（Web Share API）。**同步**呼叫：免費路徑要在這個 click 的 user
   // activation 內叫出 navigator.share（deep_link_controller.shareCurrentPostLink）。
+  // A revealed article whose post is known shares at once, without PTT (#119).
   const onShare = useCallback(() => {
     setPanel(null);
     setConfirmLogout(false);
     const dl = pttchrome.deepLinkController;
-    if (dl && typeof dl.shareCurrentPostLink === "function")
-      whenReady(() =>
-        dl.shareCurrentPostLink(context.appBar ? context.appBar.title : ""),
-      );
+    const title = context.appBar ? context.appBar.title : "";
+    const post = pttchrome.articleGestures?.stack?.revealedPost?.();
+    if (post && dl && typeof dl.sharePostLink === "function")
+      dl.sharePostLink(post, title);
+    else if (dl && typeof dl.shareCurrentPostLink === "function")
+      whenReady(() => dl.shareCurrentPostLink(title));
   }, [pttchrome, context, whenReady]);
 
   // 跳到第一篇未讀：與桌機快捷鍵（預設 F7）同一個入口（unread_jump.js）。

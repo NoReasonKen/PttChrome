@@ -298,6 +298,9 @@ const initialState = {
   showsSearch: false,
   searchKind: "title",
   searchKinds: [],
+  // Opened on a page revealed during a handoff (#119): the search waits for
+  // the real page, and the board kind opens no native prompt meanwhile.
+  searchHeld: false,
   // 沒寫看板的 #AID（js/aid_board_choice.js）：aidChoice＝二選一彈窗 { aid, currentBoard }；
   // 選「指定看板」後搜尋彈窗以看板種類開啟，searchAidTarget＝{ aid } 讓它只挑板名。
   aidChoice: null,
@@ -1064,6 +1067,7 @@ export const ContextMenu = ({ pttchrome }) => {
   // 替 #AID 挑看板時（searchAidTarget）：取消＝原生 `s` 取消落在文章列表 ⇒ 重開原文、
   // 閱讀紀錄還原原列（aid_navigation.reopenPicked）。
   const pickTarget = state.searchAidTarget;
+  const searchHeld = state.searchHeld;
   const createBoardSearch = useCallback(
     (onUpdate) => {
       if (!pickTarget) return new BoardSearchBridge(pttchrome, onUpdate);
@@ -1118,10 +1122,16 @@ export const ContextMenu = ({ pttchrome }) => {
       };
       // 背景的看板 prompt 已經開著：直接在上面送出。開不出來／已丟失才走一般兩步。
       if (bridge && bridge.submit(value, cb)) return;
-      const sent = submitSearch(pttchrome, kind, value, cb);
-      if (!sent) hint(serializedOpHint(pttchrome) || i18n("searchModal_busy"));
+      const submit = () => {
+        const sent = submitSearch(pttchrome, kind, value, cb);
+        if (!sent)
+          hint(serializedOpHint(pttchrome) || i18n("searchModal_busy"));
+      };
+      const stack = pttchrome.articleGestures?.stack;
+      if (searchHeld && stack?.handingOff) stack.whenReady(submit);
+      else submit();
     },
-    [pttchrome, update],
+    [pttchrome, update, searchHeld],
   );
 
   // 指令面板挑了一項：每一類都接到既有入口（送鍵、閱讀紀錄、忙碌提示由它們負責）。
@@ -1215,14 +1225,24 @@ export const ContextMenu = ({ pttchrome }) => {
 
   // 手機底部工具列（MobileToolbar）的兩個入口：與鍵盤／右鍵選單同一個實作。
   const onToolbarSearch = useCallback(
-    (kind) => {
+    (kind, revealed) => {
+      if (revealed) {
+        update({
+          ...initialState,
+          showsSearch: true,
+          searchKind: kind,
+          searchKinds: revealed.kinds,
+          searchHeld: true,
+        });
+        return;
+      }
       if (!openSearch(kind))
         pttchrome.view?.flashListHint?.(
           serializedOpHint(pttchrome) || i18n("searchModal_busy"),
           3000,
         );
     },
-    [pttchrome, openSearch],
+    [pttchrome, openSearch, update],
   );
   const onToolbarSettings = useCallback(() => {
     pttchrome.onDisableLiveHelperModalState();
@@ -1557,7 +1577,7 @@ export const ContextMenu = ({ pttchrome }) => {
           kinds={searchKinds}
           onHide={onSearchHide}
           onConfirm={onSearchConfirm}
-          createBoardSearch={createBoardSearch}
+          createBoardSearch={searchHeld ? null : createBoardSearch}
           aidTarget={searchAidTarget}
           mobile={mobile}
           pttchrome={pttchrome}

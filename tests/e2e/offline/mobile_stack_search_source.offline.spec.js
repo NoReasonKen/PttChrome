@@ -891,6 +891,64 @@ test('the toolbar of the revealed source opens its panels at once, and a key fro
   expect(await pendingShown(page)).toBe(false);
 });
 
+// Every byte PTT receives from now on, in order.
+const recordReceived = page => page.evaluate(() => {
+  const send = window.__stubWSSent;
+  window.__received = [];
+  window.__stubWSSent = data => {
+    window.__received.push(data);
+    return send(data);
+  };
+});
+const received = page => page.evaluate(() => window.__received.join(''));
+
+test('the search dialog opens at once on a revealed list, and its search goes out once, after the list takes over', async ({ page }) => {
+  await sourceFromList(page);
+  await recordReceived(page);
+  const release = await holdSends(page, /./);
+  await nativeBack(page);
+  await expect(page.locator(LIST_LAYER)).toBeVisible();
+  await page.locator('#mobileToolbar [data-key="__search"]').tap();
+  const input = page.locator('input[name="searchKeyword"]');
+  await expect(input).toBeVisible();
+  expect(await page.evaluate(() => window.__app.articleGestures.stack.handingOff)).toBe(true);
+  await input.fill('Beta');
+  await input.press('Enter');
+  await expect(input).toHaveCount(0);
+  await expect.poll(() => pendingShown(page)).toBe(true);
+  // Nothing of the search reaches PTT before the list takes over.
+  expect(await page.evaluate(() => window.__received.join(''))).not.toContain('Beta');
+  await release();
+  await waitList(page, { has: ['Beta topic'], lacks: ['Alpha topic', 'Delta topic'] });
+  await settled(page);
+  expect((await received(page)).split('Beta').length - 1).toBe(1);
+});
+
+test('Share on the revealed source shares its link at once, within the tap, without asking PTT', async ({ page }) => {
+  const release = await revealSourceHeld(page);
+  await recordReceived(page);
+  await page.evaluate(() => {
+    window.__shared = [];
+    navigator.share = data => {
+      window.__shared.push({ url: data.url, title: data.title, active: navigator.userActivation.isActive });
+      return Promise.resolve();
+    };
+  });
+  await page.locator('#mobileToolbar [data-key="__more"]').tap();
+  await page.locator('[data-key="__share"]').tap();
+  const shared = await page.evaluate(() => window.__shared);
+  expect(shared).toHaveLength(1);
+  expect(shared[0].url).toContain('#Test/M.1783270974.A.0CA');
+  expect(shared[0].active).toBe(true);
+  expect(await pendingShown(page)).toBe(false);
+  await release();
+  await waitArticle(page, 'Alpha');
+  await settled(page);
+  // No article info box asked of PTT, and no second share.
+  expect(await received(page)).not.toContain('Q');
+  expect(await page.evaluate(() => window.__shared.length)).toBe(1);
+});
+
 test('search backtracking back to the source article shows it without a notice', async ({ page }) => {
   await sourceFromList(page);
   await tapShortcut(page, 'author');

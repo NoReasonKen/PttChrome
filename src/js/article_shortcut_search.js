@@ -98,7 +98,7 @@ export class ArticleShortcutSearch {
     };
     this.pending = origin;
     const fast = this._fastKeystrokeRoute(origin);
-    core.articleGestures?.captureArticleLayer();
+    const layerPage = core.articleGestures?.captureArticleLayer();
     this._cover();
     // A failed forward search adds no origin; its source stays where it was.
     this._begin({ missing: stoppedAtBoardList, emptied: trail => reopenedAfterEmptySearch(trail, origin) });
@@ -114,6 +114,7 @@ export class ArticleShortcutSearch {
           return;
         }
         origin.aid = info.aid;
+        if (layerPage) core.articleGestures.stack.notePost(layerPage, info);
         if (fast && !meta.boxOpen) this._fastQuery(origin);
         else this._selectThenQuery(origin, meta.boxOpen, 'forward');
       }
