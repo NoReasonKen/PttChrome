@@ -40,7 +40,6 @@ test.describe('二色 DBCS 的閃爍（離線）', () => {
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, {
       enableEasyReading: false,
-      enableEasyReadingList: false,
     });
 
     await feedRaw(page, TWO_COLOR_BLINK_CHAR);
@@ -62,7 +61,6 @@ test.describe('二色 DBCS 的閃爍（離線）', () => {
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, {
       enableEasyReading: false,
-      enableEasyReadingList: false,
     });
 
     await feedRaw(page, TWO_COLOR_PLAIN_CHAR);

@@ -8,7 +8,7 @@
 
 ## 規則
 
-- **一個 byte 都不送**：只看收到的資料，所以不在安全模式名單內。點鈴鐺、點清單都不是點終端機（mousedown preventDefault 不搶 `#t` 焦點；`App._onUploadLayer` 認 `#messageInbox`）。
+- **一個 byte 都不送**：只看收到的資料，所以不是好讀行為，有自己的開關。點鈴鐺、點清單都不是點終端機（mousedown preventDefault 不搶 `#t` 焦點；`App._onUploadLayer` 認 `#messageInbox`）。
 - **認不出 ⇒ 不收**：格式同 `string_util.parseWaterball`（`WATERBALL_SCAN_RE`／`BROADCAST_SCAN_RE`，依據 mbbsd/kaede.c#outmsg 與 doupdate 的廣播列），畫面照原生顯示，收件匣只是多留一份。
 - **每包都解析**：`App.onData` 每個 chunk 都餵 `noteData`；失焦通知（`enableNotifications`）那條照舊只在 `!appFocused` 時跑，兩者互不影響。
 - **跨包接續**：WebSocket 會在任意位元組切塊。最後一則之後若有開頭標記（`ESC[1;33;46m`／`ESC[1;37;46m`／`ESC[24;`）但還沒有 `ESC[m` 收尾，就把 raw 從標記起留到下一包（最多 `CARRY_LIMIT`）。標記只用 ASCII 的 ESC 序列：b2u 不會吃掉或生出 ESC，raw 與轉碼後的字串裡找到的是同一個標記；★ 在 Big5 線路上是兩個 byte，不能當標記。

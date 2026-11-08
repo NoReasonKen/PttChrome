@@ -16,6 +16,8 @@ async function collectSent(page) {
 }
 const sentText = (page) => page.evaluate(() => (window.__sent || []).join(''));
 
+// PTT's own list: the tests that draw it turn easy reading off, which would
+// otherwise take the list over and refresh it without PTT's `s`.
 async function drawArticleList(page) {
   await page.evaluate(() => {
     const u2b = (str) => {
@@ -48,7 +50,7 @@ async function drawArticleList(page) {
 test.describe('手機重新整理（離線重放）', () => {
   test('文章列表：工具列有重整與到底；重整送 s、到底送 End', async ({ page }) => {
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false, refreshMinIntervalSec: 0 });
+    await ptt.applyPrefs(page, { enableEasyReading: false, refreshMinIntervalSec: 0 });
     await drawArticleList(page);
     await expect(byKey(page, '__refresh')).toBeVisible();
     await expect(byKey(page, '__end')).toBeVisible();
@@ -62,7 +64,7 @@ test.describe('手機重新整理（離線重放）', () => {
 
   test('冷卻：按下重整後按鈕反灰並倒數，格位不變', async ({ page }) => {
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false, refreshMinIntervalSec: 60 });
+    await ptt.applyPrefs(page, { enableEasyReading: false, refreshMinIntervalSec: 60 });
     await drawArticleList(page);
     const slot = (k) =>
       page.evaluate((key) => {
@@ -84,7 +86,7 @@ test.describe('手機重新整理（離線重放）', () => {
 
   test('下拉重整：在終端機上往下拉過門檻放手 ⇒ 送 s；拉不夠 ⇒ 不送', async ({ page }) => {
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false, refreshMinIntervalSec: 0 });
+    await ptt.applyPrefs(page, { enableEasyReading: false, refreshMinIntervalSec: 0 });
     await drawArticleList(page);
     const r = await waitRectStable(page, '#mainContainer');
     const x = r.left + r.width / 2;

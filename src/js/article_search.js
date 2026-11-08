@@ -15,7 +15,7 @@ import { u2b, ansiHalfColorConv } from './string_util';
 import { boardListContextKind } from './board_list_parse';
 import { listRenderOwnerOf, OWNER_ARTICLE_LIST } from './list_render_owner';
 import { rowHasTitle, MAIN_MENU, parseBoardName, boardNameFromKey } from './screen_titles';
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { recordFor } from './reading_record';
 import { SLOW_STEP_BUDGET } from './aid_navigation';
 import { candidateSearchResults, recordSearchResults, clearSearchResultsContext } from './search_results_context';
@@ -132,7 +132,7 @@ export function shouldInterceptSearchKey(opts) {
   const kind = searchKindOfKey(o.key);
   if (!kind) return false;
   if (o.ctrlKey || o.altKey || o.metaKey) return false;
-  if (!(o.prefs && o.prefs.searchKeyOpensModal)) return false;
+  if (!easyReadingOn(o.prefs)) return false;
   return availableSearchKinds(o.facts).indexOf(kind) >= 0;
 }
 
@@ -148,7 +148,7 @@ export function tryOpenSearchModal(core, key, e) {
       ctrlKey: !!(e && e.ctrlKey),
       altKey: !!(e && e.altKey),
       metaKey: !!(e && e.metaKey),
-      prefs: readEffectivePrefs(),
+      prefs: readValuesWithDefault(),
       facts: searchGateFacts(core)
     })
   ) {

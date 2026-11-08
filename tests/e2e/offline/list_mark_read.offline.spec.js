@@ -89,7 +89,7 @@ async function engage(page) {
   await replayListCassette(page, mark);
   await page.waitForFunction(() => window.__app.buf.pageState === 2);
   await ptt.applyPrefs(page, {
-    enableEasyReadingList: true,
+    enableEasyReading: true,
     easyReadingListPrefetchCount: 0
   });
   await waitState(page, (s) => s.state === 'active' && s.renderMode === 'buffer' && s.queueIdle);

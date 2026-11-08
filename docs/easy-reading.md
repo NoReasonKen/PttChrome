@@ -50,7 +50,7 @@
 - **為何來源集含選單(1)（CONFIRMED 讀碼）——勿收緊回 `==2`**：精華區（文章列表按 `z` 進入）頂層首列 `【精華文章】`→`pageState 1`(MENU，`term_buf.js` pageState 判定)，子目錄清單落 MENU(1) 或 LIST(2)，兩者都能 Enter 直接進文章 → 只認 `==2` 時精華區的 `1→3` 邊緣不成立，切原生後卡原生直到回真看板列表。主功能表/分類看板雖也是 MENU(1) 但無法直接開文章（必先經看板 LIST(2)），故 `1→3` 實務上只來自精華區，含 1 安全。pass/edit/normal(5/6/0) 不在來源集→原生模式內看說明(5)再回文章(3) 的 `5→3` 不會誤重啟。
 - **`menu.c#domenu` 子選單（系統資訊區、個人設定區…）的 `1→3` 邊緣完全靠 `parseListRow`**：它們的 row0 標題不在 `setPageState` 的白名單裡，唯一指紋是底列的 `show_status` 狀態列；認不出 ⇒ 子選單沿用上一幀的 pageState ⇒ 邊緣變成 `3→3`／`5→3` ⇒ 好讀「有時」不啟用。`parseListRow` 是**新舊聯集**、各自照 source 的精確指紋（`docs/pttbbs-screen-protocol.md` §5.1、§11.9）；守護 `tests/unit/term_buf_page_state.test.js`。
 - transient 0 為何不污染：half-paint frame(末列空→`pageState=0`，`term_buf.js` pageState 判定)後續一定有更晚的視窗 re-arm 計時器，故 0 永不 settle；settle 只抓「最後靜止值」(3)。**例外：列表本身可以 settle 在 0**——舊版 server 跳號（`N⏎`）後底列留空、`^L` 也補不回來（`docs/pttbbs-screen-protocol.md` §4 ✚），列表若就停在那張畫面（`/` 搜尋結果太短、補頁鏈停在跳號腿；原生下自己打號碼後停住）⇒ settled 0 ⇒ 文章踩 `0→3` 進來。**不放寬成「0→3 都算」**（文章中途 dip 會重開好讀 ⇒ P4），改認「上一張靜止畫面是跳號落點列表」：`_onScreenSettled` 每次記 `_lastSettleParkedList`（`list_session#isJumpParkedListScreen`：反白《板名》＋反白「編號」表頭＋底列全空＋游標停 entry 區列首的列表列；只在 pageState 0 時才讀畫面），同一次 settle 裡 `pageStateSettled` 先於 `screenSettled` ⇒ 邊緣判斷讀到的是前一張。判定收在 `settledFromListOrMenu`，`nextEasyReadingState` 與 `_onPageStateSettled` 的 `enteringArticle` 共用。另有一道冗餘：列表好讀自己開的文，落地時再呼叫 `ensureEnabledOnArticle(true, 'listOpen')`（`list_session` 的 `enable-article-reading`；已開時 no-op）。守護：`tests/unit/easy_reading_logic.test.js`、`tests/unit/list_session.test.js`（`isJumpParkedListScreen`／「列表好讀開文落地」）、offline e2e `easy-reading-list` 的「原生列表：跳號落點靜置後開文」與 native parity 那條。
-- **退出抑制靠 `exitEasyReading` 主動對齊 settle 快照**：自動翻頁每 ~30-40ms 重畫一次，50ms 計時器全程被 re-arm ⇒ **整篇讀完可以一次 settle 都沒有**，`settledPageState` 仍停在**進文章前的列表(2)**；退出後第一個安靜點 settle 成 3 ⇒ 假的 `2→3` 邊緣 ⇒ 好讀被重開（症狀「F8 切原生卡在最後一頁」）。
+- **退出抑制靠 `exitEasyReading` 主動對齊 settle 快照**：自動翻頁每 ~30-40ms 重畫一次，50ms 計時器全程被 re-arm ⇒ **整篇讀完可以一次 settle 都沒有**，`settledPageState` 仍停在**進文章前的列表(2)**；退出後第一個安靜點 settle 成 3 ⇒ 假的 `2→3` 邊緣 ⇒ 好讀被重開（症狀「切原生卡在最後一頁」）。
   - 修法：`exitEasyReading()` 呼叫 `term_buf.syncSettledPageState()`（`prevSettled = settled = 當下 pageState`，**不造成邊緣**）。刻意取「當下值」而非硬寫 3：若正好落在半畫幀(0)，後續補完只會是 `0→3`，不在 `1|2→3` 來源集內，同樣安全。
   - 守護：`tests/unit/easy_reading_native_switch_settle.test.js`（用真 `TermBuf.notify/_armSettleTimer` 驅動 30ms/50ms 鏈）。
 - **第二條重啟邊緣：原生模式下換到另一篇文章（`nextEasyReadingReentry`）**。`nextEasyReadingState` 只認 settled `1|2 → 3`，而切原生後用 `[` `]` `a` `b` `f` `=` 跳下一篇**全程 pageState 都是 3**，根本不會有邊緣 ⇒ 一路卡原生直到繞回列表。
@@ -61,7 +61,7 @@
     |---|---|
     | settle `1\|2→3` 進文章 | 正確（畫面就是第一頁） |
     | `[` `]` `a` `b` `f` `=` 跳下一篇 | **上一篇**的 key（好讀已開 ⇒ 不經 `enterEasyReading`，見 `_onPageStateSettled` 註解） |
-    | F8 toggle 從中段切回好讀 | **內文**（`reenterFromTop` 先 `enterEasyReading()` 再送 Home，捕捉當下還在中段） |
+    | 從原生中段回到好讀（`reenterFromTop`） | **內文**（`reenterFromTop` 先 `enterEasyReading()` 再送 Home，捕捉當下還在中段） |
     `enterEasyReading()` 改為只清成 null；`leaveCurrentPost()` 也清（跳文路徑的結構性保險）；`exitEasyReading()` 把它搬到 `_nativeArticleKey`。捕捉點受 `_enabled ∧ !_functionMode` 閘（`_onChanged` 早退），prompt/選單幀不會污染。
   - **兩邊身分任一讀不到就不重啟**（寧可留在原生）：fail-safe，熱鍵永遠還在；改成「null ⇒ 可重啟」是 fail-OPEN，捕捉漏一次同一篇按 Home 就會被切回好讀。這條路徑本來就只為「使用者主動切原生後跳文」存在，一般 `列表→文章` 由 `nextEasyReadingState` 負責，不靠它。
 - **settle 不在「已寫入、未 flush」時觸發**（CONFIRMED unit `settle_gating.test.js`＋offline 高負載重現）：計時器只在 notify 時 re-arm，但 server 回應是 `onData` 先寫進 TermBuf、30ms 後才 notify（BSU 期間更久）。計時器到期時 `timerUpdate || inSyncUpdate` ⇒ 不發 settle、重新 arm。否則 listener 讀到沒跑 `updateCharAttr` 的畫面 ⇒ 狀態列 Big5 未解 ⇒ `_onScreenSettled` 判成 pageState 5、`startedEasyReading=false` ⇒ 該窗口內按的 End／PgDn 原生送出（反向讀取沒啟動、改走缺頁自癒）。CPU 忙時才放大成偶發。**新增讀畫面的 settle listener 可依賴「settle 時 buffer 已 flush」**。
@@ -294,7 +294,7 @@ scaleX / scaleY / dpr / fontsReady`，另有 `cursor.geom` 取樣（游標真的
 
 - **為何需要**：文章內按 `r` 回應／`X`/`%` 推文／`y` 收暫存檔，PTT 在 row22/row23 畫出選單（pageState 仍 3），但好讀仍渲染累積長頁＋footer，**蓋住選單**。逐選單偵測（看游標列、parse 提示字）會因「畫選單文字」與「移游標」落在不同 notify 視窗而漏接，所以一律走鏡像。
 - **進入（鍵驅動）**：`_onKeyDownProcessUI` default 分支，凡**單字元鍵**(`e.key.length===1`)且非 leave-post 鍵→`_enterFunctionMode`：清 `sendCommandAfterUpdate`、存 `mainDisplay.scrollTop`、設 `_functionMode=true`、全列 dirty+`notify()` 立即重繪。**不** preventDefault（鍵照送 PTT）。僅 leave-post 鍵(`abf=+-[]ABF`)走 `leaveCurrentPost` 不進。
-  - **搜尋交給瀏覽器（pref `easyReadingBrowserFind`，預設開）**：下一條的唯一例外。原生 `/` 在好讀下結構性不可用（`mf_search` 從 PTT 端目前頁起找，而指標在文末；找不到還跳末頁，協定 §13 P9），網頁又沒有 API 開瀏覽器尋找列 ⇒ **Ctrl+F**（真 Ctrl，不含 Alt remap）回 `'browser'`：`term_view.onKeyDown` 就此 return，不 preventDefault、不落到 `_keyboard`（^F 會移 pmore 指標）；**`/`** 吞掉並 `flashListHint` 提示 Ctrl+F／⌘F（`platform.findShortcutLabel`）。翻頁替代鍵：空白／PgDn／Alt+F。只在好讀文章非 functionMode 生效（prompt 內 Ctrl+F 是編輯鍵）。鍵盤行為不分平台（Mac 的 Ctrl+F 也讓位）。決策純函式 `easy_reading.easyReadingFindKeyAction`，守護 `tests/unit/easy_reading_browser_find.test.js`。pref 關 ⇒ 舊行為（`/` 進 functionMode 送 PTT，其後的往回跳由 seekBack 接住）。
+  - **搜尋交給瀏覽器（好讀的一部分，沒有自己的開關）**：下一條的唯一例外。原生 `/` 在好讀下結構性不可用（`mf_search` 從 PTT 端目前頁起找，而指標在文末；找不到還跳末頁，協定 §13 P9），網頁又沒有 API 開瀏覽器尋找列 ⇒ **Ctrl+F**（真 Ctrl，不含 Alt remap）回 `'browser'`：`term_view.onKeyDown` 就此 return，不 preventDefault、不落到 `_keyboard`（^F 會移 pmore 指標）；**`/`** 吞掉並 `flashListHint` 提示 Ctrl+F／⌘F（`platform.findShortcutLabel`）。翻頁替代鍵：空白／PgDn／Alt+F。只在好讀文章非 functionMode 生效（prompt 內 Ctrl+F 是編輯鍵）。鍵盤行為不分平台（Mac 的 Ctrl+F 也讓位）。決策純函式 `easy_reading.easyReadingFindKeyAction`，守護 `tests/unit/easy_reading_browser_find.test.js`。要用 PTT 原生的 `/` 就關好讀。
   - **pmore 功能鍵一律走 functionMode，勿再加 swallow list**：`h` 說明/`o` 選項/`/` 搜尋/`;` 指定頁/`,.<>` 左右捲等鍵由 functionMode 鏡像原生選單（守護 unit `easy_reading_logic.test.js`「pmore function keys enter functionMode」）。`Tab`(`stop=true`)與 ctrl `"@^_?"` 例外（Tab 放行涉 browser focus、不可同時 preventDefault+送鍵）。
   - **進入（貼上驅動）**：貼上不是按鍵 ⇒ 上面那條 `e.key.length===1` 規則抓不到，PTT 因應 `#`／`/`／`;` 等貼上內容畫的 prompt 會被好讀長頁蓋住（使用者看不到反應）。故 `App.onPasteDone` 在送出前補一次 `easyReading._enterFunctionMode()`（該函式自帶 `_functionMode` 早退，重複呼叫無害）。列表好讀的同源缺口見 `docs/easy-reading-list.md` 不變量 12b。
   - **進入（文字輸入驅動＝IME）**：中文 IME 開著時 keydown 的 `e.key` 是 `'Process'`（keyCode 229）⇒ 上面那條規則抓不到；字元改由 input 事件送出（`term_view.onInput` → `onTextInput` → `_convSend`）⇒ PTT 開了推文 prompt、好讀長頁卻原封不動（看不到輸入框、打字卻有效）。故 `term_view.onTextInput` 這條共用漏斗開頭一律呼叫 `easyReading.noteTextInput()`（gate：`_enabled && startedEasyReading`），keydown／IME／貼上三個入口對 functionMode 行為一致。守護 `tests/unit/easy_reading_text_input.test.js`＋`tests/unit/term_view_text_input.test.js`＋`tests/e2e/offline/pref_close_in_prompt.offline.spec.js`。列表好讀同一個漏斗有 `ListSession.noteTextInput`（`docs/easy-reading-list.md` 不變量 12d）：兩個並存，列表那條回 true 就代表它接手了，不可以再 `_convSend`。
@@ -368,7 +368,7 @@ best-effort：逾時／miss／框裡沒 AID 一律降級續跳（錨點退回原
 - `listSession.currentAnchor()`（`_openedNum`，列表好讀自己序列化開文時設的序號）現在只當「這篇是列表好讀開的、確實是 READING」的證據（`run.listOpened`，長文 footer 擠掉「回應」時仍可走文章內 `s` 快路徑），不當返回錨點。
 - **生命週期（三個純通知 hook，都不得改動對方狀態）**：`list_session._onScreenSettled`（**排在 `queue.onSettle` 之前**，clean-list/menu → `invalidate()`）、`easy_reading.leaveCurrentPost`（文章→文章鍵）、`App.onClose`（斷線 → `reset()`）。
   - **我方落地會自己產生一次 `leaveCurrentPost`**（functionMode 退出走 'leave' 分支，且發生在 `onDone` 清掉 `active` 之後）→ `_ownedLeave` one-shot 吞掉它，否則每次跳完都會把剛 push 的那層抹掉。
-- **UI**：返回鈕（`term_view.showBackButton`／`hideBackButton` 只寫狀態 `view.aidBack`，`(active, stack)` 的投影；畫面是 React `components/AidBackButton` 訂閱 `view.onAidBackChange`，桌機手機同一顆，上緣置中、手機在 App Bar 下方——**不可放底部**：桌機疊在 PTT 狀態列上、手機被底部工具列蓋掉）＋快捷鍵 pref `aidNavBackKey`（預設 F9；F 鍵在 `term_keyboard.KeyMap` 沒有對應、送不到 PTT，而 F8 已被 `easyReadingEndSwitchKey` 佔用）。
+- **UI**：返回鈕（`term_view.showBackButton`／`hideBackButton` 只寫狀態 `view.aidBack`，`(active, stack)` 的投影；畫面是 React `components/AidBackButton` 訂閱 `view.onAidBackChange`，桌機手機同一顆，上緣置中、手機在 App Bar 下方——**不可放底部**：桌機疊在 PTT 狀態列上、手機被底部工具列蓋掉）＋快捷鍵 pref `aidNavBackKey`（預設 F9；F 鍵在 `term_keyboard.KeyMap` 沒有對應、送不到 PTT）。
 - **捲動還原**：錨點存的是**行索引**（srow＋列內比例，由 `term_view.currentLineIndex` 量節點；取自閱讀紀錄 `reading_record`，見 `docs/reading-record.md`），不是像素也不是 `_savedScrollTop`（那是 functionMode 單次進出的暫存，跨文章活不下來）。返回開文後交給 `easy_reading.requestScrollRestore`，由 `_onViewUpdated` 每次併頁時用 `nextScrollRestoreStep` 判斷高度夠不夠（好讀是逐頁累積，位置一開始不可達）；`reachedPageEnd` 仍不夠高就夾到底，使用者一按鍵立刻取消。請求到達時文章若已累積完（單頁短文在手機換行後仍可捲動，之後不會再有併頁）就當場推進一次，否則請求會永遠掛著。
 
 ## 切換：三個對稱入口（CONFIRMED 純邏輯/手動驗）
@@ -379,16 +379,12 @@ best-effort：逾時／miss／框裡沒 AID 一律降級續跳（錨點退回原
   - **per-post 狀態不可只靠這三個入口重置**。最常見的換文章路徑一個都不經過它們：`←` 走 `stopEasyReading()`（只設 `sendCommandAfterUpdate='skipOne'`）**不經 `leaveCurrentPost()`**；而好讀已經開著時再進下一篇**也不經 `enterEasyReading()`**（`nextEasyReadingState` 要求 `!enabled`）。凡是「每篇一份」的狀態，重置點必須掛在 settle 的文章邊界（`_onPageStateSettled`），不能掛在按鍵路徑上。
 - **`exitEasyReading()`**：唯一關好讀點。`sendCommandAfterUpdate=''` + `_enabled=false` + `_core.switchToEasyReadingMode()`（還原 overlay 列/padding/pageLines+送 `^L`）。React 恆擁有 `#mainContainer`，切原生由 reconcile 把長頁收回 24 列（無 unmount）。
 
-`EasyReading.switchToNativeAtBottom`（熱鍵／`$`／`G` 與滑鼠 End）= `_send('\x1b[4~')`（原生 End 導到底）+ `exitEasyReading()`。
-
-**熱鍵是 toggle：原生下再按一次切回好讀（`tryReenterFromNative` → `reenterFromTop`）**。
-- 攔截點在 `term_view.onKeyDown`，**排在既有好讀 gate 之前**——好讀關掉後 `useEasyReadingMode` 是 false，那個 gate 不成立，鍵會直接落到原生。條件另加 `!easyReadingFunctionMode ∧ pageState === 3 ∧ !ctrl ∧ !alt`，且 `tryReenterFromNative` 內再要求真的讀得到狀態列（`term_buf.setPageState` 沒有 default 分支，prompt 幀的 pageState 可能是殘值）。
-- **只認 `easyReadingEndSwitchKey`（預設 F8），`$`／`G` 不參與**：它們在原生 pmore 是真的導覽鍵（`mf_goBottom`），語意是「跳文末」不是「切模式」。
+**`reenterFromTop(status)`：在文章中段從原生回到好讀**（functionMode 結束時 `_evalFunctionModeExit` 用）。
 - `reenterFromTop()` 先 `enterEasyReading()`（唯一入口）再視情況送 Home 倒回第 1 行，**順序不可調換**：`enterEasyReading` 結尾會重播一次 `notify()`，快路徑會從文章中段送出 PageDown；先把 rewind 立成在途交易才能保持「同時只有一個鍵在途」（P4）。
 - **Home 只在 `rowIndexStart > 1` 才送**：pfterm 會 diff 畫面、`fterm_rawmove_opt` 原地不動，已經在第 1 行時送 Home 是**零回應**，交易會永遠等不到 ack。
 
-**`exitEasyReading()` 的收尾（三條，治 F8 後的殘留）**，全部必須排在 `_core.switchToEasyReadingMode()` **之後**（它透過 `leaveCurrentPost()` 會把 `ignoreOneUpdate` 重新點起來）：
-- `startedEasyReading = false`：唯一清除點原本是 `_applyRowState`，而 `_onChanged` 在 `!_enabled` 時早退 ⇒ 永遠跑不到。`list_session._engageEligible()` 讀它 ⇒ **F8 後回看板列表，列表好讀永遠不 engage**。
+**`exitEasyReading()` 的收尾（三條，治切原生後的殘留）**，全部必須排在 `_core.switchToEasyReadingMode()` **之後**（它透過 `leaveCurrentPost()` 會把 `ignoreOneUpdate` 重新點起來）：
+- `startedEasyReading = false`：唯一清除點原本是 `_applyRowState`，而 `_onChanged` 在 `!_enabled` 時早退 ⇒ 永遠跑不到。`list_session._engageEligible()` 讀它 ⇒ **切原生後回看板列表，列表好讀永遠不 engage**。
 - `ignoreOneUpdate = false`：見上面「翻頁交易」段的硬卡死說明。
 - `mainDisplay.scrollTop = 0` ＋ `_forceRepaint()`：**不依賴 `^L` 的伺服器往返**。按熱鍵時若還有 PageDown 在途，End／`^L` 的重繪會被 P4 吞掉，DOM 就一直停在數千列的長頁且捲到底 ⇒ 使用者看到「卡在最底部、PgUp 沒反應」。另外 `redraw` 的 native 分支用 `if (useEasyReadingMode)` 守住 overlay/scroll 還原，此時已是 false，沒有別人會重設捲軸。
 
@@ -405,6 +401,6 @@ best-effort：逾時／miss／框裡沒 AID 一律降級續跳（錨點退回原
 - **好讀預設 true**：要測「原生」的 spec 反過來得自己關（live 走 `helpers/ptt.js#applyPrefs`，offline 走全新 context 的 localStorage），否則吃到的是好讀。
 - app 未掛全域：`main.jsx` 僅 `DEVELOPER_MODE`(dev build 有)下 `window.__app=app` 供測試讀 `view.useEasyReadingMode`/`buf.pageState`。
 - 判好讀 vs 原生：好讀 `mainContainer` 累積 >24 列且 `#easyReadingLastRow` display:block；原生 24 列、lastRow display:none、畫面含原生狀態列「瀏覽 第 N 頁…」。原生狀態列**不論 100% 或非 100% 都含「(h)說明」**（差別只在頁數指示器顏色，到底時反白）。**勿**用「mainContainer 是否含瀏覽第」分原生/好讀 footer：footer overlay 現已**即時鏡像真實狀態列**（含「瀏覽 第…(h)說明」，見 render 段「footer 鏡像」），但它是 `BBSWin` 下獨立 div、非 `#mainContainer`，故 `mc.innerText` 不含它——仍以 `useEasyReadingMode`/`mcChildren`/`lastRowDisplay` 區分。
-- 取消 PTT 搜尋提示用**空 Enter**，勿用 Escape（pmore 把 `\x1b` 當逃逸序列開頭，導覽錯亂）。好讀文章裡 `/` 預設不送 PTT（見 functionMode 節「搜尋交給瀏覽器」），要測原生搜尋先 F8 切原生或關 `easyReadingBrowserFind`。
+- 取消 PTT 搜尋提示用**空 Enter**，勿用 Escape（pmore 把 `\x1b` 當逃逸序列開頭，導覽錯亂）。好讀文章裡 `/` 預設不送 PTT（見 functionMode 節「搜尋交給瀏覽器」），要測原生搜尋就關好讀。
 
 - 驗證序列：好讀啟動(useEasyReadingMode=true,~41列)→End(false,≤24列,lastRow none,「瀏覽 第 N 頁」+「100%」)→`/`(搜尋提示)→左鍵(pageState 2)→進下篇(true)。

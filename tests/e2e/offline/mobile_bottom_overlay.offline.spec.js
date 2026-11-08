@@ -92,7 +92,6 @@ test.describe('手機：浮層不蓋住文末', () => {
         for (const k of combo) if (k !== 'imageViewer') opts[k] = true;
         if (opts.commentBarFold) opts.commentBar = true;
         await bootOffline(page, ptt, opts);
-        await ptt.applyPrefs(page, { enableEasyReadingList: false });
         await openArticle(page, { full, imageViewer: combo.includes('imageViewer') });
         if (combo.includes('pixivLookup')) await expectPixivOverlayClosed(page);
         if (combo.includes('commentBarFold')) {

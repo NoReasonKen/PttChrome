@@ -103,7 +103,6 @@ async function boot(page, prefs) {
     Object.assign(
       {
         enableEasyReading: false,
-        enableEasyReadingList: false,
         useMouseBrowsing: true,
         mouseLeftClick: true,
       },

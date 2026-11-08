@@ -17,7 +17,7 @@ const LIST = `${MAIN} .listBodyView`;
 async function openList(page, options = {}) {
   // The shared boot uses a fixed 24-row article. Install the dynamic server
   // before increasing the viewport and exercising real NAWS responses.
-  await bootNestedShortcutSearch(page, { easyList: true, dynamicRows: true, ...options });
+  await bootNestedShortcutSearch(page, { dynamicRows: true, ...options });
   await ptt.applyPrefs(page, { easyReadingListPrefetchCount: 200 });
   await ptt.sendKey(page, 'ArrowLeft');
   await waitList(page, { has: ['Alpha topic'] });

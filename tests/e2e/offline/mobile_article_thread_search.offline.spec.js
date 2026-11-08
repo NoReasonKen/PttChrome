@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const { revealArticleDrawer, gestureSent, PANEL } = require('../helpers/article_gestures');
-const { bootShortcutSearch, nativeBack, openSearchResult, visibleText } = require('../helpers/article_shortcut_search');
+const { bootShortcutSearch, nativeBack, openSearchResult, visibleText, hinted } = require('../helpers/article_shortcut_search');
 
 test('all five article shortcuts appear in the agreed order with equal-height rows', async ({ page }) => {
   await bootShortcutSearch(page);
@@ -16,7 +16,7 @@ for (const filtered of [false, true]) {
     await bootShortcutSearch(page, { filtered });
     await revealArticleDrawer(page);
     await page.locator('[data-article-shortcut="thread"]').tap();
-    await expect.poll(() => page.locator('body').innerText()).toContain('Same-thread search results');
+    await expect.poll(() => hinted(page, 'Same-thread search results')).toBe(true);
     const sent = await gestureSent(page);
     expect(sent).toContain('#1gIeu-3A\r');
     expect(sent).toContain('S\f');
@@ -25,7 +25,7 @@ for (const filtered of [false, true]) {
     await expect(page.locator('input[name="searchKeyword"]')).toHaveCount(0);
     await openSearchResult(page, { thread: true });
     await nativeBack(page);
-    await expect(page.locator('#mainContainer')).toContainText('看板《Test》');
+    await expect(page.locator('#mainContainer .listBodyView')).toBeVisible();
     await expect.poll(() => visibleText(page)).toContain('Source article');
     await nativeBack(page);
     await expect.poll(() => visibleText(page)).toContain('Original reading position.');

@@ -11,7 +11,7 @@ async function boot(page, { enabled = true, supported = true, merged = true } = 
   await installPixivBridge(page, { supported });
   await bootOffline(page, ptt);
   await ptt.applyPrefs(page, { enablePixivLookup: enabled, enableEasyReading: true,
-    enableEasyReadingList: false, mergeSameAuthorComments: merged });
+    mergeSameAuthorComments: merged });
   await feedPixivArticle(page);
 }
 async function reply(page, kind, result, complete = true) {

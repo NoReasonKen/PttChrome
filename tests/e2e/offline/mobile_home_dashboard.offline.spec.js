@@ -24,8 +24,8 @@ const FAVS = Array.from({ length: 18 }, (_, i) => ({
 const dashboard = (page) => page.locator('#homeDashboard');
 
 async function bootHome(page) {
-  await bootOffline(page, ptt, { homeDashboard: true });
-  await ptt.applyPrefs(page, { enableEasyReadingList: false, refreshMinIntervalSec: 0 });
+  await bootOffline(page, ptt);
+  await ptt.applyPrefs(page, { refreshMinIntervalSec: 0 });
   await startCapture(page);
 }
 
@@ -158,7 +158,8 @@ test.describe('手機首頁儀表板（離線重放）', () => {
     await expect.poll(() => peekCapture(page)).toContain(target + '\r');
     await drawArticleList(page, target, [[1, ' '], [2, ' ']]);
     await expect(dashboard(page)).toHaveCount(0);
-    expect(await takeCapture(page)).toBe('s\f' + target + '\r');
+    // The board's easy-reading list then fetches its rows with its own jumps.
+    expect(await takeCapture(page)).toMatch(new RegExp('^s\\f' + target + '\\r'));
 
     await drawMainMenu(page);
     await expect(dashboard(page)).toBeVisible();

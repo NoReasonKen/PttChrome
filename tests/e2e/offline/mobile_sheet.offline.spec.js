@@ -25,6 +25,10 @@ async function bootMenu(page) {
   await bootOffline(page, ptt);
   // 滑鼠瀏覽開著：點到終端機（選單大按鈕）會送鍵 ⇒ 「遮罩點擊漏出去」才測得出來。
   await ptt.applyPrefs(page, { useMouseBrowsing: true, mouseLeftClick: true });
+  // The home dashboard over the main menu fetches favorites (^Z f) 600ms after it
+  // shows; on a loaded machine that lands inside the "nothing sent" window: mark
+  // them fresh.
+  await page.evaluate(() => { window.__app.homeDashboard._state.fetchedAt = Date.now(); });
   await drawMainMenu(page);
   await page.waitForFunction(() => window.__app.view.menuCards === true);
 }

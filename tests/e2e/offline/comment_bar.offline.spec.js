@@ -19,7 +19,7 @@ const input = (page) => page.locator('#commentBar [name="commentBarText"]');
 
 async function boot(page, prefs, opts = {}) {
   await page.setViewportSize(VIEWPORT);
-  await bootOffline(page, ptt, { commentBar: true });
+  await bootOffline(page, ptt);
   await ptt.applyPrefs(page, Object.assign({ enableEasyReading: true }, prefs || {}));
   await replayCassette(page, article, { easyReading: opts.easyReading !== false });
   await waitPreviewsSettled(page);
@@ -126,11 +126,4 @@ test.describe('底部常駐推文列', () => {
       expect(await takeCapture(page)).toBe('');
     });
   }
-
-  test('pref 關 ⇒ 不出現', async ({ page }) => {
-    test.setTimeout(90000);
-    await boot(page, { enableCommentBar: false });
-    expect(await page.evaluate(() => window.__app.buf.pageLines.length)).toBeGreaterThan(0);
-    await expect(bar(page)).toHaveCount(0);
-  });
 });

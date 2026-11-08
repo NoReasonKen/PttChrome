@@ -5,7 +5,7 @@
 // 三條規則：
 //   1. **一個 byte 都不送**：資料全取自好讀的累積頁（buf.pageLines），跳到某列＝捲好讀的
 //      視口（easy_reading.scrollToArticleRow），AID 只用免費的網址列（aid_navigation.
-//      findLocalPostAid，不按 Q）。所以不在安全模式名單內（它不改原生畫面、不攔鍵）。
+//      findLocalPostAid，不按 Q）。所以有自己的開關，不算好讀行為（它不改原生畫面、不攔鍵）。
 //   2. **只在好讀文章裡**：原生 pmore 只有眼前這一屏，統計是錯的 ⇒ 不出現。
 //   3. **只用空白處**：與雙欄閱讀的左欄同一套（split_reader.paneWidthFor），放不下就不出現，
 //      不推動終端機（docs/terminal-size.md LOCKED）。
@@ -17,7 +17,7 @@ import { RE_IMAGE_EXT, RE_IMGUR_SINGLE, RE_TWIMG, RE_TENOR } from './image_url_d
 import { getImageProxyConfig, imgurCandidates, twimgCandidates, twimgOrigFormat } from './image_proxy';
 import { aidToFn } from './aid_codec';
 import { paneWidthFor } from './split_reader';
-import { readEffectivePrefs } from './pref_storage';
+import { readValuesWithDefault } from './pref_storage';
 import { HINT_ERROR } from './status_hint';
 
 export const ARTICLE_TOOLS_ID = 'articleTools';
@@ -125,7 +125,7 @@ export function articleUrl(board, aid) {
 }
 
 function enabled() {
-  return !!readEffectivePrefs().enableArticleTools;
+  return !!readValuesWithDefault().enableArticleTools;
 }
 
 function readCollapsed() {

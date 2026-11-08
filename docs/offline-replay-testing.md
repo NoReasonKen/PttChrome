@@ -56,20 +56,20 @@ the existing image-settling helpers cover those stronger requirements.
 
 ## 錄製（一次性，連真實 PTT）
 環境變數：`RECORD_MODE`(article|list)、`RECORD_BOARD`、`RECORD_NAME`、`RECORD_MAX_PAGES`(預設 12，0=不限)、
-`RECORD_SEARCH`(article：'/' 標題搜尋指定文章，過期則拋錯)、`RECORD_END`(article：加錄 End→原生的 'end' step)、
+`RECORD_SEARCH`(article：'/' 標題搜尋指定文章，過期則拋錯)、
 `RECORD_ALLOW_LOGIN`(用 env 帳密登入)、`RECORD_REDACT_EXTRA`("id1,id2" 額外要等長遮蔽的 id，
 用於 Fw 轉錄文「※ 轉錄者: <自己另一個 id>」≠ 登入帳號的情形)。
 ```
-# 指定文章（如黃仁勳那篇 #1g8znzQ3，golden 首推 bluebird5566）+ 加錄 End 場景
+# 指定文章（如黃仁勳那篇 #1g8znzQ3，golden 首推 bluebird5566）
 $env:RECORD_ALLOW_LOGIN="1"; $env:RECORD_MODE="article"; $env:RECORD_BOARD="Stock"
 $env:RECORD_SEARCH="黃仁勳喊話增產成功"; $env:RECORD_NAME="stock-huang"; yarn record:cassette
-# article（最新一篇）+ End step（供 End→原生 測試）
-$env:RECORD_ALLOW_LOGIN="1"; $env:RECORD_END="1"; $env:RECORD_MAX_PAGES="4"; $env:RECORD_MODE="article"
+# article（最新一篇，最多 4 頁）
+$env:RECORD_ALLOW_LOGIN="1"; $env:RECORD_MAX_PAGES="4"; $env:RECORD_MODE="article"
 $env:RECORD_BOARD="Stock"; $env:RECORD_NAME="stock-end"; yarn record:cassette
 # list（看板列表）
 $env:RECORD_ALLOW_LOGIN="1"; $env:RECORD_MODE="list"; $env:RECORD_BOARD="C_Chat"; $env:RECORD_NAME="cchat-list"; yarn record:cassette
 ```
-offline spec 遍歷所有 article cassette 逐卷守門；End 測試自動挑帶 'end' step 的那卷。
+offline spec 遍歷所有 article cassette 逐卷守門。
 - `record:cassette` = `RECORD_CASSETTE=1 playwright test --project=record`（無 RECORD_CASSETTE 會 skip；Yarn v4 portable shell 直接支援行內 env）。
 - 錄製器在 `tests/e2e/tools/record-cassette.spec.js`。
 - **憑證優先序**：`tests/e2e/.ptt-creds.json`（gitignored，`{"user","pass"}`）> env `RECORD_ALLOW_LOGIN=1` + env `PTT_USER`/`PTT_PASS` > 否則強制 guest。
@@ -129,8 +129,8 @@ yarn test:e2e           # 仍連真實 PTT 的 live e2e（共存，--project=liv
   `loadCassette('scn-<名稱>')` 指名載入。
 - 重放：`helpers/replay.js#bootScenario`（baseline prefs＝錄製前 `resetSession` 那組 ＋ `meta.prefs`）→
   `replayListCassette`（門控在 stub WS 送出層，`raw` 逐位元組比對、兩邊剝交易尾 `\f`）。
-  進度用 `waitFed(page, n)`。**兩個列表接管 pref（`enableEasyReadingList`／`enableBoardListSmoothScroll`）
-  在錄製時都是開錄之後才開**（engage 的預讀 jump 才會在素材裡）⇒ `bootScenario` 一律先關，spec 首幀後自己開。
+  進度用 `waitFed(page, n)`。**好讀在錄製時是開錄之後才開**（列表接管的預讀 jump 才會在素材裡）
+  ⇒ `bootScenario` 一律先關好讀，spec 首幀後自己開。
 - 錄製紀律（違反＝重放對不上、卡在某一步 timeout）：
   1. prep（找文章、撈 AID、進板）**不錄**；開錄後先送 Ctrl-L 拿首幀。
   2. 每個動作前後 `waitWireQuiet`（錄製事件數靜止＋settle 計時器清空＋背景佇列 idle）。重放端回應是
@@ -290,9 +290,9 @@ position, and ends where the browser stops delivering them.
    **`waitFed(n)` 只代表 recv 進了 parser，不代表好讀已退場** —— 退文後緊接的 PageUp
    若趕在 `buf.startedEasyReading` 清掉之前，會被 `easyReading._onKeyDown` 當成文章內
    捲動吃掉（零 byte）⇒ 門控永遠等不到、60s timeout。同一支 smoke 另一個同形的坑是
-   `enableEasyReadingList` 預設開、engage 非同步，搶在 PageUp 之前 engage 就變成本地
+   好讀開著時列表好讀 engage 非同步，搶在 PageUp 之前 engage 就變成本地
    pgup。兩者都是**時紅時綠**，本機要 `--repeat-each=24 --workers=6` 才抓得到。
-   ⇒ 列表 cassette 的鍵盤 smoke：**顯式關掉 list 好讀**，且**退文後按鍵前等
+   ⇒ 列表 cassette 的原生鍵盤 smoke：**顯式關掉好讀（`enableEasyReading:false`）**，且**退文後按鍵前等
    `!buf.startedEasyReading`**（該 frame `pageState` 仍是 0，不能拿它等）。
 
 ## 離線網路（`installOfflineNetwork`）—— 「零網路」的另一半
@@ -550,8 +550,8 @@ project 名，同 `image_load_conditions.offline.spec.js`）。這樣兩個 job 
   等於測試早就在測「imgur 的錯誤圖」而非我們的渲染路徑。
 
 ## 踩坑
-- **列表 cassette 要先關列表好讀再餵**：`enableEasyReadingList` 預設開。`replayListCassette` 之後才
-  `applyPrefs({enableEasyReadingList:false})` ＝與 start step 的 settle 賽跑：輸了就 engage 送錨定 jump，
+- **原生列表 cassette 要先關好讀再餵**：好讀預設開，列表跟著好讀。`replayListCassette` 之後才
+  `applyPrefs({enableEasyReading:false})` ＝與 start step 的 settle 賽跑：輸了就 engage 送錨定 jump，
   `cchat-list-nav` 的 jump recv 沒有 Ctrl+L 全幅重繪 ⇒ footer 空白 ⇒ `pageState` 0。範例
   `offline/easy-reading-list.offline.spec.js`「原生列表：鍵盤游標底色」；scenario 卷的 `bootScenario` 已內建。
 - 必須先 `applyPrefs(enableEasyReading:true)` 寫 localStorage **再** `enterEasyReading()`，否則

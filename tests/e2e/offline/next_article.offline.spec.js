@@ -116,11 +116,10 @@ async function scrollToEnd(page) {
 const card = (page) => page.locator('#nextArticleCard');
 const label = (page, key) => page.evaluate((k) => window.__i18n(k), key);
 
-async function boot(page, prefs, { commentBar = false } = {}) {
+async function boot(page, prefs) {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await bootOffline(page, ptt, { nextArticle: true, commentBar });
-  // 好讀列表會自己補頁、改送鍵：這裡只測文末的卡片，用原生列表。
-  await ptt.applyPrefs(page, Object.assign({ enableEasyReadingList: false }, prefs || {}));
+  await bootOffline(page, ptt);
+  if (prefs) await ptt.applyPrefs(page, prefs);
   await page.evaluate(() => window.__app.setInputAreaFocus());
 }
 
@@ -151,7 +150,7 @@ test.describe('讀完接著讀下一篇', () => {
   // 推文很少的文章，卡片排在 PTT 補的空白列後面，要捲一段
   // 才看得到；捲下去之後底部推文列又壓在卡片上。
   test('推文列開著、推文很少 ⇒ 不用捲就看到整張卡片，推文列不蓋卡片', async ({ page }) => {
-    await boot(page, {}, { commentBar: true });
+    await boot(page);
     await openFromList(page, 4);
     await expect(card(page)).toBeVisible();
     await expect(page.locator('#commentBar')).toBeVisible();
@@ -163,7 +162,7 @@ test.describe('讀完接著讀下一篇', () => {
   });
 
   test('推文列開著、長文章捲到底 ⇒ 卡片在推文列上面，點得到', async ({ page }) => {
-    await boot(page, {}, { commentBar: true });
+    await boot(page);
     await drawList(page, 4);
     await drawArticle(page, ENTRIES[4], { full: true });
     await expect(card(page)).toBeVisible();
@@ -295,12 +294,5 @@ test.describe('讀完接著讀下一篇', () => {
     await expect.poll(() => peekCapture(page)).toContain('sTest\r');
     expect(await takeCapture(page)).toBe('sTest\r\f');
     await expect(page.locator('#nextArticleVeil')).toBeVisible();
-  });
-
-  test('pref 關 ⇒ 不出現', async ({ page }) => {
-    await boot(page, { enableNextArticleCard: false });
-    await openFromList(page, 2);
-    expect(await page.evaluate(() => window.__app.view._articleBoard)).toBe('Test');
-    await expect(card(page)).toHaveCount(0);
   });
 });

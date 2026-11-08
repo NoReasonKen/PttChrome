@@ -14,6 +14,7 @@
 // 只剩落地幀的弱錨點，等於拆掉唯一擋住「推到別篇」的機制（docs/long-push.md
 // 「游標錨定」）。列表按 X 一律維持 PTT 原生行為。
 
+import { easyReadingOn } from './pref_storage';
 import { parsePagerFooterContext, parseStatusRow } from './string_util';
 
 // CONFIRMED（pttbbs mbbsd/more.c:90-93）：pager 的 key handler 只有這兩個 case 回
@@ -32,9 +33,8 @@ export function isPushKey(key) {
 // footer 會因為寬度不夠整段消失（string_util.js 的說明）。
 export function longPushAvailable(opts) {
   const o = opts || {};
-  const prefs = o.prefs || {};
   return (
-    !!prefs.enableLongPush &&
+    easyReadingOn(o.prefs) &&
     o.pageState === 3 &&
     parsePagerFooterContext(o.lastRowText) !== 'mail'
   );
@@ -57,11 +57,8 @@ export function shouldInterceptPushKey(opts) {
   const o = opts || {};
   if (!isPushKey(o.key)) return false;
   if (o.ctrlKey || o.altKey || o.metaKey) return false;
-  const prefs = o.prefs || {};
-  // 新開關從屬於 enableLongPush：longPushAvailable 第一項就是總開關，關掉總開關時
-  // 攔截必定失效，不靠兩處各記一次。
-  if (!prefs.pushKeyOpensLongPush) return false;
-  if (!longPushAvailable({ prefs, pageState: o.pageState, lastRowText: o.lastRowText }))
+  // 好讀開著時推文鍵一律是我們的（longPushAvailable 第一項就是好讀開關）。
+  if (!longPushAvailable({ prefs: o.prefs, pageState: o.pageState, lastRowText: o.lastRowText }))
     return false;
   // pmore 自己的 prompt（`/` 搜尋、`:`／`;`／數字跳行跳頁，pmore.c#pmore_do_goto 等）畫在
   // b_lines-1，**狀態列留在底列** ⇒ 上一條照樣成立，使用者在 prompt 裡打的 X 會被吞去開

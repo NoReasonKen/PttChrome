@@ -72,7 +72,7 @@ async function openListCards(page, cassette) {
   }
   await replayListCassette(page, cassette);
   await page.waitForFunction(() => window.__app.buf.pageState === 2);
-  await ptt.applyPrefs(page, { enableEasyReadingList: true });
+  await ptt.applyPrefs(page, { enableEasyReading: true });
   await expect
     .poll(() =>
       page.evaluate(() => {

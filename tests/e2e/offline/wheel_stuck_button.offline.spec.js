@@ -179,7 +179,6 @@ test.describe('滾輪按鍵旗標卡死（offline 回歸）', () => {
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, {
       enableEasyReading: false,
-      enableEasyReadingList: false,
       useMouseBrowsing: true,
       mouseLeftClick: true,
     });

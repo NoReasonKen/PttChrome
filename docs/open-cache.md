@@ -33,7 +33,7 @@ Vite 產的檔名帶內容 hash（`assets/<名>-<8 字 hash>.<副檔名>`），�
   開機時開關是關的也會再清一次（關的過程中 SW 可能又把 cache 建回來）。
 - **不註冊的情況**：dev server（`DEVELOPER_MODE`，Vite 檔名不帶 hash、HMR 不能被快取擋住）；
   沒有 `navigator.serviceWorker`（非安全來源，例如 APK 的區網 dev server 模式）。
-- 一個 byte 都不送 PTT ⇒ 不在安全模式名單。
+- 一個 byte 都不送 PTT ⇒ 不是好讀行為，有自己的開關。
 
 ## 量測（vite preview＋Chromium，開站到 `#bootLoading` 拆掉，暖機後各 3 次）
 

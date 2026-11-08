@@ -59,7 +59,7 @@ async function installLongArticleSim(page, { total, latencyMs = 5 }) {
 // 之後、開始累積之前呼叫（插量測用）。
 async function openLongArticle(page, ptt, { total, prefs, read = 'end', onReady } = {}) {
   await bootOffline(page, ptt);
-  await ptt.applyPrefs(page, Object.assign({ enableEasyReadingList: false }, prefs));
+  await ptt.applyPrefs(page, prefs);
   await installLongArticleSim(page, { total });
   await page.waitForFunction(() => window.__app.buf.pageState === 3);
   await page.evaluate(() => window.__app.easyReading.enterEasyReading());

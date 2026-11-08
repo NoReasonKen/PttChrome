@@ -158,13 +158,9 @@ async function waitState(page, pred, timeout = 15000) {
 // 门控 map，验证 cassette 每个 step 都喂得进真 parser、终局画面回到看板列表。
 // 这条守的是 replayListCassette + 录制器产物本身 —— 视窗逻辑坏掉不影响它。
 //
-// 两个「按键被好读接走 ⇒ 送出的 bytes 对不上门控 ⇒ 永远喂不到下一步、等到
-// timeout」的竞态，都是**时红时绿**（CI 与本机 --repeat-each 并行都实际红过）：
-//  1. enableEasyReadingList 2026-09 起预设开，engage 是非同步的 —— 抢在某颗 PageUp
-//     之前 engage 的话，那颗键变成 ListSession 的本地 pgup ⇒ 必须显式关掉。
-//  2. 文章好读：waitFed 只代表 recv 已喂进 parser，不代表好读已经退场。退文后紧接的
-//     PageUp 若赶在 buf.startedEasyReading 清掉之前，会被 easyReading._onKeyDown
-//     当成文章内捲动吃掉（preventDefault、零 byte）⇒ 按键前先等它退场。
+// 這卷是原生列表的錄製：好讀開著時列表好讀會非同步 engage，抢在某颗 PageUp 之前
+// engage 的話，那颗键变成 ListSession 的本地 pgup ⇒ 送出的 bytes 對不上門控、等到
+// timeout（時紅時綠）⇒ 這裡關掉好讀，守的是重放門控本身。
 test.describe('replayListCassette 门控机制', () => {
   test.skip(!nav, '缺 cchat-list-nav cassette（yarn record:cassette 先录一次）');
 
@@ -172,7 +168,7 @@ test.describe('replayListCassette 门控机制', () => {
     const logs = ptt.attachConsole(page);
     try {
       await bootOffline(page, ptt);
-      await ptt.applyPrefs(page, { enableEasyReadingList: false });
+      await ptt.applyPrefs(page, { enableEasyReading: false });
       await replayListCassette(page, nav);
       // start step 已喂：画面应是看板列表。
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
@@ -211,9 +207,6 @@ test.describe('replayListCassette 门控机制', () => {
       await waitFed(8);
       await sendJump(jumps[3].num); // jumpsame
       await waitFed(9);
-      // 文章好读退场才轮得到原生 PageUp（见 describe 上方第 2 点）。这一帧底列
-      // 空白、pageState 仍是 0，所以等的是好读旗标而不是 pageState。
-      await page.waitForFunction(() => !window.__app.buf.startedEasyReading);
       await page.keyboard.press('PageUp'); // 最后一卷 pageup
       await page.waitForFunction(() => window.__replay && window.__replay.done);
 
@@ -247,7 +240,7 @@ test.describe('文章列表好读模式（离线）', () => {
 
       // 开启 list 好读：evaluateNow 立即 seed，随后背景 fill 逐页吃 cassette。
       await ptt.applyPrefs(page, {
-        enableEasyReadingList: true,
+        enableEasyReading: true,
         easyReadingListPrefetchCount: 200
       });
       let s = await waitState(page, (x) => x.state === 'active' && x.renderMode === 'buffer');
@@ -303,7 +296,7 @@ test.describe('文章列表好读模式（离线）', () => {
       await replayListCassette(page, navWide);
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
       await ptt.applyPrefs(page, {
-        enableEasyReadingList: true,
+        enableEasyReading: true,
         easyReadingListPrefetchCount: 200
       });
       let s = await waitState(page, (x) => x.state === 'active' && x.renderMode === 'buffer');
@@ -341,13 +334,13 @@ test.describe('文章列表好读模式（离线）', () => {
     const logs = ptt.attachConsole(page);
     try {
       await bootOffline(page, ptt);
-      // 列表好讀預設開：不先關的話首幀會自己 engage、用預設預抓 200 開始 fill，
+      // 好讀預設開：不先關的話列表好讀在首幀就會自己 engage、用預設預抓 200 開始 fill，
       // 搶在下面設定預抓數之前（時紅時綠）。先關，下面打開時才 engage。
-      await ptt.applyPrefs(page, { enableEasyReadingList: false });
+      await ptt.applyPrefs(page, { enableEasyReading: false });
       await replayListCassette(page, nav);
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
       await ptt.applyPrefs(page, {
-        enableEasyReadingList: true,
+        enableEasyReading: true,
         easyReadingListPrefetchCount: 0
       });
       const before = await waitState(page, (x) => x.state === 'active' && x.queueIdle);
@@ -384,13 +377,13 @@ test.describe('文章列表好读模式（离线）', () => {
     const logs = ptt.attachConsole(page);
     try {
       await bootOffline(page, ptt);
-      // 列表好讀預設開：不先關的話首幀會自己 engage、用預設預抓 200 開始 fill，
+      // 好讀預設開：不先關的話列表好讀在首幀就會自己 engage、用預設預抓 200 開始 fill，
       // 搶在下面設定預抓數之前（時紅時綠）。先關，下面打開時才 engage。
-      await ptt.applyPrefs(page, { enableEasyReadingList: false });
+      await ptt.applyPrefs(page, { enableEasyReading: false });
       await replayListCassette(page, nav);
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
       await ptt.applyPrefs(page, {
-        enableEasyReadingList: true,
+        enableEasyReading: true,
         easyReadingListPrefetchCount: 0
       });
       const before = await waitState(page, (x) => x.state === 'active' && x.queueIdle);
@@ -443,13 +436,13 @@ test.describe('文章列表好读模式（离线）', () => {
     const AID = '#1gTTD8RU';
     try {
       await bootOffline(page, ptt);
-      // 列表好讀預設開：不先關的話首幀會自己 engage、用預設預抓 200 開始 fill，
+      // 好讀預設開：不先關的話列表好讀在首幀就會自己 engage、用預設預抓 200 開始 fill，
       // 搶在下面設定預抓數之前（時紅時綠）。先關，下面打開時才 engage。
-      await ptt.applyPrefs(page, { enableEasyReadingList: false });
+      await ptt.applyPrefs(page, { enableEasyReading: false });
       await replayListCassette(page, nav);
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
       await ptt.applyPrefs(page, {
-        enableEasyReadingList: true,
+        enableEasyReading: true,
         easyReadingListPrefetchCount: 0
       });
       const before = await waitState(page, (x) => x.state === 'active' && x.queueIdle);
@@ -492,15 +485,15 @@ test.describe('文章列表好读模式（离线）', () => {
     const logs = ptt.attachConsole(page);
     try {
       await bootOffline(page, ptt);
-      // 列表好讀預設開：不先關的話首幀會自己 engage、用預設預抓 200 開始 fill，
+      // 好讀預設開：不先關的話列表好讀在首幀就會自己 engage、用預設預抓 200 開始 fill，
       // 搶在下面設定預抓數之前（時紅時綠）。先關，下面打開時才 engage。
-      await ptt.applyPrefs(page, { enableEasyReadingList: false });
+      await ptt.applyPrefs(page, { enableEasyReading: false });
       await replayListCassette(page, nav);
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
       // 预读 0：seed 后不 fill；↑ 的方向性 demand 会在背景补页，但游标移动
       // 本身零等待（这就是「到顶不卡一秒」的行为锁）。
       await ptt.applyPrefs(page, {
-        enableEasyReadingList: true,
+        enableEasyReading: true,
         easyReadingListPrefetchCount: 0
       });
       const before = await waitState(page, (x) => x.state === 'active' && x.queueIdle);
@@ -537,7 +530,7 @@ test.describe('文章列表好读模式（离线）', () => {
       await replayListCassette(page, nav);
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
       await ptt.applyPrefs(page, {
-        enableEasyReadingList: true,
+        enableEasyReading: true,
         easyReadingListPrefetchCount: 200
       });
       // fill 往舊文方向長 ⇒ 視窗上方會累積夠多列可捲。
@@ -629,7 +622,7 @@ test.describe('文章列表好读模式（离线）', () => {
       await replayListCassette(page, nav);
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
       await ptt.applyPrefs(page, {
-        enableEasyReadingList: true,
+        enableEasyReading: true,
         easyReadingListPrefetchCount: 200
       });
       await waitState(
@@ -680,7 +673,7 @@ test.describe('文章列表好读模式（离线）', () => {
       await replayListCassette(page, nav);
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
       await ptt.applyPrefs(page, {
-        enableEasyReadingList: true,
+        enableEasyReading: true,
         easyReadingListPrefetchCount: 200
       });
       await waitState(
@@ -753,7 +746,7 @@ test.describe('文章列表好读模式（离线）', () => {
       await replayListCassette(page, nav);
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
       await ptt.applyPrefs(page, {
-        enableEasyReadingList: true,
+        enableEasyReading: true,
         easyReadingListPrefetchCount: 200
       });
       await waitState(
@@ -822,13 +815,13 @@ test.describe('文章列表好读模式（离线）', () => {
     const logs = ptt.attachConsole(page);
     try {
       await bootOffline(page, ptt);
-      // 列表好讀預設開：不先關的話首幀會自己 engage、用預設預抓 200 開始 fill，
+      // 好讀預設開：不先關的話列表好讀在首幀就會自己 engage、用預設預抓 200 開始 fill，
       // 搶在下面設定預抓數之前（時紅時綠）。先關，下面打開時才 engage。
-      await ptt.applyPrefs(page, { enableEasyReadingList: false });
+      await ptt.applyPrefs(page, { enableEasyReading: false });
       await replayListCassette(page, nav);
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
       await ptt.applyPrefs(page, {
-        enableEasyReadingList: true,
+        enableEasyReading: true,
         easyReadingListPrefetchCount: 0
       });
       await waitState(page, (x) => x.state === 'active' && x.queueIdle);
@@ -883,51 +876,20 @@ test.describe('文章列表好读模式（离线）', () => {
     }
   });
 
-  // REGRESSION 2026-09-26（「文章好讀偶爾失效，停在原生」）的原生列表版：列表好讀
-  // 關著時沒有 list_session 替你補開，全靠文章好讀自己的 settle 邊緣。舊版 server
-  // 跳號後底列留空 ⇒ 使用者停在落點 ⇒ settled 0 ⇒ Enter 進文是 0→3。
-  // 直接餵 cassette 的三幀（列表 → 跳號落點 → 文章），不經鍵盤：原生逐字打號碼
-  // 對不上 jump 的整串門控，而這裡要驗的是 settle 串流，不是送鍵。
-  test('原生列表：跳號落點靜置後開文，文章好讀照樣啟動', async ({ page }) => {
-    const logs = ptt.attachConsole(page);
-    try {
-      await bootOffline(page, ptt);
-      await ptt.applyPrefs(page, { enableEasyReadingList: false });
-      await replayListCassette(page, nav); // 只喂 start：看板列表
-      await page.waitForFunction(() => window.__app.buf.settledPageState === 2);
-
-      const jumpIdx = nav.steps.findIndex((st, i) => st.num != null && nav.steps[i + 1]?.on === 'open');
-      expect(jumpIdx).toBeGreaterThan(0);
-      await page.evaluate((r) => window.__app.onData(atob(r)), nav.steps[jumpIdx].recv);
-      // 本卷的跳號落點就是底列空白那一型（前提；不成立這條就不是在測這個 bug）。
-      await page.waitForFunction(() => window.__app.buf.settledPageState === 0);
-
-      await page.evaluate((r) => window.__app.onData(atob(r)), nav.steps[jumpIdx + 1].recv);
-      await page.waitForFunction(() => window.__app.buf.settledPageState === 3);
-      // 修前：prev settled 0 ⇒ nextEasyReadingState 不成立 ⇒ 停在原生。
-      await page.waitForFunction(() => window.__app.easyReading._enabled === true, null, {
-        timeout: 5000,
-      });
-    } catch (e) {
-      console.log('--- console tail ---');
-      for (const l of logs.slice(-20)) console.log(l);
-      throw e;
-    }
-  });
 
   test('PgUp 游标停新页顶＋开文返回画面不变（native parity 闭环）', async ({ page }) => {
     test.setTimeout(90000);
     const logs = ptt.attachConsole(page);
     try {
       await bootOffline(page, ptt);
-      // 列表好讀預設開：不先關的話首幀會自己 engage、用預設預抓 200 開始 fill，
+      // 好讀預設開：不先關的話列表好讀在首幀就會自己 engage、用預設預抓 200 開始 fill，
       // 搶在下面設定預抓數之前（時紅時綠）。先關，下面打開時才 engage。
-      await ptt.applyPrefs(page, { enableEasyReadingList: false });
+      await ptt.applyPrefs(page, { enableEasyReading: false });
       await replayListCassette(page, nav);
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
       // 预读 30：fill 只吃第一对锚定命令；第二对留给 PgUp 的 demand。
       await ptt.applyPrefs(page, {
-        enableEasyReadingList: true,
+        enableEasyReading: true,
         easyReadingListPrefetchCount: 30
       });
       let s = await waitState(page, (x) => x.state === 'active' && x.listLen > 30 && x.queueIdle, 20000);
@@ -1062,11 +1024,11 @@ test.describe('文章列表好读模式（离线）', () => {
     const logs = ptt.attachConsole(page);
     try {
       await bootOffline(page, ptt);
-      // 列表好讀必須在餵 cassette **之前**關掉：pref 預設開，晚關的話 start step 一
-      // settle 就 engage、送出錨定 jump（351359 + CR + FF）。cassette 那一步的 recv 只有
-      // 「清掉 b_lines 的跳號提示」、沒有 FF（Ctrl+L）換來的全幅重繪 ⇒ footer 留白 ⇒
-      // pageState 掉成 0 ⇒ 正確地不上色，toPass 輪到逾時（CPU 節流 8 倍下約 1/10）。
-      await ptt.applyPrefs(page, { enableEasyReadingList: false });
+      // 原生列表 ⇒ 好讀在餵 cassette **之前**關掉：晚關的話 start step 一 settle 列表好讀
+      // 就 engage、送出錨定 jump（351359 + CR + FF）。cassette 那一步的 recv 只有「清掉
+      // b_lines 的跳號提示」、沒有 FF（Ctrl+L）換來的全幅重繪 ⇒ footer 留白 ⇒ pageState
+      // 掉成 0 ⇒ 正確地不上色，toPass 輪到逾時（CPU 節流 8 倍下約 1/10）。
+      await ptt.applyPrefs(page, { enableEasyReading: false });
       await replayListCassette(page, nav);
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
       await ptt.applyPrefs(page, {
@@ -1118,13 +1080,13 @@ test.describe('文章列表好读模式（离线）', () => {
     const logs = ptt.attachConsole(page);
     try {
       await bootOffline(page, ptt);
-      // 列表好讀預設開：不先關的話首幀會自己 engage、用預設預抓 200 開始 fill，
+      // 好讀預設開：不先關的話列表好讀在首幀就會自己 engage、用預設預抓 200 開始 fill，
       // 搶在下面設定預抓數之前（時紅時綠）。先關，下面打開時才 engage。
-      await ptt.applyPrefs(page, { enableEasyReadingList: false });
+      await ptt.applyPrefs(page, { enableEasyReading: false });
       await replayListCassette(page, nav);
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
       await ptt.applyPrefs(page, {
-        enableEasyReadingList: true,
+        enableEasyReading: true,
         easyReadingListPrefetchCount: 30,
         useMouseBrowsing: true,
         mouseBrowsingHighlight: true,
@@ -1263,13 +1225,13 @@ test.describe('置底文 Enter 开启（离线，pinned 卷）', () => {
     const logs = ptt.attachConsole(page);
     try {
       await bootOffline(page, ptt);
-      // 列表好讀預設開：不先關的話首幀會自己 engage、用預設預抓 200 開始 fill，
+      // 好讀預設開：不先關的話列表好讀在首幀就會自己 engage、用預設預抓 200 開始 fill，
       // 搶在下面設定預抓數之前（時紅時綠）。先關，下面打開時才 engage。
-      await ptt.applyPrefs(page, { enableEasyReadingList: false });
+      await ptt.applyPrefs(page, { enableEasyReading: false });
       await replayListCassette(page, pinned);
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
       await ptt.applyPrefs(page, {
-        enableEasyReadingList: true,
+        enableEasyReading: true,
         easyReadingListPrefetchCount: 0
       });
       await waitState(page, (x) => x.state === 'active' && x.queueIdle);
@@ -1322,98 +1284,10 @@ test.describe('置底文 Enter 开启（离线，pinned 卷）', () => {
 // 可选 sync 腿 → enter-function-mode → 代送原键），prompt 由原生镜像显示。
 // 2026-09-03（本檔兩條的語意反轉）：原生操作**做完之後**不再停在原生 —— 畫面
 // 靜下來（RESUME_QUIET_MS=250ms 內沒有 server 活動也沒有使用者送 byte）就由靜置
-// 探針自動切回好讀（resume+rebuild，不變量 15 照舊）。pref
-// enableListNativeAutoResume 預設開；關掉才是舊的黏性行為。
-test.describe('passthrough 一键切原生（离线，search/mark 卷）', () => {
-  const search = loadCassette('cchat-list-search');
+// 探針自動切回好讀（resume+rebuild，不變量 15 照舊）。
+// `/` 不在這裡：好讀開著時搜尋鍵一律開搜尋彈窗（article_search.offline.spec.js）。
+test.describe('passthrough 一键切原生（离线，mark 卷）', () => {
   const mark = loadCassette('cchat-list-mark');
-
-  test('/ 一键切原生：原生 prompt 打字提交→MODE_SELECT 落地後自动回好读→← 退回主列表仍好读', async ({ page }) => {
-    test.skip(!search, '缺 cchat-list-search cassette');
-    test.setTimeout(60000);
-    const logs = ptt.attachConsole(page);
-    try {
-      await bootOffline(page, ptt);
-      // 列表好讀預設開：不先關的話首幀會自己 engage、用預設預抓 200 開始 fill，
-      // 搶在下面設定預抓數之前（時紅時綠）。先關，下面打開時才 engage。
-      await ptt.applyPrefs(page, { enableEasyReadingList: false });
-      await replayListCassette(page, search);
-      await page.waitForFunction(() => window.__app.buf.pageState === 2);
-      await ptt.applyPrefs(page, {
-        enableEasyReadingList: true,
-        easyReadingListPrefetchCount: 0,
-        // 這條守的是**原生** `/` passthrough（卷裡錄的是原生 prompt 打字）；預設的搜尋
-        // 彈窗會先把 `/` 攔走（docs/article-search.md），那條路另由
-        // article_search.offline.spec.js 守。
-        searchKeyOpensModal: false
-      });
-      let s = await waitState(page, (x) => x.state === 'active' && x.queueIdle);
-      const mainNums = s.nums.filter((n) => n != null);
-
-      // '/' → passthrough（seed 落点 server 游标=选取 → 免 sync 腿）→ 切原生
-      // 代送 '/'（slash step 喂 prompt 画面，原生镜像直接显示）。
-      await page.locator('#t').focus();
-      await page.keyboard.press('/');
-      s = await waitState(
-        page,
-        (x) => x.state === 'functionMode' && x.renderMode === 'native',
-        10000
-      );
-      // 原生 prompt 画面已喂入 → 逐键打字（query 门控在 helper 侧累积到 \r）。
-      const q = (search.steps.find((st) => st.on === 'query') || {}).query || 'Re';
-      await waitScreenSettled(page);
-      await page.keyboard.type(q, { delay: 30 });
-      await page.keyboard.press('Enter');
-
-      // 提交完成 → MODE_SELECT 清单落地。画面静下来之后靜置探針自动把我们切回
-      // 好读（resume+rebuild：MODE_SELECT 是独立编号空间，协定 §8）。
-      // 画面序号从 DOM 列解析（buffer 重建前后都对得上）。
-      const screenNums = async () => {
-        const rows = await dumpScreenRows(page);
-        return rows
-          .map((t) => {
-            const m = t.match(/^[>●\s]*(\d+)\s/);
-            return m ? parseInt(m[1], 10) : null;
-          })
-          .filter((n) => n != null);
-      };
-      // MODE_SELECT 画面到齐（row0 先画、body 后画的串流时序 → poll 到
-      // 「画面序号整页落入独立小序号空间」为止，一次取样必踩 race）。
-      await expect
-        .poll(async () => {
-          const ns = await screenNums();
-          return ns.length > 0 && Math.max(...ns) < Math.min(...mainNums);
-        }, { timeout: 15000 })
-        .toBe(true);
-      // 自动回好读（本次改动的主体）：不按任何键，state 自己回 active、
-      // .listBodyView 重新出现。
-      s = await waitState(
-        page,
-        (x) => x.state === 'active' && x.renderMode === 'buffer',
-        15000
-      );
-      await expect(page.locator('.listBodyView')).toHaveCount(1);
-
-      // ← 退回主列表：这时已经是好读，所以走的是序列化的离开交易（back step）。
-      // 落地仍是好读（编号空间换了 ⇒ rebuild）。
-      await page.keyboard.press('ArrowLeft');
-      await expect
-        .poll(async () => {
-          const ns = await screenNums();
-          return ns.some((n) => n >= Math.min(...mainNums));
-        }, { timeout: 15000 })
-        .toBe(true);
-      s = await waitState(
-        page,
-        (x) => x.state === 'active' && x.renderMode === 'buffer',
-        15000
-      );
-    } catch (e) {
-      console.log('--- console tail ---');
-      for (const l of logs.slice(-25)) console.log(l);
-      throw e;
-    }
-  });
 
   test('v 一键切原生：sync 腿→代送 v→原生 prompt→Enter 取消→自动回好读', async ({ page }) => {
     test.skip(!mark, '缺 cchat-list-mark cassette');
@@ -1421,13 +1295,13 @@ test.describe('passthrough 一键切原生（离线，search/mark 卷）', () =>
     const logs = ptt.attachConsole(page);
     try {
       await bootOffline(page, ptt);
-      // 列表好讀預設開：不先關的話首幀會自己 engage、用預設預抓 200 開始 fill，
+      // 好讀預設開：不先關的話列表好讀在首幀就會自己 engage、用預設預抓 200 開始 fill，
       // 搶在下面設定預抓數之前（時紅時綠）。先關，下面打開時才 engage。
-      await ptt.applyPrefs(page, { enableEasyReadingList: false });
+      await ptt.applyPrefs(page, { enableEasyReading: false });
       await replayListCassette(page, mark);
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
       await ptt.applyPrefs(page, {
-        enableEasyReadingList: true,
+        enableEasyReading: true,
         easyReadingListPrefetchCount: 0
       });
       let s = await waitState(page, (x) => x.state === 'active' && x.queueIdle);
@@ -1528,7 +1402,7 @@ test.describe('中文輸入法（離線）', () => {
     await replayListCassette(page, nav);
     await page.waitForFunction(() => window.__app.buf.pageState === 2);
     await ptt.applyPrefs(page, {
-      enableEasyReadingList: true,
+      enableEasyReading: true,
       easyReadingListPrefetchCount: fill ? 200 : 0,
     });
     return waitState(

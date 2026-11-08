@@ -223,7 +223,6 @@ test.describe('功能鍵可點：看板列表（離線重放）', () => {
     test.setTimeout(90000);
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, {
-      enableEasyReadingList: false,
       enableEasyReading: false,
       useMouseBrowsing: true,
       mouseLeftClick: true,
@@ -248,7 +247,6 @@ test.describe('功能鍵可點：看板列表（離線重放）', () => {
     test.setTimeout(90000);
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, {
-      enableEasyReadingList: false,
       enableEasyReading: false,
       useMouseBrowsing: true,
       mouseFunctionKeys: false,
@@ -266,7 +264,6 @@ test.describe('功能鍵可點：看板列表（離線重放）', () => {
     test.setTimeout(90000);
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, {
-      enableEasyReadingList: false,
       enableEasyReading: false,
       useMouseBrowsing: true,
       mouseLeftClick: true,
@@ -309,12 +306,10 @@ test.describe('複合鍵逐鍵可點：文章 footer 的 (X%)（離線重放）'
       mouseLeftClick: true,
       mouseFunctionKeys: true,
       // 這個 describe 守的是「同一組括號逐鍵可點、送出去的 byte 對得上」的座標鏈，
-      // 不是推文語意。預設情況下 X／% 會被攔去開長推文：使用者那顆 byte 被吞掉，
-      // 改由狀態機送一個 X 去探路（時序與歸屬都不同，見 docs/long-push.md）。
-      // 那條行為另有守護（long_push.offline.spec.js ＋ tests/unit/push_key_intercept）
-      // ⇒ 這裡關掉攔截，才量得到「使用者的 byte 直達」。
-      pushKeyOpensLongPush: false,
-      // 同理關掉邊緣點擊翻頁：2026-09 起文章的最後一列（＝footer，這一組按鈕所在）
+      // 不是推文語意。好讀開著時 X／% 會被攔去開長推文（見 docs/long-push.md，
+      // long_push.offline.spec.js ＋ tests/unit/push_key_intercept 守護）；
+      // 這裡好讀關著，才量得到「使用者的 byte 直達」。
+      // 另外關掉邊緣點擊翻頁：2026-09 起文章的最後一列（＝footer，這一組按鈕所在）
       // 也是「跳到文末(End)」的區域，而括號本身不屬於任何按鈕 ⇒ 點它會落到那個
       // 區域。那是刻意的（使用者定案要找回原版的底列 End），與這裡要守的
       // 「括號不得被算進某一顆按鈕」無關，另有 mouse.offline.spec.js 守護。

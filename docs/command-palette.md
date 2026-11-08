@@ -12,7 +12,7 @@
 | 空白，或板名開頭 | 最近去過的看板＋我的最愛（空白最多 12 個、打字最多 5 個，最近的在前） | 同下一列「前往看板」 |
 | 板名（`BOARD_RE`） | 前往看板 | 搜尋彈窗的送出（`onSearchConfirm` kind `board` → `submitSearch`，閱讀紀錄 `board-search`） |
 | 任意字／帳號字元／數字 | 搜標題／作者／推文數 | 同上（kind `title`／`author`／`push`） |
-| 動作關鍵字（兩語系） | 重新整理、跳到第一篇未讀、設為全部已讀、複製本篇連結、返回原文、開啟設定、安全模式開／關 | `screenRefresh.refresh`、`unreadJump.start`、`markAllRead.start`、`copyCurrentPostLink`、`aidNavigation.back`、設定頁、`setNativeSafeMode` |
+| 動作關鍵字（兩語系） | 重新整理、跳到第一篇未讀、設為全部已讀、複製本篇連結、返回原文、開啟設定、好讀開／關 | `screenRefresh.refresh`、`unreadJump.start`、`markAllRead.start`、`copyCurrentPostLink`、`aidNavigation.back`、設定頁、好讀開關 |
 | 設定名稱 | 設定項（最多 4 筆） | 開設定頁＋`PrefModal jumpTarget`（與設定搜尋同一套跳轉） |
 
 ## 規則
@@ -25,11 +25,11 @@
 - 最近／最愛的看板（pref `paletteQuickBoards`，預設開）：資料是首頁儀表板現成的（`HomeDashboard.quickBoards()`：最近看板在每次進板就記、我的最愛是儀表板抓過的快取），**一個 byte 都不多送**。
   只在能選看板的畫面列（`searchKinds` 含 `board`：主功能表、看板列表、文章列表）；文章裡按 `s` 不是選看板，不列。
 - **快捷鍵只用 F 鍵**：F 鍵在 `term_keyboard` 沒有對應、送不到 PTT。Ctrl+K 不行：pttbbs 編輯器（`edit.c` 刪至行尾）、輸入欄（`vtuikit.c`）、pager（`more.c`）都在用。
-- 安全模式切換不走 `onPrefSaveImpl`（`fromPrefModal` 會把 localStorage 的帳密填進登入快取），自己走 `writeValues → savePrefs → onValuesPrefChange → switchToEasyReadingMode`。
+- 好讀開關切換不走 `onPrefSaveImpl`（`fromPrefModal` 會把 localStorage 的帳密填進登入快取），自己走 `writeValues → savePrefs → onValuesPrefChange → switchToEasyReadingMode`。
 - 關面板＋開設定頁要在**同一次** `update`（modalOpen 不可 true→false→true）。
 - 清單框固定高度（`CommandPalette.css`），項目數變化時輸入框不跳。
-- 開關 `enableCommandPalette`（預設開）。只在使用者按下時才動 ⇒ 不在安全模式名單內。
+- 開關 `enableCommandPalette`（預設開）。只在使用者按下時才動 ⇒ 不是好讀行為，好讀關著也能用。
 
 ## 測試
 
-unit：`command_palette.test.js`（輸入判讀、排序、能用才列、兩語系標題）、`command_palette_ui.test.jsx`（ContextMenu 整合：接手合約、↑↓／Enter／點擊、各類入口、設定跳轉、安全模式存檔、框高固定）。offline e2e：`command_palette.offline.spec.js`（真鍵盤 F4 擋預設動作、打字零 byte、Esc、跑跳到未讀、pref 關）。
+unit：`command_palette.test.js`（輸入判讀、排序、能用才列、兩語系標題）、`command_palette_ui.test.jsx`（ContextMenu 整合：接手合約、↑↓／Enter／點擊、各類入口、設定跳轉、好讀開關存檔、框高固定）。offline e2e：`command_palette.offline.spec.js`（真鍵盤 F4 擋預設動作、打字零 byte、Esc、跑跳到未讀、pref 關）。

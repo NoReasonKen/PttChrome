@@ -1,6 +1,6 @@
 # Board-list smooth scrolling (easy-reading scrolling for `choose_board`)
 
-Pref `enableBoardListSmoothScroll` (**default `true`**). Implemented in `src/js/board_list_session.js`
+Runs whenever easy reading is on (`enableEasyReading`); it has no switch of its own. Implemented in `src/js/board_list_session.js`
 plus the pure parsing layer `src/js/board_list_parse.js`; rendering borrows the `.listBodyView`
 viewport from `src/render/screen.js` (the same one article-list easy reading uses). **Read this document before touching these three files or the board-list branch of `term_view`.**
 
@@ -272,7 +272,7 @@ Ctrl combinations, Alt-remapped keys (Alt+R/T/W/V = `^R/^T/^W/^V`) and everythin
 lagging behind, `native-sync-jump` first**, then switching to the native mirror and sending the key on the reader's behalf). Before 2026-09-13 these Ctrl/Alt classes were kept out of the sequence and so skipped
 the sync leg, while board.c has a whole set of keys that act on the real cursor (`:1890 Ctrl-S`, `:2044 Ctrl-T`, `:1731 Ctrl-W`); the root cause and the rule are in
 `docs/easy-reading-list.md` invariant 12. Once the operation completes and the screen has been quiet for 250ms, the **idle probe**
-re-engages automatically (pref `enableListNativeAutoResume`, on by default; off = stay in native until entering a board or backing up a level).
+re-engages automatically (always, while easy reading is on).
 The probe's three conditions and clock sources are exactly the same as the article list's; see the "Idle probe" section of `docs/easy-reading-list.md`.
 Keys that cannot send a byte (F1/CapsLock…) → `ignore`, the criterion being `keyEventToBytes(e) == null` itself.
 

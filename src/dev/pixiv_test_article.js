@@ -1,4 +1,4 @@
-import { DEFAULT_PREFS, readEffectivePrefs } from '../js/pref_storage';
+import { DEFAULT_PREFS, readValuesWithDefault } from '../js/pref_storage';
 import { u2b } from '../js/string_util';
 
 // Local acceptance only: do not read, clear or rewrite the owner's real data.
@@ -15,24 +15,14 @@ export function installPixivTestStorage(target = window) {
   };
   storage.setItem('pttchrome.pref.v1', JSON.stringify({ values: {
     ...DEFAULT_PREFS,
-    nativeSafeMode: false,
     autoLogin: false,
     autoLoginUser: '',
     autoLoginPassword: '',
     autoLoginOtpSecret: '',
-    resumeLastPlace: false,
-    reconnectResume: false,
     enablePixivLookup: true,
     enableEasyReading: true,
-    enableEasyReadingList: false,
-    enableBoardListSmoothScroll: false,
-    enableHomeDashboard: false,
-    enableSplitReading: false,
     enableArticleTools: false,
-    enableCommentBar: false,
-    enableNextArticleCard: false,
     enableNotifications: false,
-    articleHorizontalGestures: false,
   } }));
   Object.defineProperty(target, 'localStorage', { configurable: true, value: storage });
   return storage;
@@ -69,7 +59,7 @@ export function startPixivTestArticle(app) {
   app.connectState = 0;
   app.connectedUrl = { site: 'pixiv-test.invalid', easyReadingSupported: true, opened: false };
   app.view.setConn(app.conn);
-  app.onValuesPrefChange(readEffectivePrefs());
+  app.onValuesPrefChange(readValuesWithDefault());
   document.getElementById('BBSWindow').style.display = '';
   app.onWindowResize({ immediate: true });
   document.documentElement.dataset.pixivTestArticle = 'loading';

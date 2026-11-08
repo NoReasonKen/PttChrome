@@ -16,8 +16,7 @@ test('the local article uses isolated storage without reading or overwriting sav
     const storage = installPixivTestStorage();
     expect(window.localStorage).toBe(storage);
     expect(readValuesWithDefault()).toMatchObject({ autoLogin: false, autoLoginUser: '',
-      autoLoginPassword: '', autoLoginOtpSecret: '', enablePixivLookup: true,
-      resumeLastPlace: false, reconnectResume: false });
+      autoLoginPassword: '', autoLoginOtpSecret: '', enablePixivLookup: true });
     expect(storage.getItem('recovery-sentinel')).toBeNull();
     storage.setItem('recovery-sentinel', 'temporary');
     storage.removeItem('pttchrome.pref.v1');

@@ -4,7 +4,7 @@ Read this before touching `new_comments.js`, `screen_annotations.applyNewComment
 
 ## What it is
 
-When the reader reopens an article they have read, a thin neutral-grey line is drawn along the top edge of the first comment that appeared after their last finished reading, with a line of small text on the right, 「以下是新推文」 ("new comments below"). The floating tool panel (the 「⋯」 at the bottom right) gains a 「跳到新推文」 ("jump to new comments") button, which scrolls only the easy-reading viewport. The switch is `markNewComments` (on by default; it sends no bytes at all, so it is not on the native safe mode list).
+When the reader reopens an article they have read, a thin neutral-grey line is drawn along the top edge of the first comment that appeared after their last finished reading, with a line of small text on the right, 「以下是新推文」 ("new comments below"). The floating tool panel (the 「⋯」 at the bottom right) gains a 「跳到新推文」 ("jump to new comments") button, which scrolls only the easy-reading viewport. The switch is `markNewComments` (on by default; it sends no bytes at all, so it is a setting of its own rather than an easy-reading behaviour).
 
 ## Rules
 
@@ -20,7 +20,7 @@ When the reader reopens an article they have read, a thin neutral-grey line is d
 
 ## +N on the article list (pref `listNewPushCount`, on by default)
 
-For an article the reader has finished, a small 「+N」 box appears beside its comment count on the article list. It also sends no bytes and is not on the native safe mode list.
+For an article the reader has finished, a small 「+N」 box appears beside its comment count on the article list. It also sends no bytes, so it is not an easy-reading behaviour.
 
 - **The list's number is not a comment count**: pttbbs `post.c` changes the `.DIR` recommend field by +1 for a push, -1 for a boo and nothing for an arrow (clamped to ±100); `bbs.c#readdoent` draws the number only for 1 to 99, 「爆」 for 100 and above, a blank for 0 and -1 to -10, and 「X…」 below that. So reading to the end also records the article's **recommendation score** (`CommentScanner.score`, counted like the floors, only after the meta line). N = the list's number − the score at the finished reading, shown only when > 0. When the list shows 爆, a blank, X or a locked article, nothing is shown (not exact).
 - **The list has no AID**: the record also stores the author (from the header, lower case) and the subject (`long_push_anchor.subjectKey`, with Re: and Fw: removed). A list row is compared with `listRowIdentity` (titles truncated with … still match), and counts only when it matches **exactly one** record on that board. Several read articles with the same author and subject, reposts (whose header carries the original author) and articles whose title was changed all fail to match, so nothing is shown. Old-format records (comment count only) take no part.

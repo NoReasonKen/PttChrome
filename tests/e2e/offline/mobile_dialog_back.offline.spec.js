@@ -63,6 +63,8 @@ test('title blacklist Back cancels without changing preferences or sending bytes
 
 test('paste-shortcut alert Back unmounts the dialog and releases its registration', async ({ page }) => {
   await bootOffline(page, ptt);
+  // PTT's own main menu: with easy reading on, the home dashboard covers it.
+  await ptt.applyPrefs(page, { enableEasyReading: false });
   await drawMainMenu(page);
   await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', {
     configurable: true, value: { readText: () => Promise.reject(new Error('Unavailable')) },
@@ -81,7 +83,7 @@ test('paste-shortcut alert Back unmounts the dialog and releases its registratio
 
 test('progress consumes Back; explicit cancel and error Back preserve the draft', async ({ page }, testInfo) => {
   await bootOffline(page, ptt);
-  await ptt.applyPrefs(page, { enableEasyReading: true, enableEasyReadingList: false });
+  await ptt.applyPrefs(page, { enableEasyReading: true });
   await draw(page, ARTICLE);
   await page.evaluate(() => window.__app.easyReading.enterEasyReading());
   await collect(page);

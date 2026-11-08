@@ -23,7 +23,8 @@ async function collectSent(page) {
 }
 const sentText = (page) => page.evaluate(() => (window.__sent || []).join(''));
 
-// 文章列表一整幀（指紋同 article_search.offline.spec.js）。
+// 文章列表一整幀（指紋同 article_search.offline.spec.js）。PTT's own list: the tests
+// that draw it turn easy reading off, which would otherwise take the list over.
 async function drawArticleList(page) {
   await page.evaluate(() => {
     const u2b = (str) => {
@@ -73,7 +74,7 @@ test.describe('手機底部工具列（離線重放）', () => {
 
   test('文章列表：出現搜尋，沒有推；點搜尋直接開彈窗（不經子選單），四種都能切', async ({ page }) => {
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false });
+    await ptt.applyPrefs(page, { enableEasyReading: false });
     await drawArticleList(page);
     await expect(byKey(page, '__search')).toBeVisible();
     await expect(byKey(page, 'X')).toHaveCount(0);
@@ -90,7 +91,7 @@ test.describe('手機底部工具列（離線重放）', () => {
   // tap must not land on the dialog it just opened under the finger.
   test('a touch tap that opens the search dialog leaves no click on the dialog', async ({ page }) => {
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false });
+    await ptt.applyPrefs(page, { enableEasyReading: false });
     await drawArticleList(page);
     await page.evaluate(() => {
       window.__strayClicks = [];
@@ -107,7 +108,7 @@ test.describe('手機底部工具列（離線重放）', () => {
 
   test('a click right after a tap whose click was swallowed outside the toolbar still acts', async ({ page }) => {
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false });
+    await ptt.applyPrefs(page, { enableEasyReading: false });
     await drawArticleList(page);
     await byKey(page, '__search').tap();
     const keyword = page.locator('input[name="searchKeyword"]');
@@ -121,7 +122,7 @@ test.describe('手機底部工具列（離線重放）', () => {
 
   test('按鍵面板：送鍵、終端機底列不被工具列／面板蓋住；Ctrl＋p 送 ^P', async ({ page }) => {
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false });
+    await ptt.applyPrefs(page, { enableEasyReading: false });
     await drawArticleList(page);
 
     const bar = await waitRectStable(page, '.mobileToolbarBar');
@@ -147,7 +148,7 @@ test.describe('手機底部工具列（離線重放）', () => {
 
   test('文章列表：發文按鈕送 ^P（Alt remap，不叫出瀏覽器列印）', async ({ page }) => {
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false });
+    await ptt.applyPrefs(page, { enableEasyReading: false });
     await drawArticleList(page);
     await expect(byKey(page, '__post')).toBeVisible();
     await collectSent(page);
@@ -160,7 +161,7 @@ test.describe('手機底部工具列（離線重放）', () => {
   // 不回應這個鍵 ⇒ 等不到 settle，BUSY_TIMEOUT_MS 後自己收。
   test('App Bar 等待進度條：送出後沒有回應就亮，逾時自己收', async ({ page }) => {
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false });
+    await ptt.applyPrefs(page, { enableEasyReading: false });
     await drawArticleList(page);
     const busy = page.locator('#mobileAppBar [data-key="__busy"]');
     await expect(busy).toHaveCount(0);
@@ -171,7 +172,7 @@ test.describe('手機底部工具列（離線重放）', () => {
 
   test('UI 動作之後沒有送出 byte（例：列表好讀的本地捲動）不會亮進度條', async ({ page }) => {
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false });
+    await ptt.applyPrefs(page, { enableEasyReading: false });
     await drawArticleList(page);
     // 按鍵面板的鍵也是 UI 動作；這裡驗的是「沒有送出就不亮」：直接記一次 action，不送任何 byte。
     await page.evaluate(() => window.__app.noteUserAction());

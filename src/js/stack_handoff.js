@@ -4,7 +4,7 @@
 // listeners, the input bound on the revealed layer and the action remembered
 // there. The navigation stack starts it, asks it questions and ends it; what
 // the end does to the stack stays with the stack (navigation_stack.js).
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { OWNER_ARTICLE_LIST, OWNER_BOARD_LIST } from './list_render_owner';
 import { sameBoard } from './screen_titles';
 import { handoffStep, PAGE, HANDOFF_TIMEOUT_MS, HANDOFF_REACH_POLL_MS } from './page_stack';
@@ -362,7 +362,7 @@ export class Handoff {
       if (pageState === 3 && openArticleKey(core) === this.id) return;
     } else if (this.target === PAGE.ARTICLE_LIST) {
       if (pageState === 3 && openArticleKey(core) === this.identity) return;
-      if (pageState === 2 && readEffectivePrefs().enableEasyReadingList) return;
+      if (pageState === 2 && easyReadingOn(readValuesWithDefault())) return;
     } else if (pageState === 1 || pageState === 2) {
       // Leaving an article list: the list itself until PTT answers, then the
       // main menu or a board list.

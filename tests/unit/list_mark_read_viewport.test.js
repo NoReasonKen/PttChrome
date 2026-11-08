@@ -141,7 +141,7 @@ beforeEach(() => {
   window.localStorage.setItem(
     PREF_KEY,
     JSON.stringify({
-      values: { enableEasyReadingList: true, enableListNativeAutoResume: true },
+      values: { enableEasyReading: true },
     })
   );
   vi.useFakeTimers();
@@ -169,25 +169,6 @@ describe("前已讀後未讀 → 回好讀時還原閱讀進度", () => {
     expect(h.native.shown).toBe(0);
     // rebuild 已經開始補頁（找回閱讀進度的那一頁）。
     expect(h.enqueued.length).toBeGreaterThan(before + 2);
-  });
-
-  test("pref 關掉自動回好讀 ⇒ 舊行為：完成後停在原生，不自己回來", () => {
-    window.localStorage.setItem(
-      PREF_KEY,
-      JSON.stringify({
-        values: { enableEasyReadingList: true, enableListNativeAutoResume: false },
-      })
-    );
-    const h = makeSession();
-    expect(h.s.markReadUnreadBefore(350026)).toBe(true);
-    expect(h.s._renderMode).toBe("native");
-    h.enqueued.find((c) => c.kind === "mark-read-prompt").onDone(true);
-    const w = h.enqueued.find((c) => c.kind === "mark-read-apply");
-    w.expect(null, h.s._collectFacts(null));
-    w.onDone(true);
-    vi.advanceTimersByTime(1000);
-    expect(h.s._renderMode).toBe("native");
-    expect(h.s.state).toBe("functionMode");
   });
 
   test("錨在落點頁之上：等補頁把它帶進來那一幀才還原，不被寫死成 PTT 分頁頂端", () => {

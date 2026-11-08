@@ -10,7 +10,7 @@
 // 出現條件同文章工具側欄（article_tools._inEasyArticle）：pageState 3＋好讀開著＋不在
 // functionMode＋累積頁非空。原生 pmore、列表、選單都不出現 ⇒ 認不出就是原生。
 // 送出期間長推文會切進 functionMode（原生鏡像），列跟著收起，送完回到好讀再出現。
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { stripNonBig5, splitPushSegments } from './long_push';
 
 export const COMMENT_BAR_ID = 'commentBar';
@@ -24,11 +24,9 @@ export function isCommentBarTarget(el) {
   return !!(el && typeof el.closest === 'function' && el.closest('#' + COMMENT_BAR_ID));
 }
 
-// 送鍵的功能 ⇒ 受長推文總開關與安全模式管（enableCommentBar 在 NATIVE_SAFE_MODE_KEYS，
-// 傳進來的是 readEffectivePrefs 的值：安全模式開著時它已經是 false）。
+// The comment bar is part of easy reading: it shows whenever easy reading is on.
 export function commentBarEnabled(prefs) {
-  const v = prefs || {};
-  return !!(v.enableLongPush && v.enableCommentBar);
+  return easyReadingOn(prefs);
 }
 
 /**
@@ -206,7 +204,7 @@ CommentBar.prototype = {
 
   refresh: function() {
     const core = this._core;
-    const prefs = readEffectivePrefs();
+    const prefs = readValuesWithDefault();
     if (!commentBarEnabled(prefs) || !this._inEasyArticle()) return this._hide();
     const g = this._geometry();
     if (!g) return this._hide();

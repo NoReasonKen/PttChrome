@@ -211,7 +211,7 @@ describe("upstream pttbbs 產的 pmore prompt（pmore.c#pmore_do_goto、pmore_se
     const { buf, rowTexts, facts } = screenAt(articlePromptsFx, name);
     return { buf, rowTexts, facts, last: rowTexts[facts.rows - 1] };
   };
-  const LONG_PUSH_ON = { enableLongPush: true, pushKeyOpensLongPush: true };
+  const LONG_PUSH_ON = { enableEasyReading: true };
   const intercepts = (name) => {
     const f = pushGateFacts({ buf: at(name).buf });
     return shouldInterceptPushKey(Object.assign({ key: "X", prefs: LONG_PUSH_ON }, f));

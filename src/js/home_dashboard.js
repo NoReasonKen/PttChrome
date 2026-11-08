@@ -1,4 +1,4 @@
-// 首頁儀表板（pref enableHomeDashboard，預設開）：主功能表上蓋一層面板，列出我的最愛
+// 首頁儀表板（好讀行為）：主功能表上蓋一層面板，列出我的最愛
 // （有新文章的標亮）、最近去過的看板、新信提示。設計與 pttbbs 讀碼依據見
 // docs/home-dashboard.md —— 改這支之前先讀它。
 //
@@ -34,7 +34,7 @@ import { charCells } from './string_util';
 import { submitSerializedSteps, beginInFlight, endInFlight, searchGateFacts, submitSearch } from './article_search';
 import { serializedOpHint } from './serialized_op_gate';
 import { isRefreshKeyEvent } from './screen_refresh';
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { recordFor } from './reading_record';
 import { HINT_ERROR } from './status_hint';
 import { PAGE } from './page_stack';
@@ -50,6 +50,9 @@ export const RECENT_LIMIT = 8;
 // 主功能表落地後等多久才自動抓：登入後的 deep link／斷線回到原處會在同一個 settle
 // 出發，讓它們先走；使用者一進主功能表就按鍵的話，計時到了也不會抓（面板已收起）。
 export const AUTO_FETCH_DELAY_MS = 600;
+// How often a main menu passed during another operation is looked at again, so
+// the dashboard shows once that operation stops there.
+export const HOME_TRANSIT_RECHECK_MS = 250;
 
 const ZA_FAVORITE = '\x1af';
 const ZA_MAIL = '\x1am';
@@ -337,7 +340,7 @@ function writeJson(key, value) {
 }
 
 function enabled() {
-  return !!readEffectivePrefs().enableHomeDashboard;
+  return easyReadingOn(readValuesWithDefault());
 }
 
 // ---------------------------------------------------------------------------
@@ -350,6 +353,7 @@ export function HomeDashboard(core) {
   this._atHome = false;
   this._dismissed = false;
   this._autoTimer = null;
+  this._transitTimer = null;
   // 閱讀紀錄交回的待還原錨（面板下一次畫出來時套用，見 applyPendingViewport）。
   this._pendingViewport = null;
   const fav = readJson(HOME_FAV_CACHE_KEY);
@@ -418,9 +422,16 @@ HomeDashboard.prototype = {
 
   // 線路上有沒有別人的事（AID 跳文、搜尋、deep link／斷線回到原處還在排程…）。
   _wireBusy: function() {
+    if (this._core.commandQueue && !this._core.commandQueue.idle) return true;
+    return this._inTransit();
+  },
+
+  // Another operation drives the screen: an AID run, search backtracking or a
+  // resume escapes to the main menu and goes on from there, so the menu is a
+  // screen it passes, not the home the reader came back to.
+  _inTransit: function() {
     const core = this._core;
     if (serializedOpHint(core)) return true;
-    if (core.commandQueue && !core.commandQueue.idle) return true;
     const dl = core.deepLinkController;
     if (dl && dl.hasPending && dl.hasPending()) return true;
     const rr = core.reconnectResume;
@@ -447,11 +458,15 @@ HomeDashboard.prototype = {
     if (this._state.boards && rowHasTitle(row0, BOARD_LIST)) this._noteFavPage();
     const facts = enabled() && rowHasTitle(row0, MAIN_MENU) ? this._facts() : null;
     const home = !!facts && isHomeScreen(facts);
-    if (!home) {
+    clearTimeout(this._transitTimer);
+    this._transitTimer = null;
+    const transit = home && this._inTransit();
+    if (!home || transit) {
       this._atHome = false;
       this._dismissed = false;
       this._clearAutoTimer();
       this._set({ visible: false });
+      if (transit) this._transitTimer = setTimeout(() => this._onSettled(), HOME_TRANSIT_RECHECK_MS);
       return;
     }
     if (!this._atHome) {

@@ -7,7 +7,7 @@
 把 PTT 的原話顯示出來，一個字都不必打。見下面「探路（preflight）」。
 
 **入口有兩個**：右鍵選單的「長推文一鍵發送」，以及**在文章裡按推文鍵（`X`／`%`）**
-——後者預設**取代**原生推文（pref `pushKeyOpensLongPush`，見下面「攔截推文鍵」）。
+——好讀開著時後者**取代**原生推文（見下面「攔截推文鍵」）。
 
 PTT 端的協定事實（畫面序列、每個字串、冷卻分類）全部整理在
 `docs/pttbbs-screen-protocol.md` **§11.3**，**動這個功能前先讀那一節**；本文只寫 client
@@ -31,7 +31,7 @@ PTT 端的協定事實（畫面序列、每個字串、冷卻分類）全部整�
 | `src/js/serialized_op_gate.js` | `serializedOpHint(core)`＝**四條送字入口共用**的述詞（`aidNavigation.active` / `longPush.active` → 提示字串，否則 null）。呼叫端負責吞輸入＋`flashListHint`。守護 `tests/unit/serialized_op_gate.test.js` |
 | `src/js/long_push_gate.js` | **攔截推文鍵**的述詞：`isPushKey` / `longPushAvailable`（選單與攔截共用）/ `atPagerStatusRow` / `shouldInterceptPushKey` / `pushGateFacts` |
 | `src/js/comment_bar.js` ＋ `src/components/CommentBar/` | 好讀文章底部常駐推文列（見「底部常駐推文列」節） |
-| pref | `enableLongPush`（**預設 `true`**）＋ `pushKeyOpensLongPush`、`enableCommentBar`（**皆預設 `true`**，從屬於前者），設定 → 一般 → 右鍵選單 |
+| 開關 | 好讀（`enableEasyReading`）：長推文、攔截推文鍵與底部推文列都是好讀行為，沒有自己的開關 |
 
 ## 資料流
 
@@ -148,7 +148,7 @@ session 存的是**使用者打的原文**與「已送出到哪個 index」，�
 
 ## 攔截推文鍵（`long_push_gate.js`）
 
-pref `pushKeyOpensLongPush`（預設開，從屬於 `enableLongPush`）。**在文章裡**按推文鍵
+好讀開著時，**在文章裡**按推文鍵
 時不把 byte 送給 PTT，改開長推文輸入框。
 
 ### 為什麼是三條入口
@@ -166,7 +166,7 @@ IME 那條非補不可：IME 開著時 keydown 的 `keyCode` 是 229，被 `keyE
 
 ### 判準（`shouldInterceptPushKey`）
 
-`isPushKey` ∧ 無 ctrl/alt/meta ∧ `pushKeyOpensLongPush` ∧ `longPushAvailable` ∧
+`isPushKey` ∧ 無 ctrl/alt/meta ∧ `longPushAvailable`（含好讀開著）∧
 `atPagerStatusRow` ∧ 游標不在輸入欄。五個容易踩的點：
 
 1. **`X` 與 `%` 都要攔，小寫 `x` 不可以**。`more.c:90-93` 只有這兩個 case 回
@@ -489,13 +489,13 @@ offline e2e 各有數處）會一起靜默失效。輔助技術那份改由 `ari
 
 | 項目 | 規則 | 理由 |
 |---|---|---|
-| 出現條件 | `enableLongPush && enableCommentBar`（`readEffectivePrefs`，安全模式名單內）＋ pageState 3 ＋好讀開著＋不在 functionMode ＋累積頁非空（同 `article_tools._inEasyArticle`） | 認不出就是原生：原生 pmore、列表、選單一律不出現；送出期間長推文切 functionMode，列自然收起 |
+| 出現條件 | 好讀開著（`easyReadingOn`；長推文與推文列沒有自己的開關）＋ pageState 3 ＋好讀開著＋不在 functionMode ＋累積頁非空（同 `article_tools._inEasyArticle`） | 認不出就是原生：原生 pmore、列表、選單一律不出現；送出期間長推文切 functionMode，列自然收起 |
 | 位置 | 與終端機同寬，貼在終端機可見內容下緣（好讀 footer 顯示中就在它之上；手機＝底部導覽之上，鍵盤彈出時 `--vv-kb-inset` 把列頂上去）。至少讓出 `view.keyboardInset`（`commentBarGeometry` 的 `bottomInset`）：手機的 `.main` 因列高取整會延伸到導覽列後面幾 px，只看 `.main` 下緣會壓在導覽列上（e2e `mobile_bottom_overlay`） | 疊在終端機上，**不改列數、不送 NAWS**（`docs/terminal-size.md` LOCKED） |
 | 被蓋住的那一截 | `html.commentBarShown #mainContainer::after` 留列高的空白 | 不動 `#mainContainer` 的 `paddingBottom`（那是 term_view 給好讀 footer 的） |
 | 鍵盤／滑鼠 | 輸入框聚焦＝ modal 來源 `commentBar`；keydown 與滑鼠事件一律 `stopPropagation`；`App._onUploadLayer` 認 `#commentBar` 放過 | 打字一個 byte 都不准漏到 PTT；離開（blur／Esc／列收起）焦點回 `#t` |
 | 送出 | `App.openQuickPush({text, type})`（ContextMenu 注入）：先 `writeDraft` 再走 `openLongPush` 的探路；探路回來由 `quickPushPlan` 決定 | 內容先進草稿 ⇒ 退回輸入框或送到一半失敗都不丟字 |
-| 回覆這則（pref `commentReplyMenu`） | 長按／右鍵推文列（`data-pusher`，整列都算；小天使匿名不給）且推文列可用（`state.available`，收合中也算） ⇒ 選單「回覆 'id'」。按下 `commentBar.prefill({type:'arrow', text:'id '})`：列切成 →、填字、下一幀聚焦且游標在最後（選單關掉會把焦點還給 `#t`，要排在它後面） | 只預填、不送鍵 ⇒ 不在安全模式名單（安全模式下推文列不出現，這項跟著不出現）。請求帶遞增序號：同一個請求重畫不會把使用者改過的字蓋回去 |
-| 手機收合（pref `mobileCommentBarFold`，預設開） | 手機（`core.mobile`）上 state 分 `available`（出現條件成立）與 `visible`（真的畫）。收合時平常不畫，底部導覽的「推」呼叫 `commentBar.expand()`（不送 X）：列滑出、下一幀聚焦叫出鍵盤，並以 `App.registerSheetDismiss` 登記成 sheet。收回：送出（輸入框 blur）、離開輸入框（blur／Esc）、收鍵盤（看過 `--vv-kb-inset`>0 後歸零；Android 返回鍵先收鍵盤，不會 blur）、系統返回（`dismissTopSheet`，不送 ←）、離開文章。回覆這則的 `prefill` 會先展開。關掉＝手機也常駐、導覽的「推」照舊送 X | 手機畫面小，常駐列吃掉一列內容；像 App 的留言列，要推才出來。只決定列怎麼出現、不送鍵 ⇒ 不在安全模式名單 |
+| 回覆這則（pref `commentReplyMenu`） | 長按／右鍵推文列（`data-pusher`，整列都算；小天使匿名不給）且推文列可用（`state.available`，收合中也算） ⇒ 選單「回覆 'id'」。按下 `commentBar.prefill({type:'arrow', text:'id '})`：列切成 →、填字、下一幀聚焦且游標在最後（選單關掉會把焦點還給 `#t`，要排在它後面） | 只預填、不送鍵 ⇒ 有自己的開關（好讀關著時推文列不出現，這項跟著不出現）。請求帶遞增序號：同一個請求重畫不會把使用者改過的字蓋回去 |
+| 手機收合（pref `mobileCommentBarFold`，預設開） | 手機（`core.mobile`）上 state 分 `available`（出現條件成立）與 `visible`（真的畫）。收合時平常不畫，底部導覽的「推」呼叫 `commentBar.expand()`（不送 X）：列滑出、下一幀聚焦叫出鍵盤，並以 `App.registerSheetDismiss` 登記成 sheet。收回：送出（輸入框 blur）、離開輸入框（blur／Esc）、收鍵盤（看過 `--vv-kb-inset`>0 後歸零；Android 返回鍵先收鍵盤，不會 blur）、系統返回（`dismissTopSheet`，不送 ←）、離開文章。回覆這則的 `prefill` 會先展開。關掉＝手機也常駐、導覽的「推」照舊送 X | 手機畫面小，常駐列吃掉一列內容；像 App 的留言列，要推才出來。只決定列怎麼出現、不送鍵 ⇒ 有自己的開關 |
 | 直接送 vs 退回輸入框 | `quickPushPlan`：PTT 會改成 →（`degraded`）、禁噓板選噓、有 Big5 收不下的字、超過 20 則 ⇒ 退回長推文輸入框（內容就是草稿）；其餘直接 `session.start` | 這幾種都是「使用者該先看一眼」；直接送時探路遮罩直接接到送出進度，`modalOpen` 不閃 false |
 
 `session.start` 不在 `onPreflight` 裡同步呼叫（`setTimeout(0)`）：那一刻還在 session 的
@@ -528,8 +528,8 @@ offline e2e 各有數處）會一起靜默失效。輔助技術那份改由 `ari
 | unit | `tests/unit/push_key_intercept.test.js` | 三條入口各自的分派：不落到 `_keyboard`／`_convSend`／`view._send`、不提前進 functionMode、**沒開成就不吞** |
 | unit | `tests/unit/long_push_open_bridge.test.jsx` | `App.openLongPushModal` 注入／回 true／卸載還原 noop、**沒開過右鍵選單也算對 maxBytes** |
 | e2e | `tests/e2e/offline/long_push_image_upload.offline.spec.js` | 輸入框開著時拖圖 → 網址進 Textarea、**線路上一個 byte 都沒送**、點「開啟上傳紀錄」modal 不關 |
-| e2e | `tests/e2e/offline/long_push.offline.spec.js` | 整條鏈（React → session → queue → WS）、遮罩擋鍵盤、取消、**真 `term_buf` → `list_session._collectFacts` → 守門**（游標飄掉時送 `#AID` 而不是 `X`）、**攔截**（按 X／%、點底列按鈕、關 pref 回原生、列表不攔）、**Ctrl+Enter 送出**（空的時候不插換行、不漏 byte）、**探路**（按 X 只送一個 X 且輸入框要等答案；被擋時錯誤框裡是 Big5 畫面一路解出來的 PTT 原文；被擋之後回到文章）、**關輸入框後漏出去的 Esc 不會吃掉下一次按 X**（真 DOM keydown → `term_view` → `telnet._vkState` → CommandQueue → WS 是唯一交會點，unit 任一層都測不到）|
+| e2e | `tests/e2e/offline/long_push.offline.spec.js` | 整條鏈（React → session → queue → WS）、遮罩擋鍵盤、取消、**真 `term_buf` → `list_session._collectFacts` → 守門**（游標飄掉時送 `#AID` 而不是 `X`）、**攔截**（按 X／%、點底列按鈕、關好讀回原生、列表不攔）、**Ctrl+Enter 送出**（空的時候不插換行、不漏 byte）、**探路**（按 X 只送一個 X 且輸入框要等答案；被擋時錯誤框裡是 Big5 畫面一路解出來的 PTT 原文；被擋之後回到文章）、**關輸入框後漏出去的 Esc 不會吃掉下一次按 X**（真 DOM keydown → `term_view` → `telnet._vkState` → CommandQueue → WS 是唯一交會點，unit 任一層都測不到）|
 
 `function_keys.offline.spec.js` 的 `(X%)` 逐鍵可點與 `pref_close_in_prompt.offline.spec.js`
-都**刻意在 prefs 裡關掉 `pushKeyOpensLongPush`**：它們量的是「送出去的 byte」與「原生
-鏡像」，預設攔截會讓 X 一個 byte 都不送。改那兩支之前先看它們的註解。
+都**刻意在 prefs 裡關掉好讀**：它們量的是「送出去的 byte」與「原生鏡像」，好讀的攔截
+會讓 X 一個 byte 都不送。改那兩支之前先看它們的註解。

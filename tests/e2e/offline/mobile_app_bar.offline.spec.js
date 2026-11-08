@@ -8,7 +8,7 @@ const ptt = require('../helpers/ptt');
 const { findCassette, bootOffline, replayCassette } = require('../helpers/replay');
 const { drawMainMenu } = require('../helpers/main_menu');
 const { touchDrag, nextFrames } = require('../helpers/real_input');
-const { waitRectStable, waitScrollStable } = require('../helpers/layout');
+const { readingRect, waitScrollStable } = require('../helpers/layout');
 
 const article = findCassette('article');
 const title = (page) => page.locator('#mobileAppBar [data-key="__title"]');
@@ -26,6 +26,8 @@ const chrome = (page) =>
 test.describe('手機頂部 App Bar', () => {
   test('主功能表：標題＝主功能表；選單撐滿兩條 bar 之間', async ({ page }) => {
     await bootOffline(page, ptt);
+    // PTT's own main menu: with easy reading on, the home dashboard covers it.
+    await ptt.applyPrefs(page, { enableEasyReading: false });
     await drawMainMenu(page);
     await page.waitForFunction(() => window.__app.view.menuCards === true);
     await expect(title(page)).toHaveText('主功能表');
@@ -77,6 +79,8 @@ test.describe('手機頂部 App Bar', () => {
   test('tap App Bar 不送任何鍵（不會被當成點終端機）', async ({ page }) => {
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, { useMouseBrowsing: true, mouseLeftClick: true });
+    // The home dashboard fetches favorites (^Z f) 600ms after it shows: mark them fresh.
+    await page.evaluate(() => { window.__app.homeDashboard._state.fetchedAt = Date.now(); });
     await drawMainMenu(page);
     await page.waitForFunction(() => window.__app.view.menuCards === true);
     await page.evaluate(() => {
@@ -98,7 +102,7 @@ test.describe('手機頂部 App Bar', () => {
       await replayCassette(page, article, { easyReading: true });
       await page.waitForFunction(() => window.__app.view.reflow === true);
       await ptt.applyPrefs(page, { mobileAppBarScrollTop: on });
-      const box = await waitRectStable(page, '.main');
+      const box = await readingRect(page);
       const x = box.left + box.width / 2;
       await touchDrag(page, { x, y: box.top + box.height - 20 }, { x, y: box.top + 20 });
       await expect

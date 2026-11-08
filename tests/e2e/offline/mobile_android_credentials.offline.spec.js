@@ -161,8 +161,7 @@ async function reconnectForLogin(page) {
   await page.evaluate(() => {
     const key = 'pttchrome.pref.v1';
     const current = JSON.parse(localStorage.getItem(key));
-    current.values = { ...current.values, autoLogin: true, autoLoginSkipWelcome: false,
-      reconnectResume: false, resumeLastPlace: false };
+    current.values = { ...current.values, autoLogin: true, autoLoginSkipWelcome: false };
     localStorage.setItem(key, JSON.stringify(current));
     window.__stubWS.close();
     window.__credentialSends = [];

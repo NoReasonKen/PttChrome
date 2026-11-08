@@ -295,11 +295,8 @@ easyReading 才建 listSession），所以既有 edge 路線若成立，`_enable
 `aid_navigation._begin` 無條件呼叫 `easyReading._enterFunctionMode()`，而冷啟動 deep
 link 時 `_enabled` 是 false。`_functionMode` 唯一的出口 `_evalFunctionModeExit` 只能經
 `_onScreenSettled` 進入，那裡第一行就是 `if (!this._enabled) { …; return; }` ⇒ 旗標
-**永遠清不掉**，一次同時廢掉兩條回好讀的路：
-
-- `nextEasyReadingReentry` 的 `functionMode` gate（自動重入）
-- `term_view.onKeyDown` 的 `!buf.easyReadingFunctionMode` gate → `tryReenterFromNative`
-  （**End/F8 手動切回也一起死掉**，所以症狀是「怎麼救都救不回來」）
+**永遠清不掉**，廢掉回好讀的路：`nextEasyReadingReentry` 的 `functionMode` gate
+（換文章時自動重入）。（當年還有 End/F8 手動切回，同樣一起死掉，所以症狀是「怎麼救都救不回來」。）
 
 修法：`_enterFunctionMode` 開頭 `if (!this._enabled) return;`。好讀關著時畫面本來就是
 原生的，這個函式沒有任何事情要做。
@@ -413,8 +410,8 @@ lastRow=""                                    ← # prompt 清掉 footer，故 t
 
 ## 複製連結（分享端）
 
-- 熱鍵 pref `deepLinkCopyKey`，預設 **F2**。可用的 F 鍵只剩 F2/F4：Chrome 佔用
-  F1/F3/F5/F6/F7/F10/F11/F12，F8＝`easyReadingEndSwitchKey`，F9＝`aidNavBackKey`
+- 熱鍵 pref `deepLinkCopyKey`，預設 **F2**。可用的 F 鍵只剩 F2/F4/F8：Chrome 佔用
+  F1/F3/F5/F6/F7/F10/F11/F12，F9＝`aidNavBackKey`
   （見 `pref_storage.js:29`）。另有右鍵選單「複製本篇文章連結」（僅 `pageState===3`）。
 - 本篇 AID 只能靠 `Q` 資訊框問出來（畫面上的 `#AID` 是內文引用的別篇）。與跳轉共用
   `aidNavigation.queryPostAid`；**關框是呼叫端的責任**——跳轉併進下一個指令

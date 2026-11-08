@@ -1,4 +1,4 @@
-// 跳過進板畫面（pref skipBoardEntryScreen，預設開）：使用者從看板列表／選擇看板
+// 跳過進板畫面（好讀行為）：使用者從看板列表／選擇看板
 // prompt 進板時，PTT 先畫的那張進板畫面（看板公告，可能是動畫）由程式代按一鍵收掉，
 // 直接落在文章列表。
 //
@@ -55,7 +55,7 @@ import {
   MAIN_MENU,
   rowHasAnyTitle
 } from './screen_titles';
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { parseHelpMenuScreen } from './help_menu';
 
 export const KEY_LEFT = '\x1b[D';
@@ -190,7 +190,7 @@ BoardNoteSkip.prototype = {
   },
 
   _enabled: function() {
-    return !!readEffectivePrefs().skipBoardEntryScreen;
+    return easyReadingOn(readValuesWithDefault());
   },
 
   _log: function(name, info) {

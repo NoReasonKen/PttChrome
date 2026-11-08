@@ -11,10 +11,10 @@ const CARD = '.listCard[data-list-author="kylin936"] .listCardBody';
 async function bootList(page) {
   const nav = loadCassette('cchat-list-nav');
   await bootOffline(page, ptt);
-  await ptt.applyPrefs(page, { enableEasyReading: true, enableEasyReadingList: false, useMouseBrowsing: true, mouseLeftClick: true });
+  await ptt.applyPrefs(page, { enableEasyReading: false, useMouseBrowsing: true, mouseLeftClick: true });
   await replayListCassette(page, nav);
   await page.waitForFunction(() => window.__app.buf.pageState === 2);
-  await ptt.applyPrefs(page, { enableEasyReadingList: true, easyReadingListPrefetchCount: 200 });
+  await ptt.applyPrefs(page, { enableEasyReading: true, easyReadingListPrefetchCount: 200 });
   await page.waitForFunction(() => window.__app.listSession.state === 'active' &&
     window.__app.commandQueue.idle && window.__app.buf.listLines.length > 50);
   await page.locator(CARD).first().scrollIntoViewIfNeeded();

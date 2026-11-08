@@ -2,7 +2,7 @@
 // contact and click it met, so a tap that does nothing on a device can be
 // traced, with the drawer's state at the time, and each contact that started
 // no swipe, with what decided it.
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { serializedOpHint } from './serialized_op_gate';
 
 // What a debug recording names an event's target by.
@@ -57,7 +57,7 @@ export class DrawerDiagnostics {
     const core = g.core;
     const ls = core.listSession;
     return {
-      pref: !!readEffectivePrefs().articleHorizontalGestures, pageState: core.buf.pageState,
+      pref: easyReadingOn(readValuesWithDefault()), pageState: core.buf.pageState,
       article: g.available(), list: g._listLeaveable(), boardList: g._boardListLeaveable(), listCards: !!core.view.listCards,
       owner: core.buf.listRenderOwner || null, listState: ls?.state || null, renderMode: ls?._renderMode || null,
       busy: !!serializedOpHint(core), modal: g._otherModalOpen(), entry: g.entry?.state || null,

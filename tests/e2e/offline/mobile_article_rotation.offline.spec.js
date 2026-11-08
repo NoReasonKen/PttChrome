@@ -14,8 +14,8 @@ const LANDSCAPE = { width: 896, height: 412 };
 // then recreates pmore only when the same article is reopened. Its old
 // last-page boundary must not silently adapt before that attachment boundary.
 async function openArticle(page, { imageProfile, waitLoaded = true } = {}) {
-  await bootOffline(page, ptt, { articleGestures: true, imageProfile });
-  await ptt.applyPrefs(page, { enableEasyReading: true, enableEasyReadingList: false });
+  await bootOffline(page, ptt, { imageProfile });
+  await ptt.applyPrefs(page, { enableEasyReading: true });
   await page.evaluate(source => {
     const module = { exports: {} };
     new Function('module', 'exports', source)(module, module.exports);

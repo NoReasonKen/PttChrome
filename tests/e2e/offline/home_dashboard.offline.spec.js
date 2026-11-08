@@ -20,7 +20,7 @@ const FAVS = [
 const dashboard = (page) => page.locator('#homeDashboard');
 
 async function bootHome(page, prefs) {
-  await bootOffline(page, ptt, { homeDashboard: true });
+  await bootOffline(page, ptt);
   if (prefs) await ptt.applyPrefs(page, prefs);
   await page.evaluate(() => window.__app.setInputAreaFocus());
   await startCapture(page);
@@ -76,7 +76,7 @@ test.describe('首頁儀表板', () => {
   });
 
   test('進了看板、最新一篇讀過 ⇒ 回首頁時不再標有新文章，一個 byte 都不送', async ({ page }) => {
-    await bootHome(page, { enableEasyReadingList: false });
+    await bootHome(page);
     await fetchFlow(page);
     await expect(page.locator('[data-home-board="C_Chat"]')).toHaveAttribute('data-unread', '');
     // 使用者自己逛進 C_Chat、讀完最新一篇退回列表（最新一篇的標記從 + 變成空白）。
@@ -90,7 +90,9 @@ test.describe('首頁儀表板', () => {
     // 快取也寫回去了（重新整理頁面先畫出來的就是對的）。
     const cached = await page.evaluate(() => JSON.parse(localStorage.getItem('pttchrome.homeFavorites.v1')));
     expect(cached.boards.find((b) => b.name === 'C_Chat').unread).toBe(false);
-    // 不重抓：沒排自動抓（TTL 內），逛看板到回來整段只有柵欄那一鍵。
+    // 不重抓：沒排自動抓（TTL 內）。The board's easy-reading list fetched its rows
+    // with its own jumps; the dashboard fetched nothing, and sends nothing after.
+    expect(await takeCapture(page)).not.toContain(ZA_FAV);
     expect(await page.evaluate(() => window.__app.homeDashboard._autoTimer)).toBeNull();
     await expectOnlyFence(page, () => page.keyboard.press('ArrowDown'), '\x1b[B');
   });
@@ -112,8 +114,8 @@ test.describe('首頁儀表板', () => {
     expect(await page.evaluate(() => window.__notReloaded)).toBe(true);
   });
 
-  test('pref 關 ⇒ 不蓋面板、不排自動抓', async ({ page }) => {
-    await bootHome(page, { enableHomeDashboard: false });
+  test('easy reading off ⇒ no dashboard over the main menu and no automatic fetch', async ({ page }) => {
+    await bootHome(page, { enableEasyReading: false });
     await drawMainMenu(page);
     await expect(dashboard(page)).toHaveCount(0);
     expect(await page.evaluate(() => window.__app.homeDashboard._autoTimer)).toBeNull();

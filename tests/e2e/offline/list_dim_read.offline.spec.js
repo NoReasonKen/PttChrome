@@ -50,7 +50,7 @@ test.describe('已讀文章低亮（離線重放）', () => {
     await bootOffline(page, ptt);
     await replayListCassette(page, nav);
     await page.waitForFunction(() => window.__app.buf.pageState === 2);
-    await ptt.applyPrefs(page, { enableEasyReadingList: true, easyReadingListPrefetchCount: 0 });
+    await ptt.applyPrefs(page, { enableEasyReading: true, easyReadingListPrefetchCount: 0 });
     await page.waitForFunction(() => {
       const app = window.__app;
       return app.listSession.state === 'active' && app.buf.listRenderMode === 'buffer' && app.commandQueue.idle;

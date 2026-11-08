@@ -56,7 +56,7 @@ export const MOBILE_KEYPAD_EXTRA_ROW = [
 ];
 
 //   X     推文鍵 —— 單一字元，同樣走 sendKeyAsUser（term_view 對單字元補 keypress）；
-//         預設 pref pushKeyOpensLongPush 下會開長推文輸入框，跟實體鍵盤按 X 一樣。
+//         好讀開著時會開長推文輸入框，跟實體鍵盤按 X 一樣。
 //         2026-10 起由底部工具列的「推」送出（MobileToolbar）。
 export const MOBILE_KEYPAD_PUSH_KEY = 'X';
 

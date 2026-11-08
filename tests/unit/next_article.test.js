@@ -4,9 +4,8 @@
 const prefOverride = vi.hoisted(() => ({}));
 vi.mock("../../src/js/pref_storage", async (importOriginal) => {
   const real = await importOriginal();
-  return { ...real, readEffectivePrefs: () => ({ ...real.readEffectivePrefs(), ...prefOverride }) };
+  return { ...real, readValuesWithDefault: () => ({ ...real.readValuesWithDefault(), ...prefOverride }) };
 });
-import { DEFAULT_PREFS, NATIVE_SAFE_MODE_KEYS } from "../../src/js/pref_storage";
 import {
   NextArticle,
   nextEntryAfter,
@@ -145,11 +144,6 @@ test("landedOn：檔頭主題對不上（T 只改 .DIR）⇒ 改比途中列表�
 
 test("閱讀紀錄：next-article 不還原（同雙欄閱讀的換文）", () => {
   expect(RESTORE_TABLE["next-article"]).toEqual(RESTORE_TABLE["split-open"]);
-});
-
-test("預設開，而且在安全模式名單內（會替使用者送鍵）", () => {
-  expect(DEFAULT_PREFS.enableNextArticleCard).toBe(true);
-  expect(NATIVE_SAFE_MODE_KEYS).toContain("enableNextArticleCard");
 });
 
 // ── 控制器：假 App ─────────────────────────────────────────────────────────
@@ -419,15 +413,15 @@ describe("NextArticle：何時出現", () => {
     show(PAGE());
     expect(next.state.visible).toBe(false);
   });
-  test("pref 關 ⇒ 不出現", () => {
-    prefOverride.enableNextArticleCard = false;
+  test("好讀關 ⇒ 不出現", () => {
+    prefOverride.enableEasyReading = false;
     try {
       const { next, show, read } = makeCore();
       show(PAGE());
       read("C_Chat", "alice", "[閒聊] 第一篇");
       expect(next.state.visible).toBe(false);
     } finally {
-      delete prefOverride.enableNextArticleCard;
+      delete prefOverride.enableEasyReading;
     }
   });
 });

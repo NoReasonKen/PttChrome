@@ -20,8 +20,6 @@ const UNDERLAY = '[data-article-exit-underlay]';
 // C_Chat opened from the dashboard, with PTT's reply to any leave held.
 async function listOverDashboard(page) {
   await bootDashboard(page);
-  // Offline boots turn the article gestures off.
-  await ptt.applyPrefs(page, { articleHorizontalGestures: true });
   await page.locator('#homeDashboard [data-home-board="C_Chat"]').tap();
   await boardOpened(page);
   await holdLeaves(page);
@@ -116,7 +114,6 @@ test('with no page below, the list slides over the dark fallback and PTT\'s page
 
 test('with no page below a list opened from a board list, the board list replaces the fallback at once', async ({ page }) => {
   await bootBoardList(page);
-  await ptt.applyPrefs(page, { articleHorizontalGestures: true });
   await ptt.sendKey(page, 'Enter');
   await listActive(page);
   await page.evaluate(() => window.__app.articleGestures.stack.clear());
@@ -179,7 +176,7 @@ test('vertical scrolling and taps keep working; a held contact and a tap ending 
   await expect.poll(async () => (await sentSince(page, before)).join('')).toContain('\r');
 });
 
-test('a left swipe, a second contact and the preference turned off never go back', async ({ page }) => {
+test('a left swipe and a second contact never go back', async ({ page }) => {
   const { main, y } = await listOverDashboard(page);
   const width = page.viewportSize().width;
   const before = await sentCount(page);
@@ -194,10 +191,6 @@ test('a left swipe, a second contact and the preference turned off never go back
   await contact.move({ x: width - 20, y });
   await contact.second({ x: width - 20, y });
   await contact.release();
-  await snappedBack(page, main);
-  await ptt.applyPrefs(page, { articleHorizontalGestures: false });
-  await expect(page.locator(MAIN)).not.toHaveClass(/articleHorizontalGestures/);
-  await timedSwipe(page, [20, 60, 120, width - 20], y);
   await snappedBack(page, main);
   await nextFrames(page, 10);
   expect(await heldLeaves(page)).toBe(0);

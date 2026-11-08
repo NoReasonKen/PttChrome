@@ -46,7 +46,7 @@ async function drawArticleList(page) {
 test.describe('重新整理（F5）', () => {
   test('文章列表：F5 送 s（不重新載入網頁）；冷卻內再按只有提示', async ({ page }) => {
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false, refreshMinIntervalSec: 60 });
+    await ptt.applyPrefs(page, { refreshMinIntervalSec: 60 });
     await drawArticleList(page);
     await page.evaluate(() => {
       window.__notReloaded = true;
@@ -73,9 +73,9 @@ test.describe('重新整理（F5）', () => {
     expect(await page.evaluate(() => window.__notReloaded)).toBe(true);
   });
 
-  test('關掉 refreshKeyIntercept ⇒ F5 交還瀏覽器（不 preventDefault、不送 byte）', async ({ page }) => {
+  test('easy reading off ⇒ F5 交還瀏覽器（不 preventDefault、不送 byte）', async ({ page }) => {
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false, refreshKeyIntercept: false });
+    await ptt.applyPrefs(page, { enableEasyReading: false });
     await drawArticleList(page);
     // headless Chromium 不執行 F5 這類瀏覽器快捷鍵（不會真的重載），所以驗的是「交還」
     // 本身：app 沒有 preventDefault、也沒送任何 byte。listener 掛在 app 之後（同在

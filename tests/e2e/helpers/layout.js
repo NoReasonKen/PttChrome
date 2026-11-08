@@ -116,6 +116,15 @@ async function waitRectStable(
   );
 }
 
+// The stable rect of the reading area a finger can drag: the comment bar covers
+// the article's foot, so the rect ends at its top edge.
+async function readingRect(page, selector = '.main') {
+  const box = await waitRectStable(page, selector);
+  const bar = await page.locator('#commentBar').boundingBox();
+  const bottom = Math.min(box.top + box.height, bar ? bar.y : Infinity);
+  return { ...box, height: bottom - box.top };
+}
+
 // 捲到視野中央 → 等版面停 → 確認它**真的還在視窗內**且不再動。回傳穩定後的 rect。
 //
 // 為什麼要迴圈：`scrollIntoView` 只是把當下的版面捲到位，捲動本身又會把新的佔位盒帶進
@@ -584,6 +593,7 @@ async function installPaintedFrameProbe(page) {
 
 module.exports = {
   assertScrollCapacity,
+  readingRect,
   OVERRIDING_SEL,
   EDGE_PAGING_BLOCKERS,
   MEDIA_SEL,

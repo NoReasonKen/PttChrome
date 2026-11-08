@@ -23,7 +23,8 @@ const MENU_CARD_PX = 44;
 test.describe('手機主功能表大按鈕', () => {
   test.beforeEach(async ({ page }) => {
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { useMouseBrowsing: true, mouseLeftClick: true });
+    // PTT's own menus: with easy reading on, the home dashboard covers the main menu.
+    await ptt.applyPrefs(page, { enableEasyReading: false, useMouseBrowsing: true, mouseLeftClick: true });
     await drawMainMenu(page);
     await page.waitForFunction(() => window.__app.view.menuCards === true);
   });

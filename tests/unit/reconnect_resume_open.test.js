@@ -1,5 +1,5 @@
 // @unit-env browser
-// 開站回到上次的地方（pref resumeLastPlace，src/js/reconnect_resume.js；docs/reading-record.md
+// 開站回到上次的地方（好讀行為，src/js/reconnect_resume.js；docs/reading-record.md
 // 「開站回到上次的地方」）：分頁切到背景／關掉時存書籤，下一次開站登入回主功能表後先倒數
 // （提示上有「取消」），倒數完還在主功能表才出發；deep link、使用者自己走開、取消都不送鍵。
 // real-input: tests/e2e/offline/mobile_article_search_recovery.offline.spec.js
@@ -12,7 +12,7 @@ import {
   isResumeToastTarget
 } from "../../src/js/reconnect_resume";
 import { ReadingRecord } from "../../src/js/reading_record";
-import { DEFAULT_PREFS, NATIVE_SAFE_MODE_KEYS, writeValues } from "../../src/js/pref_storage";
+import { DEFAULT_PREFS, writeValues } from "../../src/js/pref_storage";
 import { recordSearchResults } from "../../src/js/search_results_context";
 
 const LIST = {
@@ -85,11 +85,10 @@ afterEach(() => {
 
 describe("bootResumeMode", () => {
   test.each([
-    [true, { reconnectResume: true, resumeLastPlace: true }, "restored"],
-    [true, { reconnectResume: false, resumeLastPlace: true }, "open"],
-    [false, { reconnectResume: true, resumeLastPlace: true }, "open"],
-    [false, { reconnectResume: true, resumeLastPlace: false }, null],
-    [true, { reconnectResume: false, resumeLastPlace: false }, null]
+    [true, { enableEasyReading: true }, "restored"],
+    [false, { enableEasyReading: true }, "open"],
+    [true, { enableEasyReading: false }, null],
+    [false, { enableEasyReading: false }, null]
   ])("restored=%j %j ⇒ %j", (restored, prefs, mode) => {
     expect(bootResumeMode(restored, prefs)).toBe(mode);
   });
@@ -102,7 +101,7 @@ describe("存書籤", () => {
     expect(snap.plan).toMatchObject({ kind: "article", board: "C_Chat", aid: "1gIeu-3A" });
   });
 
-  test("還沒登入、斷線中、功能關掉 ⇒ 不存（清掉舊的）", () => {
+  test("not logged in, disconnected or easy reading off ⇒ nothing saved (the old one is cleared)", () => {
     const h = harness();
     window.localStorage.setItem(SNAPSHOT_KEY, "{}");
     window.dispatchEvent(new Event("pagehide"));
@@ -112,7 +111,7 @@ describe("存書籤", () => {
     h.rr.saveSnapshot();
     expect(window.localStorage.getItem(SNAPSHOT_KEY)).toBeNull();
     h.core.connectState = 1;
-    writeValues({ ...DEFAULT_PREFS, resumeLastPlace: false });
+    writeValues({ ...DEFAULT_PREFS, enableEasyReading: false });
     h.rr.saveSnapshot();
     expect(window.localStorage.getItem(SNAPSHOT_KEY)).toBeNull();
   });
@@ -181,9 +180,9 @@ describe("開站接回", () => {
     expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
   });
 
-  test("功能關掉 ⇒ 開站不接回", () => {
+  test("easy reading off ⇒ not resumed on open", () => {
     leaveFromOldPage();
-    writeValues({ ...DEFAULT_PREFS, resumeLastPlace: false });
+    writeValues({ ...DEFAULT_PREFS, enableEasyReading: false });
     const h = harness();
     expect(h.rr.hasPending()).toBe(false);
   });
@@ -320,12 +319,12 @@ describe("Foreground recovery checkpoints", () => {
     expect(window.localStorage.getItem(SNAPSHOT_KEY)).toBe(saved);
   });
 
-  test("does not save before login or when recovery is disabled", () => {
+  test("does not save before login or when easy reading is off", () => {
     const h = harness();
     h.settle(LOGIN);
     vi.advanceTimersByTime(500);
     expect(window.localStorage.getItem(SNAPSHOT_KEY)).toBeNull();
-    writeValues({ ...DEFAULT_PREFS, resumeLastPlace: false, reconnectResume: false });
+    writeValues({ ...DEFAULT_PREFS, enableEasyReading: false });
     h.settle(MAIN_MENU);
     h.settle("article content");
     vi.advanceTimersByTime(500);
@@ -435,9 +434,4 @@ describe("Recovery diagnostics available after startup", () => {
     expect(h.rr.diagnostics().boot).not.toBeNull();
     expect(h.rr.diagnostics().recent.at(-1).storage).toBe("written");
   });
-});
-
-test("預設開、會送鍵 ⇒ 在安全模式名單內", () => {
-  expect(DEFAULT_PREFS.resumeLastPlace).toBe(true);
-  expect(NATIVE_SAFE_MODE_KEYS).toContain("resumeLastPlace");
 });

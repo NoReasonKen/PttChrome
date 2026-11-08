@@ -29,14 +29,12 @@ function makeView({ listRenderMode = "native", useEasyReadingMode = false } = {}
     deepLinkController: {},
     easyReading: {
       _onKeyDown: vi.fn((e) => seen.easyReading.push(e)),
-      tryReenterFromNative: vi.fn(() => false),
     },
     listSession,
     // term_view 的鍵盤分派只認 App.activeListSession（buf.listRenderOwner 決定
     // 是文章列表還是看板列表的 session）。
     activeListSession: () =>
       listRenderMode === "buffer" || listRenderMode === "frozen" ? listSession : null,
-    endTurnsOnLiveUpdate: false,
   };
   view._keyboard = { onKeyDown: vi.fn((e) => seen.keyboard.push(e)) };
   view.flashListHint = vi.fn((m) => seen.hints.push(m));

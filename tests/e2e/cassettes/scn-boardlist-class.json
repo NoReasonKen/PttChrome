@@ -4,7 +4,7 @@
     "recordedAs": "account",
     "recordedAt": "2026-10-04T06:40:36.779Z",
     "scenario": "boardlist-class",
-    "prefs": { "enableBoardListSmoothScroll": true }
+    "prefs": { "enableEasyReading": true }
   },
   "cols": 80,
   "rows": 24,

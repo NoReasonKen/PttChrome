@@ -140,9 +140,9 @@ test('a board PTT does not enter from a board list slides back out once the boar
   expectSlidBackOut(await sampledFrames(page), page.viewportSize().width);
 });
 
-test('with article-list easy reading off, a board opens from a board list without sliding', async ({ page }) => {
+test('with easy reading off, a board opens from the board list without sliding', async ({ page }) => {
   await bootBoardList(page);
-  await ptt.applyPrefs(page, { enableEasyReadingList: false });
+  await ptt.applyPrefs(page, { enableEasyReading: false });
   await sampleEntryFrames(page);
   const sent = await page.evaluate(() => window.__replay.sent.length);
   await ptt.sendKey(page, 'Enter');

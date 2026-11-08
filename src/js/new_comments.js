@@ -17,7 +17,7 @@
 // 「列表推文數 − 讀完時的分數」（> 0 才顯示）。一樣一個 byte 都不送。
 
 import { parseComment, FloorCounter } from './comment_parse';
-import { readEffectivePrefs } from './pref_storage';
+import { readValuesWithDefault } from './pref_storage';
 import { parseListEntry } from './agent_parse';
 import { listRowIdentity, subjectKey, subjectMatches } from './long_push_anchor';
 
@@ -235,7 +235,7 @@ NewComments.prototype = {
 
   // term_view 每次畫好讀累積頁時問：第一則新推文在哪一列（pageLines 的列號）；沒有 ⇒ null。
   rowFor: function(lines) {
-    if (!readEffectivePrefs().markNewComments || !lines || !lines.length) return null;
+    if (!readValuesWithDefault().markNewComments || !lines || !lines.length) return null;
     if (this._reversing()) return null;
     this._sync(lines);
     if (this._seen == null) return null;
@@ -244,7 +244,7 @@ NewComments.prototype = {
 
   // term_view 畫文章列表時問：{ key, fn(text) }（key 進 annotationsKey）；關掉／認不出板 ⇒ null。
   listBadge: function(board) {
-    if (!board || !this._storage || !readEffectivePrefs().listNewPushCount) return null;
+    if (!board || !this._storage || !readValuesWithDefault().listNewPushCount) return null;
     // 列表每一幀都會問：原文沒變就沿用上次解析的結果（別的分頁寫的也認得出來）。
     let raw = null;
     try {
@@ -271,7 +271,7 @@ NewComments.prototype = {
     const core = this._core;
     const er = core.easyReading;
     const buf = core.buf;
-    const prefs = readEffectivePrefs();
+    const prefs = readValuesWithDefault();
     // 兩個功能共用這份紀錄：任一個開著就記。
     if (!prefs.markNewComments && !prefs.listNewPushCount) return;
     if (!buf || buf.pageState !== 3 || !er || !er._enabled || er._functionMode || this._reversing()) return;
@@ -300,7 +300,7 @@ NewComments.prototype = {
   // `lines`, an article paged to its end behind its live layer (#121), is
   // recorded as read the way a settle records it.
   readToEnd: function(lines) {
-    const prefs = readEffectivePrefs();
+    const prefs = readValuesWithDefault();
     if (prefs.markNewComments || prefs.listNewPushCount) this._save(lines);
   },
 

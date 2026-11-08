@@ -18,8 +18,7 @@ import { EasyReading } from "../../src/js/easy_reading";
 
 vi.mock("../../src/js/pref_storage", () => {
   const readValuesWithDefault = vi.fn(() => ({ enableEasyReading: true }));
-  // easy_reading 讀的是 readEffectivePrefs（安全模式覆寫層）；委派給同一個 mock。
-  return { readValuesWithDefault, readEffectivePrefs: () => readValuesWithDefault() };
+  return { readValuesWithDefault, easyReadingOn: (v) => !!(v && v.enableEasyReading) };
 });
 
 const ROWS = 24;

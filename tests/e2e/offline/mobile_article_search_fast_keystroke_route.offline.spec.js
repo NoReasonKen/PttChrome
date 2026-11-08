@@ -34,7 +34,7 @@ async function watchFirstResults(page) {
 // below it: the verified keystroke route), or opened from the board's full list in the
 // easy-reading list (the fast keystroke route). `squeezedFooter`: see the board's state.
 async function openArticle(page, { route, title, body, squeezedFooter = false, ...options }) {
-  await bootNestedShortcutSearch(page, { easyList: true, urls: true, ...options });
+  await bootNestedShortcutSearch(page, { urls: true, ...options });
   if (route === 'fast' || body !== 'Alpha') {
     // The app guards system Back only once the reader has acted.
     await ptt.sendKey(page, 'ArrowLeft');

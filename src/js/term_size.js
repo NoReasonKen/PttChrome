@@ -62,3 +62,16 @@ export function termLayoutOffsets({ innerHeight, chh, rows, margin = 0, bottomIn
   if (inset > 0) return { marginTop: top + avail - contentHeight };
   return { marginTop: top + margin };
 }
+
+// Android text scaling (the WebView's text zoom, Chrome's text size) multiplies every
+// computed font-size and px line-height in the page by one factor; a phone showed ×1.08.
+// Given the px written for both and what a rendered row computes, returns that factor,
+// or null when the two were not scaled alike (a minimum font size clamps the font only)
+// or cannot be read.
+export function textScaleAt(writtenPx, fontPx, lineHeightPx) {
+  const fs = fontPx / writtenPx;
+  const lh = lineHeightPx / writtenPx;
+  if (!(fs > 0.5 && fs < 2) || !(lh > 0.5 && lh < 2)) return null;
+  if (Math.abs(fs - lh) > 0.01) return null;
+  return lh;
+}

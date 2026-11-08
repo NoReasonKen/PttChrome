@@ -62,7 +62,7 @@ import {
   shiftOnlyDelta
 } from './list_scroll';
 import { LEFT_ARROW } from './function_key_plan';
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { HINT_ERROR } from './status_hint';
 import {
   BOARD_LIST,
@@ -828,7 +828,7 @@ const PREFETCH_HARD_MS = 1500;
 // it short ends the absorption early = the state churn they were introduced to
 // stop (see _beginPassthroughBytes).
 const NATIVE_PASSTHROUGH_MS = 3000;
-// 「非導覽操作完成後自動切回好讀」的兩個時間常數（pref enableListNativeAutoResume）。
+// 「非導覽操作完成後自動切回好讀」的兩個時間常數。
 //
 // RESUME_QUIET_MS **不是體感旋鈕**，別拿它調手感。它只堵一個判定漏洞：一個回應的
 // 「內容視窗」與「游標 park 視窗」跨過 SETTLE_MS 的間隔時會 **settle 兩次**
@@ -855,14 +855,8 @@ const RESUME_GRACE_MS = 400;
 // 就在 _classifyKey 的 e.ctrlKey 分支先被判成 passthrough，這裡只是說明理由。
 const INPLACE_KEYS = '=\\]+[-<,.>{}t';
 
-// 切原生時提示語的尾巴。自動回復開著＝「做完就回來」；關掉＝維持舊措辭（那時
-// 行為也真的是舊的）。**留著舊措辭比沒提示更糟**，所以每一處切原生的 hint 都走
-// 這一支，不要再各自寫死字串。
-function nativeResumeHint() {
-  return readEffectivePrefs().enableListNativeAutoResume
-    ? '（操作完成後自動恢復好讀）'
-    : '（開啟文章或離開看板後恢復好讀）';
-}
+// 切原生時提示語的尾巴：做完就回來。每一處切原生的 hint 都用這一句，不要再各自寫死字串。
+const NATIVE_RESUME_HINT = '（操作完成後自動恢復好讀）';
 // 看板列表按 `v` ＝ b_mark_read_unread（mbbsd/bbs.c:4309）：畫面下方跳出 getdata
 // prompt「設定所有文章 (U)未讀 (V)已讀 (W)前已讀後未讀 (Q)取消？[Q] 」。
 // b_lines = t_lines-1 ⇒ 24 列終端時 prompt 畫在 **row 22**（不是最後一列），所以
@@ -1201,15 +1195,12 @@ ListSession.prototype = {
     this._core.navigationStack?.spend(action);
   },
 
-  // pref 開著＝本功能（L1 凍結交易 ＋ L2 自動回復）生效；關掉＝**逐位元回到
-  // 2026-09-03 之前**：A 類鍵一律走 passthrough、探針一次都不排。
-  // 這是使用者拍板的逃生門（三階梯見 docs/easy-reading-list.md）：判定類功能的
-  // 最後一道防線就是設定開關，全關就回到原生體驗。
+  // 好讀開著＝L1 凍結交易 ＋ L2 自動回復生效；關掉＝整份列表回到原生（探針一次都不排）。
   _autoResumeEnabled: function() {
-    return !!readEffectivePrefs().enableListNativeAutoResume;
+    return easyReadingOn(readValuesWithDefault());
   },
 
-  // pref on ∧ 終端機列數合法 ∧ the article easy reading is not mid-post
+  // easy reading on ∧ 終端機列數合法 ∧ the article easy reading is not mid-post
   // (startedEasyReading tracks an actually-open post; view.useEasyReadingMode
   // stays latched true between posts, so it is NOT the right guard here).
   //
@@ -1222,7 +1213,7 @@ ListSession.prototype = {
   // 出現就代表 buf 處於不該有的狀態，寧可不接管。
   _engageEligible: function() {
     return (
-      !!readEffectivePrefs().enableEasyReadingList &&
+      easyReadingOn(readValuesWithDefault()) &&
       this._termBuf.rows >= 24 &&
       !this._termBuf.startedEasyReading
     );
@@ -1756,7 +1747,7 @@ ListSession.prototype = {
       this.state = r0.next;
       this._enterFunctionMode();
       if (this._view.flashListHint)
-        this._view.flashListHint('已切至原生操作' + nativeResumeHint(), 4000);
+        this._view.flashListHint('已切至原生操作' + NATIVE_RESUME_HINT, 4000);
       return;
     }
     e.preventDefault();
@@ -1781,7 +1772,7 @@ ListSession.prototype = {
     const hint =
       opts && 'hint' in opts
         ? opts.hint
-        : '已切至原生操作' + nativeResumeHint();
+        : '已切至原生操作' + NATIVE_RESUME_HINT;
     // bytes 是字串 ＝ 一步；是陣列 ＝ 多步序列（每步 {keys, kind, expect,
     // onDone, onFail}）。**第 n+1 步只在第 n 步的 onDone 裡 enqueue**，所以前一步
     // 的 expect 沒滿足時後面的鍵絕不會出去 —— 那不是保險，是必要條件：'v' 沒進
@@ -1826,7 +1817,7 @@ ListSession.prototype = {
     finish();
   },
 
-  // 多步序列的凍結版（opts.resumeOnLanding，pref enableListNativeAutoResume 開著才走）：
+  // 多步序列的凍結版（opts.resumeOnLanding，好讀開著才走）：
   // 形狀照抄 _beginInplaceTransaction —— 畫面逐像素凍住 → （必要時）同步真游標 →
   // 逐步送真鍵 → 最後一步落地那一幀就是結論，**全程不切原生鏡像**。
   //
@@ -2083,7 +2074,7 @@ ListSession.prototype = {
     return this._beginTextPassthrough(text, {
       normalize: true,
       kind: 'native-paste',
-      hint: '已貼上並切至原生操作' + nativeResumeHint()
+      hint: '已貼上並切至原生操作' + NATIVE_RESUME_HINT
     });
   },
 
@@ -2101,7 +2092,7 @@ ListSession.prototype = {
     return this._beginTextPassthrough(text, {
       normalize: false,
       kind: 'native-input',
-      hint: '已切至原生操作' + nativeResumeHint()
+      hint: '已切至原生操作' + NATIVE_RESUME_HINT
     });
   },
 
@@ -2752,8 +2743,8 @@ ListSession.prototype = {
         // runs a single serialized jump transaction (_beginJumpNumber).
         if (/^[0-9]$/.test(e.key)) return { class: 'jump-digit', digit: e.key };
         // A 類鍵（INPLACE_KEYS，枚舉即合約——不變量 N5）：原地重繪，清單內容與
-        // 編號空間都不變 ⇒ 走凍結交易，**全程不切原生**。pref 關掉時整組落回
-        // passthrough（＝逐位元回到 2026-09-03 之前的行為）。
+        // 編號空間都不變 ⇒ 走凍結交易，**全程不切原生**。好讀關掉時 session 不
+        // 運作；這裡的檢查只防關掉途中的殘留呼叫。
         if (
           e.key.length === 1 &&
           INPLACE_KEYS.indexOf(e.key) !== -1 &&
@@ -2953,8 +2944,7 @@ ListSession.prototype = {
   //
   // 全程是凍結交易（resumeOnLanding，見 _beginLandingTransaction）：不切原生鏡像，
   // w⏎ 落回列表那一幀直接 rebuild 回好讀（已讀標記全變，累積 buffer 過時）。PTT
-  // 拒絕（vmsg 等按鍵）或落點認不出 ⇒ 停在原生鏡像，由靜置探針接手。pref
-  // enableListNativeAutoResume 關掉＝舊行為：完成後停在原生、不自動回來。
+  // 拒絕（vmsg 等按鍵）或落點認不出 ⇒ 停在原生鏡像，由靜置探針接手。
   markReadUnreadBefore: function(num) {
     if (this._renderMode === 'native') return false; // 沒接管，交給一般路徑
     if (this.state === 'opening') {
@@ -3020,13 +3010,13 @@ ListSession.prototype = {
             rr.end(bm, 'done');
             if (!self._view.flashListHint) return;
             const rejected = !!applyFacts && markReadRejected(applyFacts.rowTexts);
-            // 拒絕畫面（vmsg）一定停在原生；成功時只有 pref 關掉才停在原生。
+            // 拒絕畫面（vmsg）一定停在原生；成功時只有好讀已關掉才停在原生。
             const native = rejected || !self._autoResumeEnabled();
             self._view.flashListHint(
               (rejected
                 ? 'PTT 不接受這篇當參考點，已讀記錄沒有變動（請改用其它文章）。'
                 : '已將第 ' + num + ' 篇（含）以前設為已讀、以後設為未讀。') +
-                (native ? '已切至原生' + nativeResumeHint() : ''),
+                (native ? '已切至原生' + NATIVE_RESUME_HINT : ''),
               4000,
               rejected ? HINT_ERROR : undefined
             );
@@ -3178,7 +3168,7 @@ ListSession.prototype = {
   },
 
   _startFill: function() {
-    this._fillTarget = readEffectivePrefs().easyReadingListPrefetchCount || 0;
+    this._fillTarget = readValuesWithDefault().easyReadingListPrefetchCount || 0;
     this._fillPages = 0;
     this._maybeFill();
   },
@@ -3858,7 +3848,7 @@ ListSession.prototype = {
       this._view.flashListHint(
         (isWaterballSettle(facts)
           ? '收到水球／廣播，已切至原生模式'
-          : '畫面偏離列表格式，已切至原生模式') + nativeResumeHint(),
+          : '畫面偏離列表格式，已切至原生模式') + NATIVE_RESUME_HINT,
         4000,
         HINT_ERROR
       );

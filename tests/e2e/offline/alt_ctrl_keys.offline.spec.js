@@ -41,7 +41,6 @@ test.describe('Alt ＝ PTT 的 Ctrl（離線重放）', () => {
     // （Alt 鍵先跳號再代送）已由 tests/unit/list_keys.test.js 全 26 字母守護。
     await ptt.applyPrefs(page, {
       enableEasyReading: false,
-      enableEasyReadingList: false,
     });
     await replayListCassette(page, list);
   });

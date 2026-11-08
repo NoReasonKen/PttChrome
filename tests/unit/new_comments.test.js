@@ -3,9 +3,9 @@
 const prefOverride = vi.hoisted(() => ({}));
 vi.mock("../../src/js/pref_storage", async (importOriginal) => {
   const real = await importOriginal();
-  return { ...real, readEffectivePrefs: () => ({ ...real.readEffectivePrefs(), ...prefOverride }) };
+  return { ...real, readValuesWithDefault: () => ({ ...real.readValuesWithDefault(), ...prefOverride }) };
 });
-import { DEFAULT_PREFS, NATIVE_SAFE_MODE_KEYS } from "../../src/js/pref_storage";
+import { DEFAULT_PREFS } from "../../src/js/pref_storage";
 import {
   CommentScanner,
   NewComments,
@@ -83,9 +83,8 @@ describe("紀錄（localStorage，只在這個瀏覽器）", () => {
   });
 });
 
-test("預設開；一個 byte 都不送 ⇒ 不在安全模式名單內", () => {
+test("預設開；一個 byte 都不送 ⇒ 不是好讀行為，保留自己的開關", () => {
   expect(DEFAULT_PREFS.markNewComments).toBe(true);
-  expect(NATIVE_SAFE_MODE_KEYS).not.toContain("markNewComments");
 });
 
 // ── 控制器：假 App ─────────────────────────────────────────────────────────

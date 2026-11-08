@@ -1,8 +1,7 @@
 // @unit-env browser
 vi.mock("../../src/js/pref_storage", () => {
   const readValuesWithDefault = vi.fn(() => ({ enableEasyReading: true }));
-  // easy_reading 讀的是 readEffectivePrefs（安全模式覆寫層）；委派給同一個 mock。
-  return { readValuesWithDefault, readEffectivePrefs: () => readValuesWithDefault() };
+  return { readValuesWithDefault, easyReadingOn: (v) => !!(v && v.enableEasyReading) };
 });
 
 // The settle-recovery path (_onScreenSettled / _computeRowState / _currentPageSignature)
@@ -57,7 +56,7 @@ describe("nextEasyReadingState", () => {
 
   // 精華區: top level settles to MENU(1), sub-folders to MENU(1) or LIST(2); opening
   // an article from there is a 1 -> 3 edge. Without this, easy reading stayed off
-  // after switchToNativeAtBottom until the user backed out to a real board list (2).
+  // after leaving it mid-post until the user backed out to a real board list (2).
   it("enables on a settled menu -> article edge (1 -> 3), covering 精華區", () => {
     expect(decide({ prevSettledPageState: 1 })).toBe(true);
   });
@@ -85,10 +84,10 @@ describe("nextEasyReadingState", () => {
     expect(decide({ supported: false })).toBe(false);
   });
 
-  // Regression guard for switchToNativeAtBottom: after the user pressed End the post
-  // stays on pageState 3, so settledPageState stays 3 (no new list/menu -> 3 edge). A
-  // transient 0 -> 3 flicker never settles, so prevSettled stays 3 -> no re-enable.
-  it("does not re-enable on an in-post flicker after manual native switch (settled stays 3)", () => {
+  // Regression guard for leaving easy reading mid-post (取消好讀): the post stays on
+  // pageState 3, so settledPageState stays 3 (no new list/menu -> 3 edge). A transient
+  // 0 -> 3 flicker never settles, so prevSettled stays 3 -> no re-enable.
+  it("does not re-enable on an in-post flicker after leaving easy reading (settled stays 3)", () => {
     expect(decide({ settledPageState: 3, prevSettledPageState: 3 })).toBe(false);
   });
 
@@ -412,63 +411,36 @@ describe("EasyReading._onPageStateSettled", () => {
   });
 });
 
-// End-key behavior in easy reading is gated by the easyReadingEndSwitchNative pref
-// and a configurable switch key. Two cases must hold:
-//  - pref ON  + key matches  -> switchToNativeAtBottom(), preventDefault, stop early
-//  - pref OFF (or key !=)     -> scroll the easy-reading view to the bottom and STAY
-//    in easy reading (official-term behavior). Regression guard: a prior version let
-//    End fall through to the native terminal, so the view never scrolled to the
-//    article bottom when the pref was off.
+// End / $ / G in easy reading jump to the article bottom and STAY in easy reading
+// (official-term behavior). Regression guard: a prior version let End fall through to
+// the native terminal, so the view never scrolled to the article bottom.
 describe("EasyReading._onKeyDownProcessUI End handling", () => {
-  const makeER = (prefs) => {
-    readValuesWithDefault.mockReturnValue(prefs);
+  const makeER = () => {
+    readValuesWithDefault.mockReturnValue({ enableEasyReading: true });
     const termBuf = { addEventListener() {} };
     const mainDisplay = { scrollTop: 0, scrollHeight: 5000 };
     const er = new EasyReading(/* core */ {}, /* view */ { mainDisplay }, termBuf);
-    er.switchToNativeAtBottom = vi.fn();
+    er.exitEasyReading = vi.fn();
     return { er, mainDisplay };
   };
   const keyEvent = key => ({
     key, ctrlKey: false, altKey: false, preventDefault: vi.fn()
   });
 
-  it("switches to native on End when the pref is on and key matches", () => {
-    const { er, mainDisplay } = makeER({
-      easyReadingEndSwitchNative: true, easyReadingEndSwitchKey: "End"
-    });
-    const e = keyEvent("End");
-    er._onKeyDownProcessUI(e);
-    expect(er.switchToNativeAtBottom).toHaveBeenCalledTimes(1);
-    expect(e.preventDefault).toHaveBeenCalled();
-    expect(mainDisplay.scrollTop).toBe(0); // did not scroll; switched instead
-  });
-
-  it("scrolls to bottom (stays in easy reading) on End when the pref is off", () => {
-    const { er, mainDisplay } = makeER({
-      easyReadingEndSwitchNative: false, easyReadingEndSwitchKey: "End"
-    });
-    const e = keyEvent("End");
-    er._onKeyDownProcessUI(e);
-    expect(er.switchToNativeAtBottom).not.toHaveBeenCalled();
-    expect(mainDisplay.scrollTop).toBe(mainDisplay.scrollHeight);
-    expect(e.preventDefault).toHaveBeenCalled();
-  });
-
-  it("scrolls to bottom on End when the configured switch key is something else", () => {
-    const { er, mainDisplay } = makeER({
-      easyReadingEndSwitchNative: true, easyReadingEndSwitchKey: "q"
-    });
-    const e = keyEvent("End");
-    er._onKeyDownProcessUI(e);
-    expect(er.switchToNativeAtBottom).not.toHaveBeenCalled();
-    expect(mainDisplay.scrollTop).toBe(mainDisplay.scrollHeight);
+  it("End / $ / G scroll to the bottom and stay in easy reading", () => {
+    for (const key of ["End", "$", "G"]) {
+      const { er, mainDisplay } = makeER();
+      const e = keyEvent(key);
+      er._onKeyDownProcessUI(e);
+      expect(er.exitEasyReading).not.toHaveBeenCalled();
+      expect(mainDisplay.scrollTop).toBe(mainDisplay.scrollHeight);
+      expect(e.preventDefault).toHaveBeenCalled();
+    }
   });
 
   // End 之後黏在文末（bottom_stick.js）；讀者按別的鍵捲動就放手。
   it("End 黏在文末；之後按別的鍵放手", () => {
-    readValuesWithDefault.mockReturnValue({
-      easyReadingEndSwitchNative: false, easyReadingEndSwitchKey: "End"
-    });
+    readValuesWithDefault.mockReturnValue({ enableEasyReading: true });
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
     try {
       const mainDisplay = document.createElement("div");
@@ -486,39 +458,15 @@ describe("EasyReading._onKeyDownProcessUI End handling", () => {
     }
   });
 
-  it("$ / G still switch to native when the pref is on (fixed vi aliases)", () => {
-    for (const key of ["$", "G"]) {
-      const { er } = makeER({
-        easyReadingEndSwitchNative: true, easyReadingEndSwitchKey: "End"
-      });
-      er._onKeyDownProcessUI(keyEvent(key));
-      expect(er.switchToNativeAtBottom).toHaveBeenCalledTimes(1);
-    }
-  });
-
-  it("$ / G scroll to bottom (stay in easy reading) when the pref is off", () => {
-    for (const key of ["$", "G"]) {
-      const { er, mainDisplay } = makeER({
-        easyReadingEndSwitchNative: false, easyReadingEndSwitchKey: "End"
-      });
-      er._onKeyDownProcessUI(keyEvent(key));
-      expect(er.switchToNativeAtBottom).not.toHaveBeenCalled();
-      expect(mainDisplay.scrollTop).toBe(mainDisplay.scrollHeight);
-    }
-  });
-
   // pmore function keys (說明/選單/搜尋/指定頁/左右捲…) used to be swallowed by an
   // upstream pre-functionMode "123456789hops;,./\H#OP:<>" list (preventDefault → no-op,
   // 說明(h) etc. dead in easy reading). That list is removed: they now fall through to
   // functionMode like r/X/%/y, so PTT draws the native menu/help and we mirror it LIVE.
   // Guard: each enters functionMode and is NOT preventDefault'd (the key must reach PTT).
-  // `/` 在這裡屬於 pref easyReadingBrowserFind **關閉**的情境（makeER 的 prefs 沒帶
-  // 它）；預設開時 `/` 改成提示，見 easy_reading_browser_find.test.js。
+  // `/` 是瀏覽器搜尋的提示，不進 functionMode，見 easy_reading_browser_find.test.js。
   it("pmore function keys enter functionMode and reach PTT (no preventDefault)", () => {
-    for (const key of ["h", "H", "o", "p", "\\", "/", ";", ":", "#", "s", "1", "9", ",", ".", "<", ">"]) {
-      const { er } = makeER({
-        easyReadingEndSwitchNative: true, easyReadingEndSwitchKey: "End"
-      });
+    for (const key of ["h", "H", "o", "p", "\\", ";", ":", "#", "s", "1", "9", ",", ".", "<", ">"]) {
+      const { er } = makeER();
       er._enterFunctionMode = vi.fn();
       er.leaveCurrentPost = vi.fn();
       const e = keyEvent(key);
@@ -534,9 +482,7 @@ describe("EasyReading._onKeyDownProcessUI End handling", () => {
   // functionMode. Guards the two key classes don't get crossed.
   it("article-navigation keys leave the post, not functionMode", () => {
     for (const key of ["a", "b", "f", "[", "]", "=", "A", "B", "F"]) {
-      const { er } = makeER({
-        easyReadingEndSwitchNative: true, easyReadingEndSwitchKey: "End"
-      });
+      const { er } = makeER();
       er._enterFunctionMode = vi.fn();
       er.leaveCurrentPost = vi.fn();
       er._onKeyDownProcessUI(keyEvent(key));
@@ -726,13 +672,13 @@ describe("EasyReading._onScreenSettled", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 切原生（F8）之後的旗標殘留
+// 退出好讀之後的旗標殘留
 //
 // exitEasyReading 是唯一的關好讀入口，但它漏了兩個 per-post 旗標：
 //
 // (1) startedEasyReading —— 唯一的清除點是 _applyRowState，而 _onChanged 在
 //     `!_enabled` 時早退 ⇒ 關掉好讀之後永遠跑不到。list_session._engageEligible()
-//     要求 !startedEasyReading，於是 **F8 之後回看板列表，列表好讀永遠不 engage**
+//     要求 !startedEasyReading，於是 **退出好讀之後回看板列表，列表好讀永遠不 engage**
 //     （使用者回報的「半永久原生模式」）。
 //
 // (2) ignoreOneUpdate —— exitEasyReading → switchToEasyReadingMode →
@@ -767,8 +713,8 @@ describe("exitEasyReading 的旗標殘留與本地重繪", () => {
     expect(er.ignoreOneUpdate).toBe(false);
   });
 
-  // 核心回歸：F8 → 回列表 → 下一篇，第一個 PageDown 必須送得出去。
-  it("F8 之後下一篇仍會自動翻頁（不得卡在第一頁）", () => {
+  // 核心回歸：取消好讀 → 回列表 → 下一篇，第一個 PageDown 必須送得出去。
+  it("退出好讀之後下一篇仍會自動翻頁（不得卡在第一頁）", () => {
     const er = makeExitER();
     er.exitEasyReading();
     // 下一篇文章的第一頁（settle 邊緣 → enterEasyReading）
@@ -778,7 +724,7 @@ describe("exitEasyReading 的旗標殘留與本地重繪", () => {
     expect(er._send).toHaveBeenCalledWith("\x1b[6~");
   });
 
-  // 不依賴伺服器往返的本地保險：按 F8 時若還有 PageDown 在途，End／^L 的重繪會被
+  // 不依賴伺服器往返的本地保險：退出好讀時若還有 PageDown 在途，^L 的重繪會被
   // P4 吞掉，DOM 就一直停在數千列的長頁且捲到底 ⇒ 看起來「卡在最底部、PgUp 沒反應」。
   it("立刻本地重繪回 24 列並把捲軸歸零（不等 ^L 往返）", () => {
     const er = makeExitER();
@@ -790,17 +736,13 @@ describe("exitEasyReading 的旗標殘留與本地重繪", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 切回好讀的兩條新路徑
+// 退出好讀之後換文章就切回好讀
 //
-// 舊版唯一的自動重啟是 settled `1|2 → 3` 邊緣（nextEasyReadingState），於是 F8 切原生
-// 之後：在同一篇文章內**沒有任何方法**切回好讀；用 [ ] a b f 在原生跳下一篇也沒有 1/2
-// 邊緣 ⇒ 一路卡原生（使用者回報的「半永久原生模式」）。
+// 主要的自動開啟是 settled `1|2 → 3` 邊緣（nextEasyReadingState），於是文章中途退出好讀
+// （取消好讀）之後，用 [ ] a b f 在原生跳下一篇沒有 1/2 邊緣 ⇒ 一路卡原生。補一條：
+// 原生模式下 settle 在**另一篇**文章的第一頁 → nextEasyReadingReentry。
 //
-// 補兩條：
-//   C1 再按一次熱鍵（預設 F8）→ tryReenterFromNative
-//   C3 原生模式下settle 在**另一篇**文章的第一頁 → nextEasyReadingReentry
-//
-// C3 刻意用**文章身分**（畫面第 0~2 列＝作者/標題/時間）而不是 pageState 邊緣：
+// 刻意用**文章身分**（畫面第 0~2 列＝作者/標題/時間）而不是 pageState 邊緣：
 // [ ] 跳文全程 pageState 都是 3，根本不會有邊緣；而「使用者在原生自己按 Home/0/g 回到
 // 第 1 行」則是同一篇，身分比對才擋得掉。docs/easy-reading.md 也明令不可把「掉出 3 再
 // 回來」當成換文章。
@@ -851,12 +793,12 @@ describe("nextEasyReadingReentry（原生模式下換文章才重啟）", () => 
     expect(r({ articleKey: "" })).toBe(false);
   });
 
-  // fail-safe 方向：這條路徑只為「使用者主動 F8 切原生之後跳到別篇」而存在，所以
+  // fail-safe 方向：這條路徑只為「使用者在文章中途退出好讀之後跳到別篇」而存在，所以
   // 「不知道使用者是從哪一篇切出來的」必須留在原生。舊版把 null 當成「這篇從沒用過
   // 好讀 ⇒ 可重啟」是 fail-OPEN，只要 _articleKey 沒抓到（見下一個 describe 的兩條
   // 路徑），使用者在**同一篇**按 Home 就會被切回好讀。一般的「列表→文章」自動開好讀
   // 由 nextEasyReadingState 負責，不靠這裡。
-  it("身分不明（沒有舊身分）→ 不重啟（留在原生，熱鍵永遠還在）", () => {
+  it("身分不明（沒有舊身分）→ 不重啟（留在原生）", () => {
     expect(r({ nativeArticleKey: null })).toBe(false);
     expect(r({ nativeArticleKey: "" })).toBe(false);
   });
@@ -870,14 +812,14 @@ describe("nextEasyReadingReentry（原生模式下換文章才重啟）", () => 
 // 的「按 Home 就被切回好讀」正是如此。舊版 _articleKey 只在 enterEasyReading() 捕捉
 // 一次，有兩條會存到錯誤值的路徑：
 //
-//   (1) F8 toggle 從文章**中段**切回好讀：reenterFromTop 先 enterEasyReading() 再送
-//       Home，捕捉當下畫面是中段 ⇒ 第 0~2 列是內文不是 header ⇒ 存到垃圾。
+//   (1) 文章**中段**切回好讀（離開 functionMode）：reenterFromTop 先 enterEasyReading()
+//       再送 Home，捕捉當下畫面是中段 ⇒ 第 0~2 列是內文不是 header ⇒ 存到垃圾。
 //   (2) 好讀開著時用 [ ] a b f 跳下一篇：這條路徑**不經過** enterEasyReading()
 //       （nextEasyReadingState 要求 !enabled）⇒ _articleKey 停留在**上一篇**。
 //
 // 修法：改由 _applyRowState 在**每次確認的第一頁**（statusStart === 1）重抓，
 // enterEasyReading() 只負責清空。這是唯一同時覆蓋三條路徑（settle 邊緣進文章、跳文、
-// toggle 送 Home 後的落地幀）的捕捉點。
+// reenterFromTop 送 Home 後的落地幀）的捕捉點。
 // ---------------------------------------------------------------------------
 describe("文章身分 _articleKey 的捕捉點", () => {
   // screen.rows = 目前畫面第 0~2 列；改它就等於模擬 PTT 換了一幀。
@@ -923,12 +865,10 @@ describe("文章身分 _articleKey 的捕捉點", () => {
   const MID = [": 這是文章中段的內文", ": 第二行內文", ": 第三行內文"];
 
   beforeEach(() => {
-    readValuesWithDefault.mockReturnValue({
-      enableEasyReading: true, easyReadingEndSwitchNative: true, easyReadingEndSwitchKey: "F8"
-    });
+    readValuesWithDefault.mockReturnValue({ enableEasyReading: true });
   });
 
-  // 使用者回報路徑：好讀開著 → [ 或 ] 跳下一篇 → F8 切原生 → 按 Home 回第 1 行。
+  // 使用者回報路徑：好讀開著 → [ 或 ] 跳下一篇 → 取消好讀 → 按 Home 回第 1 行。
   // 舊版 _nativeArticleKey 會是**上一篇**的 key ⇒ 身分不同 ⇒ 誤重啟。
   it("好讀下用 [ ] 跳文後切原生，同一篇按 Home 不得切回好讀", () => {
     const er = makeIdER();
@@ -939,7 +879,7 @@ describe("文章身分 _articleKey 的捕捉點", () => {
     er._frame(B, 1);                // B 篇第一頁落地
     expect(er._articleKey).toBe("作者 B|標題 B|時間 B");
 
-    er.exitEasyReading();           // F8 切原生
+    er.exitEasyReading();           // 取消好讀
     expect(er._nativeArticleKey).toBe("作者 B|標題 B|時間 B");
 
     // 原生下自己按 Home 回 B 篇第 1 行 → settle
@@ -953,7 +893,7 @@ describe("文章身分 _articleKey 的捕捉點", () => {
     const er = makeIdER();
     er.enterEasyReading();
     er._frame(A, 1);
-    er.exitEasyReading();           // F8 切原生（nativeArticleKey = A）
+    er.exitEasyReading();           // 取消好讀（nativeArticleKey = A）
 
     er._screen.rows = B;            // ] 跳到 B 篇第一頁
     parseStatusRow.mockReturnValue({ pagePercent: 3, rowIndexStart: 1, rowIndexEnd: 23 });
@@ -962,79 +902,15 @@ describe("文章身分 _articleKey 的捕捉點", () => {
   });
 
   // reenterFromTop 先 enterEasyReading() 再送 Home，捕捉當下畫面還在中段。
-  it("F8 toggle 從中段切回好讀 → 不得把內文當成文章身分", () => {
+  it("從中段切回好讀（reenterFromTop）→ 不得把內文當成文章身分", () => {
     const er = makeIdER({ rows: MID, rowIndexStart: 500 });
-    expect(er.tryReenterFromNative({ key: "F8" })).toBe(true);
+    er.reenterFromTop({ pagePercent: 50, rowIndexStart: 500, rowIndexEnd: 522 });
+    expect(er._enabled).toBe(true);
     expect(er._articleKey).toBe(null);
     expect(er._send).toHaveBeenCalledWith("\x1b[1~");
 
     er._frame(A, 1);                // Home 落地，畫面回到第一頁
     expect(er._articleKey).toBe("作者 A|標題 A|時間 A");
-  });
-});
-
-describe("F8 在原生模式下切回好讀（toggle）", () => {
-  const makeNativeER = ({ rowIndexStart = 500, key = "F8" } = {}) => {
-    const rows = ["作者 starahsu", "標題 [推薦] PTT Star", "時間 Mon Dec 31"];
-    const termBuf = {
-      addEventListener() {},
-      syncSettledPageState, cols: 80, rows: 24, cur_x: 79, cur_y: 23,
-      pageState: 3, prevPageState: 3, settledPageState: 3, prevSettledPageState: 3,
-      pageLines: [], lines: { 23: [{ getFg: () => 7, getBg: () => 0 }] },
-      lineChangeds: { fill: vi.fn() }, notify: vi.fn(),
-      getRowText: (row) => (row === 23 ? "status-row" : (rows[row] || "")),
-      startedEasyReading: false,
-    };
-    const view = { useEasyReadingMode: false, mainDisplay: { scrollTop: 0 } };
-    const er = new EasyReading({ connectedUrl: { easyReadingSupported: true } }, view, termBuf);
-    er._send = vi.fn(() => true);
-    er._termBufMock = termBuf;
-    readValuesWithDefault.mockReturnValue({
-      enableEasyReading: true, easyReadingEndSwitchNative: true, easyReadingEndSwitchKey: key
-    });
-    parseStatusRow.mockReturnValue({ pagePercent: 80, rowIndexStart, rowIndexEnd: rowIndexStart + 22 });
-    return er;
-  };
-
-  it("按熱鍵 → 開好讀，並送 Home 回文章開頭重新累積", () => {
-    const er = makeNativeER();
-    expect(er.tryReenterFromNative({ key: "F8" })).toBe(true);
-    expect(er._enabled).toBe(true);
-    expect(er._send).toHaveBeenCalledWith("\x1b[1~");
-  });
-
-  // pfterm 對「畫面完全沒變」的回應是零 bytes（fterm_rawmove_opt 原地不動、attr 也 diff
-  // 掉），所以已經在第 1 行時送 Home 可能得不到任何回應 → 交易永遠等不到 ack。
-  it("已經在第 1 行 → 不送 Home（否則交易永遠等不到回應）", () => {
-    const er = makeNativeER({ rowIndexStart: 1 });
-    expect(er.tryReenterFromNative({ key: "F8" })).toBe(true);
-    expect(er._enabled).toBe(true);
-    expect(er._send).not.toHaveBeenCalledWith("\x1b[1~");
-  });
-
-  it("$ / G 不參與 toggle（原生 pmore 的跳文末，語意不同）", () => {
-    const er = makeNativeER();
-    expect(er.tryReenterFromNative({ key: "$" })).toBe(false);
-    expect(er.tryReenterFromNative({ key: "G" })).toBe(false);
-    expect(er._enabled).toBe(false);
-  });
-
-  it("熱鍵可自訂；pref 關掉時不攔截", () => {
-    const er = makeNativeER({ key: "F9" });
-    expect(er.tryReenterFromNative({ key: "F8" })).toBe(false);
-    expect(er.tryReenterFromNative({ key: "F9" })).toBe(true);
-
-    const off = makeNativeER();
-    readValuesWithDefault.mockReturnValue({
-      enableEasyReading: true, easyReadingEndSwitchNative: false, easyReadingEndSwitchKey: "F8"
-    });
-    expect(off.tryReenterFromNative({ key: "F8" })).toBe(false);
-  });
-
-  it("不在文章頁（讀不到狀態列）→ 不攔截", () => {
-    const er = makeNativeER();
-    parseStatusRow.mockReturnValue(null);
-    expect(er.tryReenterFromNative({ key: "F8" })).toBe(false);
   });
 });
 
@@ -1578,7 +1454,7 @@ describe("EasyReading 掉頁自癒（goto-line 精準補讀）", () => {
   });
 
   // 有界：精準 heal 便宜（一次往返、不重讀）所以放寬到每篇 3 次，之後才用一次 Home
-  // 當最後手段，再之後放手（畫面維持現狀，PgDn／F8 都還在）。
+  // 當最後手段，再之後放手（畫面維持現狀，PgDn／取消好讀都還在）。
   it("每篇 3 次 goto → 1 次 Home → 放手", () => {
     const { er, termBuf } = makeER();
     const again = () => { termBuf.easyReadingHealInFlight = false; termBuf.easyReadingGapDetected = true; er._healGap(); };

@@ -39,7 +39,7 @@ function fillBuffer(termBuf, from, to) {
 function makeSession() {
   window.localStorage.setItem(
     "pttchrome.pref.v1",
-    JSON.stringify({ values: { enableBoardListSmoothScroll: true, enableListNativeAutoResume: true } })
+    JSON.stringify({ values: { enableEasyReading: true } })
   );
   const enqueued = [];
   let scrollTop = 0;
@@ -309,15 +309,5 @@ describe("看板列表重新整理：落地即回平滑捲動（不切原生、�
     refreshToLanding(h).onFail("timeout");
     expect(h.s._renderMode).toBe("native");
     expect(h.s._holdReason).toBe("passthrough");
-  });
-
-  test("pref 自動回復關掉 ⇒ 舊行為：一開始就切原生鏡像", () => {
-    const h = makeSession();
-    window.localStorage.setItem(
-      "pttchrome.pref.v1",
-      JSON.stringify({ values: { enableBoardListSmoothScroll: true, enableListNativeAutoResume: false } })
-    );
-    new ScreenRefresh(h.core)._dispatch({ kind: "board-list" });
-    expect(h.s._renderMode).toBe("native");
   });
 });

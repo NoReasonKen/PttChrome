@@ -25,7 +25,7 @@ async function pixelAt(page, x, y) {
 }
 
 async function enterAlpha(page, { portrait = false } = {}) {
-  await bootNestedShortcutSearch(page, { easyList: true, dynamicRows: true, extraArticles: 40 });
+  await bootNestedShortcutSearch(page, { dynamicRows: true, extraArticles: 40 });
   if (portrait) {
     // The image fixture starts at a deliberately short viewport. Give the
     // keyboard and key panel a real article area in which a touch can start.
@@ -44,7 +44,7 @@ async function enterAlpha(page, { portrait = false } = {}) {
 test('entry with a mismatched article board discards its list without reviving a destroyed layer', async ({ page }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await bootNestedShortcutSearch(page, { easyList: true });
+  await bootNestedShortcutSearch(page);
   // The controlled server returns a different board's list, then an article
   // whose header still says Test. The real navigation owner rejects the pair.
   await page.evaluate(() => { window.__shortcutServer.state.board = 'Other'; });

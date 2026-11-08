@@ -1,5 +1,5 @@
 import { parseStatusRow, statusSignature } from './string_util';
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { ACT_EXIT_ARTICLE } from './mouse_regions';
 import { TRACE } from './util';
 import { pmorePrefScreenSeen, parseRawModeFromPrefRow } from './pmore_pref';
@@ -24,8 +24,8 @@ import { recordFor } from './reading_record';
 // an article (3) from a list/menu" check without the transient-frame race the old
 // `cameFromList` latch had to work around. Because it is edge-triggered (the caller
 // only invokes it on a settle transition), the in-post flicker after
-// switchToNativeAtBottom (still pageState 3, settled stays 3 → no new edge) can no
-// longer re-enable against the user's choice; likewise a pass/edit/normal screen
+// a native excursion (still pageState 3, settled stays 3 → no new edge) cannot
+// re-enable against the user's choice; likewise a pass/edit/normal screen
 // (5/6/0) is excluded, so e.g. returning from in-article help does not re-enable.
 // See docs/easy-reading.md.
 export function nextEasyReadingState({
@@ -40,10 +40,9 @@ export function nextEasyReadingState({
   // Re-enable when we settled INTO an article (3) FROM a screen you open articles
   // from: a board LIST (2) or a MENU (1). The 1 covers 精華區 (essence): its top
   // level (首列【精華文章】) settles to MENU(1) and sub-folder listings to MENU(1)
-  // or LIST(2) — both let you Enter straight into an article. Without the 1, after
-  // switchToNativeAtBottom inside 精華區 the next article arrives on a 1->3 (not
-  // 2->3) edge, so easy reading never re-enabled — stuck native until you backed out
-  // to a real board list. 主功能表/分類看板 are also MENU(1) but you can't open an
+  // or LIST(2) — both let you Enter straight into an article. Without the 1, the
+  // next article inside 精華區 arrives on a 1->3 (not 2->3) edge, so easy reading
+  // never re-enabled — stuck native until you backed out to a real board list. 主功能表/分類看板 are also MENU(1) but you can't open an
   // article directly from them (you pass through a board LIST first), so a 1->3 edge
   // in practice only comes from 精華區.
   return settledPageState === 3 &&
@@ -62,7 +61,7 @@ export function settledFromListOrMenu(prevSettledPageState, prevSettledParkedLis
 }
 
 // Pure decision for the SECOND auto-enable route: easy reading is off because the user
-// switched to native inside a post (the End/F8 key), and the screen has now settled on
+// switched to native inside a post (取消好讀 in the context menu), and the screen has now settled on
 // the FIRST page of a DIFFERENT post. nextEasyReadingState cannot see this — `[`/`]`/
 // `a`/`b`/`f`/`=` keep pageState at 3 the whole way, so there is no settle edge at all,
 // and easy reading stayed off until the user went back through a list. That is the
@@ -581,7 +580,7 @@ EasyReading.prototype._onPageStateSettled = function() {
   if (enteringArticle || leavingArticle)
     this._resetPagingState();
 
-  const values = readEffectivePrefs();
+  const values = readValuesWithDefault();
   const shouldEnable = nextEasyReadingState({
     settledPageState: this._termBuf.settledPageState,
     prevSettledPageState: this._termBuf.prevSettledPageState,
@@ -611,7 +610,7 @@ EasyReading.prototype._onChanged = function(e) {
   if (this._core?.listResize?.active) return;
   if (TRACE)
     console.log("page state: " + this._termBuf.prevPageState + "->" + this._termBuf.pageState);
-  const values = readEffectivePrefs()
+  const values = readValuesWithDefault()
   // Auto-enable is handled on the settle edge (_onPageStateSettled, see
   // nextEasyReadingState). Here we only react to the pref being turned off
   // mid-post: flipping _enabled alone would switch back to the React renderScreen
@@ -692,8 +691,8 @@ EasyReading.prototype._applyRowState = function(rowState) {
   //   - settle edge list/menu → article (enterEasyReading, then its replayed notify);
   //   - `[` `]` `a` `b` `f` `=` jumps, which do NOT go through enterEasyReading at all
   //     (nextEasyReadingState requires !enabled — see _onPageStateSettled);
-  //   - the Home landing frame after reenterFromTop (the F8 toggle enters easy reading
-  //     while still MID-post, where rows 0..2 are body text, not the header).
+  //   - the Home landing frame after reenterFromTop (leaving functionMode enters easy
+  //     reading while still MID-post, where rows 0..2 are body text, not the header).
   // Capturing once inside enterEasyReading stored the previous post's key on the second
   // path and body text on the third; nextEasyReadingReentry's identity check was then
   // vacuous and a plain native Home re-enabled easy reading. Callers are gated on
@@ -1500,7 +1499,7 @@ EasyReading.prototype._onScreenSettled = function() {
 // article identity rather than on a pageState edge.
 EasyReading.prototype._maybeReenterOnNewArticle = function() {
   const status = this._currentPageStatus();
-  const values = readEffectivePrefs();
+  const values = readValuesWithDefault();
   const articleKey = status && status.rowIndexStart === 1 ? this._readArticleKey() : null;
   const ok = nextEasyReadingReentry({
     pageState: this._termBuf.pageState,
@@ -1567,9 +1566,8 @@ EasyReading.prototype._enterFunctionMode = function() {
   // `if (!this._enabled) { _maybeReenterOnNewArticle(); return; }`。
   //
   // 所以在好讀關閉時設這個旗標：畫面上什麼都不會變，卻**永遠清不掉**，而且一次
-  // 同時廢掉兩條回好讀的路 —— nextEasyReadingReentry 的 functionMode gate（自動
-  // 重入），以及 term_view.onKeyDown 的 `!buf.easyReadingFunctionMode` gate
-  // （End/F8 手動切回）。冷啟動 deep link 就是這樣鎖死整個 session 的：
+  // 廢掉回好讀的路 —— nextEasyReadingReentry 的 functionMode gate（自動重入）。
+  // 冷啟動 deep link 就是這樣鎖死整個 session 的：
   // aid_navigation._begin 無條件呼叫本函式，而那時使用者還沒開過任何文章。
   // 好讀關著時畫面本來就是原生的，這裡什麼都不用做。
   // 守護：tests/unit/easy_reading_function_mode_gate.test.js
@@ -1807,7 +1805,7 @@ EasyReading.prototype.leaveCurrentPost = function() {
   this._pendingEnableOnArticle = false;
   // Structural belt-and-braces for the article identity: this is the jump-to-another-post
   // path ([ ] a b f = + -), and the OLD post's key must not survive into the new one even
-  // for the few frames before _applyRowState re-captures it (an F8 in that window would
+  // for the few frames before _applyRowState re-captures it (取消好讀 in that window would
   // hand nextEasyReadingReentry the wrong nativeArticleKey).
   this._articleKey = null;
   // Pure notification (changes nothing here): this is the only hook that sees
@@ -1847,7 +1845,7 @@ EasyReading.prototype._send = function(data) {
   // 守護：tests/unit/easy_reading_send_gate.test.js。
   // 最後一道防線：自動翻頁那條路在 _maybeSendPageDown 開頭就先攔下來並保留待補送
   // （見 _wireBusy／onWireIdle）；這裡涵蓋其餘直接送鍵的呼叫點（_onKeyDown 的
-  // 方向鍵、switchToNativeAtBottom 的 End…），它們被吞掉只是該次動作沒發生，
+  // 方向鍵…），它們被吞掉只是該次動作沒發生，
   // 不會像翻頁那樣留下假的 in-flight。
   if (this._wireBusy()) return false;
   // **走 App.sendMachineBytes（機器出口），不是 view._send（真鍵盤／IME 出口）**
@@ -1954,32 +1952,6 @@ EasyReading.prototype.onWireIdle = function(opts) {
   this._maybeSendPageDown(keys, /* recovery */ true);
 };
 
-// Temporarily leave easy reading: switch back to native rendering and jump to
-// the bottom of the post. Auto-paging stops, so the native in-post search ('/')
-// and navigation become usable. Easy reading is re-enabled automatically by
-// _onPageStateSettled when the next post settles in from a list (settled 2 -> 3).
-// The other half of switchToNativeAtBottom: pressing the same configurable key again
-// while in native puts easy reading back on for THIS post. Called from
-// term_view.onKeyDown's native path (the easy-reading key gate below it requires
-// useEasyReadingMode, which is false here). Returns true when it handled the key.
-//
-// `$` / `G` deliberately do NOT toggle back: in native pmore they are real navigation
-// (mf_goBottom), and their meaning is "jump to the end", not "switch modes".
-EasyReading.prototype.tryReenterFromNative = function(e) {
-  const prefs = readEffectivePrefs();
-  if (!prefs.easyReadingEndSwitchNative || e.key !== prefs.easyReadingEndSwitchKey)
-    return false;
-  if (!prefs.enableEasyReading || !this._core.connectedUrl.easyReadingSupported)
-    return false;
-  // pageState can be stale on a prompt frame (term_buf.setPageState has no default
-  // branch), so require a real status row rather than trusting pageState alone.
-  const status = this._currentPageStatus();
-  if (!status)
-    return false;
-  this.reenterFromTop(status);
-  return true;
-};
-
 // Turn easy reading back on for the post we are sitting in, and rewind to line 1 so the
 // accumulated page holds the WHOLE post rather than starting from wherever native left
 // the cursor.
@@ -2003,13 +1975,6 @@ EasyReading.prototype.reenterFromTop = function(status) {
     this._pageDownRetries = 0;
     this._armWatchdog();
   }
-};
-
-EasyReading.prototype.switchToNativeAtBottom = function() {
-  console.log('switch to native at bottom');
-  // jump to the bottom of the post with native End
-  this._send('\x1b[4~');
-  this.exitEasyReading();
 };
 
 // Single entry point that turns easy reading ON for the current article, symmetric
@@ -2048,7 +2013,7 @@ EasyReading.prototype.enterEasyReading = function() {
 };
 
 // Full recipe to leave easy reading rendering. Single exit point: every code path
-// that turns easy reading off mid-post (End/$/G, ContextMenu 取消好讀, pref-off)
+// that turns easy reading off mid-post (ContextMenu 取消好讀, pref-off)
 // MUST go through this; see docs/enhanced-addon.md 踩坑 #11. NOTE the transitive
 // chain: this -> _core.switchToEasyReadingMode() -> easyReading.leaveCurrentPost()
 // (pttchrome.js:344), which resets per-post render state. Easy to miss — that
@@ -2084,9 +2049,9 @@ EasyReading.prototype.exitEasyReading = function() {
   // the LIST(2) value from before we entered, and the first quiet moment after this
   // exit — the ^L repaint below — settles to 3 and looks exactly like a fresh
   // "list -> article" edge, so _onPageStateSettled turns easy reading straight back
-  // on. The user sees the F8 land on the post's last page and freeze there: easy
+  // on. The user sees the switch land on the post's last page and freeze there: easy
   // reading re-accumulates from the bottom page, whose footer already reads 100%, so
-  // no further PageDown is ever sent. That is the 「F8 切原生卡在最後一頁」 report
+  // no further PageDown is ever sent. That was the 「切原生卡在最後一頁」 report
   // (easyReading.exit → easyReading.enter 100ms later).
   this._termBuf.syncSettledPageState();
   // Remember which post we are leaving behind, so the settle re-entry route can tell a
@@ -2105,7 +2070,7 @@ EasyReading.prototype.exitEasyReading = function() {
   // See _resetPagingState: a leftover ignoreOneUpdate halts the next article's only
   // locally-replayed frame and there is no settle to fall back on.
   this.ignoreOneUpdate = false;
-  // Local safety net for "F8 → 卡在最底部, PgUp 沒反應". switchToEasyReadingMode asks
+  // Local safety net for "切原生 → 卡在最底部, PgUp 沒反應". switchToEasyReadingMode asks
   // PTT for a full repaint with ^L, but that is a SERVER round trip and pfterm skips
   // refreshes while the client still has keys queued (P4) — if a PageDown was still in
   // flight when the user hit the key, the DOM keeps showing the multi-thousand-row
@@ -2159,7 +2124,7 @@ export function ctrlLetterOf(e) {
 // 只在好讀文章、非 functionMode 生效（呼叫端 term_view.onKeyDown 的 gate）；prompt
 // 內 Ctrl+F 是編輯鍵，照送 PTT。守護 tests/unit/easy_reading_browser_find.test.js。
 export function easyReadingFindKeyAction(e, prefs) {
-  if (!prefs || !prefs.easyReadingBrowserFind)
+  if (!easyReadingOn(prefs))
     return null;
   if (typeof e.key !== 'string')
     return null;
@@ -2253,7 +2218,7 @@ export function nextScrollRestoreStep({
 // _enabled 早已是 true，nextEasyReadingExternalLanding 第一個條件就直接擋掉。
 EasyReading.prototype.ensureEnabledOnArticle = function(allowRetry, reason) {
   this._pendingEnableOnArticle = false;
-  const values = readEffectivePrefs();
+  const values = readValuesWithDefault();
   const status = this._currentPageStatus();
   const ok = nextEasyReadingExternalLanding({
     pageState: this._termBuf.pageState,
@@ -2435,19 +2400,7 @@ EasyReading.prototype._onKeyDownProcessUI = function(e) {
   // 讀者按了別的鍵（捲動、翻頁、進 prompt…）⇒ 不再黏在文末。
   if (this._bottomStick && !(e.key === 'End' || e.key === '$' || e.key === 'G'))
     this._bottomStick.release();
-  // Configurable "switch to native at bottom" key (default End; $/G kept as fixed
-  // vi aliases). When the pref is off we don't preventDefault, so the key falls
-  // through to the native terminal (term_view.onKeyDown continues past us).
-  if (!e.ctrlKey && !e.altKey) {
-    const prefs = readEffectivePrefs();
-    if (prefs.easyReadingEndSwitchNative &&
-        (e.key === prefs.easyReadingEndSwitchKey || e.key === '$' || e.key === 'G')) {
-      this.switchToNativeAtBottom();
-      e.preventDefault();
-      return;
-    }
-  }
-  const findAction = easyReadingFindKeyAction(e, readEffectivePrefs());
+  const findAction = easyReadingFindKeyAction(e, readValuesWithDefault());
   if (findAction === 'browser')
     return 'browser';
   if (findAction === 'hint') {
@@ -2511,11 +2464,8 @@ EasyReading.prototype._onKeyDownProcessUI = function(e) {
       case 'g':
         stop = this._scrollTop();
         break;
-      // "Switch to native at bottom" is handled at the top of this function
-      // (configurable key + on/off pref). When that did NOT fire (pref off, or the
-      // pressed key isn't the configured switch key), End/$/G still jump to the
-      // article bottom — but stay in easy reading, like the official term. Symmetric
-      // with Home/0/g (_scrollTop).
+      // End/$/G jump to the article bottom and stay in easy reading, like the
+      // official term. Symmetric with Home/0/g (_scrollTop).
       case 'End':
       case '$':
       case 'G':

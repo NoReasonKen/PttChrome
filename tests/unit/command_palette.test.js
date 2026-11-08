@@ -52,7 +52,7 @@ describe("parseArticleTarget", () => {
 
 describe("buildPaletteItems", () => {
   test("空輸入 ⇒ 只列能用的動作（設定恆在）", () => {
-    expect(ids(buildPaletteItems("", {}))).toEqual(["action:settings", "action:safeModeOn"]);
+    expect(ids(buildPaletteItems("", {}))).toEqual(["action:settings", "action:easyReadingOn"]);
     expect(
       ids(buildPaletteItems("", { refresh: true, unreadJump: true, markAllRead: true, copyLink: true, back: true })),
     ).toEqual([
@@ -62,14 +62,14 @@ describe("buildPaletteItems", () => {
       "action:copyLink",
       "action:back",
       "action:settings",
-      "action:safeModeOn",
+      "action:easyReadingOn",
     ]);
   });
 
-  test("安全模式開著 ⇒ 換成「關閉安全模式」", () => {
-    const got = ids(buildPaletteItems("", { safeMode: true }));
-    expect(got).toContain("action:safeModeOff");
-    expect(got).not.toContain("action:safeModeOn");
+  test("easy reading on ⇒ offers turning it off instead", () => {
+    const got = ids(buildPaletteItems("", { easyReading: true }));
+    expect(got).toContain("action:easyReadingOff");
+    expect(got).not.toContain("action:easyReadingOn");
   });
 
   test("文章網址 ⇒ 第一項是開文，不列搜尋／設定", () => {

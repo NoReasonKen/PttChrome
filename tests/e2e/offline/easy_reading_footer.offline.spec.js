@@ -39,7 +39,7 @@ test.describe('好讀狀態列 footer', () => {
     test(`視窗高 ${height}：footer 在格線最後一列、整列在視窗內、推文列在它上面`, async ({ page }) => {
       test.setTimeout(90000);
       await page.setViewportSize({ width: 1280, height });
-      await bootOffline(page, ptt, { commentBar: true });
+      await bootOffline(page, ptt);
       await ptt.applyPrefs(page, { enableEasyReading: true });
       await replayCassette(page, article, { easyReading: true });
       await waitPreviewsSettled(page);

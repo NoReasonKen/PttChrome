@@ -134,7 +134,6 @@ describe("refreshCooldownLeftMs", () => {
   test("預設 5 秒（使用者指定），pref 預設值一致", () => {
     expect(DEFAULT_REFRESH_MIN_INTERVAL_SEC).toBe(5);
     expect(DEFAULT_PREFS.refreshMinIntervalSec).toBe(5);
-    expect(DEFAULT_PREFS.refreshKeyIntercept).toBe(true);
   });
 });
 

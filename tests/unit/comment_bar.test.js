@@ -1,12 +1,12 @@
 // 好讀文章底部常駐推文列（src/js/comment_bar.js、docs/long-push.md「底部常駐推文列」）：
 //   - 探路回來之後直接送，還是退回長推文輸入框（quickPushPlan）；
-//   - 什麼時候出現（只在好讀文章、長推文與本功能都開著、不在安全模式）、畫在哪。
+//   - 什麼時候出現（只在好讀文章、長推文與本功能都開著）、畫在哪。
 const prefOverride = vi.hoisted(() => ({}));
 vi.mock("../../src/js/pref_storage", async (importOriginal) => {
   const real = await importOriginal();
-  return { ...real, readEffectivePrefs: () => ({ ...real.readEffectivePrefs(), ...prefOverride }) };
+  return { ...real, readValuesWithDefault: () => ({ ...real.readValuesWithDefault(), ...prefOverride }) };
 });
-import { DEFAULT_PREFS, NATIVE_SAFE_MODE_KEYS, effectivePrefs } from "../../src/js/pref_storage";
+import { DEFAULT_PREFS } from "../../src/js/pref_storage";
 import {
   CommentBar,
   commentBarEnabled,
@@ -52,15 +52,9 @@ describe("quickPushPlan：探路回來直接送，或退回輸入框讓使用者
 });
 
 describe("commentBarEnabled", () => {
-  test("預設開，而且從屬於長推文總開關", () => {
-    expect(DEFAULT_PREFS.enableCommentBar).toBe(true);
+  test("sends keys ⇒ an easy-reading behaviour: on by default, absent while easy reading is off", () => {
     expect(commentBarEnabled(DEFAULT_PREFS)).toBe(true);
-    expect(commentBarEnabled({ ...DEFAULT_PREFS, enableLongPush: false })).toBe(false);
-    expect(commentBarEnabled({ ...DEFAULT_PREFS, enableCommentBar: false })).toBe(false);
-  });
-  test("會替使用者送鍵 ⇒ 在安全模式名單內，安全模式開著就不出現", () => {
-    expect(NATIVE_SAFE_MODE_KEYS).toContain("enableCommentBar");
-    expect(commentBarEnabled(effectivePrefs({ ...DEFAULT_PREFS, nativeSafeMode: true }))).toBe(false);
+    expect(commentBarEnabled({ ...DEFAULT_PREFS, enableEasyReading: false })).toBe(false);
   });
 });
 
@@ -199,8 +193,7 @@ describe("CommentBar：何時出現、畫在哪", () => {
     expect(t.bar.state.visible).toBe(true);
   });
   test.each([
-    ["本功能關", { enableCommentBar: false }],
-    ["長推文總開關關", { enableLongPush: false }],
+    ["好讀關", { enableEasyReading: false }],
   ])("%s ⇒ 下一次 settle 收起", (_l, override) => {
     const t = makeCore();
     t.settle();
@@ -242,8 +235,7 @@ describe("手機收合：推文列收進底部導覽（pref mobileCommentBarFold
     expect(commentBarFolded({ mobileCommentBarFold: true }, true)).toBe(true);
     expect(commentBarFolded({ mobileCommentBarFold: true }, false)).toBe(false);
     expect(commentBarFolded({ mobileCommentBarFold: false }, true)).toBe(false);
-    // 只決定列怎麼出現、不送鍵 ⇒ 不在安全模式名單。
-    expect(NATIVE_SAFE_MODE_KEYS).not.toContain("mobileCommentBarFold");
+    // 只決定列怎麼出現、不送鍵 ⇒ 保留自己的開關。
   });
   test("手機好讀文章：平常收著（available 但不畫）；桌機照常駐", () => {
     const m = makeCore({ mobile: true });

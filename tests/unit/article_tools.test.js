@@ -5,9 +5,9 @@
 const prefOverride = vi.hoisted(() => ({}));
 vi.mock("../../src/js/pref_storage", async (importOriginal) => {
   const real = await importOriginal();
-  return { ...real, readEffectivePrefs: () => ({ ...real.readEffectivePrefs(), ...prefOverride }) };
+  return { ...real, readValuesWithDefault: () => ({ ...real.readValuesWithDefault(), ...prefOverride }) };
 });
-import { DEFAULT_PREFS, NATIVE_SAFE_MODE_KEYS } from "../../src/js/pref_storage";
+import { DEFAULT_PREFS } from "../../src/js/pref_storage";
 import {
   analyzeArticle,
   articleUrl,
@@ -273,9 +273,8 @@ describe("ArticleTools：何時出現", () => {
       delete prefOverride.enableArticleTools;
     }
   });
-  test("預設開；不送鍵，所以不在安全模式名單內", () => {
+  test("on by default; sends nothing, so it keeps its own switch", () => {
     expect(DEFAULT_PREFS.enableArticleTools).toBe(true);
-    expect(NATIVE_SAFE_MODE_KEYS).not.toContain("enableArticleTools");
   });
   test(`推文者排行最多 ${TOP_USERS} 人`, () => {
     const lines = [...HEADER, ...Array.from({ length: TOP_USERS + 3 }, (_, i) => push("推", "user" + i, "x"))];

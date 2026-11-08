@@ -66,7 +66,7 @@ so its budget is `aid_navigation.SLOW_STEP_BUDGET` (as the board entry of an AID
 
 ## Keyboard (F5 interception)
 
-- Taken over: `F5`, `⌘R` (`isRefreshKeyEvent`). Pref `refreshKeyIntercept` (on by default).
+- Taken over: `F5`, `⌘R` (`isRefreshKeyEvent`). An easy-reading behaviour: taken over whenever easy reading is on.
 - Deliberately not taken: `Shift/Ctrl+F5`, `⌘⇧R` (hard reload, left to the browser as an escape hatch); `Ctrl+R` has always been PTT's `^R`
   (reply to a waterball), which never reloads the web page anyway.
 - **The page cannot intercept the refresh button beside the browser's address bar** (the Web platform has no API for it; only beforeunload can "ask").

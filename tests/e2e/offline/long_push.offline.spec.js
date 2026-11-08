@@ -10,7 +10,7 @@
 //   - 取消送出 Ctrl-C 收尾
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
-const { bootOffline, feedRaw, waitScreenSettled } = require('../helpers/replay');
+const { bootOffline, feedRaw, waitScreenSettled, drawListForEasyReading } = require('../helpers/replay');
 const {
   rightClickPlainText,
   imeSetComposition,
@@ -220,12 +220,10 @@ async function submitLongPush(page, text) {
     .click();
 }
 
-async function boot(page) {
+async function boot(page, { easyReading = true } = {}) {
   await bootOffline(page, ptt);
-  // 這支 spec 自己畫畫面（drawArticle／drawBoardList）驗的都是**原生**行為，而列表
-  // 好讀自 2026-09-16 起預設開 —— 它一 engage 就會自己往線路送機器鍵，讓「按 X 只送
-  // 出一個 byte」這類斷言收到多餘的 bytes。明確關掉，別靠預設值。
-  await ptt.applyPrefs(page, { enableEasyReadingList: false });
+  // 長推文是好讀的一部分；好讀關掉時 X 就是 PTT 原生推文。
+  await ptt.applyPrefs(page, { enableEasyReading: easyReading });
   await drawArticle(page);
   expect(await page.evaluate(() => window.__app.buf.pageState)).toBe(3);
   // 免費路徑拿得到 AID ⇒ 開場不會按 Q（長推文的錨點來源，見 long_push_anchor.js）。
@@ -570,16 +568,15 @@ test.describe('長推文一鍵發送（離線）', () => {
     }
   });
 
-  test('設定關掉攔截 → X 回到 PTT 原生推文（逃生門）', async ({ page }) => {
-    await boot(page);
-    await ptt.applyPrefs(page, { pushKeyOpensLongPush: false });
+  test('好讀關掉 → X 回到 PTT 原生推文（逃生門）', async ({ page }) => {
+    await boot(page, { easyReading: false });
     await collectSent(page);
 
     await ptt.sendKey(page, 'X');
     await expect.poll(() => sentText(page)).toBe('X');
     await expect(page.locator('[name="longPushText"]')).toHaveCount(0);
     // 那個 X 是**使用者的 byte 直達**，不是探路 —— 兩者的差別在有沒有遮罩／
-    // 有沒有人接手（關掉攔截後 longPush 完全沒被啟動）。
+    // 有沒有人接手（好讀關著，longPush 完全沒被啟動）。
     await expect(page.getByTestId('longPushProgressStatus')).toHaveCount(0);
     expect(await page.evaluate(() => window.__app.longPush.busy)).toBe(false);
   });
@@ -589,19 +586,18 @@ test.describe('長推文一鍵發送（離線）', () => {
   // 擋住「推到別篇」的機制（long_push_gate.js 檔頭）。
   test('文章列表按 X 不攔，維持原生', async ({ page }) => {
     await boot(page);
-    await drawBoardList(
-      page,
-      [
-        boardListRow(1233, 'testuser', '[閒聊] 測試文章'),
-        boardListRow(1234, 'someoneElse', '[公告] 別篇'),
-        boardListRow(1235, 'thirdGuy', '[問卦] 又一篇'),
-      ],
-      0
-    );
+    const nums = [1233, 1234, 1235];
+    const rows = [
+      boardListRow(1233, 'testuser', '[閒聊] 測試文章'),
+      boardListRow(1234, 'someoneElse', '[公告] 別篇'),
+      boardListRow(1235, 'thirdGuy', '[問卦] 又一篇'),
+    ];
+    await drawListForEasyReading(page, (num) => drawBoardList(page, rows, num == null ? 0 : nums.indexOf(num)));
     await collectSent(page);
 
     await ptt.sendKey(page, 'X');
-    await expect.poll(() => sentText(page)).toBe('X');
+    // X 直送 PTT（之後列表好讀自己的跳號不算）。
+    await expect.poll(() => sentText(page)).toMatch(/^X/);
     await expect(page.locator('[name="longPushText"]')).toHaveCount(0);
     await expect(page.getByTestId('longPushProgressStatus')).toHaveCount(0);
     expect(await page.evaluate(() => window.__app.longPush.busy)).toBe(false);

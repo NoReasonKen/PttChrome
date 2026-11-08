@@ -24,7 +24,7 @@
 //    caption 依呼叫端（「我的最愛」「文章閱讀」…）。
 //
 // 認不出 ⇒ 原生：指紋任一要素失配、任一項目列解析不了、第一張不是第 1 頁 ⇒ 不接管。
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { recordFor } from './reading_record';
 
 export const HELP_TITLE = '操作說明 (Help)';
@@ -160,10 +160,9 @@ export function mergeHelpPages(pages, totalPages) {
   return out;
 }
 
-// 接不接管看兩個 pref：好讀總開關（沿用原本的行為）＋自己的子開關 enableHelpMenuPopup。
-// 傳入的必須是生效值（readEffectivePrefs），安全模式才會把兩者都蓋成 false。
+// 好讀開著就接管：說明選單彈窗是好讀行為（會替使用者送 PgDn 補頁）。
 export function helpMenuPopupEnabled(prefs) {
-  return !!(prefs && prefs.enableEasyReading && prefs.enableHelpMenuPopup);
+  return easyReadingOn(prefs);
 }
 
 // ---- 控制器 ----
@@ -183,7 +182,7 @@ export function HelpMenuController(core, termBuf, opts) {
   this._termBuf = termBuf;
   const o = opts || {};
   this._send = o.send || ((bytes) => core && core.view && core.view._send(bytes));
-  this._enabled = o.enabled || (() => helpMenuPopupEnabled(readEffectivePrefs()));
+  this._enabled = o.enabled || (() => helpMenuPopupEnabled(readValuesWithDefault()));
   this._now = o.now || (() => Date.now());
   this._setTimeout = o.setTimeout || ((fn, ms) => setTimeout(fn, ms));
   this._clearTimeout = o.clearTimeout || ((t) => clearTimeout(t));

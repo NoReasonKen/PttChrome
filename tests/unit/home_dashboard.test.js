@@ -19,6 +19,7 @@ import {
   FAV_MAX_PAGES,
   RECENT_LIMIT,
   AUTO_FETCH_DELAY_MS,
+  HOME_TRANSIT_RECHECK_MS,
   HOME_FAV_FETCH_FLAG,
 } from "../../src/js/home_dashboard";
 import { serializedOpHint } from "../../src/js/serialized_op_gate";
@@ -370,6 +371,25 @@ describe("HomeDashboard：何時出現", () => {
     expect(home.state.visible).toBe(false);
     show(ARTICLE_LIST());
     show(mainMenu());
+    expect(home.state.visible).toBe(true);
+  });
+
+  // An AID run or search backtracking escapes to the main menu and jumps on to a
+  // board: the menu is a screen it passes, not the home the reader came back to.
+  test("序列化操作途經主功能表 ⇒ 不出現；操作結束時還停在主功能表 ⇒ 出現", () => {
+    const { core, home, show } = makeCore();
+    core.aidNavigation = { active: true };
+    show(mainMenu());
+    expect(home.state.visible).toBe(false);
+    show(ARTICLE_LIST());
+    core.aidNavigation.active = false;
+    vi.advanceTimersByTime(HOME_TRANSIT_RECHECK_MS);
+    expect(home.state.visible).toBe(false);
+
+    core.aidNavigation.active = true;
+    show(mainMenu());
+    core.aidNavigation.active = false;
+    vi.advanceTimersByTime(HOME_TRANSIT_RECHECK_MS);
     expect(home.state.visible).toBe(true);
   });
 

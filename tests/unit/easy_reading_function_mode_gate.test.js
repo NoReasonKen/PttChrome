@@ -5,11 +5,8 @@
 // _evalFunctionModeExit 只能經 _onScreenSettled 進入 —— 那裡第一行就是
 // `if (!this._enabled) { _maybeReenterOnNewArticle(); return; }`。
 //
-// 所以在好讀關閉時設這個旗標：畫面上什麼都不會變，卻**永遠清不掉**，而且一次就
-// 同時廢掉兩條回到好讀的路：
-//   - nextEasyReadingReentry 的 functionMode gate（自動重入）
-//   - term_view.onKeyDown 的 `!buf.easyReadingFunctionMode` gate → tryReenterFromNative
-//     （End/F8 手動切回）
+// 所以在好讀關閉時設這個旗標：畫面上什麼都不會變，卻**永遠清不掉**，而且會廢掉
+// 回到好讀的路：nextEasyReadingReentry 的 functionMode gate（換文章時自動重入）。
 //
 // 冷啟動 deep link 就是這樣把整個 session 鎖死在原生模式的：aid_navigation._begin
 // 無條件呼叫 _enterFunctionMode()，而那時使用者根本還沒開過任何一篇文章，_enabled
@@ -60,15 +57,6 @@ test("好讀關閉時也不該有任何副作用（不重畫、不吃掉 pending
   enterFunctionMode(h.ctx);
   expect(h.buf.notifyCalls).toBe(0);
   expect(h.ctx._savedScrollTop).toBeNull();
-});
-
-test("好讀關閉 + 已呼叫過 → term_view 的 End/F8 重入 gate 仍成立", () => {
-  // 症狀層代理：term_view.onKeyDown 進 tryReenterFromNative 的前提就是
-  // `!useEasyReadingMode && !buf.easyReadingFunctionMode && pageState === 3`。
-  const h = harness({ enabled: false });
-  enterFunctionMode(h.ctx);
-  const canReenterByKey = !h.ctx._enabled && !h.buf.easyReadingFunctionMode;
-  expect(canReenterByKey).toBe(true);
 });
 
 test("好讀開著：照常進入，存下捲動位置並重畫", () => {

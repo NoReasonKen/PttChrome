@@ -253,18 +253,6 @@ export const en_US = {
   "options_enableLiveArticleHelper": {
     "message": "Show \"Live article helper\" (auto-refresh comments)"
   },
-  "options_enableLongPush": {
-    "message": "Show \"Send long comment\" (auto-split into multiple comments)"
-  },
-  "options_pushKeyOpensLongPush": {
-    "message": "Pressing X / % in an article opens \"Send long comment\""
-  },
-  "tooltip_pushKeyOpensLongPush": {
-    "message": "Turn off to get PTT's native single comment prompt back. X in the article list is always native."
-  },
-  "options_enableCommentBar": {
-    "message": "Comment bar at the bottom of articles (easy reading)"
-  },
   "options_commentReplyMenu": {
     "message": "\"Reply\" in the comment menu"
   },
@@ -276,9 +264,6 @@ export const en_US = {
   },
   "tooltip_mobileCommentBarFold": {
     "message": "On mobile the comment bar stays hidden until you tap \"Push\" in the bottom nav; it slides up with the keyboard and tucks away after sending, closing the keyboard, or pressing Back. Turn off to keep it always shown."
-  },
-  "tooltip_enableCommentBar": {
-    "message": "A \"push / boo / → + text\" bar at the bottom of easy-reading articles; press Enter to post. When PTT would turn it into →, or the text is long, the long comment box opens so you can check first."
   },
   "commentBar_type": {
     "message": "Comment type"
@@ -297,12 +282,6 @@ export const en_US = {
   },
   "commentBar_send": {
     "message": "Post"
-  },
-  "options_searchKeyOpensModal": {
-    "message": "Search keys (/ ? a Z s) open the search dialog"
-  },
-  "tooltip_searchKeyOpensModal": {
-    "message": "PTT's own input history gets filled with article numbers by list easy reading, so the dialog keeps your keywords on this device (press ↑ to recall). Turn off to use PTT's native prompt."
   },
   "searchModal_title": {
     "message": "Search"
@@ -1008,40 +987,10 @@ export const en_US = {
     "message": "Hints at the bottom of the screen explaining what is happening. Turn off once you are familiar; error hints (timeouts that fall back to native mode, failed operations) are always shown, in red."
   },
   "options_enableEasyReading": {
-    "message": "Enable easy reading article view. (experimental)"
+    "message": "Easy reading"
   },
-  "options_enableHelpMenuPopup": {
-    "message": "Easy-reading help menu"
-  },
-  "tooltip_enableHelpMenuPopup": {
-    "message": "Show every command of the new h help menu in one list, and run one with a click. Needs easy reading article view; turn off to use PTT's own paged menu."
-  },
-  "options_enableEasyReadingList": {
-    "message": "Enable easy reading board list. (experimental, truly hides blacklisted rows)"
-  },
-  "options_enableBoardListSmoothScroll": {
-    "message": "Enable smooth scrolling for the board list. (experimental, favourites / class boards)"
-  },
-  "tooltip_enableBoardListSmoothScroll": {
-    "message": "Accumulates the favourites and class-board listings into one sequence and hands scrolling straight to the browser (the same engine as list easy reading). The all-boards / hot-boards listings and the `c` new-post mode keep the native page-at-a-time behaviour."
-  },
-  "options_enableListNativeAutoResume": {
-    "message": "Return to easy reading / smooth scrolling once a non-navigation action finishes"
-  },
-  "tooltip_enableListNativeAutoResume": {
-    "message": "When a non-navigation key is pressed in a listing (search, tag, push, mark-as-read...), switch back to the easy-reading view as soon as the action completes and the screen goes quiet. Cursor-only keys ([ ] = \\ + - < > , . { } t, and t v V in the board list) never show the native mirror at all. Turn this off to stay native until an article is opened or the board is left."
-  },
-  "options_reconnectResume": {
-    "message": "Return to where you were after reconnecting"
-  },
-  "tooltip_reconnectResume": {
-    "message": "After the connection drops and you log in again, automatically go back to the article or article list you were reading. Off = stay on the main menu."
-  },
-  "options_resumeLastPlace": {
-    "message": "Return to where you left off when opening the site"
-  },
-  "tooltip_resumeLastPlace": {
-    "message": "After closing the tab, or the phone reclaiming it, the next time you open the site and log in you go back to the article or article list you were reading; a notice lets you cancel first. Remembered in this browser only. Off = stay on the main menu."
+  "tooltip_enableEasyReading": {
+    "message": "PttChrome lays out home, board lists, article lists and articles as easy-reading pages, with smooth scrolling, gestures, the comment bar, long comments, the search dialog, skipping the board entry screen and returning after a reconnect. Off: the whole app shows PTT exactly as it is, and keys go to PTT as they are."
   },
   "options_enableCommandPalette": {
     "message": "Command palette"
@@ -1112,11 +1061,11 @@ export const en_US = {
   "palette_settings": {
     "message": "Open settings"
   },
-  "palette_safeModeOn": {
-    "message": "Turn on safe mode (native PTT for everything)"
+  "palette_easyReadingOff": {
+    "message": "Turn off easy reading (native PTT)"
   },
-  "palette_safeModeOff": {
-    "message": "Turn off safe mode"
+  "palette_easyReadingOn": {
+    "message": "Turn on easy reading"
   },
   "palette_setting": {
     "message": "Setting: {title}"
@@ -1124,11 +1073,11 @@ export const en_US = {
   "palette_failed": {
     "message": "Can't open this article right now"
   },
-  "palette_safeModeOnDone": {
-    "message": "Safe mode on: native PTT for everything"
+  "palette_easyReadingOffDone": {
+    "message": "Easy reading off: native PTT everywhere"
   },
-  "palette_safeModeOffDone": {
-    "message": "Safe mode off"
+  "palette_easyReadingOnDone": {
+    "message": "Easy reading on"
   },
   "palette_kindAction": {
     "message": "Action"
@@ -1144,24 +1093,6 @@ export const en_US = {
   },
   "palette_kindSetting": {
     "message": "Setting"
-  },
-  "options_nativeSafeMode": {
-    "message": "Safe mode: use native PTT for everything"
-  },
-  "tooltip_nativeSafeMode": {
-    "message": "Turn this on when PTT changes and something looks wrong: easy reading, board list smooth scrolling, skipping the board entry screen, returning after reconnect, the home dashboard, wide-screen two-pane reading, jumping to the end of live posts, and the search / push / F5 key interception all pause, so the screen and keys behave exactly like PTT. Your other settings below are kept and come back when safe mode is turned off."
-  },
-  "options_skipBoardEntryScreen": {
-    "message": "Skip the board entry screen"
-  },
-  "tooltip_skipBoardEntryScreen": {
-    "message": "When entering a board from a board list or the board selector, dismiss its entry screen (including animated ones) automatically and land straight on the article list. Press b in the article list to view it anyway."
-  },
-  "options_enableHomeDashboard": {
-    "message": "Home dashboard"
-  },
-  "tooltip_enableHomeDashboard": {
-    "message": "Shows your favorite boards (boards with new posts are marked), recently visited boards and a new-mail notice on the main menu; click a card to enter the board. When it opens it fetches your favorites from PTT once (at most every 5 minutes). Press \"Native main menu\" or just start typing to get the original main menu back."
   },
   "home_title": {
     "message": "Home"
@@ -1205,12 +1136,6 @@ export const en_US = {
   "home_hint": {
     "message": "Typing works on the main menu as usual (any key switches back to the native screen)."
   },
-  "options_enableSplitReading": {
-    "message": "Wide-screen two-pane reading"
-  },
-  "tooltip_enableSplitReading": {
-    "message": "When the window is wide enough, the article list you came from is shown on the left while you read; click a post to switch to it without going back to the list first. The left pane holds the pages you have seen, not a live list; it is not shown for posts opened from search results."
-  },
   "split_collapse": {
     "message": "Hide"
   },
@@ -1219,12 +1144,6 @@ export const en_US = {
   },
   "split_opening": {
     "message": "Opening…"
-  },
-  "options_enableNextArticleCard": {
-    "message": "Continue to the next post"
-  },
-  "tooltip_enableNextArticleCard": {
-    "message": "When you reach the end of a post in easy-reading mode, a card for the next post in the list appears below the comments; click it to switch straight to it. On a computer, scroll to the bottom, pause, then keep scrolling down; on a phone, scroll to the bottom and pull up a bit further, then let go — both open it too. It never switches just because you reached the bottom; when there is no next post the card says so."
   },
   "next_article_label": {
     "message": "Next post"
@@ -1301,21 +1220,6 @@ export const en_US = {
   "tools_mentions": {
     "message": "Mentions you ({n})"
   },
-  "options_easyReadingEndSwitchNative": {
-    "message": "In easy reading, the hotkey jumps to the post bottom and switches back to native mode."
-  },
-  "options_easyReadingBrowserFind": {
-    "message": "Search posts in easy reading with the browser's find (Ctrl+F / ⌘F)"
-  },
-  "tooltip_easyReadingBrowserFind": {
-    "message": "In an easy-reading post, Ctrl+F opens the browser's find bar and / shows a hint to use it (PTT's own search starts from the end of the post, so it is unreliable here). Page with Space, PgDn or Alt+F instead. Off = Ctrl+F pages down and / goes to PTT."
-  },
-  "options_easyReadingEndSwitchKey": {
-    "message": "Hotkey to switch back to native mode"
-  },
-  "tooltip_easyReadingEndSwitchKey": {
-    "message": "Click then press any key to set (default F8)"
-  },
   "options_aidNavBackKey": {
     "message": "Hotkey to go back after an AID jump"
   },
@@ -1334,12 +1238,6 @@ export const en_US = {
   "tooltip_unreadJumpKey": {
     "message": "Click then press any key to set (default F7)"
   },
-  "options_refreshKeyIntercept": {
-    "message": "F5 / ⌘R refreshes the PTT screen"
-  },
-  "tooltip_refreshKeyIntercept": {
-    "message": "On board lists, article lists and articles, F5 (⌘R on Mac) refreshes the PTT screen (new posts, new comments) instead of reloading the page; other screens are unchanged. The browser's own reload button cannot be intercepted."
-  },
   "options_refreshMinIntervalSec": {
     "message": "Minimum refresh interval (sec)"
   },
@@ -1354,9 +1252,6 @@ export const en_US = {
   },
   "mobileToolbar_end": {
     "message": "End"
-  },
-  "options_endTurnsOnLiveUpdate": {
-    "message": "Press END turns on thread live update."
   },
   "options_connection": {
     "message": "Connection"
@@ -1501,12 +1396,6 @@ export const en_US = {
   },
   "options_mobileAppBarScrollTop": {
     "message": "Tap the mobile title bar to scroll to top"
-  },
-  "options_articleHorizontalGestures": {
-    "message": "Article horizontal gestures"
-  },
-  "tooltip_articleHorizontalGestures": {
-    "message": "In mobile easy reading, swipe left on an article to reveal its shortcuts, and swipe right on an article or an article list to go back. Normal vertical scrolling, taps and long presses remain available."
   },
   "stack_articleGone": { "message": "That article is no longer in the list" },
   "stack_articleUpdated": { "message": "The article has been updated" },

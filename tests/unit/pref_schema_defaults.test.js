@@ -15,19 +15,13 @@ const ROOT = path.join(__dirname, "..", "..");
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 
 describe("2026-09 翻動的預設值", () => {
-  test("好讀三兄弟預設開（功能已成熟，不再是 opt-in）", () => {
-    // 文章好讀／文章列表好讀／看板列表平滑捲動。三者原本都寫著「功能成熟前預設關」，
-    // 2026-09 一起翻開；關掉＝逐位元回到原生的一次一頁（逃生門仍在設定頁）。
+  test("好讀預設開（功能已成熟，不再是 opt-in）", () => {
+    // 一個好讀開關涵蓋文章、文章列表與看板列表；關掉＝整個 app 回到原生。
     expect(DEFAULT_PREFS.enableEasyReading).toBe(true);
-    expect(DEFAULT_PREFS.enableEasyReadingList).toBe(true);
-    expect(DEFAULT_PREFS.enableBoardListSmoothScroll).toBe(true);
-    // 它是上面兩個的子功能，母開關翻開之後更沒有理由關。
-    expect(DEFAULT_PREFS.enableListNativeAutoResume).toBe(true);
   });
 
-  test("終端機慣例的兩顆：選取即複製、Live 文自動跳末頁", () => {
+  test("終端機慣例：選取即複製", () => {
     expect(DEFAULT_PREFS.copyOnSelect).toBe(true);
-    expect(DEFAULT_PREFS.endTurnsOnLiveUpdate).toBe(true);
   });
 
   test("中鍵＝左方向鍵（回上一層）", () => {
@@ -92,7 +86,7 @@ describe("鏡射初值（constructor）與 DEFAULT_PREFS 一致", () => {
         `term_view ${key} ${key in view ? "掃到" : "沒掃到"}`,
       );
     }
-    for (const key of ["copyOnSelect", "endTurnsOnLiveUpdate"]) {
+    for (const key of ["copyOnSelect"]) {
       expect(`pttchrome ${key} 掃到`).toBe(
         `pttchrome ${key} ${key in app ? "掃到" : "沒掃到"}`,
       );

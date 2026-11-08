@@ -8,7 +8,7 @@ const ptt = require('../helpers/ptt');
 const { bootOffline, waitScreenSettled } = require('../helpers/replay');
 const { startCapture, peekCapture } = require('../helpers/capture');
 const { touchDrag } = require('../helpers/real_input');
-const { waitRectStable } = require('../helpers/layout');
+const { readingRect, waitRectStable } = require('../helpers/layout');
 
 async function feed(page, map, cursor, col) {
   await page.evaluate(
@@ -70,16 +70,15 @@ async function openSecondPost(page) {
 const card = (page) => page.locator('#nextArticleCard');
 
 async function setup(page) {
-  await bootOffline(page, ptt, { nextArticle: true });
-  await ptt.applyPrefs(page, { enableEasyReadingList: false });
+  await bootOffline(page, ptt);
   await openSecondPost(page);
   await expect(card(page)).toBeVisible();
   await expect(card(page)).toContainText(POSTS[2].title);
   // 從文章內文起手（不是卡片本身、不在工具列／App Bar 上）。
   const box = await waitRectStable(page, '#mainContainer');
-  // A touch a few px above the toolbar lands on the toolbar: keep the pull's start clear of it.
-  const toolbarTop = await page.evaluate(() => document.querySelector('.mobileToolbarBar').getBoundingClientRect().top);
-  return { x: box.left + box.width / 2, y: box.top + 40, bottom: toolbarTop - 20 };
+  // The pull starts on the article, clear of the comment bar and the toolbar below it.
+  const reading = await readingRect(page);
+  return { x: box.left + box.width / 2, y: box.top + 40, bottom: reading.top + reading.height - 20 };
 }
 
 test.describe('手機：讀到文末往上拉開下一篇', () => {

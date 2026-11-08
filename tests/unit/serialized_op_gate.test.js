@@ -68,7 +68,7 @@ function keyCtx(busy) {
     bbscore: {
       aidNavigation: { active: busy === "aid" },
       longPush: { active: busy === "longPush" },
-      easyReading: { tryReenterFromNative: () => false },
+      easyReading: {},
       buf: { pageState: 3 },
       // 列表分派的唯一真相源（App.activeListSession）；原生畫面 ⇒ 沒有人接管。
       activeListSession: () => null,

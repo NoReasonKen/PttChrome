@@ -5,7 +5,7 @@
     "recordedAt": "2026-10-04T06:13:01.443Z",
     "scenario": "list-bracket",
     "board": "C_Chat",
-    "prefs": { "enableEasyReadingList": true }
+    "prefs": { "enableEasyReading": true }
   },
   "cols": 80,
   "rows": 24,

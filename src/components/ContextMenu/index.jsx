@@ -43,7 +43,11 @@ import MessageInbox from "../MessageInbox";
 import HelpMenu from "../HelpMenu";
 import { AppUpdates } from "../AppUpdates";
 import { onPrefSaveImpl } from "./pref_save";
-import { readValuesWithDefault, writeValues } from "../../js/pref_storage";
+import {
+  easyReadingOn,
+  readValuesWithDefault,
+  writeValues,
+} from "../../js/pref_storage";
 import * as prefSync from "../../js/pref_sync";
 import {
   cloudSyncSetupRequested,
@@ -133,20 +137,21 @@ const quickAddBlacklist = (pttchrome, prefKey, entry) => {
   pttchrome.onValuesPrefChange(newValues);
 };
 
-// 指令面板切換安全模式：與設定頁同一條存檔管線（localStorage → 雲端同步 →
-// onValuesPrefChange 讀取端覆寫），再照設定頁關閉時的做法重新套一次好讀模式。
-// 不走 onPrefSaveImpl：那條帶 fromPrefModal，會把 localStorage 裡的帳密填進登入快取。
-const setNativeSafeMode = (pttchrome, on) => {
+// The command palette turns easy reading on or off through the settings page's
+// save pipeline (localStorage, cloud sync, onValuesPrefChange), then reapplies
+// easy reading as closing the settings page does. Not onPrefSaveImpl: that path
+// carries fromPrefModal and would fill the login cache from stored credentials.
+const setEasyReading = (pttchrome, on) => {
   const values = readValuesWithDefault();
-  if (!!values.nativeSafeMode === on) return;
-  const newValues = { ...values, nativeSafeMode: on };
+  if (!!values.enableEasyReading === on) return;
+  const newValues = { ...values, enableEasyReading: on };
   writeValues(newValues);
   prefSync.savePrefs(newValues);
   try {
     pttchrome.onValuesPrefChange(newValues);
     pttchrome.switchToEasyReadingMode?.(pttchrome.view.useEasyReadingMode);
   } catch (e) {
-    console.error("指令面板：套用安全模式時出錯", e);
+    console.error("command palette: failed to apply easy reading", e);
   }
 };
 
@@ -273,7 +278,7 @@ const initialState = {
   // 指令面板的選單項（enableCommandPalette）與它顯示在右邊的快捷鍵，開選單當下現讀。
   commandPaletteEnabled: false,
   commandPaletteKey: "",
-  // 長推文一鍵發送：總開關（enableLongPush）＋「現在這個畫面按 X 推得了文嗎」。
+  // 長推文一鍵發送：好讀開關＋「現在這個畫面按 X 推得了文嗎」。
   longPushEnabled: false,
   // 輸入框顯示「會分成幾則」用的**預估**上限；真正送出時由 LongPushSession 依
   // 推文輸入列的 prompt（自己的帳號）與畫面上的推文列（有沒有 IP 欄）校正。
@@ -646,7 +651,7 @@ export const ContextMenu = ({ pttchrome }) => {
         }
       }
       // 「回覆這則」：整列推文都算（一列只有一個推文者）；推文列要看得到才給（它在
-      // 好讀文章、推文列開關與安全模式都過了才出現 ⇒ 不另判）。小天使匿名推文不是帳號。
+      // 好讀文章裡、好讀開著才出現 ⇒ 不另判）。小天使匿名推文不是帳號。
       const replyPusher = rowElement && rowElement.getAttribute("data-pusher");
       const replyCommentTarget =
         normalEnabled &&
@@ -1059,7 +1064,7 @@ export const ContextMenu = ({ pttchrome }) => {
         copyLink:
           !!pttchrome.deepLinkController && pttchrome.buf?.pageState === 3,
         back: !!pttchrome.aidNavigation?.canGoBack?.(),
-        safeMode: !!prefs.nativeSafeMode,
+        easyReading: easyReadingOn(prefs),
         quickBoards: prefs.paletteQuickBoards
           ? pttchrome.homeDashboard?.quickBoards?.() || null
           : null,
@@ -1208,14 +1213,14 @@ export const ContextMenu = ({ pttchrome }) => {
         case "back":
           pttchrome.aidNavigation?.back();
           return;
-        case "safeModeOn":
-        case "safeModeOff":
-          setNativeSafeMode(pttchrome, item.action === "safeModeOn");
+        case "easyReadingOn":
+        case "easyReadingOff":
+          setEasyReading(pttchrome, item.action === "easyReadingOn");
           hint(
             i18n(
-              item.action === "safeModeOn"
-                ? "palette_safeModeOnDone"
-                : "palette_safeModeOffDone",
+              item.action === "easyReadingOn"
+                ? "palette_easyReadingOnDone"
+                : "palette_easyReadingOffDone",
             ),
           );
           return;

@@ -5,7 +5,7 @@
 //  1. pttchrome.openCommandPalette 掛載後回 true、算 modal；pref 關掉回 false（快捷鍵不吞）；
 //  2. ↑↓／Enter 執行選到的那一項，點一下也行；
 //  3. 每一類都接到既有入口：貼網址 → deepLinkController.request、動作 → 該功能的 start、
-//     設定項 → 開設定頁並跳到那一項、安全模式 → 存回偏好；
+//     設定項 → 開設定頁並跳到那一項、關閉好讀 → 存回偏好；
 //  4. 清單框高度固定：項目數一直變時輸入框不跳。
 import { render, act, fireEvent, waitFor } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
@@ -199,27 +199,27 @@ test("設定項 ⇒ 開設定頁並跳到那一項", async () => {
   mount(pttchrome);
   openPalette(pttchrome);
   await waitFor(() => expect(input()).not.toBeNull());
-  type("安全模式");
-  const node = document.querySelector('[data-palette-item="setting:nativeSafeMode"]');
+  type("好讀模式");
+  const node = document.querySelector('[data-palette-item="setting:enableEasyReading"]');
   expect(node).not.toBeNull();
   fireEvent.click(node);
   await waitFor(() =>
-    expect(document.querySelector('[data-pref-anchor="nativeSafeMode"]')).toHaveClass(
+    expect(document.querySelector('[data-pref-anchor="enableEasyReading"]')).toHaveClass(
       "PrefModal__Anchor--flash",
     ),
   );
 });
 
-test("安全模式 ⇒ 存回偏好並重新套用", async () => {
+test("turning easy reading off saves the preference and reapplies it", async () => {
   const pttchrome = makePttchrome();
   mount(pttchrome);
   openPalette(pttchrome);
   await waitFor(() => expect(input()).not.toBeNull());
-  type("safe mode");
-  fireEvent.click(document.querySelector('[data-palette-item="action:safeModeOn"]'));
-  expect(readValuesWithDefault().nativeSafeMode).toBe(true);
+  type("easy reading");
+  fireEvent.click(document.querySelector('[data-palette-item="action:easyReadingOff"]'));
+  expect(readValuesWithDefault().enableEasyReading).toBe(false);
   expect(pttchrome.onValuesPrefChange).toHaveBeenCalledWith(
-    expect.objectContaining({ nativeSafeMode: true }),
+    expect.objectContaining({ enableEasyReading: false }),
   );
 });
 

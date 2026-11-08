@@ -44,7 +44,7 @@ test("好讀關閉：還原原生畫面（overlay/padding/pageLines）", () => {
 
 test("好讀關閉 + 殘留 functionMode：仍走還原路徑（leaveCurrentPost 負責清旗標）", () => {
   // 設定頁裡把好讀關掉時 doSwitch 變 false；此時一定要重置，否則 _functionMode
-  // 留在 true 會同時廢掉自動重入與 End/F8 手動切回兩條路。
+  // 留在 true 會廢掉換文章時的自動重入。
   const plan = switchModePlan({ doSwitch: false, functionMode: true, pageState: 3 });
   expect(plan.leavePost).toBe(true);
   expect(plan.restoreNativeView).toBe(true);

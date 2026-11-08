@@ -4,9 +4,9 @@
 const prefOverride = vi.hoisted(() => ({}));
 vi.mock("../../src/js/pref_storage", async (importOriginal) => {
   const real = await importOriginal();
-  return { ...real, readEffectivePrefs: () => ({ ...real.readEffectivePrefs(), ...prefOverride }) };
+  return { ...real, readValuesWithDefault: () => ({ ...real.readValuesWithDefault(), ...prefOverride }) };
 });
-import { DEFAULT_PREFS, NATIVE_SAFE_MODE_KEYS } from "../../src/js/pref_storage";
+import { DEFAULT_PREFS } from "../../src/js/pref_storage";
 import {
   CommentScanner,
   NewComments,
@@ -181,8 +181,7 @@ describe("listBadge：term_view 畫文章列表時問", () => {
     expect(nc.listBadge("Test")).toBeNull();
   });
 
-  test("預設開、不送鍵 ⇒ 不在安全模式名單內", () => {
+  test("預設開、不送鍵 ⇒ 不是好讀行為，保留自己的開關", () => {
     expect(DEFAULT_PREFS.listNewPushCount).toBe(true);
-    expect(NATIVE_SAFE_MODE_KEYS).not.toContain("listNewPushCount");
   });
 });

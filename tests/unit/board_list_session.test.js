@@ -47,7 +47,7 @@ const rowChars = (text) =>
 function makeSession({ prefOn = true, rows = 24 } = {}) {
   window.localStorage.setItem(
     "pttchrome.pref.v1",
-    JSON.stringify({ values: { enableBoardListSmoothScroll: prefOn } })
+    JSON.stringify({ values: { enableEasyReading: prefOn } })
   );
   const enqueued = [];
   const hints = [];
@@ -327,7 +327,7 @@ describe("engage / 收攤", () => {
     expect(termBuf.listRenderOwner).toBe("board-list");
   });
 
-  test("pref 關著就不接管（畫面維持原生）", () => {
+  test("easy reading off ⇒ never engages (the screen stays native)", () => {
     const { s, termBuf } = makeSession({ prefOn: false });
     termBuf.feed(brdScreenRows());
     expect(s.state).toBe("idle");
@@ -401,9 +401,9 @@ describe("engage / 收攤", () => {
 describe("鍵盤白名單（board.c:1751-1840 的同義鍵）", () => {
   // _classifyKey 讀 this._autoResumeEnabled()（A 類鍵的 pref 閘門），所以要給一個
   // 有那支方法的 receiver。預設開＝產品預設值。
-  const cls = (key, mods, autoResume = true) =>
+  const cls = (key, mods) =>
     BoardListSession.prototype._classifyKey.call(
-      { _autoResumeEnabled: () => autoResume },
+      { _autoResumeEnabled: () => true },
       keyEvent(key, mods)
     );
 
@@ -446,10 +446,6 @@ describe("鍵盤白名單（board.c:1751-1840 的同義鍵）", () => {
     // v/V 是 brc_toggle_all_read → show_brdlist 原地重畫。三者都不開 prompt、
     // 不換編號空間 ⇒ 走凍結交易。
     for (const k of ["t", "v", "V"]) expect(cls(k).class).toBe("native-inplace");
-  });
-
-  test("pref enableListNativeAutoResume 關掉 → A 類鍵整組落回 passthrough（逐位元回到舊行為）", () => {
-    for (const k of ["t", "v", "V"]) expect(cls(k, {}, false).class).toBe("passthrough");
   });
 
   test("送不出 byte 的鍵（F1 / CapsLock）→ ignore，不轉態也不 preventDefault", () => {
@@ -808,7 +804,7 @@ describe("佇列所有權（與 ListSession 共用同一條 CommandQueue）", ()
 });
 
 // ---------------------------------------------------------------------------
-// 非導覽操作完成後自動回平滑捲動（pref enableListNativeAutoResume，2026-09-03）
+// 非導覽操作完成後自動回平滑捲動（好讀行為）
 // ---------------------------------------------------------------------------
 // 與 list_session 同一套設計；差別是回復＝**重新 seed**（_enterNative 已把緩衝
 // 整份丟掉），而且**不可以走「回 idle 等下一個 settle」**——畫面靜止時不會再有
@@ -936,23 +932,6 @@ describe("靜置探針（看板列表 session）", () => {
     expect(h.s.state).toBe("functionMode");
   });
 
-  test("pref 關掉 → 一次探針都沒排，停在原生（逐位元回到舊行為）", () => {
-    const h = makeSession(); // makeSession 自己會寫 pref ⇒ 關掉要在它之後
-    h.termBuf.feed(brdScreenRows());
-    window.localStorage.setItem(
-      "pttchrome.pref.v1",
-      JSON.stringify({
-        values: {
-          enableBoardListSmoothScroll: true,
-          enableListNativeAutoResume: false,
-        },
-      })
-    );
-    h.s.onKeyDown(keyEvent("/"));
-    expect(h.s._resumeProbe).toBe(null);
-    vi.advanceTimersByTime(5000);
-    expect(h.s.state).toBe("functionMode");
-  });
 });
 
 describe("B 類 passthrough 的命令形狀", () => {
@@ -1137,24 +1116,6 @@ describe("右鍵「設為已讀」：markBoardReadTargetAtRow／markBoardRead", 
     h.enqueued[0].onFail("timeout");
     expect(h.enqueued.filter((c) => c.keys === "v")).toEqual([]);
     expect(h.s._renderMode).toBe("native");
-  });
-
-  test("pref 關（自動回復關）→ passthrough 路徑，仍先同步再送 v", () => {
-    const h = engaged();
-    localStorage.setItem(
-      "pttchrome.pref.v1",
-      JSON.stringify({
-        values: { enableBoardListSmoothScroll: true, enableListNativeAutoResume: false },
-      })
-    );
-    h.s._selectedNum = 1;
-    h.s._serverNum = 1;
-    h.enqueued.length = 0;
-    h.s.markBoardRead(5);
-    expect(h.enqueued[0].keys).toBe("5\r");
-    h.enqueued[0].onDone();
-    expect(h.enqueued[1].keys).toBe("v");
-    expect(h.enqueued[1].kind).toBe(BRD_CMD_PREFIX + "native-key");
   });
 
   test("交易在飛 → 提示、不排新指令；原生鏡像 → 回 false", () => {

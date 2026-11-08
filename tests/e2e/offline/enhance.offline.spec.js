@@ -243,9 +243,9 @@ test.describe('增强 · 看板列表（离线重放）', () => {
   test('列表黑名单：黑名单作者的列 → 原生显示「(本文已被黑名单)」通知列（不隐藏）', async ({ page }) => {
     test.setTimeout(90000);
     await bootOffline(page, ptt);
-    // 測原生列表：列表好讀預設開，不關的話列住在 .listBodyView 裡、走的是好讀規則（隱藏）。
+    // 測原生列表：好讀開著的話列住在 .listBodyView 裡、走的是好讀規則（隱藏）。
     // 2026-10 前漏了這行 ⇒ 下面一列都找不到 ⇒ 兩條都靜默 skip（覆蓋缺口）。
-    await ptt.applyPrefs(page, { enableEasyReadingList: false });
+    await ptt.applyPrefs(page, { enableEasyReading: false });
     await replayCassette(page, list, { easyReading: false });
 
     // 作者取渲染層自己解析的 data-list-author（右鍵加黑名單同一個來源）。以前切
@@ -275,7 +275,7 @@ test.describe('增强 · 看板列表（离线重放）', () => {
   test('标题黑名单：标题含关键字的列 → 通知列（不隐藏）', async ({ page }) => {
     test.setTimeout(90000);
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false }); // 理由同上一條
+    await ptt.applyPrefs(page, { enableEasyReading: false }); // 理由同上一條
     await replayCassette(page, list, { easyReading: false });
 
     // 从渲染出的列表抓一列标题，取其中一个中文/英数字片段当关键字。

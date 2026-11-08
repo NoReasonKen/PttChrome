@@ -17,7 +17,7 @@ import { footerCaption } from './screen_captions';
 import { PAGE } from './page_stack';
 import { coverWithArticle } from './hidden_article_route';
 import { EMPTY_TOOLBAR_CONTEXT } from './mobile_toolbar';
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 
 const PRESS_ANY_KEY = /(?:請)?按任意鍵繼續|請按 空白鍵 繼續/;
 // Results the easy-reading list has not presented by then show as they are.
@@ -400,7 +400,7 @@ export class ArticleShortcutSearch {
   // presents them, PTT's own list at once.
   _uncoverOnResults() {
     if (!this.cover) return;
-    if (!readEffectivePrefs().enableEasyReadingList) return this._uncover();
+    if (!easyReadingOn(readValuesWithDefault())) return this._uncover();
     this._uncoverTimer = setTimeout(() => this._uncover(), COVER_BOUND_MS);
   }
 

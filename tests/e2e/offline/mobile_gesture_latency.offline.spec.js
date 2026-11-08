@@ -97,7 +97,7 @@ test('first and repeated article drags reuse a prepared list without synchronous
 });
 
 test('nested Back prepares the next list and destroying the stack removes all prepared DOM', async ({ page }) => {
-  await bootNestedShortcutSearch(page, { easyList: true });
+  await bootNestedShortcutSearch(page);
   await ptt.sendKey(page, 'ArrowLeft');
   await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
   await tapCard(page, '[Talk] Alpha topic');

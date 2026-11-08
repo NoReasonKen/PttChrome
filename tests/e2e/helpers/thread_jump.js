@@ -28,7 +28,6 @@ const NEAR_REPLY_BOARD = [...FAR_BOARD, { num: 1120, author: 'erin', title: 'Re:
 // `delay`: how long the server takes to answer, so intermediate states last.
 // `fromList`: start on the article list, the cursor on `open`, and open it
 // from there with article-list easy reading, so the list is its lower page.
-// `nativeList`: the same from the native list, article-list easy reading off.
 // `nextArticle`: the next-article card at the end of each article.
 // `legacy`: every list under the legacy caption 文章選讀, as PTT shows them
 // (cassette cchat-list-search); only the title row tells results apart.
@@ -37,12 +36,9 @@ const NEAR_REPLY_BOARD = [...FAR_BOARD, { num: 1120, author: 'erin', title: 'Re:
 // unread; opening it reads it) and recommendation `score`, and `comments`
 // (pushes after its AID line, which `url` adds). A tagged article (`t`) shows
 // the tag mark `D` in place of its read mark.
-async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, fromList = false, nativeList = false, nextArticle = false, legacy = false, thread = FAR_BOARD, beforeOpen = null } = {}) {
+async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, fromList = false, nextArticle = false, legacy = false, thread = FAR_BOARD, beforeOpen = null } = {}) {
   await bootOffline(page, ptt, { nextArticle });
-  await ptt.applyPrefs(page, {
-    enableEasyReading: true, enableEasyReadingList: fromList, articleHorizontalGestures: true
-  });
-  const onList = fromList || nativeList;
+  await ptt.applyPrefs(page, { enableEasyReading: true });
   await page.evaluate(({ thread, size, open, delay, fromList, legacy }) => {
     const app = window.__app;
     const encode = text => [...text].map(ch => {
@@ -289,10 +285,9 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
     };
     window.__threadServer = { state, frame, articles, aidOf };
     app.onData(frame());
-  }, { thread, size, open, delay, fromList: onList, legacy });
-  if (onList) {
-    if (fromList) await listActive(page);
-    else await waitScreenSettled(page, { 0: '看板《Test》' });
+  }, { thread, size, open, delay, fromList, legacy });
+  if (fromList) {
+    await listActive(page);
     if (beforeOpen) await beforeOpen(page);
     await ptt.sendKey(page, 'Enter');
     await expect.poll(() => page.locator('.main').first().innerText()).toContain(`Body of article ${open} by`);

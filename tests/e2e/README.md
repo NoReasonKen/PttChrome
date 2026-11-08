@@ -286,15 +286,15 @@ debug 時想即時看到 page console / pageerror：設環境變數 `$env:E2E_EC
 
 ## 規範：可設定的快捷鍵不准 hardcode
 
-凡是「使用者可在偏好設定改的鍵」（住在 `src/js/pref_storage.js` 的 `DEFAULT_PREFS`，目前唯一一個是
-`easyReadingEndSwitchKey`），測試**一律用 `getPref(page, 'xxxKey')` 動態取值再按**，不准寫死字面。
+凡是「使用者可在偏好設定改的鍵」（住在 `src/js/pref_storage.js` 的 `DEFAULT_PREFS`，如
+`commandPaletteKey`、`aidNavBackKey`），測試**一律用 `getPref(page, 'xxxKey')` 動態取值再按**，不准寫死字面。
 
-理由：寫死 = 複製了「預設鍵 = ?」這個唯一真相。預設一改（實例：好讀切原生鍵 `End`→`F8`，commit `d04c7e6`）
+理由：寫死 = 複製了「預設鍵 = ?」這個唯一真相。預設一改（實例：當年好讀切原生鍵 `End`→`F8`，commit `d04c7e6`）
 測試就 stale 整段壞掉（`4c308a2` 事後補修）。`getPref` 讀的是 app runtime 真正用的值，預設再改測試免動。
 
 ```js
-const switchKey = await getPref(page, 'easyReadingEndSwitchKey');
-await sendKey(page, switchKey);
+const paletteKey = await getPref(page, 'commandPaletteKey');
+await sendKey(page, paletteKey);
 ```
 
 底層：dev build 由 `src/js/main.jsx` 暴露 `window.__readPrefs = readValuesWithDefault`（與 `window.__app` 同 gate，
@@ -302,12 +302,12 @@ production 不洩漏）。**例外**：PTT 原生熱鍵（`End`/`Enter`/`Space`/
 
 ## 規範：要測「原生模式」就自己關好讀（2026-09-16 翻預設之後）
 
-`enableEasyReading`／`enableEasyReadingList`／`enableBoardListSmoothScroll` 三顆自
-2026-09-16 起**預設開**（`src/js/pref_storage.js`）。offline spec 多半是全新 context、
-localStorage 空 ⇒ **直接吃到好讀**；live 這邊 `resetSession` 仍把三顆關成 baseline。
+好讀是一顆開關（`enableEasyReading`，**預設開**，`src/js/pref_storage.js`）：列表好讀、
+看板列表平滑捲動、搜尋彈窗、長推文等都是好讀的行為，沒有各自的開關。offline spec 多半是
+全新 context、localStorage 空 ⇒ **直接吃到好讀**；live 這邊 `resetSession` 仍把它關成 baseline。
 
-所以：**驗原生行為的 spec 一律自己 `applyPrefs(page, { enableEasyReadingList: false })`**
-（或對應那顆），不准靠預設值。翻預設當天實際被咬的兩支，症狀都不像 pref 問題：
+所以：**驗原生行為的 spec 一律自己 `applyPrefs(page, { enableEasyReading: false })`**，
+不准靠預設值，也不准只關某一項好讀行為。翻預設當天實際被咬的兩支，症狀都不像 pref 問題：
 
 | spec | 症狀 |
 |---|---|

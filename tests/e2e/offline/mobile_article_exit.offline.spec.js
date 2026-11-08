@@ -85,17 +85,16 @@ test('resizing during the accepted exit animation cancels navigation and restore
 
 async function enterArticleFromList(page, beforeOpen = async () => {}) {
   const nav = loadCassette('cchat-list-nav');
-  await bootOffline(page, ptt, { articleGestures: true });
+  await bootOffline(page, ptt);
   await ptt.applyPrefs(page, {
-    enableEasyReading: true,
-    enableEasyReadingList: false,
+    enableEasyReading: false,
     useMouseBrowsing: true,
     mouseLeftClick: true,
   });
   await replayListCassette(page, nav);
   await page.waitForFunction(() => window.__app.buf.pageState === 2);
   await ptt.applyPrefs(page, {
-    enableEasyReadingList: true,
+    enableEasyReading: true,
     easyReadingListPrefetchCount: 200,
   });
   await page.waitForFunction(() => window.__app.listSession.state === 'active' &&

@@ -461,7 +461,7 @@ describe("列表好讀 session：認不出 ⇒ 原生", () => {
   beforeEach(() => {
     window.localStorage.setItem(
       PREF_KEY,
-      JSON.stringify({ values: { enableEasyReadingList: true } })
+      JSON.stringify({ values: { enableEasyReading: true } })
     );
   });
   afterEach(() => window.localStorage.clear());

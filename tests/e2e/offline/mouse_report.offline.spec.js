@@ -57,7 +57,6 @@ test.describe('滑鼠回報給 PTT server（離線重放）', () => {
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, {
       enableEasyReading: false,
-      enableEasyReadingList: false,
       useMouseBrowsing: true,
       mouseLeftClick: true,
       mouseServerReport: true,

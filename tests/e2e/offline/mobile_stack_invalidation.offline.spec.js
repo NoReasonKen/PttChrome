@@ -19,9 +19,9 @@ const pressBack = page => ptt.sendKey(page, 'ArrowLeft');
 
 // Dashboard → board → Alpha, each page alive under the next.
 async function openAlphaFromDashboard(page) {
-  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, homeMenu: true });
+  await bootNestedShortcutSearch(page, { loggedIn: true, homeMenu: true });
   // Favorites already fetched: the dashboard fetches nothing from this board.
-  await ptt.applyPrefs(page, { enableHomeDashboard: true });
+  await ptt.applyPrefs(page, { enableEasyReading: true });
   await page.evaluate(() => {
     const home = window.__app.homeDashboard;
     home._state.fetchedAt = Date.now();
@@ -34,10 +34,6 @@ async function openAlphaFromDashboard(page) {
   await dashboardVisible(page);
   await page.locator('#homeDashboard [data-home-board="Test"]').tap();
   await waitList(page, BOARD);
-  // Search backtracking on PTT goes from the results straight to the source article;
-  // the controlled board passes the main menu, where the dashboard would
-  // start a new base by itself.
-  await ptt.applyPrefs(page, { enableHomeDashboard: false });
   await tapCard(page, '[Talk] Alpha topic');
   await waitArticle(page, 'Alpha');
 }
@@ -91,7 +87,7 @@ test('after a Back that lands somewhere unexpected, the next Back reveals nothin
 
 test('a Back answered with another page than the revealed one ends at once and keeps nothing from before', async ({ page }) => {
   await bootDashboard(page);
-  await ptt.applyPrefs(page, { enableBoardListSmoothScroll: true });
+  await ptt.applyPrefs(page, { enableEasyReading: true });
   await page.locator('#homeDashboard [data-home-board="C_Chat"]').tap();
   await boardOpened(page);
   await holdBackReply(page);
