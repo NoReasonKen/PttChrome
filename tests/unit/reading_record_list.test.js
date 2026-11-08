@@ -147,6 +147,19 @@ function expectRestoredAfterFill(h, topNum) {
   expect(h.scrollWrites[h.scrollWrites.length - 1]).toBe((topNum - 350004) * ROW_H);
 }
 
+// A failed check (#158) keeps the page where it was and never shows native;
+// pull-to-refresh (retry) then rebuilds from PTT's list at the same place.
+function expectHeldThenRetried(h, topNum) {
+  vi.advanceTimersByTime(300);
+  expect(h.s.failed()).toBe(true);
+  expect(h.s._renderMode).toBe("frozen");
+  expect(h.native.shown).toBe(0);
+  expect(h.s.retry()).toBe(true);
+  step(h, "list-retry").onDone(true);
+  settleOnList(h);
+  expectRestoredAfterFill(h, topNum);
+}
+
 beforeEach(() => {
   window.localStorage.clear();
   window.localStorage.setItem(
@@ -170,12 +183,12 @@ describe("列表上的原生交易：做完回好讀時視野回到原處", () =
     expectRestoredAfterFill(h, 350010);
   });
 
-  test("設為全部已讀：PTT 沒有回應（失敗）也回原處", () => {
+  test("設為全部已讀：PTT 沒有回應（失敗）⇒ 停在原處，下拉重新整理後回原處", () => {
     const h = makeSession();
     new MarkAllRead(h.core).start();
     step(h, "mark-all-read-prompt").onDone(true);
     step(h, "mark-all-read-apply").onFail("timeout");
-    expectRestoredAfterFill(h, 350010);
+    expectHeldThenRetried(h, 350010);
   });
 
   test("列表重新整理（s<本板>⏎，游標原地）", () => {
@@ -295,7 +308,7 @@ describe("文章搜尋：送出後回到同一份列表時視野回原處", () =
     submitSearch(h.core, "author", "someone", { onFail });
     step(h, "search-open").onFail("timeout");
     expect(onFail).toHaveBeenCalled();
-    expectRestoredAfterFill(h, 350010);
+    expectHeldThenRetried(h, 350010);
   });
 
   test("有結果（落在系列文章，另一個編號空間）⇒ 認不出，不還原", () => {
@@ -544,8 +557,8 @@ describe("落地即回好讀：重新整理／搜尋／跳到未讀不切原生�
     expect(h.native.shown).toBe(0);
   });
 
-  // 進板／搜尋服務比一般按鍵慢，步驟自帶 5s 預算：凍結後盾（2.5s）不可以搶先把畫面
-  // 降級成原生（＋「指令逾時」紅字），命令自己的逾時才是結論。
+  // 進板／搜尋服務比一般按鍵慢，步驟自帶 5s 預算：凍結後盾（2.5s）不可以搶先判定
+  // 失敗（＋「指令逾時」紅字），命令自己的逾時才是結論。
   test("步驟自帶較長預算 ⇒ 照用，凍結後盾撐得過它", () => {
     const h = makeSession();
     h.s._beginPassthroughBytes(
@@ -557,10 +570,10 @@ describe("落地即回好讀：重新整理／搜尋／跳到未讀不切原生�
     expect(c.probeTimeoutMs).toBe(700);
     if (c.onSend) c.onSend();
     vi.advanceTimersByTime(3000);
-    expect(h.s._renderMode).toBe("frozen");
-    // hard 5000 + probe 700 之後後盾才降級（再晚 250ms 靜置探針就會把它接回好讀）。
+    expect(h.s.failed()).toBe(false);
+    // hard 5000 + probe 700 之後後盾才判定失敗。
     vi.advanceTimersByTime(2800);
-    expect(h.s._renderMode).toBe("native");
+    expect(h.s.failed()).toBe(true);
   });
 
   // CodeQL js/resource-exhaustion：步驟帶進來的預算決定後盾的 setTimeout 長度。
@@ -574,8 +587,8 @@ describe("落地即回好讀：重新整理／搜尋／跳到未讀不切原生�
     const c = step(h, "slow");
     if (c.onSend) c.onSend();
     vi.advanceTimersByTime(9900);
-    expect(h.s._renderMode).toBe("frozen");
+    expect(h.s.failed()).toBe(false);
     vi.advanceTimersByTime(200);
-    expect(h.s._renderMode).toBe("native");
+    expect(h.s.failed()).toBe(true);
   });
 });

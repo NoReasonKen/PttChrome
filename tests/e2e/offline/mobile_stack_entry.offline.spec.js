@@ -94,14 +94,14 @@ test('opening an article slides it in over the list, loading until PTT answers',
   expectSlidIn(frames, page.viewportSize().width, 'articles');
 });
 
-test('an open PTT never answers slides back out over the list, with the existing notice', async ({ page }) => {
+test('an open PTT never answers slides back out over the list, with a notice', async ({ page }) => {
   await bootArticleListAtCard(page);
   await dropReplies(page);
   await recordHints(page);
   await sampleEntryFrames(page);
   await page.locator(ARTICLE_CARD).first().tap();
-  // The list's return from native mode soon replaces the notice.
-  await expect.poll(() => recordedHints(page), { timeout: 10000 }).toContain('開啟文章失敗，已切至原生模式');
+  // The list stays on its page with a notice (#158).
+  await expect.poll(() => recordedHints(page), { timeout: 10000 }).toContain('開啟文章失敗，下拉重新整理以重試');
   await expect(page.locator('[data-stack-entry-underlay], [data-stack-layer]')).toHaveCount(0);
   expectSlidBackOut(await sampledFrames(page), page.viewportSize().width);
 });
@@ -129,14 +129,15 @@ test('opening a board from a board list slides its article list in over the boar
   await listActive(page);
 });
 
-test('a board PTT does not enter from a board list slides back out once the board list is back', async ({ page }) => {
+test('a board PTT does not enter from a board list slides back out over the board list, with a notice', async ({ page }) => {
   await bootBoardList(page);
   await dropReplies(page);
   await recordHints(page);
   await sampleEntryFrames(page);
   await ptt.sendKey(page, 'Enter');
-  await expect.poll(() => recordedHints(page), { timeout: 10000 }).toContain('操作完成，已回到平滑捲動');
-  await expect(page.locator('[data-stack-entry-underlay], [data-stack-layer]')).toHaveCount(0);
+  // The board list stays on its page with a notice (#158).
+  await expect.poll(() => recordedHints(page), { timeout: 10000 }).toContain('進入看板逾時，下拉重新整理以重試');
+  await expect(page.locator('[data-stack-entry-underlay], [data-stack-layer]:not([data-stack-parked])')).toHaveCount(0);
   expectSlidBackOut(await sampledFrames(page), page.viewportSize().width);
 });
 

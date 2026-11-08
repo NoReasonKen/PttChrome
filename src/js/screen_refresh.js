@@ -192,6 +192,13 @@ export function refreshTargetOf(core) {
   });
 }
 
+// The list session holding its page after a failed check, if any.
+function failedList(core) {
+  if (core.listSession?.failed?.()) return core.listSession;
+  if (core.boardListSession?.failed?.()) return core.boardListSession;
+  return null;
+}
+
 export function homeDashboardShown(core) {
   const hd = core && core.homeDashboard;
   return !!(hd && hd.state && hd.state.visible);
@@ -220,6 +227,8 @@ ScreenRefresh.prototype = {
     if (!core.conn || !core.conn.isConnected) return null;
     // A page revealed from its live layer before PTT has caught up (#124).
     if (core.navigationStack?.refreshesRevealed?.()) return { kind: 'revealed' };
+    // A list held after a failed check retries (#158).
+    if (failedList(core)) return { kind: 'list-retry' };
     return refreshTargetOf(core);
   },
 
@@ -295,6 +304,7 @@ ScreenRefresh.prototype = {
   _dispatch: function(target) {
     const core = this._core;
     const self = this;
+    if (target.kind === 'list-retry') return failedList(core).retry();
     if (target.kind === 'article') {
       if (core.aidNavigation && core.aidNavigation.refresh()) return true;
       this._hint('這篇文章無法重新整理');
@@ -312,7 +322,7 @@ ScreenRefresh.prototype = {
     const bm = rr.begin(target.kind === 'article-list' ? 'list-refresh' : 'board-list-refresh');
     const fail = function() {
       rr.end(bm, 'fail');
-      self._hint('重新整理失敗（已停在原生畫面）', 0, HINT_ERROR);
+      self._hint('重新整理失敗', 0, HINT_ERROR);
     };
     const steps =
       target.kind === 'article-list'

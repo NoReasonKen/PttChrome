@@ -140,7 +140,7 @@ describe("置底列選取：cursor-relative 鍵先把真游標走到該置底列
     expect(s._serverNum).toBe(null); // 停在置底列＝無編號，不可留舊值謊報
   });
 
-  test("最後一格不是目標置底列 ⇒ expect 不過；逾時則不送鍵、降級原生", () => {
+  test("最後一格不是目標置底列 ⇒ expect 不過；逾時則不送鍵、停在原頁", () => {
     const { s, enqueued, hints } = makeSession();
     s.onKeyDown(keyEvent("q", { ctrlKey: true }));
     const { steps, facts } = walkToLastStep(enqueued, 0);
@@ -151,8 +151,7 @@ describe("置底列選取：cursor-relative 鍵先把真游標走到該置底列
     const n = enqueued.length;
     last.onFail("timeout");
     expect(enqueued.length).toBe(n); // 破壞性鍵（Ctrl-D…）絕不落在錯列
-    expect(s.state).toBe("functionMode");
-    expect(s._renderMode).toBe("native");
+    expect(s.failed()).toBe(true);
     expect(hints.some((h) => /置底/.test(h))).toBe(true);
   });
 

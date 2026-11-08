@@ -70,6 +70,7 @@ import { clickableColStart } from './mouse_regions';
 import { LEFT_ARROW } from './function_key_plan';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { HINT_ERROR } from './status_hint';
+import { reportBug } from './bug_event';
 import { recordFor, boardListRecordMatches } from './reading_record';
 import { PAGE } from './page_stack';
 
@@ -108,6 +109,8 @@ const INPLACE_KEYS = 'tvV';
 
 // 切原生時提示語的尾巴：做完就回來。每一處切原生的 hint 都用這一句。
 const NATIVE_RESUME_HINT = '（操作完成後自動恢復）';
+const RETRY_HINT = '，下拉重新整理以重試';
+const FAILED_KEY_HINT = '看板列表操作失敗：下拉重新整理以重試';
 // 背景預抓最多幾頁（每頁 20 列）。看板列表通常只有幾十到幾百項，三頁足以蓋滿
 // 視口與前後緩衝，其餘由 demand 補。
 const FILL_MAX_PAGES = 3;
@@ -887,7 +890,7 @@ BoardListSession.prototype = {
     if (this.state !== 'opening' && !(this.state === 'functionMode' && this._renderMode === 'frozen'))
       return false;
     if (this._view.flashListHint)
-      this._view.flashListHint('看板列表：指令處理中，請稍候…');
+      this._view.flashListHint(this.failed() ? FAILED_KEY_HINT : '看板列表：指令處理中，請稍候…');
     return true;
   },
 
@@ -973,7 +976,10 @@ BoardListSession.prototype = {
     };
     if (this._selectedNum != null && this._selectedNum !== this._serverNum) {
       this._freezeForTransaction();
-      this._enqueueCursorSyncJump('native-sync-jump', finish, finish);
+      // A sync that fails sends nothing: the key would act on another row (#158).
+      this._enqueueCursorSyncJump('native-sync-jump', finish, function() {
+        self._fail('游標同步逾時');
+      });
       return;
     }
     finish();
@@ -1000,7 +1006,7 @@ BoardListSession.prototype = {
     const abort = function() {
       if (steps[0].onFail) steps[0].onFail('sync');
       if (self.state === 'functionMode' && self._renderMode === 'frozen')
-        self._degradeToNative('游標同步逾時，已切至原生模式');
+        self._fail('游標同步逾時');
     };
     if (this._selectedNum != null && this._selectedNum !== this._serverNum) {
       this._enqueueCursorSyncJump('native-sync-jump', send, abort);
@@ -1062,8 +1068,7 @@ BoardListSession.prototype = {
       onFail: onLanding
         ? function(reason, facts) {
             if (step.onFail) step.onFail(reason, facts);
-            if (self.state === 'functionMode' && self._renderMode === 'frozen')
-              self._enterNative();
+            if (self.state === 'functionMode' && self._renderMode === 'frozen') self._fail('操作逾時');
           }
         : step.onFail,
       onFlushed: step.onFlushed
@@ -1092,7 +1097,7 @@ BoardListSession.prototype = {
     };
     if (this._selectedNum != null && this._selectedNum !== this._serverNum) {
       this._enqueueCursorSyncJump('inplace-sync-jump', send, function() {
-        self._degradeToNative('操作逾時，已切至原生模式');
+        self._fail('操作逾時');
       });
       return;
     }
@@ -1134,7 +1139,7 @@ BoardListSession.prototype = {
         if (onLanded) onLanded();
       },
       onFail: function() {
-        self._degradeToNative('操作逾時，已切至原生模式');
+        self._fail('操作逾時');
       }
     });
   },
@@ -1540,7 +1545,7 @@ BoardListSession.prototype = {
     this._frozenWatchdog = setTimeout(function() {
       self._frozenWatchdog = null;
       if (self._renderMode === 'frozen' || self.state === 'opening')
-        self._degradeToNative('指令逾時，已切至原生模式');
+        self._fail('指令逾時');
     }, FROZEN_WATCHDOG_MS);
   },
 
@@ -1598,13 +1603,15 @@ BoardListSession.prototype = {
     this._freezeForTransaction();
     const self = this;
     const send = function() {
-      self._enqueueLandingKey('\r', 'open-board', '進入看板逾時，已切至原生模式', {
+      self._enqueueLandingKey('\r', 'open-board', '進入看板逾時', {
         enteringBoard: true
       });
     };
     if (num === this._serverNum) send();
     else this._enqueueCursorSyncJump('open-sync-jump', send, function() {
-      self._degradeToNative('進入看板逾時，已切至原生模式');
+      // The board never opens: its article list slides back out.
+      self._core.articleGestures?.dropPendingLayer();
+      self._fail('進入看板逾時');
     });
   },
 
@@ -1620,7 +1627,7 @@ BoardListSession.prototype = {
     this._freezeForTransaction();
     const self = this;
     const send = function() {
-      self._enqueueLandingKey(LEFT_ARROW, 'leave', '回上層逾時，已切至原生模式');
+      self._enqueueLandingKey(LEFT_ARROW, 'leave', '回上層逾時');
     };
     if (this._selectedNum == null || this._selectedNum === this._serverNum) send();
     // The sync only keeps the next entry's position: a sync that fails still
@@ -1673,7 +1680,7 @@ BoardListSession.prototype = {
       },
       onFail: function() {
         if (opts && opts.enteringBoard) self._core.articleGestures?.dropPendingLayer();
-        self._degradeToNative(failMsg);
+        self._fail(failMsg);
       }
     });
   },
@@ -1719,7 +1726,7 @@ BoardListSession.prototype = {
         self._rebuild(landed);
       },
       onFail: function() {
-        self._degradeToNative('跳號逾時，已切至原生模式');
+        self._fail('跳號逾時');
       }
     });
   },
@@ -1758,10 +1765,77 @@ BoardListSession.prototype = {
       );
   },
 
-  _degradeToNative: function(msg) {
-    if (this._view.flashListHint) this._view.flashListHint(msg, 4000, HINT_ERROR);
+  // A failed check (#158), as in ListSession._fail: the reader stays on the
+  // page with a message, the event is logged as a bug, and nothing more is sent
+  // to PTT until pull-to-refresh retries.
+  _fail: function(reason) {
+    if (this.failed()) return;
+    reportBug(this._core, 'boardList', reason, {
+      state: this.state,
+      inFlight: this._queue.inFlightKind || null
+    });
+    const message = reason + RETRY_HINT;
+    if (this._renderMode === 'native') {
+      // No page of ours is on screen to keep.
+      if (this._view.flashListHint) this._view.flashListHint(message, 4000, HINT_ERROR);
+      this.state = 'functionMode';
+      this._enterNative();
+      return;
+    }
+    if (this._frozenWatchdog) clearTimeout(this._frozenWatchdog);
+    this._frozenWatchdog = null;
+    const pos = this.readingPosition();
+    if (pos) recordFor(this._core).freeze('boardList', pos);
     this.state = 'functionMode';
-    this._enterNative();
+    this._holdReason = 'failed';
+    this._cancelResumeProbe();
+    this._breakScroll();
+    this._serverNum = null;
+    this._queue.flushKind(BRD_CMD_PREFIX);
+    this._renderMode = 'frozen';
+    this._setLoading(false);
+    this._view.hideCursor();
+    this._forceRedraw();
+    if (this._view.flashListHint) this._view.flashListHint(message, 4000, HINT_ERROR);
+  },
+
+  // The page is held after a failed check, waiting for pull-to-refresh.
+  failed: function() {
+    return this.state === 'functionMode' && this._holdReason === 'failed';
+  },
+
+  // Pull-to-refresh after a failure, as in ListSession.retry: PTT repaints what
+  // it shows, and a board list there is presented again from it. Leaving the
+  // board list hands over through the ordinary settle; anything else fails
+  // again when the frozen render times out.
+  retry: function() {
+    if (!this.failed()) return false;
+    const self = this;
+    this._holdReason = null;
+    this._setLoading(true);
+    this._armFrozenWatchdog();
+    this._queue.enqueue({
+      keys: '\f',
+      kind: BRD_CMD_PREFIX + 'retry',
+      expect: function() {
+        return true;
+      },
+      timeoutMs: CMD_PROBE_AFTER_MS,
+      probeTimeoutMs: CMD_PROBE_WINDOW_MS,
+      hardTimeoutMs: CMD_HARD_MS,
+      onDone: function() {
+        const landed = self._collectFacts(null);
+        if (landed.ctx !== 'brdlist') return;
+        const event = self._settleEvent(landed, null);
+        event.type = 'resume-probe';
+        event.holdReason = 'passthrough';
+        self._dispatch(event, landed);
+      },
+      onFail: function() {
+        self._fail('重新整理逾時');
+      }
+    });
+    return true;
   },
 
   // 交易落地後的收攤：把畫面所有權交還，狀態回 idle，讓**同一個 settle** 的

@@ -201,15 +201,16 @@ describe('Mobile article-list rotation', () => {
     const { app, view, list } = makeReader(PORTRAIT, 'plain');
     view.innerBounds = LANDSCAPE;
     app._applyMobileGeometry('list');
-    let nativeAtForeignSend = false;
+    // The failed resize holds the list page (#158) before the next owner sends.
+    let failedAtForeignSend = false;
     app.commandQueue.enqueue({
       kind: 'foreign-navigation', keys: 'B', expect: () => true,
-      onSend: () => { nativeAtForeignSend = list._renderMode === 'native'; },
+      onSend: () => { failedAtForeignSend = list.failed(); },
     });
     vi.advanceTimersByTime(6000);
     expect(app.listResize.active).toBe(false);
     expect(app.commandQueue.inFlightKind).toBe('foreign-navigation');
-    expect(nativeAtForeignSend).toBe(true);
+    expect(failedAtForeignSend).toBe(true);
     expect(app.conn.send).toHaveBeenLastCalledWith('B');
   });
 

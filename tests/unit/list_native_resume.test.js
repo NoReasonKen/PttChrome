@@ -384,31 +384,30 @@ describe("A 類鍵（凍結交易）：全程不切原生", () => {
     expect(resets).toBeGreaterThanOrEqual(1);
   });
 
-  test("逾時 → 顯性降級原生＋banner（不變量 N8，不得靜默停在凍結畫面）", () => {
+  test("逾時 → 停在原頁＋錯誤提示（不變量 N8，#158）", () => {
     const h = activeSession();
     h.s._serverNum = 42;
     h.s.onKeyDown(keyEvent("="));
     h.banners.length = 0;
     h.enqueued[0].onFail("timeout");
-    expect(h.s._renderMode).toBe("native");
-    expect(h.s._holdReason).toBe("passthrough");
+    expect(h.s._renderMode).toBe("frozen");
+    expect(h.s.failed()).toBe(true);
     expect(h.banners.some((m) => m.includes("逾時"))).toBe(true);
   });
 
-  test("N8：expect 永不滿足時，凍結看門狗最終把畫面掉回原生＋banner", () => {
+  test("N8：expect 永不滿足時，凍結看門狗最終判定失敗＋錯誤提示，下拉重新整理可重試", () => {
     const h = activeSession();
     h.s._serverNum = 42;
     h.s.onKeyDown(keyEvent("t"));
     expect(h.s._renderMode).toBe("frozen");
     h.banners.length = 0;
     vi.advanceTimersByTime(2600); // FROZEN_WATCHDOG_MS = 2500
-    expect(h.s._renderMode).toBe("native");
+    expect(h.s.failed()).toBe(true);
     expect(h.banners.some((m) => m.includes("逾時"))).toBe(true);
-    // 而且降級之後掛的是可自動解除的 hold ⇒ 畫面靜下來還會自己回好讀，
-    // 「畫面永久凍住 / 鍵永久失效」在結構上不存在。
-    expect(h.s._holdReason).toBe("passthrough");
-    vi.advanceTimersByTime(400);
-    expect(h.s.state).toBe("active");
+    // 「畫面無聲凍住」在結構上不存在：失敗有提示，下拉重新整理（retry）重送 Ctrl-L。
+    expect(h.s.retry()).toBe(true);
+    expect(h.s.failed()).toBe(false);
+    expect(h.enqueued.at(-1).kind).toBe("list-retry");
   });
 
   test("Ctrl 組合（含 Ctrl-C ClearTagList）永遠是 B 類，不得混進 A 類", () => {

@@ -755,7 +755,7 @@ describe("離開（←/q）", () => {
   });
 
   // 同步只是為了下次進來的落點：失敗了一樣要離開，Back 不能不見。
-  test("sync 腿失敗 → 照樣送 ←；← 也失敗才顯性降級原生", () => {
+  test("sync 腿失敗 → 照樣送 ←；← 也失敗才停在原頁", () => {
     const { s, termBuf, enqueued } = makeSession();
     termBuf.feed(brdScreenRows());
     seedBuffer(termBuf, 1, 20);
@@ -766,7 +766,8 @@ describe("離開（←/q）", () => {
     expect(enqueued[1].keys).toBe("\x1b[D");
     expect(s._renderMode).not.toBe("native");
     enqueued[1].onFail();
-    expect(s._renderMode).toBe("native");
+    expect(s.failed()).toBe(true);
+    expect(s._renderMode).toBe("frozen");
   });
 });
 
@@ -1026,7 +1027,7 @@ describe("A 類鍵的凍結交易（看板列表：t / v / V）", () => {
     expect(h.s._topNum).toBe(3); // 錨不動
   });
 
-  test("逾時 → 顯性降級原生＋banner（不變量 N8）", () => {
+  test("逾時 → 停在原頁＋錯誤提示（不變量 N8，#158）", () => {
     const h = makeSession();
     h.termBuf.feed(brdScreenRows());
     seedBuffer(h.termBuf, 1, 20);
@@ -1036,8 +1037,8 @@ describe("A 類鍵的凍結交易（看板列表：t / v / V）", () => {
     h.s.onKeyDown(keyEvent("V"));
     h.hints.length = 0;
     h.enqueued[0].onFail("timeout");
-    expect(h.s._renderMode).toBe("native");
-    expect(h.s._holdReason).toBe("passthrough");
+    expect(h.s._renderMode).toBe("frozen");
+    expect(h.s.failed()).toBe(true);
     expect(h.hints.some((m) => m.includes("逾時"))).toBe(true);
   });
 });
@@ -1107,7 +1108,7 @@ describe("右鍵「設為已讀」：markBoardReadTargetAtRow／markBoardRead", 
     expect(done).toHaveBeenCalledTimes(1);
   });
 
-  test("跳號同步失敗 → 不送 v，降級原生", () => {
+  test("跳號同步失敗 → 不送 v，停在原頁", () => {
     const h = engaged();
     h.s._selectedNum = 1;
     h.s._serverNum = 1;
@@ -1115,7 +1116,8 @@ describe("右鍵「設為已讀」：markBoardReadTargetAtRow／markBoardRead", 
     h.s.markBoardRead(5);
     h.enqueued[0].onFail("timeout");
     expect(h.enqueued.filter((c) => c.keys === "v")).toEqual([]);
-    expect(h.s._renderMode).toBe("native");
+    expect(h.s.failed()).toBe(true);
+    expect(h.s._renderMode).toBe("frozen");
   });
 
   test("交易在飛 → 提示、不排新指令；原生鏡像 → 回 false", () => {

@@ -171,7 +171,7 @@ UnreadJump.prototype = {
       step.fullRepaint = true;
       step.onFail = function() {
         finish('fail');
-        self._hint('跳到第一篇未讀失敗（已停在原生畫面）', 0, HINT_ERROR);
+        self._hint('跳到第一篇未讀失敗', 0, HINT_ERROR);
       };
       step.onFlushed = end;
       steps.push(step);

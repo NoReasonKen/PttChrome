@@ -123,20 +123,20 @@ describe("被迫切原生／失敗的出口送錯誤級", () => {
     return { calls, flashListHint: (msg, ms, level) => calls.push({ msg, level }) };
   }
 
-  test("文章列表 _degradeToNative", () => {
+  test("文章列表 _fail", () => {
     const view = recorder();
-    ListSession.prototype._degradeToNative.call(
-      { _view: view, _enterFunctionMode() {} },
-      "操作逾時，已切至原生模式",
+    ListSession.prototype._fail.call(
+      { _view: view, _queue: {}, _renderMode: "native", failed: () => false, _enterFunctionMode() {} },
+      "操作逾時",
     );
-    expect(view.calls).toEqual([{ msg: "操作逾時，已切至原生模式", level: HINT_ERROR }]);
+    expect(view.calls).toEqual([{ msg: "操作逾時，下拉重新整理以重試", level: HINT_ERROR }]);
   });
 
-  test("看板列表 _degradeToNative", () => {
+  test("看板列表 _fail", () => {
     const view = recorder();
-    BoardListSession.prototype._degradeToNative.call(
-      { _view: view, _enterNative() {} },
-      "進入看板逾時，已切至原生模式",
+    BoardListSession.prototype._fail.call(
+      { _view: view, _queue: {}, _renderMode: "native", failed: () => false, _enterNative() {} },
+      "進入看板逾時",
     );
     expect(view.calls[0].level).toBe(HINT_ERROR);
   });

@@ -184,13 +184,13 @@ describe("markReadUnreadBefore 的序列", () => {
   });
 
   // 同步腿失敗＝真游標不在目標那篇：照送 v → w⏎ 就是拿錯的文章當界線。
-  test("跳轉失敗 → 不送 v，顯性降級原生", () => {
+  test("跳轉失敗 → 不送 v，停在原頁＋提示", () => {
     const { s, sent, enqueued, hints } = makeSession();
     s.markReadUnreadBefore(105);
     enqueued[0].onFail("timeout");
     expect(stepOf(enqueued, "mark-read-prompt")).toBeUndefined();
     expect(sent).toEqual([]);
-    expect(s._renderMode).toBe("native");
+    expect(s.failed()).toBe(true);
     expect(hints.join()).toContain("逾時");
   });
 
@@ -226,14 +226,14 @@ describe("markReadUnreadBefore 的序列", () => {
     );
   });
 
-  test("v 沒進 prompt（onFail）→ 絕不送 w，顯性降級原生", () => {
+  test("v 沒進 prompt（onFail）→ 絕不送 w，停在原頁＋提示", () => {
     const { s, sent, enqueued, hints } = makeSession();
     s._serverNum = 103;
     s.markReadUnreadBefore(103);
     stepOf(enqueued, "mark-read-prompt").onFail("miss", facts());
     expect(stepOf(enqueued, "mark-read-apply")).toBeUndefined();
     expect(sent).toEqual([]);
-    expect(s._renderMode).toBe("native");
+    expect(s.failed()).toBe(true);
     expect(hints.join()).toContain("逾時");
   });
 
@@ -305,14 +305,14 @@ describe("markReadUnreadBefore 的序列", () => {
     expect(hints[hints.length - 1]).toContain("已切至原生");
   });
 
-  test("w⏎ 沒回應（onFail）→ 不留在凍結畫面，切原生鏡像", () => {
+  test("w⏎ 沒回應（onFail）→ 停在原頁，等下拉重新整理", () => {
     const { s, enqueued } = makeSession();
     s._serverNum = 103;
     s.markReadUnreadBefore(103);
     stepOf(enqueued, "mark-read-prompt").onDone(true);
     stepOf(enqueued, "mark-read-apply").onFail("timeout");
-    expect(s._renderMode).toBe("native");
-    expect(s.state).toBe("functionMode");
+    expect(s.failed()).toBe(true);
+    expect(s._renderMode).toBe("frozen");
   });
 });
 

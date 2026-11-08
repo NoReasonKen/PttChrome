@@ -63,7 +63,13 @@ function makeReader(mode = 'plain') {
       list._renderMode = 'native';
       if (!options?.preserveQueue) queue.flush();
     }),
-    _degradeToNative: vi.fn((_message, options) => list._enterFunctionMode(null, options)),
+    // A failed check holds the frozen page for pull-to-refresh (#158).
+    _fail: vi.fn((_reason, options) => {
+      list.state = 'functionMode';
+      list._renderMode = 'frozen';
+      list._holdReason = 'failed';
+      if (!options?.preserveQueue) queue.flush();
+    }),
     _armFrozenWatchdog: vi.fn(), _maybeFill: vi.fn(), _presented: vi.fn(),
     _frozenStepBudgetMs: 0,
   });
@@ -185,7 +191,7 @@ describe('Article-list resize coordination', () => {
     expect(h.resize.listRecord).toBeNull();
     expect(h.list._renderMode).toBe('buffer');
     expect(h.queue.idle).toBe(true);
-    expect(h.list._degradeToNative).not.toHaveBeenCalled();
+    expect(h.list._fail).not.toHaveBeenCalled();
   });
 
   test('finishes an in-flight prefetch and its queued page before freezing or applying NAWS', () => {
@@ -317,7 +323,7 @@ describe('Article-list resize coordination', () => {
     expect(h.list._resumeAfterResize).not.toHaveBeenCalled();
     expect(h.record.end.mock.calls.some(([, outcome]) => outcome === 'done')).toBe(false);
     vi.advanceTimersByTime(6000);
-    expect(h.list._degradeToNative).toHaveBeenCalledTimes(1);
+    expect(h.list._fail).toHaveBeenCalledTimes(1);
     expect(h.resize.active).toBe(false);
     expect(h.record.end).toHaveBeenCalledExactlyOnceWith(h.record.begin.mock.results[0].value, 'fail');
   });
@@ -335,7 +341,7 @@ describe('Article-list resize coordination', () => {
     expect(h.resize.active).toBe(false);
     expect(h.queue.idle).toBe(true);
     expect(h.record.end).toHaveBeenCalledExactlyOnceWith(h.record.begin.mock.results[0].value, 'fail');
-    expect(h.list._degradeToNative).toHaveBeenCalledTimes(1);
+    expect(h.list._fail).toHaveBeenCalledTimes(1);
   });
 
   test.each(['prompt', 'redraw'])('cancel during %s releases its bookmark without a failure hint', phase => {
@@ -348,7 +354,7 @@ describe('Article-list resize coordination', () => {
     expect(h.resize.listRecord).toBeNull();
     expect(h.list._renderMode).not.toBe('frozen');
     expect(h.record.end).toHaveBeenCalledExactlyOnceWith(h.record.begin.mock.results[0].value, 'cancel');
-    expect(h.list._degradeToNative).not.toHaveBeenCalled();
+    expect(h.list._fail).not.toHaveBeenCalled();
     expect(h.sent).toEqual(before);
     h.resize.cancel();
     vi.advanceTimersByTime(7000);
@@ -368,12 +374,15 @@ describe('Article-list resize coordination', () => {
     expect(h.list._enterFunctionMode).not.toHaveBeenCalled();
   });
 
-  test.each(['cancel', 'timeout'])('%s releases native state before sending another queued owner', outcome => {
+  test.each([
+    ['cancel', 'native'],
+    ['timeout', 'frozen'],
+  ])('%s releases the resize before sending another queued owner', (outcome, renderMode) => {
     const h = makeReader();
     h.resize.request(80, 40);
     const onForeignSend = vi.fn(() => {
       expect(h.list.state).toBe('functionMode');
-      expect(h.list._renderMode).toBe('native');
+      expect(h.list._renderMode).toBe(renderMode);
       expect(h.resize.active).toBe(false);
     });
     h.queue.enqueue({ kind: 'aid-open', keys: 'B', expect: () => true, onSend: onForeignSend });
@@ -409,19 +418,19 @@ describe('Article-list resize coordination', () => {
     expect(h.resize.active).toBe(false);
     expect(h.record.end).toHaveBeenCalledExactlyOnceWith(h.record.begin.mock.results[0].value, 'cancel');
     expect(h.list._resumeAfterResize).not.toHaveBeenCalled();
-    expect(h.list._degradeToNative).not.toHaveBeenCalled();
+    expect(h.list._fail).not.toHaveBeenCalled();
   });
 
   test('recursive lifecycle cancellation during failure does not finish the bookmark twice', () => {
     const h = makeReader();
-    h.list._degradeToNative.mockImplementation(() => {
+    h.list._fail.mockImplementation(() => {
       h.resize.cancel();
-      h.list._renderMode = 'native';
+      h.list._renderMode = 'frozen';
     });
     h.resize.request(80, 40);
     vi.advanceTimersByTime(6000);
     expect(h.record.end).toHaveBeenCalledExactlyOnceWith(h.record.begin.mock.results[0].value, 'fail');
-    expect(h.list._degradeToNative).toHaveBeenCalledTimes(1);
+    expect(h.list._fail).toHaveBeenCalledTimes(1);
     expect(h.resize.active).toBe(false);
     expect(h.queue.idle).toBe(true);
   });

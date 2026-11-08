@@ -14,6 +14,7 @@
 // screen), never toward a stale buffer.
 import { listRowSpan, listFillRows } from './mobile_layout';
 import { i18n } from './i18n';
+import { reportBug } from './bug_event';
 import { isHiddenListText } from './list_row_filter';
 import {
   parseListAuthor,
@@ -345,6 +346,9 @@ export function listModeOf(facts) {
 //                 **永不自動解除**（不變量 N1）：序列途中會經過大量 clean-list
 //                 幀，命令與命令之間 inFlightKind 也會是 null，自動回復會把
 //                 別人的序列從中間截斷。
+//   'failed'      a failed check holds the frozen page (#158): no list settle
+//                 or probe releases it, only pull-to-refresh (retry). A screen
+//                 that leaves the list (an article, a menu) still takes over.
 //   null          沒有停泊（frozen 交易借用 functionMode 吸收 settle）。
 //
 // Returns { next, actions[] } — action names are interpreted by ListSession.
@@ -857,6 +861,8 @@ const INPLACE_KEYS = '=\\]+[-<,.>{}t';
 
 // 切原生時提示語的尾巴：做完就回來。每一處切原生的 hint 都用這一句，不要再各自寫死字串。
 const NATIVE_RESUME_HINT = '（操作完成後自動恢復好讀）';
+const RETRY_HINT = '，下拉重新整理以重試';
+const FAILED_KEY_HINT = '列表操作失敗：下拉重新整理以重試';
 // 看板列表按 `v` ＝ b_mark_read_unread（mbbsd/bbs.c:4309）：畫面下方跳出 getdata
 // prompt「設定所有文章 (U)未讀 (V)已讀 (W)前已讀後未讀 (Q)取消？[Q] 」。
 // b_lines = t_lines-1 ⇒ 24 列終端時 prompt 畫在 **row 22**（不是最後一列），所以
@@ -1604,7 +1610,7 @@ ListSession.prototype = {
       // can hold this for up to its timeout (~3s), so never swallow silently.
       e.preventDefault();
       if (this._view.flashListHint)
-        this._view.flashListHint('好讀列表：指令處理中，請稍候…');
+        this._view.flashListHint(this._busyText());
       return;
     }
     if (this.state !== 'active') return;
@@ -1799,18 +1805,19 @@ ListSession.prototype = {
     };
     if (this._selectedNum != null && this._selectedNum !== this._serverNum) {
       this._freezeForTransaction();
-      // onFail too: still hand over to native + send (visible degrade — the
-      // native mirror shows whatever the server did; never a silent dead key).
-      this._enqueueCursorSyncJump('native-sync-jump', finish, finish);
+      // A sync that fails sends nothing: the key would act on another row (#158).
+      this._enqueueCursorSyncJump('native-sync-jump', finish, function() {
+        self._fail('游標同步逾時');
+      });
       return;
     }
     if (this._selectedNum == null && this._canPinnedCursorSync()) {
       this._freezeForTransaction();
       // onFail **不送鍵**（與上面編號腿相反）：置底序列是多腿逐格走，失敗時真游標
       // 可能停在任一中間列 ⇒ Ctrl-D／Ctrl-X 這類破壞性鍵會落在錯列且無法收回。
-      // 等同編號腿 checkCursorAnchor === 'moved' 的處理：明示降級、不代送。
+      // 等同編號腿 checkCursorAnchor === 'moved' 的處理：明示失敗、不代送。
       this._enqueuePinnedCursorSync('native-pinned', finish, function() {
-        self._degradeToNative('游標無法對到置底列，已切至原生模式');
+        self._fail('游標無法對到置底列');
       });
       return;
     }
@@ -1846,11 +1853,11 @@ ListSession.prototype = {
     // 同步腿失敗時**不送**序列（與一般 passthrough 的「照送」相反）：「前已讀後未讀」
     // 是對真游標所在那篇動作的，游標沒對上就送 v → w⏎ 等於拿錯的文章當界線。
     // 第一步的 onFail 一定要叫：它負責收閱讀紀錄書籤與在途旗標，漏叫就是永久卡住。
-    // 它自己多半會降級（帶自己的措辭）；沒降級的話這裡補切原生，同步驟失敗的包裝。
+    // 它自己多半會標失敗（帶自己的措辭）；沒有的話這裡補標失敗，同步驟失敗的包裝。
     const abort = function() {
       if (steps[0].onFail) steps[0].onFail('sync');
       if (self.state === 'functionMode' && self._renderMode === 'frozen')
-        self._degradeToNative('游標同步逾時，已切至原生模式');
+        self._fail('游標同步逾時');
     };
     if (this._selectedNum != null && this._selectedNum !== this._serverNum) {
       this._enqueueCursorSyncJump('native-sync-jump', send, abort);
@@ -1939,8 +1946,7 @@ ListSession.prototype = {
         ? function(reason, facts) {
             self._frozenStepBudgetMs = 0;
             if (step.onFail) step.onFail(reason, facts);
-            if (self.state === 'functionMode' && self._renderMode === 'frozen')
-              self._enterFunctionMode();
+            if (self.state === 'functionMode' && self._renderMode === 'frozen') self._fail('操作逾時');
           }
         : step.onFail,
       // opt-in（command_queue cmd.onFlushed）：握著輸入閘門的呼叫端（搜尋彈窗的
@@ -1965,7 +1971,7 @@ ListSession.prototype = {
     }
     if (this.state === 'functionMode' && this._renderMode === 'frozen') {
       if (this._view.flashListHint)
-        this._view.flashListHint('好讀列表：指令處理中，請稍候…');
+        this._view.flashListHint(this._busyText());
       return true;
     }
     if (this.state !== 'active') return false;
@@ -2048,7 +2054,7 @@ ListSession.prototype = {
     }
     if (this.state === 'functionMode' && this._renderMode === 'frozen') {
       if (this._view.flashListHint)
-        this._view.flashListHint('好讀列表：指令處理中，請稍候…');
+        this._view.flashListHint(this._busyText());
       return true;
     }
     // Native mirror (or not engaged at all): this hook doesn't own keys there,
@@ -2164,7 +2170,7 @@ ListSession.prototype = {
         if (anchor && checkCursorAnchor(landed, anchor) === 'moved') {
           self._serverNum = null;
           if (onMoved) return onMoved();
-          self._degradeToNative('列表已變動，游標對不上選取的文章，已切至原生模式');
+          self._fail('列表已變動，游標對不上選取的文章');
           return;
         }
         onSynced();
@@ -2248,13 +2254,13 @@ ListSession.prototype = {
     // t 標記游標那一列），本地導覽零網路 ⇒ 真游標落後時必須先跳號同步。
     if (this._selectedNum != null && this._selectedNum !== this._serverNum) {
       this._enqueueCursorSyncJump('inplace-sync-jump', send, function() {
-        self._degradeToNative('操作逾時，已切至原生模式');
+        self._fail('操作逾時');
       });
       return;
     }
     if (this._selectedNum == null && this._canPinnedCursorSync()) {
       this._enqueuePinnedCursorSync('inplace-pinned', send, function() {
-        self._degradeToNative('操作逾時，已切至原生模式');
+        self._fail('操作逾時');
       });
       return;
     }
@@ -2314,7 +2320,7 @@ ListSession.prototype = {
         }
       },
       onFail: function() {
-        self._degradeToNative('操作逾時，已切至原生模式');
+        self._fail('操作逾時');
       }
     });
   },
@@ -2549,7 +2555,7 @@ ListSession.prototype = {
         }
       },
       onFail: function() {
-        self._degradeToNative('離開列表逾時，已切至原生模式');
+        self._fail('離開列表逾時');
       }
     });
   },
@@ -2609,7 +2615,7 @@ ListSession.prototype = {
         return;
       }
       if (self._renderMode === 'frozen' || self.state === 'opening')
-        self._degradeToNative('指令逾時，已切至原生模式');
+        self._fail('指令逾時');
     }, ms);
   },
 
@@ -2681,7 +2687,7 @@ ListSession.prototype = {
       },
       onFail: function() {
         self._prunePivotOverride = undefined;
-        self._degradeToNative('跳號逾時，已切至原生模式');
+        self._fail('跳號逾時');
       }
     });
   },
@@ -2954,7 +2960,7 @@ ListSession.prototype = {
     }
     if (this.state === 'functionMode' && this._renderMode === 'frozen') {
       if (this._view.flashListHint)
-        this._view.flashListHint('好讀列表：指令處理中，請稍候…');
+        this._view.flashListHint(this._busyText());
       return true;
     }
     if (this.state !== 'active') return false;
@@ -2987,7 +2993,7 @@ ListSession.prototype = {
           },
           onFail: function() {
             rr.end(bm, 'fail');
-            self._degradeToNative('設定已讀未讀逾時，已切至原生模式');
+            self._fail('設定已讀未讀逾時');
           }
         },
         {
@@ -3004,7 +3010,7 @@ ListSession.prototype = {
           },
           onFail: function() {
             rr.end(bm, 'fail');
-            self._degradeToNative('設定已讀未讀逾時，已切至原生模式');
+            self._fail('設定已讀未讀逾時');
           },
           onDone: function() {
             rr.end(bm, 'done');
@@ -3779,12 +3785,10 @@ ListSession.prototype = {
   },
 
   _openFailed: function() {
+    // The article already took over, or the list was left: nothing to fail.
+    if (this.state === 'suspended' || this.state === 'idle') return;
     this._core.articleGestures?.dropPendingLayer();
-    // v5 contract #5: failures are visible — banner, then the reducer routes
-    // opening → functionMode (native mirror).
-    if (this._view.flashListHint)
-      this._view.flashListHint('開啟文章失敗，已切至原生模式', 4000, HINT_ERROR);
-    this._dispatch({ type: 'open-timeout' }, null);
+    this._fail('開啟文章失敗');
   },
 
   // Article open confirmed: hand the screen to the article renderers. The
@@ -3855,12 +3859,83 @@ ListSession.prototype = {
     }
   },
 
-  // Explicit visible degrade for transaction failures (timeout after the \f
-  // probe, unexpected screens): banner + native mirror. v5 contract #5 — no
-  // silent falls.
-  _degradeToNative: function(msg, opts) {
-    if (this._view.flashListHint) this._view.flashListHint(msg, 4000, HINT_ERROR);
-    this._enterFunctionMode(null, opts);
+  // A failed check (#158): a timeout, a cursor that does not match the chosen
+  // row, a list that changed. The reader stays on the page at its reading
+  // position with a message, the event is logged as a bug, and nothing more is
+  // sent to PTT until pull-to-refresh retries (retry). `opts.message` replaces
+  // the default message.
+  _fail: function(reason, opts) {
+    if (this.failed()) return;
+    reportBug(this._core, 'articleList', reason, {
+      state: this.state,
+      inFlight: this._queue.inFlightKind || null
+    });
+    const message = (opts && opts.message) || reason + RETRY_HINT;
+    if (this._renderMode === 'native') {
+      // No page of ours is on screen to keep.
+      if (this._view.flashListHint) this._view.flashListHint(message, 4000, HINT_ERROR);
+      this.state = 'functionMode';
+      this._enterFunctionMode(null, opts);
+      return;
+    }
+    if (this._frozenWatchdog) clearTimeout(this._frozenWatchdog);
+    this._frozenWatchdog = null;
+    this._frozenStepBudgetMs = 0;
+    const pos = this.readingPosition();
+    if (pos) recordFor(this._core).freeze('list', pos);
+    this.state = 'functionMode';
+    this._holdReason = 'failed';
+    this._cancelResumeProbe();
+    this._cancelScroll();
+    this._breakChain();
+    this._prunePivotOverride = undefined; // flush is silent — reset here
+    // What PTT shows is no longer known: the retry rebuilds from it.
+    this._boardName = null;
+    this._openedNum = null;
+    this._serverNum = null;
+    if (!opts?.preserveQueue) this._queue.flush();
+    this._renderMode = 'frozen';
+    this._setLoading(false);
+    this._view.hideCursor();
+    this._forceRedraw();
+    if (this._view.flashListHint) this._view.flashListHint(message, 4000, HINT_ERROR);
+  },
+
+  // The page is held after a failed check, waiting for pull-to-refresh.
+  failed: function() {
+    return this.state === 'functionMode' && this._holdReason === 'failed';
+  },
+
+  // Pull-to-refresh after a failure. Ctrl-L only makes PTT repaint what it
+  // shows (no change on its side); that screen then decides the page through
+  // the ordinary settle: a list rebuilds, an article opens. A screen neither
+  // fails again when the frozen render times out.
+  retry: function() {
+    if (!this.failed()) return false;
+    const self = this;
+    this._holdReason = null;
+    this._setLoading(true);
+    this._armFrozenWatchdog();
+    this._queue.enqueue({
+      keys: '\f',
+      kind: 'list-retry',
+      expect: function() {
+        return true;
+      },
+      timeoutMs: CMD_PROBE_AFTER_MS,
+      probeTimeoutMs: CMD_PROBE_WINDOW_MS,
+      hardTimeoutMs: CMD_HARD_MS,
+      onDone: function() {},
+      onFail: function() {
+        self._fail('重新整理逾時');
+      }
+    });
+    return true;
+  },
+
+  // What a swallowed key is told while the list owns the wire.
+  _busyText: function() {
+    return this.failed() ? FAILED_KEY_HINT : '好讀列表：指令處理中，請稍候…';
   },
 
   // Reusable "loading" indicator (v5 contract #4): shown while a serialized
@@ -3899,7 +3974,8 @@ ListSession.prototype = {
     if (outcome === 'done') this._resumeAfterResize(facts);
     else if (this._renderMode === 'frozen' && this.state !== 'idle' && this.state !== 'suspended') {
       this.state = 'functionMode';
-      if (outcome === 'fail') this._degradeToNative(i18n('listResize_failed'), { preserveQueue: true });
+      if (outcome === 'fail')
+        this._fail('列表未能適應新的畫面尺寸', { preserveQueue: true, message: i18n('listResize_failed') });
       else this._enterFunctionMode(null, { preserveQueue: true });
     }
     this._queue.flushKind('list-resize');

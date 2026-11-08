@@ -122,7 +122,8 @@ describe("ListSession.noteTextInput — IME 送字＝一鍵切原生", () => {
     expect(enqueued[0].kind).toBe("native-input");
   });
 
-  test("sync 腿失敗 → 仍送 native-input（顯性降級，不得靜默吞掉輸入）", () => {
+  // The text would land on another row (#158): it is never sent, the page stays.
+  test("sync 腿失敗 → 不代送輸入，停在原頁等下拉重新整理", () => {
     loadBig5Tables();
     const { s, enqueued } = makeSession();
     s.state = "active";
@@ -130,10 +131,9 @@ describe("ListSession.noteTextInput — IME 送字＝一鍵切原生", () => {
 
     s.noteTextInput(TEXT);
     enqueued[0].onFail("timeout");
-    expect(s.state).toBe("functionMode");
-    expect(s._renderMode).toBe("native");
-    expect(enqueued[1].kind).toBe("native-input");
-    expect(enqueued[1].keys).toBe(ansiHalfColorConv(u2b(TEXT)));
+    expect(s.failed()).toBe(true);
+    expect(s._renderMode).toBe("frozen");
+    expect(enqueued.length).toBe(1);
   });
 
   test("切原生後有提示（不得無聲切換）", () => {

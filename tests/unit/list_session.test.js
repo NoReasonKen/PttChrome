@@ -1599,24 +1599,35 @@ describe("讀取中指示與凍結的收尾（旗標洩漏）", () => {
 
   // 保底看門狗：任何讓 frozen 沒有出口的路徑（回呼從未觸發、reducer 對該事件
   // 無轉移）都不得永久凍結——否則畫面永遠停住、鍵全被吞。
-  test("交易回呼從未觸發時，frozen 會自癒回原生鏡像", () => {
+  test("交易回呼從未觸發時，凍結看門狗判定失敗並提示（不得無聲凍住）", () => {
     const { s, banners } = demandSession(); // mock queue：不跑任何 timer
     s._beginJumpNumber(500);
     expect(s._renderMode).toBe("frozen");
     vi.advanceTimersByTime(13000);
-    expect(s._renderMode).toBe("native");
+    expect(s.failed()).toBe(true);
     expect(banners.some((m) => m.includes("逾時"))).toBe(true);
   });
 
-  test("_openFailed 在非 opening 狀態（reducer 無對應轉移）不得永久凍結", () => {
-    const { s } = demandSession();
+  test("_openFailed 在非 opening 狀態也判定失敗並提示（不得無聲凍住）", () => {
+    const { s, banners } = demandSession();
     s._selectedNum = 115;
     s._beginOpen(); // frozen＋開文交易排隊
     expect(s._renderMode).toBe("frozen");
-    s.state = "active"; // 例：article handoff 先發生，狀態已不是 opening
-    s._openFailed(); // reducer stay → actions 空 → 沒有任何解凍動作
-    vi.advanceTimersByTime(13000);
-    expect(s._renderMode).toBe("native");
+    s.state = "active";
+    s._openFailed();
+    expect(s.failed()).toBe(true);
+    expect(banners.some((m) => m.includes("開啟文章失敗"))).toBe(true);
+  });
+
+  test("_openFailed 在文章已接手（suspended）後什麼都不做", () => {
+    const { s } = demandSession();
+    s._selectedNum = 115;
+    s._beginOpen();
+    s.state = "suspended";
+    s._renderMode = "native";
+    s._openFailed();
+    expect(s.state).toBe("suspended");
+    expect(s.failed()).toBe(false);
   });
 
   test("cleanup 會拆掉看門狗（不得在離板後才誤觸降級）", () => {

@@ -1433,7 +1433,7 @@
   "headerlessReopen_failed": { "message": "無法讀取文章資訊，可繼續使用原生 PTT 畫面。" },
   "articleResize_busy": { "message": "正在調整閱讀版面，請稍候…" },
   "articleResize_failed": { "message": "文章未能適應新的畫面尺寸，可繼續使用原生 PTT 畫面。" },
-  "listResize_failed": { "message": "文章列表未能適應新的畫面尺寸，可繼續使用原生 PTT 畫面。" },
+  "listResize_failed": { "message": "文章列表未能適應新的畫面尺寸，下拉重新整理以重試。" },
   "articleShortcutSearch_results": { "message": "同作者搜尋結果；返回可回到原文章。" },
   "articleShortcutSearch_empty": { "message": "找不到符合條件的文章，已返回原文。" },
   "articleShortcutSearch_failed": { "message": "無法確認目前畫面，已停止文章搜尋。" },
