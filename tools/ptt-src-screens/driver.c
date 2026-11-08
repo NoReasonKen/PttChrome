@@ -13,7 +13,7 @@
 //                水球、ofo＝一對一（UF_PAGER_OFO）。之後送 ^R 就是 upstream 的回水球畫面。
 // seed 檔（Big5，tab 分隔）：
 //   B <brdname> <class> <desc> <板主 ID，多位用 />          開一個看板（之後的 A／N 屬於它）
-//   A <owner> <date> <rating>    <flags> <title>          一篇文章；flags: m=marked b=置底
+//   A <owner> <date> <score>     <flags> <title>          一篇文章；flags: m=marked b=置底
 //   G <count> <owner> <title>                             批次 count 篇「<title> <i>」（無內文）
 //   N <text>                                              一列進板畫面（notes）
 //   F <brdname>                                           加進我的最愛
@@ -70,6 +70,17 @@ int __wrap_poll(struct pollfd *fds, nfds_t n, int timeout)
                 break;
             }
     return __real_poll(fds, n, timeout);
+}
+
+// PTT runs the ipc.svc daemon, so its waterball reply opens the reply panel.
+// The driver has no daemon, and upstream no longer falls back to local signals
+// when it is missing (ptt/pttbbs 9df8fe74): ^R would show the IPC error instead.
+// generate.sh links with --wrap=ipc_check_reconnect, so the reply's connection
+// check sees a live service. Callers inside ipc.o are not wrapped; the screens
+// never send, so no packet needs a real socket.
+int __wrap_ipc_check_reconnect(void)
+{
+    return 0;
 }
 
 // 輸出要可重現（fixture 進 repo，有 diff＝upstream 改了畫面）：時間釘死。
@@ -203,7 +214,7 @@ static void seed(const char *path)
             serial++;
             STRLCPY(fh.owner, f[1]);
             STRLCPY(fh.date, f[2]);
-            fh.rating = atoi(f[3]);
+            fh.score = atoi(f[3]);
             if (strchr(f[4], 'm')) fh.filemode |= FILE_MARKED;
             STRLCPY(fh.title, f[5]);
             // 置底：upstream 的置底是 boardheader_t.bottom[] 裡的 AID 參照（指回 .DIR 裡
