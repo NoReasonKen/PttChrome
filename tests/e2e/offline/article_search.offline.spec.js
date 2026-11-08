@@ -146,7 +146,7 @@ test.describe('搜尋彈窗（離線）', () => {
     await modalInput(page).fill('someoneElse');
     await modalInput(page).press('Enter');
     await drawPrompt(page, '搜尋作者: ');
-    await expect.poll(() => sentText(page)).toBe('a\fsomeoneElse\r\f');
+    await expect.poll(() => sentText(page)).toMatch(/^a\f+someoneElse\r\f+$/);
 
     // 回到列表再按一次 a：輸入框空的，↑ 叫回上一次的作者
     await drawListForEasyReading(page, (num) => drawArticleList(page, num));
@@ -187,11 +187,11 @@ test.describe('搜尋彈窗（離線）', () => {
     await ptt.sendKey(page, 's');
     await expect(modalInput(page)).toBeVisible();
     // 看板種類一開就在背景開原生 prompt（比照 PTT 補全，見下一組）
-    await expect.poll(() => sentText(page)).toBe('s\f');
+    await expect.poll(() => sentText(page)).toMatch(/^s\f+$/);
     await modalInput(page).fill('C_Chat');
     await modalInput(page).press('Enter');
     await expect(modalInput(page)).toHaveCount(0);
-    expect(await sentText(page)).toBe('s\f');
+    expect(await sentText(page)).toMatch(/^s\f+$/);
     // do_select：row0 反白標題、row1 是 prompt，游標停在 row1
     await page.evaluate((src) => {
       const u2b = new Function('return ' + src)();
@@ -202,7 +202,7 @@ test.describe('搜尋彈窗（離線）', () => {
     }, U2B_SRC);
     await waitScreenSettled(page, { 1: '請輸入看板名稱' });
     // 輸入欄是空的 ⇒ 不必退格；查詢趟被送出取代（最新的勝出），直接送板名＋Enter
-    await expect.poll(() => sentText(page)).toBe('s\fC_Chat\r');
+    await expect.poll(() => sentText(page)).toMatch(/^s\f+C_Chat\r$/);
   });
 
   test('Esc 關彈窗：什麼都不送，那一下也不落到終端機', async ({ page }) => {
@@ -316,7 +316,9 @@ async function installNameComplete(page) {
   );
 }
 
-const lastSent = (page) => page.evaluate(() => window.__sent[window.__sent.length - 1]);
+// 某一刻之後送出的全部。最後一筆不可靠：回到列表後，列表好讀靜置一下就自己恢復，
+// 會接著送它的跳號與翻頁。
+const sentSince = (page, n) => page.evaluate((n) => window.__sent.slice(n).join(''), n);
 // 只認 PTT 回來的清單：查詢在飛時彈窗會先顯示上一份篩過的過渡清單（data-board-interim），
 // 那時 Enter／空白鍵還沒有 PTT 的結論可依 ⇒ 看到過渡清單就接著動作會測到別的行為。
 const candidates = (page) =>
@@ -354,10 +356,11 @@ test.describe('搜尋彈窗：看板比照 PTT 原生補全（離線）', () => 
     await expect.poll(() => candidates(page)).toEqual(['Gossiping']);
     await modalInput(page).press('Space');
     await expect(modalInput(page)).toHaveValue('Gossiping');
+    const before = await page.evaluate(() => window.__sent.length);
     await modalInput(page).press('Enter');
     await expect(modalInput(page)).toHaveCount(0);
     await waitScreenSettled(page, { 0: '看板《Gossiping》' });
-    expect(await lastSent(page)).toBe('\b'.repeat(9) + 'Gossiping\r');
+    expect(await sentSince(page, before)).toMatch(new RegExp('^' + '\b'.repeat(9) + 'Gossiping\r'));
     // 整段只按過一次 s（送出不會再開一次 prompt）
     const all = await page.evaluate(() => window.__sent.join(''));
     expect(all.split('s\f').length).toBe(2);
@@ -378,9 +381,10 @@ test.describe('搜尋彈窗：看板比照 PTT 原生補全（離線）', () => 
     await openBoardSearch(page);
     await modalInput(page).pressSequentially('go');
     await expect.poll(() => candidates(page)).toEqual(['GO', 'Golf', 'Golfer', 'Gossiping']);
+    const before = await page.evaluate(() => window.__sent.length);
     await page.keyboard.press('Escape');
     await expect(modalInput(page)).toHaveCount(0);
-    await expect.poll(() => lastSent(page)).toBe('\x03\f');
+    await expect.poll(() => sentSince(page, before)).toMatch(/^\f*\x03\f/);
     await waitScreenSettled(page, { 0: '看板《Test》', 23: '文章選讀' });
     await expect.poll(() => page.evaluate(() => window.__app.searchInFlight)).toBe(false);
   });
