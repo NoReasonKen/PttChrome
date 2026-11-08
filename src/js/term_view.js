@@ -7,7 +7,7 @@ import { DEFAULT_HIGHLIGHT_BG, cursorHighlightClasses, highlightColStart, resolv
 import { clickableColStart, DEFAULT_LIST_CLICK_START, DEFAULT_PUSH_CLICK_START, DEFAULT_PUSH_CLICK_END, cursorCss, CUR_BACK, CUR_POINTER, CUR_AUTO, EXIT_COL_END, resolveMouseGates, resolveMouseRegion, visibleHintBand } from './mouse_regions';
 import { functionKeyRows, parseFunctionKeys } from './footer_keys';
 import { edgeBandRect, exitBandRect } from './mouse_geometry';
-import { calcTermSize, termLayoutOffsets } from './term_size';
+import { calcTermSize, termLayoutOffsets, textScaleAt } from './term_size';
 import { renderOverlayRow, renderScreen } from './term_ui';
 import { i18n } from './i18n';
 import { setTimer, TRACE } from './util';
@@ -1772,6 +1772,39 @@ TermView.prototype = {
     return this.mobileRowsPx > 0 ? this.mobileRowsPx : this.buf.rows * this.chh;
   },
 
+  // Android text scaling (the WebView's text zoom, Chrome's text size) multiplies every
+  // computed font-size and px line-height in the page by one factor (×1.08 on a phone).
+  // Each row then grows past chh, the rows overflow `.main` (the last ones hide behind a
+  // scroll bar) and the 80 columns grow wider than the screen. The grid's contract is a
+  // rendered cell of chh, so text is written at chh / textScale.
+  textScale: 1,
+
+  textFontPx: function(px) {
+    return px / this.textScale;
+  },
+
+  // Measures the factor on a rendered row: an element without text, such as #cursor, is
+  // not scaled. Runs after each screen until it settles for the current chh (a factor
+  // that depends on the size takes a few rounds); a screen without a grid row waits.
+  syncTextScale: function() {
+    if (this._textScaleSettled === this.chh) return;
+    if (this._textScaleChh !== this.chh) {
+      this._textScaleChh = this.chh;
+      this._textScaleRounds = 0;
+    }
+    var row = this.mainContainer && this.mainContainer.querySelector('[type="bbsrow"]');
+    if (!row || typeof getComputedStyle !== 'function') return;
+    var cs = getComputedStyle(row);
+    var scale = textScaleAt(this.textFontPx(this.chh), parseFloat(cs.fontSize), parseFloat(cs.lineHeight));
+    if (scale === null) return;
+    if (Math.abs(scale - this.textScale) < 0.002 || ++this._textScaleRounds > 4) {
+      this._textScaleSettled = this.chh;
+      return;
+    }
+    this.textScale = scale;
+    this.setTermFontSize(this.chw, this.chh);
+  },
+
   setTermFontSize: function(cw, ch) {
     var innerBounds = this.innerBounds;
     // Preview measurements depend on width and, in mobile reflow, the 50dvh cap.
@@ -1783,11 +1816,13 @@ TermView.prototype = {
     this.chw = cw;
     this.chh = ch;
     var fontSize = this.chh + 'px';
+    // Text renders at chh only after undoing the page's text scaling (see syncTextScale).
+    var textFontSize = this.textFontPx(this.chh) + 'px';
     var mainWidth = (this.reflowWidth > 0
       ? this.reflowWidth
       : this.chw * this.buf.cols + 10) + 'px';
-    this.mainDisplay.style.fontSize = fontSize;
-    this.mainDisplay.style.lineHeight = fontSize;
+    this.mainDisplay.style.fontSize = textFontSize;
+    this.mainDisplay.style.lineHeight = textFontSize;
     this.bbsCursor.style.fontSize = fontSize;
     this.bbsCursor.style.lineHeight = fontSize;
     this.mainDisplay.style.overflowX = 'hidden';
@@ -1802,7 +1837,7 @@ TermView.prototype = {
       this.mainDisplay.style.height = Math.min(this.chh * this.buf.rows + 10, available) + 'px';
     }
 
-    this.lastRowDiv.style.fontSize = fontSize;
+    this.lastRowDiv.style.fontSize = textFontSize;
     this.lastRowDiv.style.width = mainWidth;
 
     if (this.fontFitWindowWidth) {
@@ -2537,6 +2572,7 @@ TermView.prototype = {
     // if you want to set cursor color by now background, use this.
     this.bbsCursor.style.color = cursorColorForBg(bg, this.workModeActive);
     this.updateInputBufferPos(anchor);
+    this.syncTextScale();
     this._sampleCursorGeom();
   },
 

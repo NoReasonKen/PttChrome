@@ -92,7 +92,8 @@ export class StackListLayer extends ScreenCopyLayer {
   _render(rect, forceWidth) {
     this.rect = rect;
     this.forceWidth = forceWidth;
-    this.el.style.fontSize = this.el.style.lineHeight = forceWidth + 'px';
+    // The live screen's text size, undoing the page's text scaling (TermView.syncTextScale).
+    this.el.style.fontSize = this.el.style.lineHeight = this.view.textFontPx(forceWidth) + 'px';
     const enhance = Object.assign({}, this.frame.enhance, {
       listScroll: Object.assign({}, this.frame.enhance.listScroll, { scrollable: true })
     });

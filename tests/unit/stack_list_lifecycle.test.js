@@ -25,7 +25,7 @@ function captureList({ cards = false } = {}) {
   const view = {
     mainDisplay: mounted.root, componentScreen: mounted.controller, chh: 20,
     innerBounds: { height: 400 }, topInset: 0, keyboardInset: 0,
-    listCardViewportPx: () => 300
+    listCardViewportPx: () => 300, textFontPx: (px) => px
   };
   const layer = StackListLayer.capture(view);
   expect(layer).not.toBeNull();
