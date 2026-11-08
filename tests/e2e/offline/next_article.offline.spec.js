@@ -255,12 +255,13 @@ test.describe('讀完接著讀下一篇', () => {
     await expect(veil).toContainText(ENTRIES[5].title);
     await expect.poll(() => peekCapture(page)).toContain('sTest\r');
     expect(await takeCapture(page)).toBe('sTest\r\f');
-    // 板跳落地：原生列表進了 #mainContainer（鏡像），但被蓋著。
+    // 板跳落地：app-driven navigation holds the native list back (#157); the veil
+    // still covers the page until the next article is drawn.
     await startCapture(page);
     await drawList(page, 4);
-    await expect.poll(() => page.evaluate(() => document.getElementById('mainContainer').innerText)).toContain('編號');
-    expect(await veilOnTop()).toBe('nextArticleVeil');
     await expect.poll(() => peekCapture(page)).toContain(ENTRIES[5].num + '\r');
+    await expect.poll(() => page.evaluate(() => document.getElementById('mainContainer').innerText)).not.toContain('編號');
+    expect(await veilOnTop()).toBe('nextArticleVeil');
     expect(await takeCapture(page)).toBe(ENTRIES[5].num + '\r\f');
     // 跳號落地（游標在下一篇）⇒ ⏎ 開文。
     await startCapture(page);
