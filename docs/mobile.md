@@ -313,7 +313,7 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
 - 版型（欄位按 **cell** 切，出處見 `list_card.js` 檔頭；`CARD_LAYOUT` 每行 lead｜main｜end 三段 flex）：
   文章列表＝推文數 [9,11)｜標題 [29,80)／（左欄留空）序號・作者 [17,29)｜標記 [7,9)・日期（靠右，照 JPTT，#60）；看板列表＝未讀 [8,10)｜板名・類別
   ｜人氣／◎敘述｜板主・序號。lead 左欄兩行同寬上下對齊（推文數加粗）。顏色全照原列（使用者定案：桌機／手機同 PTT 原色）。
-- **卡片固定高 3em（`LIST_CARD_ROWS`=3 × chh）是承重條件**：`list_scroll.js` 的位置↔scrollTop 是純乘除。
+- **卡片固定高 `LIST_CARD_ROWS`=3 × chh（px，`--cell-h`；不可用 em：Android 文字縮放下字級寫成 chh ÷ textScale，em 跟著它短少，點擊與捲動整批錯位）是承重條件**：`list_scroll.js` 的位置↔scrollTop 是純乘除。
   兩行內容（`LIST_CARD_LINES`=2，標題行 1.3em＋次行 1.1em）＋卡片間距＝border-box 固定高內的 `padding-block`；分隔線用 inset
   box-shadow；不可 border／margin（加在固定高之外）。CSS 高度與常數一致由 `list_card_css.test.js` 守。
   次行（`.listCardMeta`）只縮字 0.8em、**不自帶 opacity**（會與已讀低亮疊乘，同支測試守）。兩個 session 的 `_rowHeight()` ＝

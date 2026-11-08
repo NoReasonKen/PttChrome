@@ -1847,6 +1847,8 @@ TermView.prototype = {
       : this.chw * this.buf.cols + 10) + 'px';
     this.mainDisplay.style.fontSize = textFontSize;
     this.mainDisplay.style.lineHeight = textFontSize;
+    // Layout counted in cells (the list cards) uses the cell, not em (main.css .listCard).
+    this.mainDisplay.style.setProperty('--cell-h', fontSize);
     this.bbsCursor.style.fontSize = fontSize;
     this.bbsCursor.style.lineHeight = fontSize;
     this.mainDisplay.style.overflowX = 'hidden';
