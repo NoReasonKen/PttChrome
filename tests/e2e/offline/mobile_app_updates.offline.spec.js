@@ -56,6 +56,9 @@ async function installUpdateHost(page, { proactive = false, available = true } =
 async function bootUpdateMenu(page, options) {
   await installUpdateHost(page, options);
   await bootOffline(page, ptt);
+  // The home dashboard over the main menu fetches favorites (^Z f) 600ms after it
+  // shows; that would land in the "no PTT navigation" windows: mark them fresh.
+  await page.evaluate(() => { window.__app.homeDashboard._state.fetchedAt = Date.now(); });
   await drawMainMenu(page);
   await expect(page.locator('body')).toHaveClass(/mobile-layout/);
 }

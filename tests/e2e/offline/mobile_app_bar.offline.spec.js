@@ -79,6 +79,8 @@ test.describe('手機頂部 App Bar', () => {
   test('tap App Bar 不送任何鍵（不會被當成點終端機）', async ({ page }) => {
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, { useMouseBrowsing: true, mouseLeftClick: true });
+    // The home dashboard fetches favorites (^Z f) 600ms after it shows: mark them fresh.
+    await page.evaluate(() => { window.__app.homeDashboard._state.fetchedAt = Date.now(); });
     await drawMainMenu(page);
     await page.waitForFunction(() => window.__app.view.menuCards === true);
     await page.evaluate(() => {
