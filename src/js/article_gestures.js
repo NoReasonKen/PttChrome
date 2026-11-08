@@ -77,6 +77,10 @@ export class ArticleGestures {
     core.buf.addEventListener('viewUpdate', this._refresh);
     core.buf.addEventListener('screenSettled', this._refresh);
     this.unsubscribeMobile = core.onMobileChange(this._refresh);
+    // The swipes need the article's toolbar. A cover lifted without a screen
+    // change of its own (its bound, or a result opened under it) changes it
+    // with no screen update.
+    this.unsubscribeContext = core.onScreenContextChange?.(this._refresh);
     this.update();
   }
 
@@ -797,6 +801,7 @@ export class ArticleGestures {
     this.core.buf.removeEventListener('viewUpdate', this._refresh);
     this.core.buf.removeEventListener('screenSettled', this._refresh);
     this.unsubscribeMobile();
+    this.unsubscribeContext?.();
     this.core.view.mainDisplay.classList.remove('articleHorizontalGestures');
   }
 }

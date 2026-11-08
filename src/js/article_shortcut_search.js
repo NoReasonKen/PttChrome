@@ -394,9 +394,6 @@ export class ArticleShortcutSearch {
     this.cover.destroy();
     this.cover = null;
     this.core._refreshScreenContext?.();
-    // The swipes follow the page now shown. The cover's bound ends it with no
-    // screen change of its own to refresh them.
-    this.core.articleGestures?.update();
   }
 
   // The results have landed: the easy-reading list takes over once it
