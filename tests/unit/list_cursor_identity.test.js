@@ -87,7 +87,7 @@ describe("cursor-sync 腿的落地身分驗證", () => {
     expect(enqueued[1].keys).toBe("\x18");
   });
 
-  test("REGRESSION：同編號換了別篇 → 不送那顆鍵，切原生並說明", () => {
+  test("REGRESSION：同編號換了別篇 → 不送那顆鍵，停在原頁並說明", () => {
     // 期間板上刪過文 ⇒ 21342 這個行號現在是別人的文章。舊碼只驗編號，
     // 會若無其事地把 ^X 送出去、對別篇開轉錄。
     const { s, enqueued, hints } = makeSession();
@@ -98,7 +98,7 @@ describe("cursor-sync 腿的落地身分驗證", () => {
     leg.onDone();
 
     expect(enqueued).toHaveLength(1); // 下游那顆鍵一個 byte 都沒送出去
-    expect(s._renderMode).toBe("native");
+    expect(s.failed()).toBe(true);
     expect(s._serverNum).toBe(null); // 真游標位置重新變成未知
     expect(hints.some((m) => m.includes("列表已變動"))).toBe(true); // 不變量 N7
   });

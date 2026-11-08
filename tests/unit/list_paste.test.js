@@ -113,17 +113,17 @@ describe("ListSession.onPaste — 一次貼上即生效", () => {
     expect(enqueued[0].kind).toBe("native-paste");
   });
 
-  test("sync 腿失敗 → 仍送 native-paste（顯性降級，不得靜默吞掉貼上）", () => {
+  // The paste would land on another row (#158): it is never sent, the page stays.
+  test("sync 腿失敗 → 不代送貼上，停在原頁等下拉重新整理", () => {
     const { s, enqueued } = makeSession();
     s.state = "active";
     s._selectedNum = 42;
 
     s.onPaste(AID);
     enqueued[0].onFail("timeout");
-    expect(s.state).toBe("functionMode");
-    expect(s._renderMode).toBe("native");
-    expect(enqueued[1].kind).toBe("native-paste");
-    expect(enqueued[1].keys).toBe(AID);
+    expect(s.failed()).toBe(true);
+    expect(s._renderMode).toBe("frozen");
+    expect(enqueued.length).toBe(1);
   });
 
   test("切原生後有提示（不得無聲切換）", () => {

@@ -64,7 +64,7 @@ MarkAllRead.prototype = {
     const bm = rr.begin('mark-all-read');
     const fail = function() {
       rr.end(bm, 'fail');
-      self._hint('設為全部已讀失敗：沒有出現 PTT 的設定提示（已停在原生畫面）', 0, HINT_ERROR);
+      self._hint('設為全部已讀失敗：沒有出現 PTT 的設定提示', 0, HINT_ERROR);
     };
     const steps = [
       {
@@ -91,7 +91,7 @@ MarkAllRead.prototype = {
         },
         onFail: function() {
           rr.end(bm, 'fail');
-          self._hint('設為全部已讀：PTT 沒有回應（已停在原生畫面）', 0, HINT_ERROR);
+          self._hint('設為全部已讀：PTT 沒有回應', 0, HINT_ERROR);
         }
       }
     ];

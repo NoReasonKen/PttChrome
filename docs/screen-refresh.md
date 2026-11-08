@@ -59,6 +59,8 @@ so its budget is `aid_navigation.SLOW_STEP_BUDGET` (as the board entry of an AID
   keydown). This refresh is recorded as the handoff's pending action (`refreshWhenReady`, replacing any click or menu action remembered before), with the progress bar showing;
   once the real screen takes over, `refresh()` runs again (cooldown and busy checks as usual), and a real list is not aligned to the layer's reading position but stays where PTT is (an article keeps the layer's position).
   When the handoff times out, the action is dropped with the notice 「PTT 尚未就緒，操作未執行」 ("PTT is not ready; the action was not run").
+- A list held after a failed check ([#158](https://github.com/NoReasonKen/PttChrome/issues/158), `docs/easy-reading-list.md` N8): `target()` returns `{ kind: 'list-retry' }` before
+  reading the screen, and the session's `retry()` repaints PTT's screen (`\f`) and presents the list again from it; a retry that times out fails again with 「重新整理逾時」.
 - Once a list refresh (article list or board list) is sent, it spends that list's live layer (`NavigationStack.spend('refresh', list)`,
   [#125](https://github.com/NoReasonKen/PttChrome/issues/125)): actions remembered during the handoff are void, the rows kept for that list (#120, #122) are released,
   and every row afterwards is PTT's current data. A refresh during a handoff takes the pending-action path above, and only the `refresh()` after the real screen takes over spends the layer.
@@ -110,4 +112,5 @@ above, and has no rate protection (1 second minimum). This feature leaves it unc
 - Offline e2e: `screen_refresh.offline.spec.js` (real F5: default action blocked, cooldown notice, handed back with the pref off),
   `mobile_refresh.offline.spec.js` (toolbar button, CDP touch pull-down), `mobile_toolbar.offline.spec.js` (Share inside More),
   `home_dashboard.offline.spec.js` "F5", `mobile_home_dashboard.offline.spec.js` (pull-down and toolbar refresh on the home dashboard),
-  `mobile_stack_layer_actions.offline.spec.js` (toolbar, F5 and pull-to-refresh on a revealed list before PTT catches up).
+  `mobile_stack_layer_actions.offline.spec.js` (toolbar, F5 and pull-to-refresh on a revealed list before PTT catches up),
+  `mobile_list_failures.offline.spec.js` (toolbar and pull-to-refresh retrying a failed article list or board list).

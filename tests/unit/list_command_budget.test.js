@@ -328,12 +328,12 @@ describe("零回應跳號不得凍住畫面", () => {
     expect(queue.inFlightKind).toBe("open-enter");
   });
 
-  test("連探針都沒回應：850ms 內就降級回原生，不再空等", () => {
+  test("連探針都沒回應：850ms 內就判定失敗、停在原頁，不再空等", () => {
     const { s } = openWithRealQueue();
     expect(s.state).toBe("opening");
 
     vi.advanceTimersByTime(250 + 600 + 1);
-    expect(s.state).not.toBe("opening"); // _openFailed → functionMode 原生鏡像
-    expect(s._renderMode).toBe("native");
+    expect(s.state).not.toBe("opening"); // _openFailed → 停在原頁（#158）
+    expect(s.failed()).toBe(true);
   });
 });

@@ -296,6 +296,9 @@ Keys that cannot send a byte (F1/CapsLock…) → `ignore`, the criterion being 
   and does not go through `_adoptLanding` (which would reset `_topNum` to the native screen's top row, so the view would jump away instantly).
 - **I6 Out of scope means back to native**: every settle reruns the fingerprint, and once it is no longer `fav`/`class`,
   it switches to the native mirror or tears down; **it must not keep drawing from the old buffer** (the number space has changed).
+- **I6b A failed check holds the board list** ([#158](https://github.com/NoReasonKen/PttChrome/issues/158)): a timeout or a cursor sync that does not land
+  (entering a board, backing up, a jump, a key's sync leg) keeps the board list drawn with the notice `<reason>，下拉重新整理以重試` and sends nothing more,
+  as `docs/easy-reading-list.md` N8 describes; a board that never opens slides its article list back out over the board list. Refresh retries.
 - **I7 Golden snapshots**: changes to `render/screen.js` or row output must run `render_dom_equivalence.test.js`.
 - **I8 `view.conn`**: data always goes out through the queue or `view._send()`; `this.view.conn.send(...)` is forbidden.
 

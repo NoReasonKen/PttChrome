@@ -242,7 +242,7 @@ describe("UnreadJump.start：End → PgUp… → 跳號", () => {
     new UnreadJump(core).start();
     enqueued[0].onFail();
     expect(core.unreadJumpInFlight).toBe(false);
-    expect(hints.at(-1)).toEqual({ m: "跳到第一篇未讀失敗（已停在原生畫面）", level: HINT_ERROR });
+    expect(hints.at(-1)).toEqual({ m: "跳到第一篇未讀失敗", level: HINT_ERROR });
   });
 
   test("不是文章列表 ⇒ 不送鍵、給提示（快捷鍵仍吞掉，不交給瀏覽器）", () => {

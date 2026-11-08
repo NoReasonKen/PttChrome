@@ -1418,7 +1418,7 @@ export const en_US = {
   "headerlessReopen_failed": { "message": "Could not read the article's details; the native PTT screen remains usable." },
   "articleResize_busy": { "message": "Adjusting the reading layout…" },
   "articleResize_failed": { "message": "The article could not adapt to the new screen size. Native PTT view is available." },
-  "listResize_failed": { "message": "The article list could not adapt to the new screen size. Native PTT view is available." },
+  "listResize_failed": { "message": "The article list could not adapt to the new screen size. Pull down to refresh and retry." },
   "articleShortcutSearch_results": { "message": "Same-author search results. Back returns to the source article." },
   "articleShortcutSearch_empty": { "message": "No matching articles. Returned to the source article." },
   "articleShortcutSearch_failed": { "message": "Article search stopped because the current screen could not be verified." },

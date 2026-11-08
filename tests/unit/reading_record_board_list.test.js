@@ -304,10 +304,10 @@ describe("看板列表重新整理：落地即回平滑捲動（不切原生、�
     expect(h.s._topNum).toBe(10);
   });
 
-  test("PTT 沒回應（onFail）⇒ 不留在凍結畫面，切原生鏡像交給探針", () => {
+  test("PTT 沒回應（onFail）⇒ 停在原頁，等下拉重新整理（#158）", () => {
     const h = makeSession();
     refreshToLanding(h).onFail("timeout");
-    expect(h.s._renderMode).toBe("native");
-    expect(h.s._holdReason).toBe("passthrough");
+    expect(h.s._renderMode).toBe("frozen");
+    expect(h.s.failed()).toBe(true);
   });
 });
