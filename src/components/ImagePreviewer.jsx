@@ -417,6 +417,11 @@ const EmbedPoster = ({ candidates }) => {
 
 // oEmbed title and author, fetched once per endpoint; null when unavailable.
 const embedDetailsCache = new Map();
+// The details already fetched. A card mounted again renders them at once: the
+// inline preview slot takes the card's first loaded height as its placeholder
+// floor, so a card that showed its details and comes back without them for a
+// moment lowers that floor and moves the article by their height (#152).
+const embedDetailsKnown = new Map();
 const fetchEmbedDetails = (url) => {
   let details = embedDetailsCache.get(url);
   if (!details) {
@@ -427,14 +432,20 @@ const fetchEmbedDetails = (url) => {
           ? { title: json.title || "", author: json.author_name || "" }
           : null,
       )
-      .catch(() => null);
+      .catch(() => null)
+      .then((d) => {
+        embedDetailsKnown.set(url, d);
+        return d;
+      });
     embedDetailsCache.set(url, details);
   }
   return details;
 };
 
 const useEmbedDetails = (url) => {
-  const [details, setDetails] = React.useState(null);
+  const [details, setDetails] = React.useState(() =>
+    url ? embedDetailsKnown.get(url) || null : null,
+  );
   React.useEffect(() => {
     if (!url) return undefined;
     let active = true;
