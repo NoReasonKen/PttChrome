@@ -280,6 +280,8 @@ export function TermView() {
   // 公開旗標讀（docs/easy-reading.md）。搬進 easy_reading.js 等於拆掉那個契約。
   // 手動開關一律走 App.switchToEasyReadingMode / exitEasyReading，勿直接翻這個旗標。
   this.useEasyReadingMode = false;
+  // A frame held back while app-driven navigation ran (redraw's held branch).
+  this._heldFrame = false;
 
   // List easy reading hides the PTT cursor while the buffer render owns the
   // screen (the real cursor points into the 24-row buffer, not the long list).
@@ -830,6 +832,13 @@ TermView.prototype = {
   },
 
   redraw: function(force) {
+    // The first frame after app-driven navigation held the page redraws the
+    // whole screen PTT shows now.
+    var held = this._navigationHeld();
+    if (this._heldFrame && !held) {
+      this._heldFrame = false;
+      force = true;
+    }
 
     //var start = new Date().getTime();
     var rows = this.buf.rows;
@@ -888,6 +897,19 @@ TermView.prototype = {
         this._gridRender = false;
         this._renderScreenLines(this.buf.pageLines, true, true, false,
           Object.assign({}, this._pageRenderOverrides(), { pageState: 3 }));
+      } else if (this.useEasyReadingMode && held && (this.buf.easyReadingFunctionMode ||
+        (!this._listBufferFrame() && this.buf.pageState != 3 &&
+          !(this.buf.settledPageState === 3 && this.buf.pageLines.length)))) {
+        // App-driven navigation (a jump by article code, a shortcut search)
+        // drives PTT through screens between two pages. With easy reading on,
+        // those screens are data: the page shown stays, at its geometry (#157).
+        // Only frames that would draw the terminal grid are held; the list's
+        // buffer and the article (which accumulates even before it has rows
+        // to show) take their branches below. A screen off the article still
+        // ends its accumulation, as the native branch does, so the next
+        // article starts afresh.
+        if (!this.buf.easyReadingFunctionMode) this._dropAccumulation();
+        this._heldFrame = true;
       } else if (this.useEasyReadingMode && this.buf.easyReadingFunctionMode) {
         // functionMode: mirror the native 24-row screen LIVE so any PTT prompt / menu /
         // editor triggered from inside the article (回應至選單、推文、收暫存檔、編輯器…)
@@ -904,10 +926,7 @@ TermView.prototype = {
         // screen_annotations.annotationsAreRowIndependent 一律拒絕 READING），
         // 刻意照傳是為了「呼叫端只回報事實，能不能用由守門一處決定」。
         this._renderScreenLines(lines.slice(), /* dropHidden */ false, /* inlinePreview */ false, /* hoverPreview */ false, { changedRows: changedRows });
-      } else if (
-        (this.buf.listRenderMode === 'buffer' || this.buf.listRenderMode === 'frozen') &&
-        (this.buf.pageState !== 3 || this.bbscore?.listResize?.active)
-      ) {
+      } else if (this._listBufferFrame()) {
         // List easy reading (v4, ListSession owns the mode; see list_session.js).
         // pageState 3 (article) frames MUST fall through to the article branches
         // below even while frozen: during opening→suspended there is a settle-lag
@@ -1039,11 +1058,16 @@ TermView.prototype = {
           // 成立 ⇒ 黑到離開文章為止（實例：在 X 推文的輸入框上關設定頁，見
           // switchModePlan 的註解與 tests/e2e/offline/pref_close_in_prompt.offline.spec.js）。
           // 沒有東西可顯示時一律退回原生 24 列——與 functionMode 分支同構。
-          this.hideEasyReadingOverlaysKeepPage();
-          if (this.mainDisplay) this.mainDisplay.scrollTop = 0;
-          this._gridRender = true;
-          // 同 functionMode 分支：pageState 3 ⇒ 守門會拒絕，照實回報而已。
-          this._renderScreenLines(lines.slice(), /* dropHidden */ false, /* inlinePreview */ false, /* hoverPreview */ false, { changedRows: changedRows });
+          // app 驅動的導航途中則保留畫面（見 held 分支，#157）。
+          if (held) {
+            this._heldFrame = true;
+          } else {
+            this.hideEasyReadingOverlaysKeepPage();
+            if (this.mainDisplay) this.mainDisplay.scrollTop = 0;
+            this._gridRender = true;
+            // 同 functionMode 分支：pageState 3 ⇒ 守門會拒絕，照實回報而已。
+            this._renderScreenLines(lines.slice(), /* dropHidden */ false, /* inlinePreview */ false, /* hoverPreview */ false, { changedRows: changedRows });
+          }
         } else {
           this._gridRender = false;
           // 反向讀取接合的這一幀：接合點拿掉 ⇒ 全量重算（樓層補上）⇒ 每一列節點都換新，
@@ -1952,6 +1976,34 @@ TermView.prototype = {
   // 列表好讀視窗（帶 listScroll）＝ list、選單（主功能表與子選單；原生格線、列是 buf
   // 本身）＝ menu，
   // 其餘格線畫面＝ grid。
+  // App-driven navigation ended. A frame it held back is drawn now, even when
+  // PTT sends nothing more; a frame arriving first draws it instead.
+  navigationEnded: function() {
+    var self = this;
+    queueMicrotask(function() {
+      if (self._heldFrame && !self._navigationHeld()) self.redraw(false);
+    });
+  },
+
+  // Whether app-driven navigation runs (see the held branch of redraw).
+  _navigationHeld: function() {
+    var app = this.bbscore;
+    return !!(app && ((app.aidNavigation && app.aidNavigation.active) ||
+      (app.articleShortcutSearch && app.articleShortcutSearch.active)));
+  },
+
+  // The list easy-reading branch of redraw owns this frame. Article frames
+  // (pageState 3) fall through to the article branches even while frozen (see
+  // there), except before easy reading has taken the article over: the frozen
+  // window then stays until it does, so the article's first frames never show
+  // on the grid (#157).
+  _listBufferFrame: function() {
+    var mode = this.buf.listRenderMode;
+    if (mode !== 'buffer' && mode !== 'frozen') return false;
+    return this.buf.pageState !== 3 || !!(this.bbscore && this.bbscore.listResize && this.bbscore.listResize.active) ||
+      (mode === 'frozen' && !this.useEasyReadingMode);
+  },
+
   _frameSurface: function(enhanceOverrides) {
     if (!this._gridRender) return 'article';
     if (enhanceOverrides && enhanceOverrides.listScroll) return 'list';
@@ -3942,6 +3994,14 @@ TermView.prototype = {
     // 與原生退出路徑 (switchToEasyReadingMode(false), pttchrome.js:355) 保持一致。
     if (this.mainContainer) this.mainContainer.style.paddingBottom = '';
     this.mainDisplay.scrollTop = 0;
+    // Through the prototype: this method is also called on stub views
+    // (easy_reading_overlay_reset.test.js).
+    TermView.prototype._dropAccumulation.call(this);
+  },
+
+  // The accumulated page's state, without touching what is shown: a screen
+  // held back by app-driven navigation still leaves the article (#157).
+  _dropAccumulation: function() {
     this.buf.pageLines = [];
     // Left the article: drop overlap tracking so a stale row number can't bias the next
     // article's first page-down (see accumulatePageLines / resolvePageOverlap).
@@ -3949,7 +4009,7 @@ TermView.prototype = {
     this._lastAccumulatedSig = null;
     this._showsOverCopy = null;
     // 反向讀取的 head/tail 事實跟著累積頁一起丟（同 clearReverse('dropped')；這裡
-    // 內聯是因為本函式也被當成獨立函式呼叫，見 easy_reading_overlay_reset.test.js）。
+    // 內聯是因為本函式也經 prototype 被當成獨立函式呼叫，見 hideEasyReadingOverlays）。
     if (this._reverse) {
       this._reverse = null;
       this._reverseResult = 'dropped';

@@ -46,7 +46,7 @@ const fullBoardList = (facts, board) => boardList(facts, board) && !resultList(f
 export class ArticleShortcutSearch {
   constructor(core) {
     this.core = core;
-    this.active = false;
+    this._active = false;
     this.trail = null;
     // A trail waiting for its reconnect-resume plan: { trail, target }. It is
     // inactive (Back and settles ignore it) until that plan's own transaction
@@ -61,6 +61,18 @@ export class ArticleShortcutSearch {
     this._stored = takeStoredRecovery();
     this._settled = () => this.noteSettle();
     core.buf.addEventListener('screenSettled', this._settled);
+  }
+
+  get active() {
+    return this._active;
+  }
+
+  // The end of a search, whatever its path, lets the view draw the screen it
+  // held back while the search drove PTT (term_view.navigationEnded, #157).
+  set active(value) {
+    const ended = this._active && !value;
+    this._active = !!value;
+    if (ended) this.core.view?.navigationEnded?.();
   }
 
   // Returns the notice shown, for an owner that shows it again later.

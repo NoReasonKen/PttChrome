@@ -983,10 +983,11 @@ AidNavigation.prototype = {
     // absorbed too; _fail clears the stack anyway.
     this._ownedLeave = true;
 
-    // Show the REAL native screen while we drive it. The article easy reading's
-    // functionMode is the existing live-mirror mechanism; when we leave the
-    // post its settle logic runs leaveCurrentPost, and the final 2→3 settle
-    // edge re-enables easy reading on the TARGET article — zero new coupling.
+    // Stop the article's easy reading while we drive PTT: functionMode halts
+    // its accumulation and paging; when we leave the post its settle logic
+    // runs leaveCurrentPost, and the final 2→3 settle edge re-enables easy
+    // reading on the TARGET article. While the run is active the screens in
+    // between are not drawn on the grid: the view keeps the page shown (#157).
     this._core.easyReading._enterFunctionMode();
     // Park an engaged list session in its functionMode (native mirror,
     // nativeHold, queue flushed) so the shared queue is empty and its reducer
@@ -1966,5 +1967,16 @@ AidNavigation.prototype = {
     });
   }
 };
+
+// The end of every run, whatever its path, lets the view draw the screen it
+// held back while the run drove PTT (term_view.navigationEnded, #157).
+Object.defineProperty(AidNavigation.prototype, 'active', {
+  get: function() { return !!this._active; },
+  set: function(value) {
+    const ended = this._active && !value;
+    this._active = !!value;
+    if (ended && this._view && this._view.navigationEnded) this._view.navigationEnded();
+  }
+});
 
 export default AidNavigation;
