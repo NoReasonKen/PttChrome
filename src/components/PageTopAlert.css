@@ -1,7 +1,12 @@
 .PageTopAlert {
   margin-top: 15px;
   position: relative;
-  z-index: 2;
+  /* Above the in-page layers fixed over the terminal (home dashboard, split
+     reader, comment bar, article tools: 140; App Bar 150; message inbox and AID
+     back 160), whose opaque panels would hide the only reconnect button a phone
+     has. Below Mantine modals (200), so a settings dialog opened during the
+     alert stays on top, and the mobile toolbar (2500). */
+  z-index: 170;
 
   /* 手機寬度不到 400px 時不可被切掉：上限 400、兩側至少各留 16px。置中用
      margin-inline:auto（不用 transform：Transition 的 inline style 可能覆寫它）。 */
