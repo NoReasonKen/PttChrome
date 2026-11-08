@@ -204,6 +204,18 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
   像素、`mainWidth` ＝視窗寬（`view.reflowWidth` → `setTermFontSize`）。**rows 與 surface 無關 ⇒ 不重送
   NAWS**。`.main` 高仍是 `chh*rows+10`（`_scrollBy` 下界 LOCKED）。
 - 列表視口高度：呼叫端只給 `listScroll.viewportRows`，px 由 `_renderScreenLines` 在對帳**之後**換算。
+- **好讀開著時，導航途中的 PTT 幀不改幾何（#157）**：surface 只跟著真的畫出來的那一幀走，所以「不畫」就是
+  不改幾何的唯一手段。
+  - app 驅動的導航（AID 跳文與返回、文章快捷搜尋）`active` 期間，redraw 的 held 分支把**會畫成格線的幀**
+    （functionMode 原生鏡像、空頁防黑、原生分支）留著不畫：畫面與字級、寬度維持原狀，inline 預覽記住的高度
+    也不會被 `notifyLayoutChanged` 清掉。列表好讀視窗與累積長頁照常畫。
+  - 導航結束（owner 的 `active` 由真轉假，每條結束路徑都經過那個 setter）呼叫 `view.navigationEnded()`：
+    有留著的幀就補畫一次；PTT 先送來新幀則由那一幀整頁重畫。
+  - 第一次開文章時列表是 `frozen`、文章好讀還沒接手（`useEasyReadingMode` 為假）：凍結的列表視窗留到好讀
+    接手為止（`_listBufferFrame`），文章的第一頁不會先以格線出現。
+  - 讀者自己在文章裡按的 prompt 鍵仍進 functionMode 鏡像原生（屬於 #160）。好讀關閉時一律照原生畫。
+  - 守護：offline `mobile_er_geometry.offline.spec.js`（搜尋、開文、AID 跳文、返回：cell 大小與頁寬零變化、
+    `notifyLayoutChanged` 零次）。
 
 ## Phase 3：好讀文章換行版面（`term_view.reflow`）
 
@@ -301,7 +313,7 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
 - 版型（欄位按 **cell** 切，出處見 `list_card.js` 檔頭；`CARD_LAYOUT` 每行 lead｜main｜end 三段 flex）：
   文章列表＝推文數 [9,11)｜標題 [29,80)／（左欄留空）序號・作者 [17,29)｜標記 [7,9)・日期（靠右，照 JPTT，#60）；看板列表＝未讀 [8,10)｜板名・類別
   ｜人氣／◎敘述｜板主・序號。lead 左欄兩行同寬上下對齊（推文數加粗）。顏色全照原列（使用者定案：桌機／手機同 PTT 原色）。
-- **卡片固定高 3em（`LIST_CARD_ROWS`=3 × chh）是承重條件**：`list_scroll.js` 的位置↔scrollTop 是純乘除。
+- **卡片固定高 `LIST_CARD_ROWS`=3 × chh（px，`--cell-h`；不可用 em：Android 文字縮放下字級寫成 chh ÷ textScale，em 跟著它短少，點擊與捲動整批錯位）是承重條件**：`list_scroll.js` 的位置↔scrollTop 是純乘除。
   兩行內容（`LIST_CARD_LINES`=2，標題行 1.3em＋次行 1.1em）＋卡片間距＝border-box 固定高內的 `padding-block`；分隔線用 inset
   box-shadow；不可 border／margin（加在固定高之外）。CSS 高度與常數一致由 `list_card_css.test.js` 守。
   次行（`.listCardMeta`）只縮字 0.8em、**不自帶 opacity**（會與已讀低亮疊乘，同支測試守）。兩個 session 的 `_rowHeight()` ＝

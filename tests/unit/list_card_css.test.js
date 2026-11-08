@@ -26,8 +26,9 @@ describe("列表卡片 CSS", () => {
     expect(card.length).toBe(1);
   });
 
-  test("高度（em）＝ LIST_CARD_ROWS，且為 border-box", () => {
-    const m = card[0].body.match(/(?:^|;|\s)height:\s*([\d.]+)em/);
+  // 用格高（--cell-h＝chh px），不用 em：Android 文字縮放下 em 跟著寫入字級（chh ÷ textScale）短少。
+  test("高度＝ LIST_CARD_ROWS 格（--cell-h），且為 border-box", () => {
+    const m = card[0].body.match(/(?:^|;|\s)height:\s*calc\(var\(--cell-h[^)]*\)\s*\*\s*([\d.]+)\)/);
     expect(m && Number(m[1])).toBe(LIST_CARD_ROWS);
     expect(card[0].body).toMatch(/box-sizing:\s*border-box/);
   });
