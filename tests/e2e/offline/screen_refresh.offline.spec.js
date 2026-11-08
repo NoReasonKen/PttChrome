@@ -3,7 +3,7 @@
 // 真按鍵驗得出來（手捏 KeyboardEvent 不會觸發瀏覽器的重新載入）。
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
-const { bootOffline, waitScreenSettled } = require('../helpers/replay');
+const { bootOffline, drawListForEasyReading, waitScreenSettled } = require('../helpers/replay');
 
 async function collectSent(page) {
   await page.evaluate(() => {
@@ -47,7 +47,10 @@ test.describe('重新整理（F5）', () => {
   test('文章列表：F5 送 s（不重新載入網頁）；冷卻內再按只有提示', async ({ page }) => {
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, { refreshMinIntervalSec: 60 });
-    await drawArticleList(page);
+    // 列表好讀接手時的跳號與補頁要有回應：沒人回，F5 的 s 就排在它們後面等它們逾時才送，
+    // 慢機上會晚到撞上 s 自己的逾時（重新整理失敗 → 原生 → 靜置後自動恢復，那句提示蓋掉
+    // 冷卻提示，恢復送的鍵也算進「冷卻內什麼都不送」）。
+    await drawListForEasyReading(page, () => drawArticleList(page));
     await page.evaluate(() => {
       window.__notReloaded = true;
       window.__f5Prevented = null;
