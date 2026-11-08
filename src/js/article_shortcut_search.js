@@ -394,6 +394,9 @@ export class ArticleShortcutSearch {
     this.cover.destroy();
     this.cover = null;
     this.core._refreshScreenContext?.();
+    // The swipes follow the page now shown. The cover's bound ends it with no
+    // screen change of its own to refresh them.
+    this.core.articleGestures?.update();
   }
 
   // The results have landed: the easy-reading list takes over once it
@@ -457,6 +460,9 @@ export class ArticleShortcutSearch {
 
   noteSettle() {
     if (this.core.articleResize?.active || this.core.listResize?.active) return;
+    // A result opened before the easy-reading list presented the results: the
+    // list never will, and the cover would hide the article until its bound.
+    if (this.cover && !this.active && this.core.buf.pageState === 3) this._uncover();
     if (this._explainLater && this.core.conn?.isConnected) {
       this._explainLater = false;
       this._hint('articleShortcutSearch_recoveryInactive');
