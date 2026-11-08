@@ -408,7 +408,9 @@ const ER_PREFS = { enableEasyReading: true, mergeSameAuthorComments: false };
 const PREP_PREFS = { mergeSameAuthorComments: false };
 
 const SCENARIOS = {
-  // 好讀按 h → pmore 說明（functionMode 鏡像原生）→ 空白鍵離開回長頁。
+  // 好讀按 h → PTT 的操作說明（functionMode）→ 說明選單彈窗補齊全部頁 → Esc 離開回長頁。
+  // PTT's help is a paged menu; with easy reading on the help menu popup lists every
+  // page (PgDn round trips) and Esc leaves it by sending q, as natively.
   'er-help': async (page) => {
     await resetSession(page);
     await applyPrefs(page, PREP_PREFS);
@@ -422,8 +424,16 @@ const SCENARIOS = {
       await page.waitForFunction(() => window.__app.easyReading._functionMode === true, null, {
         timeout: 15000,
       });
+      await page.waitForFunction(
+        () => {
+          const help = window.__app.helpMenu.snapshot();
+          return help.open && !help.loading && !!document.querySelector('[data-help-item]');
+        },
+        null,
+        { timeout: 15000 }
+      );
       await waitWireQuiet(page);
-      await sendKey(page, 'Space');
+      await page.keyboard.press('Escape');
       await page.waitForFunction(() => window.__app.easyReading._functionMode === false, null, {
         timeout: 15000,
       });

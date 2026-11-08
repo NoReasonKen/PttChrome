@@ -160,6 +160,7 @@ async function login(page) {
   // 0. 先確認 WebSocket 連得上：PTT 掛掉時直接給明確結論，而不是讓下面的
   // waitForScreen 逾時、看起來像本專案的畫面解析壞掉。
   await waitBbsConnected(page);
+  await holdFavoritesFetch(page);
 
   // 送帳密（節流退避重試時會再呼叫一次）
   const sendCredentials = async () => {
@@ -230,6 +231,7 @@ async function login(page) {
         await page.waitForTimeout(decision.backoffMs);
         await page.goto('/');
         await waitBbsConnected(page);
+        await holdFavoritesFetch(page);
         await sendCredentials();
         state = restartLoginBudget(state, Date.now());
         break;
@@ -322,6 +324,7 @@ async function autoLoginBoot(page, opts) {
   await installAutoLoginPrefs(page, o.prefs);
   await page.goto('/');
   await waitBbsConnected(page);
+  await holdFavoritesFetch(page);
 
   const startedAt = Date.now();
   let retries = 0;
@@ -381,6 +384,7 @@ async function autoLoginBoot(page, opts) {
       await page.waitForTimeout(AUTO_LOGIN_THROTTLE_BACKOFF_MS);
       await page.goto('/');
       await waitBbsConnected(page);
+      await holdFavoritesFetch(page);
       deadline = Date.now() + AUTO_LOGIN_BUDGET_MS;
       continue;
     }
@@ -491,7 +495,20 @@ async function pressAndSettle(page, key, opts = {}) {
 // （2026-10 錄製：AID 返回後停在好讀文章裡，連按 12 次 ← 都沒離開）。關掉之後畫面一律
 // 是原生鏡像，← 就是單純的 PTT 離開鍵。
 // 三顆接管 pref 也是**跨 spec 殘留**的來源：沒人關的話，下一支在「接管中」的狀態下操作。
+// The home dashboard over the main menu fetches the account's favorites (Ctrl+Z f)
+// 600ms after it shows, then again once they are FAV_TTL_MS old. On the live
+// session those keys race the spec's own and pull personal data into recordings:
+// mark the favorites fresh. The dashboard itself is guarded by offline specs.
+// Called once the app is connected, so the dashboard already exists.
+async function holdFavoritesFetch(page) {
+  await page.evaluate(() => {
+    const dashboard = window.__app && window.__app.homeDashboard;
+    if (dashboard) dashboard._state.fetchedAt = Date.now();
+  });
+}
+
 async function resetSession(page) {
+  await holdFavoritesFetch(page);
   const wasEasyReading = await page.evaluate(() => !!window.__app.view.useEasyReadingMode);
   const before = await page.evaluate(bufScreenSig);
   await applyPrefs(page, {

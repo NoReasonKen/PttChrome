@@ -53,23 +53,32 @@ async function openAndAccumulate(page, cassette) {
 }
 
 test.describe('好讀 functionMode（scenario 重放）', () => {
-  test('h → pmore 說明（functionMode 鏡像原生）→ 空白鍵離開回長頁', async ({ page }) => {
+  test('h → PTT 操作說明（functionMode）→ 說明選單彈窗補齊全部頁 → Esc 離開回長頁', async ({ page }) => {
     test.skip(!help, '缺 scn-er-help（yarn record:scenarios）');
     await bootScenario(page, ptt, help);
     const fed = await openAndAccumulate(page, help);
 
     // 舊 bug：h 在好讀的吞鍵清單裡，完全沒反應。
     await ptt.sendKey(page, 'h');
-    await waitFed(page, fed + 1);
     await expect.poll(() => fnMode(page)).toBe(true);
-    // fnMode 在 keydown 當下就設（_enterFunctionMode），waitFed 只代表 bytes 進了 parser；
-    // pageState 要等 queueUpdate 的 30ms timer → notify → setPageState 才更新。先等 buf
-    // settle 再判，否則負載高時會讀到上一幀（文章）的 3。
+    // PTT's help is a paged menu. The help menu popup fetches every page (PgDn round
+    // trips) and lists them all; the help screen has no reading status row, so
+    // functionMode stays on underneath.
+    const quit = help.steps.findIndex((s) => s.on === 'raw' && Buffer.from(s.send || '', 'base64').toString() === 'q');
+    expect(quit).toBeGreaterThan(fed);
+    await waitFed(page, quit);
+    await expect.poll(() => page.evaluate(() => {
+      const h = window.__app.helpMenu.snapshot();
+      return h.open && !h.loading;
+    })).toBe(true);
+    await expect(page.locator('[data-help-item]').first()).toBeFocused();
     await waitBufSettled(page);
-    expect(await page.evaluate(() => window.__app.buf.pageState)).not.toBe(3); // 說明頁不是文章畫面
+    expect(await fnMode(page)).toBe(true);
+    expect(await bufText(page)).toContain('操作說明');
 
-    await ptt.sendKey(page, 'Space');
-    await waitFed(page, fed + 2);
+    // Esc leaves the popup by sending q, as natively.
+    await page.keyboard.press('Escape');
+    await waitFed(page, quit + 1);
     await expect.poll(() => fnMode(page)).toBe(false);
     // 'resume'：回好讀長頁，footer overlay 復現。
     expect(await page.evaluate(() => window.__app.view.useEasyReadingMode)).toBe(true);
