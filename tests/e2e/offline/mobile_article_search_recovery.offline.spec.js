@@ -407,8 +407,18 @@ test('a user board switch clears the stored trail before a reload', async ({ pag
   const text = await bodyText(page);
   expect(text).not.toContain(RESTORED);
   expect(text).not.toContain(INACTIVE);
+  // The restored board shows natively at first; after a quiet moment list easy
+  // reading takes it back with jumps and fills of its own. Wait for that, or on
+  // a slow machine they land in the bytes measured for Back (#174).
+  await expect.poll(() => page.evaluate(() => {
+    const app = window.__app;
+    return app.listSession.state === 'active' && app.commandQueue.idle && !app.buf._settleTimer;
+  })).toBe(true);
+  const selected = await page.evaluate(() => window.__app.listSession._selectedNum);
   const sent = (await gestureSent(page)).length;
   await keyboardBack(page);
   await expect.poll(() => visibleText(page)).toContain('主功能表');
-  expect((await gestureSent(page)).slice(sent)).toBe('\x1b[D');
+  // Back is the ordinary list exit: at most the leave's jump that parks PTT's
+  // cursor on the selected article, then ←.
+  expect(['\x1b[D', `${selected}\r\f\x1b[D`]).toContain((await gestureSent(page)).slice(sent));
 });
