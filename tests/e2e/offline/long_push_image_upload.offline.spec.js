@@ -13,7 +13,7 @@ const { installReplay, waitConnected, waitScreenSettled } = require('../helpers/
 const { rightClickPlainText, dragFiles } = require('../helpers/real_input');
 
 // 文章畫面（pmore 狀態列）＝右鍵選單出現「長推文一鍵發送」的前提
-// （ContextMenu 的 gating：enableLongPush && buf.pageState === 3）。
+// （ContextMenu 的 gating：好讀開著 && buf.pageState === 3）。
 const ARTICLE_HEADER = '作者  testuser (安安) 看板 Test';
 const ARTICLE_TITLE = '標題  [閒聊] 測試文章';
 const ARTICLE_URL =

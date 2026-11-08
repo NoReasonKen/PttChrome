@@ -115,7 +115,7 @@ test.describe.serial('核心功能（live）', () => {
     expect(health.authors).toBeGreaterThanOrEqual(Math.ceil(health.numbered * 0.7));
 
     // 列表好讀（預設開）：engage → 補頁 → 檢查捲動視窗。
-    await applyPrefs(page, { enableEasyReadingList: true });
+    await applyPrefs(page, { enableEasyReading: true });
     await page.waitForFunction(
       () =>
         window.__app.listSession.state === 'active' &&

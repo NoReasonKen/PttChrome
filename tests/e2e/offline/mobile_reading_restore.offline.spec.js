@@ -85,7 +85,7 @@ const topOfView = (page) =>
 // 開機 → 進好讀 → 預讀到文末。restoreLi：進好讀的同一刻掛上還原請求（＝重讀）。
 async function openAndRead(page, restoreLi) {
   await bootOffline(page, ptt);
-  await ptt.applyPrefs(page, { enableEasyReadingList: false, enableEasyReading: true });
+  await ptt.applyPrefs(page, { enableEasyReading: true });
   await installSim(page, TOTAL);
   await page.waitForFunction(() => window.__app.buf.pageState === 3);
   await page.evaluate((li) => {

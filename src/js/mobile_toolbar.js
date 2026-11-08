@@ -26,7 +26,7 @@
 //            內容可選、上傳也只能退回複製到剪貼簿，卻會把 sheet 撐到蓋住整個選單（遮罩點不到）。
 //   search ：可開的搜尋種類，與鍵盤攔截同一個判準（article_search.availableSearchKinds）。
 //   appBar ：頂部 App Bar 的標題（mobile_app_bar.js），同一次計算、同一個通知。
-// 判準刻意不看 enableLongPush：推鈕送的是 X，長推文關掉時就是 PTT 原生推文。
+// 判準刻意不看好讀開關：推鈕送的是 X，好讀關掉時就是 PTT 原生推文。
 
 import { parsePagerFooterContext } from './string_util';
 import { atPagerStatusRow } from './long_push_gate';

@@ -3,7 +3,7 @@ const ptt = require('../helpers/ptt');
 const { bootOffline, findCassette, replayCassette } = require('../helpers/replay');
 const { waitPreviewsSettled } = require('../helpers/layout');
 
-test('mobile settings enable the comment bar and allow switching from folded to persistent', async ({ page }) => {
+test('the folded comment bar opens on X, and settings switch it to persistent', async ({ page }) => {
   await bootOffline(page, ptt, { commentBarFold: true });
   await ptt.applyPrefs(page, { enableEasyReading: true });
   await replayCassette(page, findCassette('article'), { easyReading: true });
@@ -36,13 +36,7 @@ test('mobile settings enable the comment bar and allow switching from folded to 
     await modal.locator('[data-pref-category="general"]').tap();
   };
 
-  await openSettings();
-  await expect(modal.locator('input[name="enableCommentBar"]')).not.toBeChecked();
-  await modal.locator('label[for="pref-check-enableCommentBar"]').tap();
-  await expect(modal.locator('input[name="enableCommentBar"]')).toBeChecked();
-  await expect(modal.locator('input[name="mobileCommentBarFold"]')).toBeChecked();
-  await modal.getByRole('button', { name: 'Close', exact: true }).tap();
-  await expect(modal).toBeHidden();
+  // The comment bar is part of easy reading; folded, it waits behind the toolbar's X.
   await expect.poll(() => page.evaluate(() => window.__app.commentBar.state.available)).toBe(true);
   await expect(bar).toHaveCount(0);
   await page.screenshot({ path: test.info().outputPath('comment-bar-folded.png') });
@@ -54,6 +48,7 @@ test('mobile settings enable the comment bar and allow switching from folded to 
   await expect(bar).toHaveCount(0);
 
   await openSettings();
+  await expect(modal.locator('input[name="mobileCommentBarFold"]')).toBeChecked();
   await modal.locator('label[for="pref-check-mobileCommentBarFold"]').tap();
   await modal.getByRole('button', { name: 'Close', exact: true }).tap();
   await expect(modal).toBeHidden();

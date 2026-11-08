@@ -269,18 +269,6 @@
   "options_enableLiveArticleHelper": {
     "message": "顯示「Live 文小幫手」（定時自動更新推文）"
   },
-  "options_enableLongPush": {
-    "message": "顯示「長推文一鍵發送」（自動分段依序推文）"
-  },
-  "options_pushKeyOpensLongPush": {
-    "message": "在文章裡按 X／% 推文時，改開「長推文一鍵發送」"
-  },
-  "tooltip_pushKeyOpensLongPush": {
-    "message": "關閉後按 X 會回到 PTT 原生的單則推文。文章列表按 X 一律維持原生。"
-  },
-  "options_enableCommentBar": {
-    "message": "好讀文章底部常駐推文列"
-  },
   "options_commentReplyMenu": {
     "message": "推文選單的「回覆這則」"
   },
@@ -292,9 +280,6 @@
   },
   "tooltip_mobileCommentBarFold": {
     "message": "手機平常不顯示推文列，點底部導覽的「推文」才滑出來並叫出鍵盤；送出、收鍵盤或按返回就收回。關掉＝推文列常駐顯示。"
-  },
-  "tooltip_enableCommentBar": {
-    "message": "好讀文章最下面一條「推／噓／→＋文字」輸入列，打完按 Enter 就推出去。PTT 會改成 →、或內容太長時，改開長推文輸入框讓你確認。"
   },
   "commentBar_type": {
     "message": "推文類型"
@@ -313,12 +298,6 @@
   },
   "commentBar_send": {
     "message": "送出"
-  },
-  "options_searchKeyOpensModal": {
-    "message": "按搜尋鍵（/ ? a Z s）改開搜尋彈窗"
-  },
-  "tooltip_searchKeyOpensModal": {
-    "message": "PTT 原生的輸入記憶會被列表好讀的跳號塞滿數字，彈窗改在本機記住你的關鍵字（按 ↑ 叫回）。關閉後回到 PTT 原生 prompt。"
   },
   "searchModal_title": {
     "message": "搜尋"
@@ -1023,40 +1002,10 @@
     "message": "畫面下方說明當下發生什麼事的提示。熟悉操作後可關掉；錯誤提示（逾時切原生、操作失敗）不受影響，一律以紅底顯示。"
   },
   "options_enableEasyReading": {
-    "message": "啟用文章好讀模式 (實驗性)"
+    "message": "好讀模式"
   },
-  "options_enableHelpMenuPopup": {
-    "message": "說明選單好讀"
-  },
-  "tooltip_enableHelpMenuPopup": {
-    "message": "按 h 開的新版說明選單改成一次列出全部指令，點一下就執行。需要先開文章好讀模式；關掉就照 PTT 原本一頁一頁的選單。"
-  },
-  "options_enableEasyReadingList": {
-    "message": "啟用文章列表好讀模式 (實驗性，黑名單真正隱藏)"
-  },
-  "options_enableBoardListSmoothScroll": {
-    "message": "啟用看板列表平滑捲動 (實驗性，我的最愛／分類看板)"
-  },
-  "tooltip_enableBoardListSmoothScroll": {
-    "message": "把「我的最愛」與「分類看板」子分類的看板列表累積成一整段，捲動直接交給瀏覽器（與文章列表好讀同一套）。「全部看板」「熱門看板」與按 c 的新文章模式維持原生的一次一頁。"
-  },
-  "options_enableListNativeAutoResume": {
-    "message": "非導覽操作完成後自動切回好讀／平滑捲動"
-  },
-  "tooltip_enableListNativeAutoResume": {
-    "message": "在列表按下非導覽鍵（搜尋、標記、推文、設定已讀…）時，操作完成、畫面靜下來就自動切回好讀模式。只移動游標的鍵（[ ] = \\ + - < > , . { } t，看板列表的 t v V）更是全程不切原生。關掉＝停在原生模式，要開啟文章或離開看板才回好讀。"
-  },
-  "options_reconnectResume": {
-    "message": "斷線重連後回到原處"
-  },
-  "tooltip_reconnectResume": {
-    "message": "斷線後重新連線、登入回到主功能表時，自動回到斷線前讀的那篇文章或文章列表。關掉＝停在主功能表。"
-  },
-  "options_resumeLastPlace": {
-    "message": "開站回到上次的地方"
-  },
-  "tooltip_resumeLastPlace": {
-    "message": "關掉分頁或被手機系統回收後再打開，登入後自動回到上次讀的那篇文章或文章列表；出發前有提示可以取消。只記在這個瀏覽器。關掉＝停在主功能表。"
+  "tooltip_enableEasyReading": {
+    "message": "首頁、看板列表、文章列表和文章都由 PttChrome 重新排成好讀的頁面，包括平滑捲動、手勢、推文列、長推文、搜尋彈窗、跳過進板畫面和斷線回到原處。關掉＝整個 app 都照 PTT 原樣顯示，按鍵也照 PTT 原樣送出。"
   },
   "options_enableCommandPalette": {
     "message": "指令面板"
@@ -1127,11 +1076,11 @@
   "palette_settings": {
     "message": "開啟設定"
   },
-  "palette_safeModeOn": {
-    "message": "開啟安全模式（全部用原生）"
+  "palette_easyReadingOff": {
+    "message": "關閉好讀（改用原生 PTT）"
   },
-  "palette_safeModeOff": {
-    "message": "關閉安全模式"
+  "palette_easyReadingOn": {
+    "message": "開啟好讀"
   },
   "palette_setting": {
     "message": "設定：{title}"
@@ -1139,11 +1088,11 @@
   "palette_failed": {
     "message": "現在沒辦法開這篇文章"
   },
-  "palette_safeModeOnDone": {
-    "message": "已開啟安全模式：全部用原生"
+  "palette_easyReadingOffDone": {
+    "message": "已關閉好讀：全部用原生 PTT"
   },
-  "palette_safeModeOffDone": {
-    "message": "已關閉安全模式"
+  "palette_easyReadingOnDone": {
+    "message": "已開啟好讀"
   },
   "palette_kindAction": {
     "message": "動作"
@@ -1159,24 +1108,6 @@
   },
   "palette_kindSetting": {
     "message": "設定"
-  },
-  "options_nativeSafeMode": {
-    "message": "安全模式：全部用原生"
-  },
-  "tooltip_nativeSafeMode": {
-    "message": "PTT 改版、畫面怪怪的時候打開：好讀模式、看板列表平滑捲動、跳過進板畫面、斷線回到原處、首頁儀表板、寬螢幕雙欄閱讀、Live 文自動到底，以及搜尋／推文／F5 的按鍵攔截全部暫停，畫面和按鍵都照 PTT 原樣。下面各項設定不會被改掉，關掉安全模式就恢復。"
-  },
-  "options_skipBoardEntryScreen": {
-    "message": "跳過進板畫面"
-  },
-  "tooltip_skipBoardEntryScreen": {
-    "message": "從看板列表或「選擇看板」進入看板時，自動收掉進板畫面（含動畫），直接進入文章列表。在文章列表按 b 仍可查看進板畫面。"
-  },
-  "options_enableHomeDashboard": {
-    "message": "首頁儀表板"
-  },
-  "tooltip_enableHomeDashboard": {
-    "message": "主功能表上顯示我的最愛（有新文章的會標出來）、最近去過的看板和新信提示，點一下就進看板。打開時會自動到 PTT 抓一次我的最愛（5 分鐘內不重抓）。按「原生主選單」或直接打字就回到原本的主功能表。"
   },
   "home_title": {
     "message": "首頁"
@@ -1220,12 +1151,6 @@
   "home_hint": {
     "message": "直接打字照常操作主功能表（按任何鍵會切回原生畫面）"
   },
-  "options_enableSplitReading": {
-    "message": "寬螢幕雙欄閱讀"
-  },
-  "tooltip_enableSplitReading": {
-    "message": "視窗夠寬時，讀文章會在左邊列出剛才那份文章列表，點一篇就直接換過去讀，不用先退回列表。左欄是你看過的那幾頁，不是即時的列表；從搜尋結果進的文章不顯示。"
-  },
   "split_collapse": {
     "message": "收起"
   },
@@ -1237,12 +1162,6 @@
   },
   "split_unread": {
     "message": "未讀"
-  },
-  "options_enableNextArticleCard": {
-    "message": "讀完接著讀下一篇"
-  },
-  "tooltip_enableNextArticleCard": {
-    "message": "好讀文章讀到最後，推文下面會出現列表上下一篇的標題卡，點它就直接換過去讀；電腦上捲到底、停一下再繼續往下捲，手機上捲到底再往上拉一段、放手，也會開。不會一捲到底就自己換文；沒有下一篇時卡片會寫「已無下一篇」。"
   },
   "next_article_label": {
     "message": "下一篇"
@@ -1316,21 +1235,6 @@
   "tools_mentions": {
     "message": "提到你（{n}）"
   },
-  "options_easyReadingEndSwitchNative": {
-    "message": "好讀模式按熱鍵跳到文末並切回原生模式"
-  },
-  "options_easyReadingBrowserFind": {
-    "message": "好讀模式用瀏覽器搜尋文章（Ctrl+F／⌘F）"
-  },
-  "tooltip_easyReadingBrowserFind": {
-    "message": "好讀文章裡按 Ctrl+F 交給瀏覽器的尋找功能，按 / 會提示改用它（PTT 原生搜尋會從文末起找，好讀下不準）。翻頁請改用空白鍵、PgDn 或 Alt+F。關掉＝Ctrl+F 翻頁、/ 送 PTT。"
-  },
-  "options_easyReadingEndSwitchKey": {
-    "message": "切回原生模式的熱鍵"
-  },
-  "tooltip_easyReadingEndSwitchKey": {
-    "message": "點此後按任意鍵設定 (預設 F8)"
-  },
   "options_aidNavBackKey": {
     "message": "AID 跳文後返回原文的熱鍵"
   },
@@ -1349,12 +1253,6 @@
   "tooltip_unreadJumpKey": {
     "message": "點此後按任意鍵設定 (預設 F7)"
   },
-  "options_refreshKeyIntercept": {
-    "message": "F5／⌘R 重新整理 PTT 畫面"
-  },
-  "tooltip_refreshKeyIntercept": {
-    "message": "在看板列表、文章列表、文章裡按 F5（Mac 為 ⌘R）改成重新整理 PTT 畫面（看新文章、新推文），不重新載入網頁；其他畫面照舊。瀏覽器網址列旁的重新整理按鈕網頁攔不到。"
-  },
   "options_refreshMinIntervalSec": {
     "message": "重新整理最短間隔 (秒)"
   },
@@ -1369,9 +1267,6 @@
   },
   "mobileToolbar_end": {
     "message": "到底"
-  },
-  "options_endTurnsOnLiveUpdate": {
-    "message": "END 啟用推文即時更新"
   },
   "options_connection": {
     "message": "連線"
@@ -1516,12 +1411,6 @@
   },
   "options_mobileAppBarScrollTop": {
     "message": "點手機標題列捲回頂端"
-  },
-  "options_articleHorizontalGestures": {
-    "message": "文章左右滑動手勢"
-  },
-  "tooltip_articleHorizontalGestures": {
-    "message": "手機好讀模式中，在文章向左滑可拉出文章捷徑；在文章或文章列表向右滑可返回。保留一般上下捲動、點擊與長按操作。"
   },
   "stack_articleGone": { "message": "這篇文章已經不在列表中" },
   "stack_articleUpdated": { "message": "文章已更新" },

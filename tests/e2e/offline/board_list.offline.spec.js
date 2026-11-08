@@ -1,6 +1,6 @@
 // 看板列表（choose_board）—— 重放真 PTT 錄的往返（分類看板子清單，guest 也錄得到）。
 //
-//   1. 平滑捲動（pref enableBoardListSmoothScroll）：engage → body 住進捲動視口、header 不跟著捲
+//   1. 平滑捲動（好讀開著時的看板列表）：engage → body 住進捲動視口、header 不跟著捲
 //      → End／Home 交易 → B 類鍵 `/` 切原生鏡像、取消後自動回來（← 離開見測試內註解）。
 //      unit 蓋掉純邏輯（docs/board-list-smooth-scroll.md §6）；這裡驗真瀏覽器＋完整 boot 鏈下
 //      捲動視口真的建得起來、交易真的收得回去。
@@ -59,8 +59,7 @@ const settledActive = (page) =>
 test.describe('看板列表平滑捲動（scenario 重放）', () => {
   test('engage → 捲動 → End/Home → `/` 原生鏡像來回', async ({ page }) => {
     test.skip(!smooth, '缺 scn-boardlist-class（yarn record:scenarios）');
-    await bootScenario(page, ptt, smooth);
-    await ptt.applyPrefs(page, { enableBoardListSmoothScroll: true });
+    await bootScenario(page, ptt, smooth, { prefs: { enableEasyReading: true } });
     await settledActive(page);
 
     // 接管畫面：header 3 列 + 視口 + footer ＝ 容器的 5 個直系子節點，視口在第 4 個。
@@ -150,10 +149,9 @@ const promptState = (page) =>
 
 test('搜尋看板 prompt：不破字、整個畫面不上底色、殘留列表不可點', async ({ page }) => {
   test.skip(!prompt, '缺 scn-board-search-prompt（yarn record:scenarios）');
+  // 這條守的是**原生** s prompt 的渲染（卷裡錄的就是它，好讀關著）；好讀開著時搜尋彈窗
+  // 會把 s 攔走，那條路由 article_search.offline.spec.js 守。
   await bootScenario(page, ptt, prompt);
-  // 這條守的是**原生** s prompt 的渲染（卷裡錄的就是它）；搜尋彈窗（預設開）會把 s 攔走，
-  // 那條路由 article_search.offline.spec.js 守。
-  await ptt.applyPrefs(page, { searchKeyOpensModal: false });
   const list = await promptState(page);
   expect(list.pageState).toBe(2);
   expect(list.onInputField).toBe(false);
@@ -203,7 +201,8 @@ test('搜尋看板 prompt：不破字、整個畫面不上底色、殘留列表�
 // 「跳號沒落地就絕不送 v」（正向序列由 unit board_mark_read.test.js 守）。
 test('右鍵看板列：選單有「<板名> 設為已讀」；跳號沒落地絕不送 v', async ({ page }) => {
   test.skip(!smooth, '缺 scn-boardlist-class（yarn record:scenarios）');
-  await bootScenario(page, ptt, smooth);
+  // 原生那條路（好讀關著）：好讀接管的看板列表走 session 的凍結交易，由 unit 守。
+  await bootScenario(page, ptt, smooth, { prefs: { enableEasyReading: false } });
   const target = await page.evaluate(() => {
     const b = window.__app.buf;
     for (let r = 3; r < b.rows - 1; ++r) {

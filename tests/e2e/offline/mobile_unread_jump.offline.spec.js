@@ -47,7 +47,7 @@ async function drawArticleList(page) {
 test.describe('手機：跳到第一篇未讀', () => {
   test('文章列表的「更多」裡有這一項，點下去送 End', async ({ page }) => {
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false });
+    await ptt.applyPrefs(page, { enableEasyReading: false });
     await drawArticleList(page);
     await collectSent(page);
     await byKey(page, '__more').tap();

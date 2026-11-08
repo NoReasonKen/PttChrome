@@ -2042,7 +2042,7 @@ describe("無編號列的 clean-list 幀（只剩置底文的短頁）不得 see
   function landingSession(rowTexts, curY, totalRows = 24) {
     window.localStorage.setItem(
       "pttchrome.pref.v1",
-      JSON.stringify({ values: { enableEasyReadingList: true } })
+      JSON.stringify({ values: { enableEasyReading: true } })
     );
     const enqueued = [];
     const banners = [];

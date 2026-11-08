@@ -64,7 +64,6 @@ test.describe('打字游標是閃爍直線且不出格（離線）', () => {
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, {
       enableEasyReading: false,
-      enableEasyReadingList: false,
     });
     await feedRaw(page, CURSOR_ON_BLANK);
     await waitScreenSettled(page);
@@ -201,7 +200,6 @@ test.describe('游標與畫面共用同一個垂直座標系（離線）', () =>
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, {
       enableEasyReading: true,
-      enableEasyReadingList: false,
     });
 
     const d = await dims(page);
@@ -244,7 +242,6 @@ test.describe('游標與畫面共用同一個垂直座標系（離線）', () =>
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, {
       enableEasyReading: false,
-      enableEasyReadingList: false,
     });
 
     const d = await dims(page);
@@ -314,7 +311,6 @@ test.describe('游標與畫面共用同一個垂直座標系（離線）', () =>
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, {
       enableEasyReading: true,
-      enableEasyReadingList: false,
     });
 
     const d = await dims(page);
@@ -394,7 +390,6 @@ test.describe('推文：游標落在反白輸入帶裡（離線）', () => {
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, {
       enableEasyReading: true,
-      enableEasyReadingList: false,
     });
 
     const d = await dims(page);
@@ -420,7 +415,6 @@ test.describe('推文：游標落在反白輸入帶裡（離線）', () => {
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, {
       enableEasyReading: false,
-      enableEasyReadingList: false,
     });
 
     const d = await dims(page);
@@ -519,7 +513,6 @@ test.describe('注音輸入匡 #t 錨在該格（離線）', () => {
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, {
       enableEasyReading: false,
-      enableEasyReadingList: false,
     });
 
     const d = await dims(page);
@@ -536,7 +529,6 @@ test.describe('注音輸入匡 #t 錨在該格（離線）', () => {
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, {
       enableEasyReading: false,
-      enableEasyReadingList: false,
     });
 
     const d = await dims(page);

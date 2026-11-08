@@ -98,30 +98,15 @@ async function installReplay(page, opts = {}) {
   const neverOpen = opts.neverOpen === true || !!openHost;
   const isBbsSrc = isBbsSocketUrl.toString();
   await installResizeObserverGuard(page);
-  // 首頁儀表板（pref enableHomeDashboard，預設開）會蓋住主功能表、打開時自己送 Ctrl+Z f
-  // 去抓我的最愛 ⇒ 畫主功能表的 spec 會被它擋住滑鼠、送出記錄多出 byte。預設關掉，
-  // 只有 home_dashboard.offline.spec.js 以 opts.homeDashboard 打開。
-  // 寬螢幕雙欄閱讀（pref enableSplitReading，預設開）同理：寬視窗的文章畫面左邊會多一欄
-  // 浮層、擋掉落在那裡的滑鼠 ⇒ 預設關掉，只有 split_reader.offline.spec.js 以
-  // opts.splitReader 打開。文章工具側欄（pref enableArticleTools）是好讀文章右邊的
-  // 浮層，同理預設關，只有 article_tools.offline.spec.js 以 opts.articleTools 打開。
-  // 底部常駐推文列（pref enableCommentBar）疊在好讀文章最下面、累積頁尾端多留一截空白
-  // ⇒ 會擋到落在底列的滑鼠、改變捲到底的位置，預設關，只有 comment_bar.offline.spec.js
-  // 以 opts.commentBar 打開。好讀文末的下一篇標題卡（pref enableNextArticleCard）讓累積頁
-  // 尾端多一張卡片、改變捲到底的位置，同理預設關，只有 next_article.offline.spec.js 打開。
+  // 文章工具側欄（pref enableArticleTools）是好讀文章右邊的浮層，會擋掉落在那裡的滑鼠
+  // ⇒ 預設關，只有 article_tools.offline.spec.js 以 opts.articleTools 打開。
   // 手機推文列收進底部導覽（pref mobileCommentBarFold，預設開）：打開推文列的 spec 多半在驗
   // 「列在畫面上」的版面 ⇒ 預設關（手機也常駐），只有 opts.commentBarFold 打開。
+  // Easy reading's own behaviours (the home dashboard, split reading, the comment
+  // bar, ...) follow its switch and have no separate setting to turn off here.
   const off = {};
-  if (!opts.homeDashboard) off.enableHomeDashboard = false;
-  if (!opts.splitReader) off.enableSplitReading = false;
   if (!opts.articleTools) off.enableArticleTools = false;
-  if (!opts.commentBar) off.enableCommentBar = false;
-  if (!opts.nextArticle) off.enableNextArticleCard = false;
   if (!opts.commentBarFold) off.mobileCommentBarFold = false;
-  if (!opts.articleGestures) off.articleHorizontalGestures = false;
-  // 開站回到上次的地方（pref resumeLastPlace）：同一個 context 裡重整／重開時會自己送鍵
-  // 回上次的地方 ⇒ 預設關（行為由 unit reconnect_resume_open.test.js 守）。
-  if (!opts.resumeLastPlace) off.resumeLastPlace = false;
   if (Object.keys(off).length) {
     await page.addInitScript(({ KEY, off }) => {
       try {
@@ -219,10 +204,49 @@ async function feedRaw(page, latin1) {
   await page.evaluate((s) => window.__app.onData(s), latin1);
 }
 
+// A list a test draws by hand is taken over by list easy reading when easy
+// reading is on, and the takeover sends jumps (`N\r\f`) and redraw requests
+// (`\f`) of its own. Draws the list with `draw()`, then answers them as PTT
+// does: `draw(num)` draws the same page with the cursor on that article.
+// Returns once the list is taken over and the wire is quiet, so every byte sent
+// afterwards belongs to the action under test.
+async function drawListForEasyReading(page, draw) {
+  await page.evaluate(() => {
+    window.__listAsks = [];
+    window.__stubWSSent = (s) => {
+      const m = /^(\d+)(?: +|\r)\f?$/.exec(s);
+      if (m) window.__listAsks.push(Number(m[1]));
+      else if (s === '\f') window.__listAsks.push(null);
+    };
+  });
+  await draw();
+  let cursor;
+  for (let i = 0; i < 20; i++) {
+    const asks = await page.evaluate(() => window.__listAsks.splice(0));
+    for (const num of asks) {
+      if (num != null) cursor = num;
+      await draw(cursor);
+    }
+    const settled = await page.evaluate(() => {
+      const app = window.__app;
+      return (
+        app.listSession.state === 'active' &&
+        app.commandQueue.idle &&
+        !app.buf._settleTimer &&
+        !window.__listAsks.length
+      );
+    });
+    if (settled && !asks.length) return;
+    await page.waitForTimeout(100);
+  }
+  throw new Error('list easy reading did not take the drawn list over');
+}
+
 // 等剛餵進去的那一幀**真的生效**：rows（{ 列號: 該列應含的字 }）都進了 buf，而且
 // 30ms 的 notify（pageState／畫面）與 50ms 的 settle（CommandQueue／狀態機在這裡
 // 判讀這一幀）都跑完了。取代「餵完固定 sleep」：renderer 一忙，sleep 就不夠，
 // 狀態機還沒看到這一幀測試就往下走。
+
 async function waitScreenSettled(page, rows = {}) {
   await page.waitForFunction((map) => {
     const buf = window.__app.buf;
@@ -341,7 +365,7 @@ async function replayCassette(page, cassette, opts = {}) {
       };
       window.__stubWSSent = (s) => window.__replay.sent.push(s);
       // done = 自动翻页部分（start + pagedown）全喂完；'end' step 不计入「done」，
-      // 它专等测试稍后手动触发 End（switchToNativeAtBottom 送 \x1b[4~）才喂。
+      // 它只在原生送出 End（\x1b[4~）时才喂。
       const markDoneIfPaged = () => {
         if (pending > 0) return;
         if (idx >= steps.length || steps[idx].on === 'end') window.__replay.done = true;
@@ -818,14 +842,8 @@ async function bootOffline(page, ptt, opts = {}) {  // eslint-disable-line no-un
     await require('./pixiv_lookup').installPixivBridge(page, { automatic: true });
   }
   await installReplay(page, {
-    homeDashboard: !!opts.homeDashboard,
-    splitReader: !!opts.splitReader,
     articleTools: !!opts.articleTools,
-    commentBar: !!opts.commentBar,
     commentBarFold: !!opts.commentBarFold,
-    nextArticle: !!opts.nextArticle,
-    articleGestures: !!opts.articleGestures,
-    resumeLastPlace: !!opts.resumeLastPlace,
   });
   await installOfflineNetwork(page, { profile: offlineImageProfile(opts.imageProfile) });
   await page.goto('/');
@@ -833,23 +851,16 @@ async function bootOffline(page, ptt, opts = {}) {  // eslint-disable-line no-un
 }
 
 // scenario 卷（tools/record-scenarios.spec.js）的開機：錄製前一律 resetSession，所以
-// 重放前要先套同一組 baseline，再疊 meta.prefs，然後才餵首幀（列表好讀的 pref 一定要
-// 在列表畫面之前就定案，見 docs/handoff 舊陷阱「列表 cassette 要先關列表好讀再餵」）。
-// 兩個列表接管 pref（`enableEasyReadingList`／`enableBoardListSmoothScroll`）在錄製時是
-// **開錄之後**才開（engage 的預讀 jump 在素材裡），所以這裡一律先關著，由 spec 在首幀
-// 之後自己 applyPrefs 打開。
+// 重放前要先套同一組 baseline，再疊 meta.prefs，然後才餵首幀（好讀開關一定要在列表
+// 畫面之前就定案：開著的話，列表一出現就由好讀列表接手，接手的預讀 jump 在素材裡）。
 const SCENARIO_BASE_PREFS = {
   enableEasyReading: false,
   showFloorNumbers: false,
   blacklist: '',
-  enableEasyReadingList: false,
-  enableBoardListSmoothScroll: false,
 };
 async function bootScenario(page, ptt, cassette, opts = {}) {
   await bootOffline(page, ptt, opts);
   const prefs = Object.assign({}, SCENARIO_BASE_PREFS, cassette.meta.prefs || {}, opts.prefs || {});
-  prefs.enableEasyReadingList = false;
-  prefs.enableBoardListSmoothScroll = false;
   await ptt.applyPrefs(page, prefs);
   await replayListCassette(page, cassette);
   await waitScreenSettled(page);
@@ -941,6 +952,7 @@ async function seekInlineMedia(page, { selector, timeout = 90000 } = {}) {
 }
 
 module.exports = {
+  drawListForEasyReading,
   mountLazyPreviewsAt,
   offlineImageProfile,
   seekInlineMedia,

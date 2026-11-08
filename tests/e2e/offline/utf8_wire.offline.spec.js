@@ -18,7 +18,6 @@ async function bootUtf8(page) {
     const values = Object.assign({}, cur.values, {
       connectionEncoding: 'utf8',
       enableEasyReading: false,
-      enableEasyReadingList: false,
     });
     window.localStorage.setItem(KEY, JSON.stringify({ values }));
   }, ptt.PREF_KEY);

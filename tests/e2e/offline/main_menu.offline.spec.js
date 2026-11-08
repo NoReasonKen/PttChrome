@@ -57,7 +57,9 @@ async function clickCell(page, col, row) {
 test.describe('主功能表：只有選單項可點', () => {
   test.beforeEach(async ({ page }) => {
     await bootOffline(page, ptt);
+    // PTT's own main menu: with easy reading on, the home dashboard covers it.
     await ptt.applyPrefs(page, {
+      enableEasyReading: false,
       useMouseBrowsing: true,
       mouseLeftClick: true,
     });

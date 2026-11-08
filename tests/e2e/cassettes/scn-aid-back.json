@@ -6,11 +6,7 @@
     "scenario": "aid-back",
     "board": "movie",
     "aid": "1gmDffgv",
-    "prefs": {
-      "enableEasyReading": true,
-      "enableEasyReadingList": true,
-      "mergeSameAuthorComments": false
-    }
+    "prefs": { "enableEasyReading": true, "mergeSameAuthorComments": false }
   },
   "cols": 80,
   "rows": 24,

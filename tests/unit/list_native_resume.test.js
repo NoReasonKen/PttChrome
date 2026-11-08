@@ -1,5 +1,5 @@
 // @unit-env browser
-// 非導覽操作完成後自動切回好讀（pref enableListNativeAutoResume，2026-09-03）。
+// 非導覽操作完成後自動切回好讀（好讀行為）。
 //
 // 兩半：
 //   L1 A 類鍵（原地重繪：[ ] = \ + - < > , . { } t）走**凍結交易**，全程不切原生
@@ -101,7 +101,7 @@ function parkedInNative(h, { boardName = null } = {}) {
 
 beforeEach(() => {
   window.localStorage.clear();
-  setPrefs({ enableEasyReadingList: true, enableListNativeAutoResume: true });
+  setPrefs({ enableEasyReading: true });
   vi.useFakeTimers();
 });
 afterEach(() => {
@@ -424,51 +424,10 @@ describe("A 類鍵（凍結交易）：全程不切原生", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 逃生門：pref 關掉 ＝ 逐位元回到 2026-09-03 之前
+// 提示措辭
 // ---------------------------------------------------------------------------
 
-describe("pref enableListNativeAutoResume 關掉", () => {
-  beforeEach(() => {
-    setPrefs({ enableEasyReadingList: true, enableListNativeAutoResume: false });
-  });
-
-  test("A 類鍵整組落回 passthrough（切原生＋代送，丟 cache）", () => {
-    const h = makeSession();
-    h.s.state = "active";
-    h.s._renderMode = "buffer";
-    h.s._boardName = "C_Chat";
-    h.s._selectedNum = 42;
-    h.s._serverNum = 42;
-    h.s.onKeyDown(keyEvent("]"));
-    expect(h.enqueued[0].kind).toBe("native-key"); // 不是 native-inplace
-    expect(h.s._renderMode).toBe("native");
-    expect(h.s._boardName).toBe(null); // 不變量 15：原生小旅行拋 cache
-  });
-
-  test("回復探針一次都沒排（不是「排了再在觸發時檢查」）", () => {
-    const spy = vi.spyOn(globalThis, "setTimeout");
-    const h = parkedInNative(makeSession());
-    const armed = spy.mock.calls.length;
-    vi.advanceTimersByTime(5000);
-    expect(h.s._resumeProbe).toBe(null);
-    expect(h.s.state).toBe("functionMode"); // 停在原生，同 2026-09-03 之前
-    expect(spy.mock.calls.length).toBe(armed); // 之後也沒有再排
-    spy.mockRestore();
-  });
-
-  test("切原生的提示維持舊措辭（留著新措辭比沒提示更糟）", () => {
-    const h = makeSession();
-    h.s.state = "active";
-    h.s._renderMode = "buffer";
-    h.s._selectedNum = null;
-    h.s.onKeyDown(keyEvent("z"));
-    expect(h.banners.some((m) => m.includes("開啟文章或離開看板後恢復好讀"))).toBe(
-      true
-    );
-  });
-});
-
-describe("pref 開著時的提示措辭", () => {
+describe("切原生時的提示措辭", () => {
   test("切原生時明說「操作完成後自動恢復」", () => {
     const h = makeSession();
     h.s.state = "active";

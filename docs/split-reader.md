@@ -4,7 +4,7 @@
 
 ## 是什麼
 
-讀文章時，終端機左邊的空白處列出剛才那份文章列表，標出正在讀的那篇（未讀標點、推文數照列表）。點另一篇就直接換過去讀，不用先退回列表。開關 `enableSplitReading`（預設開，在安全模式名單內）；左欄可以收起成左緣的把手（`pttchrome.splitReader.collapsed.v1`，只記在這個瀏覽器）。
+讀文章時，終端機左邊的空白處列出剛才那份文章列表，標出正在讀的那篇（未讀標點、推文數照列表）。點另一篇就直接換過去讀，不用先退回列表。沒有自己的開關，好讀開著就有；左欄可以收起成左緣的把手（`pttchrome.splitReader.collapsed.v1`，只記在這個瀏覽器）。
 
 ## 規則
 
@@ -17,7 +17,7 @@
 - **只用空白處**：終端機恆 80 欄、`align=center` 置中（`docs/terminal-size.md` LOCKED），左欄只放在 `view.mainDisplay` 左緣到視窗左緣之間，`paneWidthFor` 放不下就不出現，不推動、不縮小終端機。預設「固定終端機大小」把字放大到撐滿高度，實測常見視窗左邊只剩約 150～200px（數字在 `SPLIT_MIN_PANE_PX` 的註解），所以標題折兩行。手機不出現。
 - **不是 modal**：焦點留在 `#t`，鍵盤照常操作文章。滑鼠：左欄在 `#BBSWindow` 外，`_onUploadLayer` 認 `#splitReader` 放過（滾輪捲左欄，不變成文章翻頁）；按鈕 mousedown `preventDefault`＋stopPropagation。
 - **線路忙就不送**：`serializedOpHint` 有值或 CommandQueue 不閒 ⇒ 不送，給提示。換文途中左欄留著，那一篇顯示「開啟中」；`startNum` 的結束回呼每輪恰好一次，另有 45 秒看門狗。
-- e2e：`installReplay` 預設把 `enableSplitReading` 關掉（寬視窗的文章畫面左邊多一欄浮層，會擋掉落在那裡的滑鼠），live 的自動登入 prefs 也關掉；只有 `split_reader.offline.spec.js` 以 `bootOffline(page, ptt, { splitReader: true })` 打開。
+- 好讀行為，沒有自己的開關：寬視窗的好讀文章畫面左邊一律多一欄浮層。
 
 ## 測試
 

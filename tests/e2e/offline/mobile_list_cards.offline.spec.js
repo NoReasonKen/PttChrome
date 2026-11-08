@@ -55,7 +55,7 @@ async function engage(page) {
   await replayListCassette(page, nav);
   await page.waitForFunction(() => window.__app.buf.pageState === 2);
   await ptt.applyPrefs(page, {
-    enableEasyReadingList: true,
+    enableEasyReading: true,
     easyReadingListPrefetchCount: 200,
     useMouseBrowsing: true,
     mouseLeftClick: true,

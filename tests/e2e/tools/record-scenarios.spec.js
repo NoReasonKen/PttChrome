@@ -14,7 +14,9 @@
 //   1. 每個動作前後都 waitWireQuiet（往返靜止＋背景佇列 idle）：重放時回應是「瞬間」到，
 //      錄製時若讓使用者鍵和背景補頁交錯，送出順序就對不上。offline spec 照同樣的節拍操作。
 //   2. 準備動作（找文章、撈 AID、進板）**不錄**：錄製器在準備完才開，首幀用 Ctrl-L 重畫。
-//   3. prefs 在開錄前套好，寫進 meta.prefs；offline spec 照抄。
+//   3. 準備階段好讀關著（resetSession 關掉它，PTT 原生畫面）；好讀在**開錄之後**才開，
+//      列表接手的預讀才在素材裡。其餘 prefs 在開錄前套好。全部寫進 meta.prefs：offline
+//      spec 在首幀之前就套上，首幀一到列表就接手，送出的 bytes 與錄製時相同。
 //
 // 用法：`yarn record:scenarios`（全部）或 `RECORD_SCENARIOS_ONLY=er-help,list-bracket yarn record:scenarios`。
 // 帳密：env PTT_USER/PTT_PASS（走產品自動登入）；沒有就 guest（需要帳號的 scenario 自動略過）。
@@ -91,14 +93,16 @@ async function cursorAid(page) {
   return m[1];
 }
 
-// 文章好讀開得起來、而且累積得完的那一篇（候選由新到舊試）。
-async function openArticleForEasyReading(page, { min, max, minPages }) {
+// 頁數夠的那一篇（候選由新到舊試），在原生畫面上量：好讀累積得完與否由開錄後的
+// inArticleEasyReading 驗。
+async function pickLongArticle(page, { min, max, minPages }) {
   for (let p = 0; p < 4; p++) {
     const cands = (await readListCandidates(page, { min, max })).reverse();
     for (const c of cands) {
       await jumpTo(page, c.num);
       await sendKey(page, 'Enter');
-      const acc = await waitEasyReadingComplete(page, { timeout: 40000 });
+      await page.waitForFunction(() => window.__app.buf.pageState === 3, null, { timeout: 15000 });
+      await waitWireQuiet(page);
       const pages = await page.evaluate(() => {
         const m = /第\s*(\d+)\s*\/\s*(\d+)\s*頁/.exec(
           window.__app.buf.getRowText(window.__app.buf.rows - 1, 0, window.__app.buf.cols)
@@ -108,7 +112,7 @@ async function openArticleForEasyReading(page, { min, max, minPages }) {
       await sendKey(page, 'ArrowLeft');
       await page.waitForFunction(() => window.__app.buf.pageState === 2, null, { timeout: 15000 });
       await waitWireQuiet(page);
-      if (acc.reachedEnd && (!minPages || pages >= minPages)) return c.num;
+      if (!minPages || pages >= minPages) return c.num;
     }
     await sendKey(page, 'PageUp');
     await waitWireQuiet(page);
@@ -117,8 +121,8 @@ async function openArticleForEasyReading(page, { min, max, minPages }) {
 }
 
 // 進到一份「看板列表平滑捲動會接管、而且超過兩個視口」的分類子清單（guest 也有，
-// 不含個人最愛）。離開時**停在清單裡、pref 關著**（原生畫面）：scenario 開錄後才把
-// pref 打開，engage 與補頁的往返才會在素材裡。
+// 不含個人最愛）。離開時**停在清單裡、好讀關著**（原生畫面）：scenario 開錄後才把
+// 好讀打開，engage 與補頁的往返才會在素材裡。
 // 判準全部問產品（buf.listRenderOwner）或與自己比對（起點畫面的 row 0），不認畫面文字。
 async function pickClassSublist(page) {
   const facts = () =>
@@ -193,7 +197,7 @@ async function pickClassSublist(page) {
     }
     return false;
   };
-  await applyPrefs(page, { enableBoardListSmoothScroll: true });
+  await applyPrefs(page, { enableEasyReading: true });
   await sendKey(page, 'C');
   await waitWireQuiet(page);
   await sendKey(page, 'Enter');
@@ -202,7 +206,7 @@ async function pickClassSublist(page) {
   console.log('[record] class 起點:', JSON.stringify(root));
   if (!(await search(1, ''))) throw new Error('分類看板裡找不到會 engage 且超過一頁的子清單');
   // 回到原生畫面（交易收攤），等開錄後再打開。
-  await applyPrefs(page, { enableBoardListSmoothScroll: false });
+  await applyPrefs(page, { enableEasyReading: false });
   await waitWireQuiet(page);
 }
 
@@ -211,6 +215,19 @@ const listActive = async (page) => {
     timeout: 30000,
   });
   await waitWireQuiet(page);
+};
+
+// `/` title search the way easy reading runs it: the search modal takes `/`,
+// then sends "/ → wait for the prompt → keyword" itself. The results land in
+// list easy reading.
+const searchTitle = async (page, keyword) => {
+  await sendKey(page, 'Slash');
+  const box = page.locator('input[name="searchKeyword"]');
+  await box.waitFor({ timeout: 10000 });
+  await box.fill(keyword);
+  await box.press('Enter');
+  await page.waitForFunction(() => window.__app.searchInFlight === false, null, { timeout: 20000 });
+  await listActive(page);
 };
 
 // Entering a board may stop at its entry screen (pressanykey); press Space as natively, then wait for list easy reading to take over.
@@ -368,6 +385,13 @@ async function record(page, name, meta, act) {
   console.log(`[record] scn-${name}: ${cassette.steps.length} steps → ${path.relative(process.cwd(), file)}`);
 }
 
+// The first action of a recording: easy reading on, and the list on screen
+// taken over by it.
+async function easyReadingOnList(page, engaged = () => listActive(page)) {
+  await applyPrefs(page, { enableEasyReading: true });
+  await engaged();
+}
+
 async function inArticleEasyReading(page) {
   await sendKey(page, 'Enter');
   const acc = await waitEasyReadingComplete(page, { timeout: 60000 });
@@ -381,16 +405,18 @@ const fnMode = (page) => page.evaluate(() => !!window.__app.easyReading._functio
 // 每個 scenario：prep（不錄）→ record(act)。prefs 一律寫進 meta，offline 照抄。
 
 const ER_PREFS = { enableEasyReading: true, mergeSameAuthorComments: false };
+const PREP_PREFS = { mergeSameAuthorComments: false };
 
 const SCENARIOS = {
   // 好讀按 h → pmore 說明（functionMode 鏡像原生）→ 空白鍵離開回長頁。
   'er-help': async (page) => {
     await resetSession(page);
-    await applyPrefs(page, ER_PREFS);
+    await applyPrefs(page, PREP_PREFS);
     await gotoBoard(page, 'C_Chat');
-    const num = await openArticleForEasyReading(page, { min: 1, max: 20 });
+    const num = await pickLongArticle(page, { min: 1, max: 20 });
     await jumpTo(page, num);
     await record(page, 'er-help', { board: 'C_Chat', prefs: ER_PREFS }, async () => {
+      await easyReadingOnList(page);
       await inArticleEasyReading(page);
       await sendKey(page, 'h');
       await page.waitForFunction(() => window.__app.easyReading._functionMode === true, null, {
@@ -408,11 +434,12 @@ const SCENARIOS = {
   'er-reply': async (page) => {
     if (!HAS_ACCOUNT) return console.log('[record] er-reply 需要帳號，略過');
     await resetSession(page);
-    await applyPrefs(page, ER_PREFS);
+    await applyPrefs(page, PREP_PREFS);
     await gotoBoard(page, 'C_Chat');
-    const num = await openArticleForEasyReading(page, { min: 1, max: 20 });
+    const num = await pickLongArticle(page, { min: 1, max: 20 });
     await jumpTo(page, num);
     await record(page, 'er-reply', { board: 'C_Chat', prefs: ER_PREFS }, async () => {
+      await easyReadingOnList(page);
       await inArticleEasyReading(page);
       await sendKey(page, 'r');
       await waitForScreen(page, ['回應至'], { timeout: 15000 });
@@ -428,11 +455,12 @@ const SCENARIOS = {
   // 好讀 :5 往回跳（seekBack）。文章要三頁以上，跳轉落點才整頁都在已累積範圍內。
   'er-seekback': async (page) => {
     await resetSession(page);
-    await applyPrefs(page, ER_PREFS);
+    await applyPrefs(page, PREP_PREFS);
     await gotoBoard(page, 'C_Chat');
-    const num = await openArticleForEasyReading(page, { min: 10, max: 60, minPages: 3 });
+    const num = await pickLongArticle(page, { min: 10, max: 60, minPages: 3 });
     await jumpTo(page, num);
     await record(page, 'er-seekback', { board: 'C_Chat', prefs: ER_PREFS }, async () => {
+      await easyReadingOnList(page);
       await inArticleEasyReading(page);
       await sendKey(page, ':');
       await waitWireQuiet(page);
@@ -443,28 +471,24 @@ const SCENARIOS = {
     });
   },
 
-  // 列表好讀 `]`（A 類鍵：凍結交易）。開錄後才開 pref ⇒ engage 的預讀也在素材裡。
+  // 列表好讀 `]`（A 類鍵：凍結交易）。開錄後才開好讀 ⇒ engage 的預讀也在素材裡。
   'list-bracket': async (page) => {
     await resetSession(page);
     await gotoBoard(page, 'C_Chat');
     const num = await pickArticle(page, { min: 0, max: 99 });
     await jumpTo(page, num);
-    await record(page, 'list-bracket', { board: 'C_Chat', prefs: { enableEasyReadingList: true } }, async () => {
-      await applyPrefs(page, { enableEasyReadingList: true });
-      await page.waitForFunction(() => window.__app.listSession.state === 'active', null, {
-        timeout: 20000,
-      });
-      await waitWireQuiet(page);
+    await record(page, 'list-bracket', { board: 'C_Chat', prefs: { enableEasyReading: true } }, async () => {
+      await easyReadingOnList(page);
       await sendKey(page, ']');
       await waitWireQuiet(page);
     });
   },
 
-  // AID 跳文 → 返回（aid 錨點＋捲動位置）。開著列表好讀（同板跳文：錨點靠網址列／Q 問出本篇 AID）。
-  // 列表好讀的 pref 一定要**開錄之後**才開：engage 的預讀 jump 是重放端也會送的 bytes，
+  // AID 跳文 → 返回（aid 錨點＋捲動位置）。開著好讀（同板跳文：錨點靠網址列／Q 問出本篇 AID）。
+  // 好讀一定要**開錄之後**才開：列表 engage 的預讀 jump 是重放端也會送的 bytes，
   // 在準備階段先開掉的話，素材裡就沒有那幾步，重放第一個 jump 就對不上。
   'aid-back': async (page) => {
-    const prefs = { enableEasyReading: true, enableEasyReadingList: true, mergeSameAuthorComments: false };
+    const prefs = ER_PREFS;
     await resetSession(page);
     await gotoBoard(page, 'movie');
     // 兩篇一般文章（不碰置底：PTT 的 Home 在這裡不會把游標帶走，2026-10 錄到的是置底文）：
@@ -474,13 +498,9 @@ const SCENARIOS = {
     await jumpTo(page, cands[0].num);
     const aid = await cursorAid(page);
     await jumpTo(page, cands[cands.length - 1].num);
-    await applyPrefs(page, { enableEasyReading: true, mergeSameAuthorComments: false });
+    await applyPrefs(page, PREP_PREFS);
     await record(page, 'aid-back', { board: 'movie', aid, prefs }, async () => {
-      await applyPrefs(page, { enableEasyReadingList: true });
-      await page.waitForFunction(() => window.__app.listSession.state === 'active', null, {
-        timeout: 20000,
-      });
-      await waitWireQuiet(page);
+      await easyReadingOnList(page);
       await inArticleEasyReading(page);
       await page.evaluate(([a, b]) => window.__app.aidNavigation.start(a, b), [aid, 'movie']);
       await page.waitForFunction(() => window.__app.aidNavigation.active === false, null, {
@@ -494,10 +514,9 @@ const SCENARIOS = {
     });
   },
 
-  // `/` 標題搜尋的清單裡開文 → AID 跳文 → 返回（aid 錨點，免疫序號位移）。
+  // `/` 標題搜尋（搜尋彈窗）的清單裡開文 → AID 跳文 → 返回（aid 錨點，免疫序號位移）。
   'aid-back-search': async (page) => {
-    // searchKeyOpensModal：錄的是原生 `/` prompt 逐字打（搜尋彈窗另由 offline spec 守）。
-    const prefs = { enableEasyReading: true, mergeSameAuthorComments: false, searchKeyOpensModal: false };
+    const prefs = ER_PREFS;
     await resetSession(page);
     await gotoBoard(page, 'movie');
     // 關鍵字：最新一頁第一篇一般文章標題的前三個字（分類 [xx] 之後）——搜尋結果至少有它。
@@ -521,12 +540,10 @@ const SCENARIOS = {
     const aid = await cursorAid(page);
     await sendKey(page, 'End');
     await waitWireQuiet(page);
-    await applyPrefs(page, prefs);
+    await applyPrefs(page, PREP_PREFS);
     await record(page, 'aid-back-search', { board: 'movie', aid, keyword, prefs }, async () => {
-      await sendKey(page, 'Slash');
-      await waitWireQuiet(page);
-      await typeLine(page, keyword);
-      await waitWireQuiet(page);
+      await easyReadingOnList(page);
+      await searchTitle(page, keyword);
       await inArticleEasyReading(page);
       await page.evaluate(([a, b]) => window.__app.aidNavigation.start(a, b), [aid, 'movie']);
       await page.waitForFunction(() => window.__app.aidNavigation.active === false, null, {
@@ -547,6 +564,11 @@ const SCENARIOS = {
     await gotoBoard(page, 'Steam');
     const aid = await cursorAid(page);
     await resetSession(page);
+    // The home dashboard shows over the main menu: favorites are personal data,
+    // so mark them fresh and it fetches none.
+    await page.evaluate(() => {
+      window.__app.homeDashboard._state.fetchedAt = Date.now();
+    });
     await applyPrefs(page, { enableEasyReading: true });
     await record(page, 'deep-link', { board: 'Steam', aid, prefs: { enableEasyReading: true } }, async () => {
       await page.evaluate((h) => (window.location.hash = h), '#Steam/' + aid);
@@ -567,18 +589,13 @@ const SCENARIOS = {
 
   // 看板列表平滑捲動（分類看板子分類＝guest 也錄得到，不含個人最愛）：
   // 進板列表 engage → 補頁 → End → Home → `/`（B 類鍵：原生鏡像）取消 → ← 離開。
-  // pref 在開錄之後才打開（evaluateNow 把當下畫面當成剛 settle）⇒ engage＋補頁在素材裡；
-  // offline 照同樣順序：首幀 → applyPrefs → 等 engage。
+  // 好讀在開錄之後才打開（evaluateNow 把當下畫面當成剛 settle）⇒ engage＋補頁在素材裡。
   'boardlist-class': async (page) => {
-    const prefs = { enableBoardListSmoothScroll: true };
+    const prefs = { enableEasyReading: true };
     await resetSession(page);
     await pickClassSublist(page);
     await record(page, 'boardlist-class', { prefs }, async () => {
-      await applyPrefs(page, prefs);
-      await page.waitForFunction(() => window.__app.buf.listRenderOwner === 'board-list', null, {
-        timeout: 15000,
-      });
-      await waitWireQuiet(page);
+      await easyReadingOnList(page, () => boardListEngaged(page));
       await sendKey(page, 'End');
       await waitWireQuiet(page);
       await sendKey(page, 'Home');
@@ -595,15 +612,14 @@ const SCENARIOS = {
   // the same article again, leave. Existing cassettes hold one open, and replay serves
   // each reply once, so a second open needs its own recording.
   'stack-article-reopen': async (page) => {
-    const prefs = { enableEasyReading: true, enableEasyReadingList: true, mergeSameAuthorComments: false };
+    const prefs = ER_PREFS;
     await resetSession(page);
     await gotoBoard(page, 'C_Chat');
     const num = await pickArticle(page, { min: 0, max: 30 });
     await jumpTo(page, num);
-    await applyPrefs(page, { enableEasyReading: true, mergeSameAuthorComments: false });
+    await applyPrefs(page, PREP_PREFS);
     await record(page, 'stack-article-reopen', { board: 'C_Chat', prefs }, async () => {
-      await applyPrefs(page, { enableEasyReadingList: true });
-      await listActive(page);
+      await easyReadingOnList(page);
       for (let round = 0; round < 2; round++) {
         await inArticleEasyReading(page);
         await sendKey(page, 'ArrowLeft');
@@ -617,7 +633,7 @@ const SCENARIOS = {
   // marks the dashboard as freshly fetched (no keys, no favorites fetch) and the route
   // opens the public board C_Chat; the cassette holds no favorites list.
   'stack-home-board': async (page) => {
-    const prefs = { enableHomeDashboard: true, enableEasyReading: true, enableEasyReadingList: true };
+    const prefs = { enableEasyReading: true };
     await prepFreshDashboard(page, prefs);
     await record(page, 'stack-home-board', { board: 'C_Chat', prefs }, async () => {
       await openBoardFromDashboard(page, 'C_Chat');
@@ -630,19 +646,12 @@ const SCENARIOS = {
   // search, ← back to the full list, ← back to the dashboard. The search results must
   // not reveal the dashboard. 閒聊 always has results on C_Chat.
   'stack-home-search': async (page) => {
-    const prefs = {
-      enableHomeDashboard: true, enableEasyReading: true, enableEasyReadingList: true,
-      // The native `/` prompt, typed as is (the search modal has its own specs).
-      searchKeyOpensModal: false,
-    };
+    const prefs = { enableEasyReading: true };
     const keyword = '閒聊';
     await prepFreshDashboard(page, prefs);
     await record(page, 'stack-home-search', { board: 'C_Chat', keyword, prefs }, async () => {
       await openBoardFromDashboard(page, 'C_Chat');
-      await sendKey(page, 'Slash');
-      await waitWireQuiet(page);
-      await typeLine(page, keyword);
-      await listActive(page);
+      await searchTitle(page, keyword);
       await sendKey(page, 'ArrowLeft');
       await listActive(page);
       await sendKey(page, 'ArrowLeft');
@@ -655,10 +664,7 @@ const SCENARIOS = {
   // ← back to the list, ← back to the dashboard. The next article keeps the dashboard
   // below its list.
   'stack-home-next': async (page) => {
-    const prefs = {
-      enableHomeDashboard: true, enableEasyReading: true, enableEasyReadingList: true,
-      mergeSameAuthorComments: false, enableNextArticleCard: true,
-    };
+    const prefs = ER_PREFS;
     await prepFreshDashboard(page, prefs);
     await record(page, 'stack-home-next', { board: 'C_Chat', prefs }, async () => {
       await openBoardFromDashboard(page, 'C_Chat');
@@ -692,10 +698,7 @@ const SCENARIOS = {
   // list, ← back to the dashboard. The offline test sends the second ← before the
   // first is answered; the wire is the same, since a queued Back runs after the swap.
   'stack-home-article-back': async (page) => {
-    const prefs = {
-      enableHomeDashboard: true, enableEasyReading: true, enableEasyReadingList: true,
-      mergeSameAuthorComments: false,
-    };
+    const prefs = ER_PREFS;
     await prepFreshDashboard(page, prefs);
     await record(page, 'stack-home-article-back', { board: 'C_Chat', prefs }, async () => {
       await openBoardFromDashboard(page, 'C_Chat');
@@ -717,16 +720,14 @@ const SCENARIOS = {
   // (not recorded); the engage adopts that position as the selection, so the cassette
   // needs no typed number jump.
   'stack-boardlist-board': async (page) => {
-    const prefs = { enableBoardListSmoothScroll: true, enableEasyReading: true, enableEasyReadingList: true };
+    const prefs = { enableEasyReading: true };
     await resetSession(page);
     await pickClassSublist(page);
     const num = await pickPlainBoard(page);
     await jumpTo(page, num);
-    await applyPrefs(page, { enableEasyReading: true, enableEasyReadingList: true });
     await waitWireQuiet(page);
     await record(page, 'stack-boardlist-board', { boardNum: num, prefs }, async () => {
-      await applyPrefs(page, { enableBoardListSmoothScroll: true });
-      await boardListEngaged(page);
+      await easyReadingOnList(page, () => boardListEngaged(page));
       await sendKey(page, 'Enter');
       await enteredBoardList(page);
       await sendKey(page, 'ArrowLeft');
@@ -739,11 +740,9 @@ const SCENARIOS = {
   // second ← leaves the parent for its native class list. Prep parks the native cursor on
   // the folder row (not recorded), so the engage adopts it as the selection.
   'stack-boardlist-folder': async (page) => {
-    const prefs = { enableBoardListSmoothScroll: true, enableEasyReading: true, enableEasyReadingList: true };
+    const prefs = { enableEasyReading: true };
     await resetSession(page);
-    await applyPrefs(page, { enableBoardListSmoothScroll: false });
     const num = await pickFolderRow(page);
-    await applyPrefs(page, { enableEasyReading: true, enableEasyReadingList: true });
     await waitWireQuiet(page);
     // Which list PTT shows: its board names, without live counts.
     const names = () =>
@@ -768,8 +767,7 @@ const SCENARIOS = {
       await waitWireQuiet(page);
     };
     await record(page, 'stack-boardlist-folder', { boardNum: num, prefs }, async () => {
-      await applyPrefs(page, { enableBoardListSmoothScroll: true });
-      await boardListEngaged(page);
+      await easyReadingOnList(page, () => boardListEngaged(page));
       const parent = await names();
       console.log('[record] folder: engaged, opening the row');
       await sendKey(page, 'Enter');
@@ -799,9 +797,7 @@ const SCENARIOS = {
   // 看板列表按 s：搜尋看板 prompt（游標格 fg=0/bg=7、整頁不上底色、殘留列表不可點）。
   'board-search-prompt': async (page) => {
     const prefs = {
-      // 錄的是原生 s prompt（搜尋彈窗另由 offline spec 守）。
-      searchKeyOpensModal: false,
-      enableBoardListSmoothScroll: false,
+      // 錄的是原生 s prompt：好讀關著（開著時搜尋彈窗接手 s，另由 offline spec 守）。
       useMouseBrowsing: true,
       highlightCursor: true,
       keyboardCursorHighlight: true,

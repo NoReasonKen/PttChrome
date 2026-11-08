@@ -68,7 +68,7 @@ import { decideUserBytes, PASS, SWALLOW } from './list_user_bytes';
 import { u2b, ansiHalfColorConv, normalizePasteText } from './string_util';
 import { clickableColStart } from './mouse_regions';
 import { LEFT_ARROW } from './function_key_plan';
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { HINT_ERROR } from './status_hint';
 import { recordFor, boardListRecordMatches } from './reading_record';
 import { PAGE } from './page_stack';
@@ -93,7 +93,7 @@ const PREFETCH_HARD_MS = 1500;
 const NATIVE_PASSTHROUGH_MS = 3000;
 // 凍結畫面的絕對後盾：任何一條回呼沒跑到都不能讓畫面永遠凍住 ＋ 永遠吞鍵。
 const FROZEN_WATCHDOG_MS = 2500;
-// 非導覽操作結束後自動切回平滑捲動（pref enableListNativeAutoResume）。兩個常數
+// 非導覽操作結束後自動切回平滑捲動。兩個常數
 // 的取值與理由完全同 list_session.js，那裡有完整說明（RESUME_QUIET_MS 不是體感
 // 旋鈕，它堵的是「一個回應 settle 兩次」那個洞；RESUME_GRACE_MS 擋回復後的殘餘幀）。
 const RESUME_QUIET_MS = CMD_PROBE_AFTER_MS;
@@ -106,13 +106,8 @@ const RESUME_GRACE_MS = 400;
 // 會殘留舊標記 ⇒ 走 B 類（切原生，回來整份重建）。同理 `/` `S` `s` `y` `a` `m` `D`…
 const INPLACE_KEYS = 'tvV';
 
-// 切原生時提示語的尾巴。自動回復開著＝「做完就回來」；關掉＝維持舊措辭（那時行為
-// 也真的是舊的）。留著舊措辭比沒提示更糟，所以每一處都走這一支。
-function nativeResumeHint() {
-  return readEffectivePrefs().enableListNativeAutoResume
-    ? '（操作完成後自動恢復）'
-    : '（進入看板或回上層後恢復平滑捲動）';
-}
+// 切原生時提示語的尾巴：做完就回來。每一處切原生的 hint 都用這一句。
+const NATIVE_RESUME_HINT = '（操作完成後自動恢復）';
 // 背景預抓最多幾頁（每頁 20 列）。看板列表通常只有幾十到幾百項，三頁足以蓋滿
 // 視口與前後緩衝，其餘由 demand 補。
 const FILL_MAX_PAGES = 3;
@@ -459,18 +454,18 @@ BoardListSession.prototype = {
     return false;
   },
 
-  // pref 開著＝L1 凍結交易＋L2 自動回復生效；關掉＝逐位元回到 2026-09-03 之前。
+  // 好讀開著＝L1 凍結交易＋L2 自動回復生效；關掉＝看板列表回到原生。
   _autoResumeEnabled: function() {
-    return !!readEffectivePrefs().enableListNativeAutoResume;
+    return easyReadingOn(readValuesWithDefault());
   },
 
-  // pref 開著 ∧ 終端機列數合法 ∧ 文章好讀沒有正在讀文（同 list_session 的守門，
+  // 好讀開著 ∧ 終端機列數合法 ∧ 文章好讀沒有正在讀文（同 list_session 的守門，
   // 那條是為了不與文章模式的 render 分支搶畫面）。
   // 列數下界 24 ＝ server 端的 clamp（`mbbsd/term.c:55`）；**不是** `=== 24`，
   // 理由與 list_session._engageEligible 完全相同（見該處長註解）。
   _engageEligible: function() {
     return (
-      !!readEffectivePrefs().enableBoardListSmoothScroll &&
+      easyReadingOn(readValuesWithDefault()) &&
       this._termBuf.rows >= 24 &&
       !this._termBuf.startedEasyReading
     );
@@ -830,7 +825,7 @@ BoardListSession.prototype = {
       default:
         if (/^[1-9]$/.test(e.key)) return { class: 'jump-digit', digit: e.key };
         // A 類鍵（INPLACE_KEYS）：原地重繪 ⇒ 凍結交易，全程不切原生。
-        // pref 關掉時整組落回 passthrough（逐位元回到 2026-09-03 之前）。
+        // 好讀關掉時 session 不運作；這裡的檢查只防關掉途中的殘留呼叫。
         if (
           e.key.length === 1 &&
           INPLACE_KEYS.indexOf(e.key) !== -1 &&
@@ -941,7 +936,7 @@ BoardListSession.prototype = {
       this.state = r.next;
       this._enterNative();
       if (this._view.flashListHint)
-        this._view.flashListHint('已切至原生操作' + nativeResumeHint(), 4000);
+        this._view.flashListHint('已切至原生操作' + NATIVE_RESUME_HINT, 4000);
       return;
     }
     e.preventDefault();
@@ -958,7 +953,7 @@ BoardListSession.prototype = {
     const hint =
       opts && 'hint' in opts
         ? opts.hint
-        : '已切至原生操作' + nativeResumeHint();
+        : '已切至原生操作' + NATIVE_RESUME_HINT;
     // bytes 是字串 ＝ 一步；是陣列 ＝ 多步序列（每步 {keys, kind, expect, onDone,
     // onFail}），合約同 list_session._beginPassthroughBytes：第 n+1 步只在第 n 步的
     // onDone 裡 enqueue（搜尋彈窗的「s → 等 prompt → 板名」靠它，article_search.js）。
@@ -984,7 +979,7 @@ BoardListSession.prototype = {
     finish();
   },
 
-  // 多步序列的凍結版（opts.resumeOnLanding，pref enableListNativeAutoResume 開著才走）：
+  // 多步序列的凍結版（opts.resumeOnLanding，好讀開著才走）：
   // 形狀與理由同 list_session._beginLandingTransaction —— 畫面凍住 →（必要時）跳號
   // 同步真游標 → 逐步送真鍵 → 最後一步落地那一幀就 seed 回平滑捲動，**全程不切原生
   // 鏡像**、不等靜置探針。前提同樣是最後一步從 prompt 送出（游標原在 prompt 那一列），
@@ -1221,7 +1216,7 @@ BoardListSession.prototype = {
     return this._beginTextPassthrough(text, {
       normalize: true,
       kind: 'native-paste',
-      hint: '已貼上並切至原生操作' + nativeResumeHint()
+      hint: '已貼上並切至原生操作' + NATIVE_RESUME_HINT
     });
   },
 
@@ -1229,7 +1224,7 @@ BoardListSession.prototype = {
     return this._beginTextPassthrough(text, {
       normalize: false,
       kind: 'native-input',
-      hint: '已切至原生操作' + nativeResumeHint()
+      hint: '已切至原生操作' + NATIVE_RESUME_HINT
     });
   },
 
@@ -1412,7 +1407,7 @@ BoardListSession.prototype = {
   },
 
   _startFill: function() {
-    this._fillTarget = readEffectivePrefs().easyReadingListPrefetchCount || 0;
+    this._fillTarget = readValuesWithDefault().easyReadingListPrefetchCount || 0;
     this._fillPages = 0;
     this._maybeFill();
   },
@@ -1757,7 +1752,7 @@ BoardListSession.prototype = {
     this._scheduleResumeProbe();
     if (facts && this._view.flashListHint)
       this._view.flashListHint(
-        '畫面偏離看板列表格式，已切至原生模式' + nativeResumeHint(),
+        '畫面偏離看板列表格式，已切至原生模式' + NATIVE_RESUME_HINT,
         4000,
         HINT_ERROR
       );

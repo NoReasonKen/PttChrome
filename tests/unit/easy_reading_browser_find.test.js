@@ -1,5 +1,5 @@
 // @unit-env browser
-// 好讀文章的搜尋交給瀏覽器（pref easyReadingBrowserFind，預設開）。
+// 好讀文章的搜尋交給瀏覽器（好讀行為）。
 //
 // 原生 `/` 在好讀下結構性不可用：pmore 的 mf_search 從 PTT 端目前頁起找，而好讀早就
 // 自動翻到文末 ⇒ 起點與使用者看的位置無關。網頁沒有 API 能開瀏覽器尋找列，所以：
@@ -7,9 +7,8 @@
 //   `/`    → 吞掉並提示改用 Ctrl+F／⌘F
 // 本檔鎖三層：純決策、EasyReading 的處理、term_view.onKeyDown 不落到 _keyboard。
 vi.mock("../../src/js/pref_storage", () => {
-  const readValuesWithDefault = vi.fn(() => ({ easyReadingBrowserFind: true }));
-  // easy_reading 讀的是 readEffectivePrefs（安全模式覆寫層）；委派給同一個 mock。
-  return { readValuesWithDefault, readEffectivePrefs: () => readValuesWithDefault() };
+  const readValuesWithDefault = vi.fn(() => ({ enableEasyReading: true }));
+  return { readValuesWithDefault, easyReadingOn: (v) => !!(v && v.enableEasyReading) };
 });
 
 import { EasyReading, easyReadingFindKeyAction } from "../../src/js/easy_reading";
@@ -34,8 +33,8 @@ function keyEvent(key, mods = {}) {
   };
 }
 
-const ON = { easyReadingBrowserFind: true };
-const OFF = { easyReadingBrowserFind: false };
+const ON = { enableEasyReading: true };
+const OFF = { enableEasyReading: false };
 
 describe("easyReadingFindKeyAction（純決策）", () => {
   test("Ctrl+F → browser（CapsLock 的 'F' 也算）", () => {
@@ -59,7 +58,7 @@ describe("easyReadingFindKeyAction（純決策）", () => {
     expect(easyReadingFindKeyAction(keyEvent("f"), ON)).toBe(null);
   });
 
-  test("pref 關掉 ⇒ 一律 null（舊行為）", () => {
+  test("好讀關掉 ⇒ 一律 null（原生）", () => {
     expect(easyReadingFindKeyAction(keyEvent("f", { ctrlKey: true }), OFF)).toBe(null);
     expect(easyReadingFindKeyAction(keyEvent("/"), OFF)).toBe(null);
     expect(easyReadingFindKeyAction(keyEvent("/"), {})).toBe(null);
@@ -116,23 +115,7 @@ describe("EasyReading 的處理", () => {
     expect(hints[0]).not.toContain("%s");
   });
 
-  test("pref 關：Ctrl+F 照舊本地翻頁、`/` 照舊進 functionMode 送 PTT", () => {
-    readValuesWithDefault.mockReturnValue(OFF);
-    const a = makeEasyReading();
-    const ctrlF = keyEvent("f", { ctrlKey: true });
-    expect(a.er._onKeyDown(ctrlF)).toBeUndefined();
-    expect(ctrlF.defaultPrevented).toBe(true);
-    expect(a.mainDisplay.scrollTop).toBe(2400);
-
-    const b = makeEasyReading();
-    const slash = keyEvent("/");
-    b.er._onKeyDown(slash);
-    expect(slash.defaultPrevented).toBe(false);
-    expect(b.er._enterFunctionMode).toHaveBeenCalledTimes(1);
-    expect(b.hints).toEqual([]);
-  });
-
-  test("Alt+F 在 pref 開時仍是本地翻頁", () => {
+  test("Alt+F 仍是本地翻頁", () => {
     const { er, sent, mainDisplay } = makeEasyReading();
     const e = keyEvent("f", { altKey: true, code: "KeyF" });
     er._onKeyDown(e);
@@ -158,10 +141,8 @@ function makeView({ functionMode = false, easyResult } = {}) {
     deepLinkController: {},
     easyReading: {
       _onKeyDown: vi.fn(() => easyResult),
-      tryReenterFromNative: vi.fn(() => false),
     },
     activeListSession: () => null,
-    endTurnsOnLiveUpdate: false,
   };
   view._keyboard = { onKeyDown: vi.fn() };
   view.flashListHint = vi.fn();

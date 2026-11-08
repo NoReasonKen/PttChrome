@@ -62,7 +62,7 @@ const keyboardBack = page => ptt.sendKey(page, 'ArrowLeft');
 const easyReadingList = page => expect.poll(() => page.evaluate(() => window.__app.listSession.state)).toBe('active');
 
 test('ordinary article recovery without searches restores a known article and reading position', async ({ page }) => {
-  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true });
+  await bootNestedShortcutSearch(page, { loggedIn: true });
   // Set up a verified article identity through the actual navigation owner;
   // unlike shortcut tests, no search or search trail is involved.
   await page.evaluate(() => window.__app.aidNavigation.startResume({
@@ -76,7 +76,7 @@ test('ordinary article recovery without searches restores a known article and re
 });
 
 test('ordinary list recovery without searches restores its board and selection', async ({ page }) => {
-  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true });
+  await bootNestedShortcutSearch(page, { loggedIn: true });
   await keyboardBack(page);
   await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
   await ptt.sendKey(page, 'Home');
@@ -87,7 +87,7 @@ test('ordinary list recovery without searches restores its board and selection',
 });
 
 test('ordinary article recovery without a known identity falls back to its board without searches', async ({ page }) => {
-  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true });
+  await bootNestedShortcutSearch(page, { loggedIn: true });
   await keyboardBack(page);
   await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
   await tapCard(page, '[Talk] Alpha topic');
@@ -98,7 +98,7 @@ test('ordinary article recovery without a known identity falls back to its board
 });
 
 test('ordinary article recovery on reopening shows the countdown and restores the known article', async ({ page }) => {
-  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
+  await bootNestedShortcutSearch(page, { loggedIn: true });
   await page.evaluate(() => window.__app.aidNavigation.startResume({
     kind: 'article', board: 'Test', aid: '1gIeu-3A'
   }));
@@ -118,7 +118,7 @@ test('a page torn down without lifecycle events reopens at the position scrolled
     for (const type of ['pagehide', 'visibilitychange', 'beforeunload'])
       window.addEventListener(type, event => event.stopImmediatePropagation(), true);
   });
-  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
+  await bootNestedShortcutSearch(page, { loggedIn: true });
   await page.evaluate(() => window.__app.aidNavigation.startResume({
     kind: 'article', board: 'Test', aid: '1gIeu-3A'
   }));
@@ -132,7 +132,7 @@ test('a page torn down without lifecycle events reopens at the position scrolled
 });
 
 test('ordinary list recovery on reopening shows the countdown and restores the board', async ({ page }) => {
-  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
+  await bootNestedShortcutSearch(page, { loggedIn: true });
   await keyboardBack(page);
   await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
   await reloadAndLogin(page);
@@ -143,7 +143,7 @@ test('ordinary list recovery on reopening shows the countdown and restores the b
 
 for (const kind of ['author', 'thread']) {
   test(`reopening from ${kind} shortcut results reconstructs them without Back`, async ({ page }) => {
-    await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
+    await bootNestedShortcutSearch(page, { loggedIn: true });
     const position = await readToMiddle(page);
     await tapShortcut(page, kind);
     await waitList(page, { has: ['Alpha topic'], lacks: ['Delta topic'] });
@@ -164,7 +164,7 @@ for (const kind of ['author', 'thread']) {
 
 for (const legacyCaptions of [false, true]) {
   test(`reopening ordinary title and author results reapplies every filter without Back (legacy: ${legacyCaptions})`, async ({ page }) => {
-    await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true, legacyCaptions });
+    await bootNestedShortcutSearch(page, { loggedIn: true, legacyCaptions });
     await keyboardBack(page);
     await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
     for (const [key, value] of [['/', 'Beta'], ['a', 'bob']]) {
@@ -198,7 +198,7 @@ for (const removedBeforeAnchor of [false, true]) {
   test(`reopening long search results restores the visible card and within-row offset (earlier deletion: ${removedBeforeAnchor})`, async ({ page }) => {
     const extraArticles = 40;
     const title = '[Talk] Extra topic 12';
-    await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true, extraArticles });
+    await bootNestedShortcutSearch(page, { loggedIn: true, extraArticles });
     await keyboardBack(page);
     await waitList(page, { has: ['Alpha topic'] });
     // This initial list starts at its oldest entry; background fill only goes
@@ -237,7 +237,7 @@ for (const removedBeforeAnchor of [false, true]) {
 }
 
 test('disconnecting from shortcut results reconstructs them before reactivating Back', async ({ page }) => {
-  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true });
+  await bootNestedShortcutSearch(page, { loggedIn: true });
   const position = await readToMiddle(page);
   await tapShortcut(page, 'author');
   await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
@@ -249,7 +249,7 @@ test('disconnecting from shortcut results reconstructs them before reactivating 
 });
 
 test('ordinary recommendation search resumes without using old result numbers', async ({ page }) => {
-  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
+  await bootNestedShortcutSearch(page, { loggedIn: true });
   await keyboardBack(page);
   await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
   await ptt.sendKey(page, 'Z');
@@ -262,7 +262,7 @@ test('ordinary recommendation search resumes without using old result numbers', 
 });
 
 test('reopening nested thread results preserves the parent results and source position', async ({ page }) => {
-  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
+  await bootNestedShortcutSearch(page, { loggedIn: true });
   const position = await readToMiddle(page);
   await tapShortcut(page, 'author');
   await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
@@ -283,7 +283,7 @@ test('reopening nested thread results preserves the parent results and source po
 
 for (const kind of ['author', 'thread']) {
   test(`unavailable ${kind} recovery stops without activating stale history or retrying`, async ({ page }) => {
-    await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
+    await bootNestedShortcutSearch(page, { loggedIn: true });
     await tapShortcut(page, kind);
     await waitList(page, { has: ['Alpha topic'], lacks: ['Delta topic'] });
     await reloadAndLogin(page, { deleted: kind === 'author' ? ['1gIeu-3A', '1gIeu-3B'] : ['1gIeu-3A'] });
@@ -310,7 +310,7 @@ async function reopenNestedSource(page) {
 }
 
 test('disconnection in a result article keeps the trail through login and returns to the source position', async ({ page }) => {
-  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true });
+  await bootNestedShortcutSearch(page, { loggedIn: true });
   const position = await readToMiddle(page);
   await tapShortcut(page, 'author');
   await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
@@ -331,7 +331,7 @@ test('disconnection in a result article keeps the trail through login and return
 });
 
 test('a reload in a reopened nested source restores it by AID and keeps unwinding', async ({ page }) => {
-  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, resumeLastPlace: true });
+  await bootNestedShortcutSearch(page, { loggedIn: true });
   const position = await readToMiddle(page);
   await reopenNestedSource(page);
 
@@ -352,7 +352,7 @@ test('a reload in a reopened nested source restores it by AID and keeps unwindin
 });
 
 test('a source deleted while disconnected stops on its board list and leaves the trail inactive', async ({ page }) => {
-  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true });
+  await bootNestedShortcutSearch(page, { loggedIn: true });
   await reopenNestedSource(page);
 
   await disconnectAndReconnect(page, { deleted: ['1gIeu-3B'] });
@@ -368,7 +368,7 @@ test('a source deleted while disconnected stops on its board list and leaves the
 });
 
 test('canceling the resume after a reload explains that the trail stays inactive', async ({ page }) => {
-  await bootNestedShortcutSearch(page, { loggedIn: true, resumeLastPlace: true });
+  await bootNestedShortcutSearch(page, { loggedIn: true });
   await tapShortcut(page, 'author');
   await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
 
@@ -385,8 +385,11 @@ test('canceling the resume after a reload explains that the trail stays inactive
   expect(await gestureSent(page)).not.toContain('sTest');
 });
 
+// The easy-reading list names its board in the app bar.
+const APP_BAR_TITLE = '#mobileAppBar .mobileAppBarTitle';
+
 test('a user board switch clears the stored trail before a reload', async ({ page }) => {
-  await bootNestedShortcutSearch(page, { loggedIn: true, resumeLastPlace: true });
+  await bootNestedShortcutSearch(page, { loggedIn: true });
   await tapShortcut(page, 'author');
   await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
   // The reader moves to another board.
@@ -396,10 +399,10 @@ test('a user board switch clears the stored trail before a reload', async ({ pag
     server.state.filter = null;
     window.__app.onData(server.frame());
   });
-  await expect.poll(() => visibleText(page)).toContain('看板《Other》');
+  await expect(page.locator(APP_BAR_TITLE)).toHaveText('Other');
 
   await reloadAndLogin(page);
-  await expect.poll(() => visibleText(page)).toContain('看板《Other》');
+  await expect(page.locator(APP_BAR_TITLE)).toHaveText('Other');
   await expect.poll(() => page.evaluate(() => !window.__app.aidNavigation.active)).toBe(true);
   const text = await bodyText(page);
   expect(text).not.toContain(RESTORED);

@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const { bootGestureArticle, revealArticleDrawer, gestureSent, DRAWER } = require('../helpers/article_gestures');
-const { bootShortcutSearch, searchAuthor, nativeBack, openSearchResult, visibleText, waitSearchResults } = require('../helpers/article_shortcut_search');
+const { bootShortcutSearch, searchAuthor, nativeBack, openSearchResult, visibleText, waitSearchResults, hinted } = require('../helpers/article_shortcut_search');
 
 test('the author shortcut starts a direct serialized search without an editable search dialog', async ({ page }) => {
   await bootGestureArticle(page);
@@ -46,9 +46,8 @@ test('a deleted origin never opens a replacement article', async ({ page }) => {
   await searchAuthor(page);
   await waitSearchResults(page);
   await nativeBack(page);
-  await expect.poll(() => page.locator('body').innerText(), { timeout: 15000 }).toContain('The source article could not be verified or was deleted');
+  await expect.poll(() => hinted(page, 'The source article could not be verified or was deleted'), { timeout: 15000 }).toBe(true);
   expect(await visibleText(page)).not.toContain('Original reading position.');
-  expect(await visibleText(page)).toContain('看板《Test》');
 });
 
 test('input cannot submit or replace a query while the native prompt is still loading', async ({ page }) => {
@@ -65,6 +64,6 @@ test('input cannot submit or replace a query while the native prompt is still lo
 test('an unrecognized native prompt stops without sending the author as commands', async ({ page }) => {
   await bootShortcutSearch(page, { wrongPrompt: true });
   await searchAuthor(page);
-  await expect.poll(() => page.locator('body').innerText(), { timeout: 12000 }).toContain('Article search stopped because the current screen could not be verified');
+  await expect.poll(() => hinted(page, 'Article search stopped because the current screen could not be verified'), { timeout: 12000 }).toBe(true);
   expect(await gestureSent(page)).not.toContain('test\r');
 });

@@ -6,11 +6,11 @@
 //   2. 底部常駐推文列（fixed，疊在 .main 最下面）＋好讀 footer：捲到底時卡片要在它們上面，
 //      不能被蓋住（舊版：推文列壓在卡片上）；
 //   3. 不蓋字：卡片頂端永遠在最後一列有內容的列下面（有底色的空白列也算內容）。
-// 卡片開關固定為開：真瀏覽器的 localStorage 跟同一個 worker 的其他測試共用，讀真 prefs
+// 好讀固定為開：真瀏覽器的 localStorage 跟同一個 worker 的其他測試共用，讀真 prefs
 // 會因執行順序時紅時綠。
 vi.mock("../../src/js/pref_storage", async (importOriginal) => {
   const real = await importOriginal();
-  return { ...real, readEffectivePrefs: () => ({ ...real.readEffectivePrefs(), enableNextArticleCard: true }) };
+  return { ...real, readValuesWithDefault: () => ({ ...real.readValuesWithDefault(), enableEasyReading: true }) };
 });
 import mainCss from "../../src/css/main.css?raw";
 import { NextArticle, NEXT_ARTICLE_ID, trailingBlankPx } from "../../src/js/next_article";

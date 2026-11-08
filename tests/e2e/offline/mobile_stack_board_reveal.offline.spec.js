@@ -302,7 +302,7 @@ const BACK = 5;
 
 async function bootBoardListOf(page, route) {
   await bootScenario(page, ptt, route);
-  await ptt.applyPrefs(page, { enableEasyReadingList: true, enableBoardListSmoothScroll: true, refreshMinIntervalSec: 0 });
+  await ptt.applyPrefs(page, { enableEasyReading: true, refreshMinIntervalSec: 0 });
   await boardListEngaged(page);
 }
 

@@ -156,7 +156,8 @@ test.describe('UI 行為（offline，跨 bootstrap 版本守門）', () => {
 
     // → about（含 PttChrome 版本字樣）
     await nav.getByText(await label(page, 'options_about'), { exact: true }).click();
-    await expect(page.locator('.PrefModal').getByText('PttChrome').first()).toBeVisible();
+    // The general tab's easy-reading description names PttChrome too; it stays mounted, hidden.
+    await expect(page.locator('.PrefModal').getByText('PttChrome').filter({ visible: true }).first()).toBeVisible();
     await expect(autoLoginUser).toBeHidden();
 
     // → 回 general

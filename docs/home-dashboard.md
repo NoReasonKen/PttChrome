@@ -4,7 +4,7 @@
 
 ## 是什麼
 
-主功能表（`【主功能表】`）上蓋一層面板：我的最愛的看板卡片（有新文章的標「有新文章」）、最近去過的看板、新信提示（`你有新信件`）。點卡片進看板，「原生主選單」收起面板。開關 `enableHomeDashboard`（預設開，在安全模式名單內）。
+主功能表（`【主功能表】`）上蓋一層面板：我的最愛的看板卡片（有新文章的標「有新文章」）、最近去過的看板、新信提示（`你有新信件`）。點卡片進看板，「原生主選單」收起面板。沒有自己的開關：好讀開著就出現，關著一律原生主功能表。
 
 ## 規則
 
@@ -21,7 +21,7 @@
 - The dashboard is always found through its controller: the view registers its root with `attachRoot` after rendering, and `readingPosition` and the App Bar's scroll-to-top use `rootElement()` instead of looking up `#homeDashboard` in the document, because a stacked-page layer (#25) carries another dashboard with the same id. `#homeDashboard` is only used by `closest`-style checks that walk up from an event target.
 - 快取：`pttchrome.homeFavorites.v1`（清單＋時間，跨重整保留只為了先畫出來；已讀標記只對這次登入有意義，所以「新鮮」只算這一頁抓過的）、`pttchrome.homeRecentBoards.v1`（最近看板，文章列表 settle 時記）。
 - 滑鼠：面板在 `#BBSWindow` 外。App 的滑鼠入口在 window（滾輪是 capture），`_onUploadLayer` 認 `#homeDashboard` 放過；按鈕 mousedown `preventDefault`（不搶 `#t` 焦點）＋ stopPropagation。
-- e2e：`installReplay` 預設把 `enableHomeDashboard` 關掉（畫主功能表的 spec 不能被面板擋住、多送 byte），live 的自動登入 prefs 也關掉；只有 `home_dashboard.offline.spec.js` 以 `bootOffline(page, ptt, { homeDashboard: true })` 打開。
+- 好讀行為：好讀開著就有面板，沒有自己的開關。e2e 畫主功能表又要量送出 byte 的 spec，在面板出現後把我的最愛標成剛抓過（`homeDashboard._state.fetchedAt = Date.now()`），面板就不會自己送 `^Z f`。
 
 ## 測試
 

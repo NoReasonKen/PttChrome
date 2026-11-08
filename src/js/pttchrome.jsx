@@ -56,7 +56,7 @@ import { serializedOpHint } from './serialized_op_gate';
 import { HINT_ERROR } from './status_hint';
 import { decideKeepAlive, KEEP_ALIVE_TIMEOUT_MS } from './keep_alive';
 import { isPushKey, pushGateFacts, shouldInterceptPushKey } from './long_push_gate';
-import { effectivePrefs, readEffectivePrefs, readValuesWithDefault, writeValues } from './pref_storage';
+import { readValuesWithDefault, writeValues } from './pref_storage';
 import { WIRE_UTF8, cursorPositionReport } from './wire_charset';
 import * as prefSync from './pref_sync';
 import { stopDebugRecording, toggleDebugRecording } from './debug_record_control';
@@ -234,7 +234,7 @@ export const App = function() {
   // 一鍵登出（手機按鍵列）：走 Goodbye → y → 任意鍵，由 server 自己關線。同一條
   // CommandQueue、同樣以 `active` 擋使用者輸入（serialized_op_gate）。
   this.logout = new LogoutSession(this, this.view, this.buf, this.commandQueue);
-  // 跳過進板畫面（pref skipBoardEntryScreen）：同一條 CommandQueue 代按一鍵。
+  // 跳過進板畫面（好讀行為）：同一條 CommandQueue 代按一鍵。
   // **順序有意義**：它的 screenSettled listener 排在 listSession／boardListSession
   // 之後 ⇒ 開板命令（brd-open-board）已在同一個 settle 完成，我們的鍵才排得上線。
   // arm 由送出出口觸發（_attachConn 的 conn.onDataSent）。
@@ -391,7 +391,6 @@ export const App = function() {
 
   // 值須與 pref_storage.js DEFAULT_PREFS 一致（boot 走 main.jsx →
   // onValuesPrefChange 逐 key 重套，這裡只是佔位初值）。
-  this.endTurnsOnLiveUpdate = true;
   this.copyOnSelect = true;
 
   var self = this;
@@ -1360,7 +1359,7 @@ App.prototype.onFunctionKey = function(bytes, label) {
   if (isPushKey(bytes)) {
     const pushFacts = pushGateFacts(this);
     if (pushFacts && shouldInterceptPushKey({
-          key: bytes, prefs: readEffectivePrefs(),
+          key: bytes, prefs: readValuesWithDefault(),
           pageState: pushFacts.pageState, lastRowText: pushFacts.lastRowText,
           cursorOnInputField: pushFacts.cursorOnInputField
         }) && this.openLongPushModal()) return;
@@ -2026,10 +2025,8 @@ App.prototype.resetMouseCursor = function() {
 };
 
 App.prototype.onValuesPrefChange = function(values, opts) {
-  // 安全模式（全部用原生）在這裡蓋掉增強功能；values 本身照存，關掉就回原設定。
-  var applied = effectivePrefs(values);
-  for (var name in applied) {
-    this.onPrefChange(name, applied[name]);
+  for (var name in values) {
+    this.onPrefChange(name, values[name]);
   }
 
   // Enhanced Add-on: cache the credentials for this session's reconnects, but
@@ -2163,9 +2160,6 @@ App.prototype.onPrefChange = function(name, value) {
     case 'enableOpenCache':
       applyOpenCache(value);
       break;
-    case 'articleHorizontalGestures':
-      this.articleGestures?.update();
-      break;
     case 'mobileLayout':
       this.mobileLayoutMode = value;
       this.applyMobileLayout();
@@ -2291,9 +2285,6 @@ App.prototype.onPrefChange = function(name, value) {
     case 'copyOnSelect':
       this.copyOnSelect = value;
       break;
-    case 'endTurnsOnLiveUpdate':
-      this.endTurnsOnLiveUpdate = value;
-      break;
     case 'enablePicPreview':
       // 刻意存成 view 欄位：它在 redraw 時才被讀（term_view 傳成 hoverPreview 給
       // src/render/），所以真相源必須活在渲染鏈能同步讀到的地方，不是預覽元件裡。
@@ -2390,38 +2381,23 @@ App.prototype.onPrefChange = function(name, value) {
       this.view.redraw(true);
       break;
     case 'enableEasyReading':
-      /*if (this.connectedUrl.site == 'ptt.cc') {
-        this.view.useEasyReadingMode = value;
-      } else {
-        this.view.useEasyReadingMode = false;
-      }*/
-      break;
-    case 'enableEasyReadingList':
-      // ON while already sitting on a settled board list: no settle will come,
-      // so evaluate the current screen immediately (e2e applyPrefs relies on
-      // this). OFF: single-exit cleanup back to native.
-      if (value) {
-        this.listSession.evaluateNow();
-      } else {
-        this.listSession.disable();
-      }
-      break;
-    case 'enableBoardListSmoothScroll':
-      // 看板列表平滑捲動。與上面那條對稱（畫面靜止時打開不會再有 settle）。
-      if (value) {
-        this.boardListSession.evaluateNow();
-      } else {
-        this.boardListSession.disable();
-      }
-      break;
-    case 'enableListNativeAutoResume':
-      // 在原生鏡像上打開時畫面可能已經靜止（不會再有 settle 來排探針）⇒ 主動排
-      // 一次。關掉時把已排的收掉（探針自己也會再檢查一次 pref，這裡只是不留
-      // 沒有意義的 timer）。
+      // The article page reacts on its own (easy_reading.js reads the switch on
+      // every view update); the rest is applied here.
+      this.articleGestures?.update();
+      // ON while already sitting on a settled list: no settle will come, so
+      // evaluate the current screen immediately (e2e applyPrefs relies on this).
+      // OFF: single-exit cleanup back to native.
       for (const s of [this.listSession, this.boardListSession]) {
         if (!s) continue;
-        if (value) s._scheduleResumeProbe();
-        else s._cancelResumeProbe();
+        if (value) {
+          s.evaluateNow();
+          // On a native mirror the screen may already be quiet (no settle will
+          // schedule the probe) ⇒ schedule one now.
+          s._scheduleResumeProbe();
+        } else {
+          s.disable();
+          s._cancelResumeProbe();
+        }
       }
       break;
     case 'antiIdleTime':

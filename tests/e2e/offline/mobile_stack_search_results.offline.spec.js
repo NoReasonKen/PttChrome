@@ -21,7 +21,7 @@ const RESULTS = { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] };
 
 // The author results of Alpha, then Beta opened from them.
 async function openFromAuthorResults(page, options) {
-  await bootNestedShortcutSearch(page, { easyList: true, ...options });
+  await bootNestedShortcutSearch(page, { ...options });
   const position = await readToMiddle(page);
   await tapShortcut(page, 'author');
   await waitList(page, RESULTS);

@@ -1,4 +1,4 @@
-// 讀完接著讀下一篇（pref enableNextArticleCard，預設開）：好讀文章讀到文末，最後一則推文
+// 讀完接著讀下一篇（好讀行為）：好讀文章讀到文末，最後一則推文
 // 下面留一段空白，再放一張「下一篇」的標題卡（標題、推文數、作者，取自列表快照）。點它才
 // 換文，**捲到底不會自己換**（怕看不到最底部的推文）。設計見 docs/next-article.md —— 改這支
 // 之前先讀它。
@@ -26,7 +26,7 @@ import { sameBoard } from './screen_titles';
 import { subjectKey, subjectMatches } from './long_push_anchor';
 import { hiddenReason, listFilterOf } from './list_row_filter';
 import { serializedOpHint } from './serialized_op_gate';
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { recordFor } from './reading_record';
 import { HINT_ERROR } from './status_hint';
 import { i18n } from './i18n';
@@ -164,7 +164,7 @@ export function trailingBlankPx(container) {
 }
 
 function enabled() {
-  return !!readEffectivePrefs().enableNextArticleCard;
+  return easyReadingOn(readValuesWithDefault());
 }
 
 // ---------------------------------------------------------------------------

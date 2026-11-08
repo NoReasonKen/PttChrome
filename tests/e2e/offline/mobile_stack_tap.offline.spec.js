@@ -23,8 +23,7 @@ const articleRead = page => page.waitForFunction(() => {
 
 // Open the recorded article from the list, and return its card's identity.
 async function openRecordedArticle(page) {
-  await bootScenario(page, ptt, reopen, { articleGestures: true });
-  await ptt.applyPrefs(page, { enableEasyReadingList: true });
+  await bootScenario(page, ptt, reopen);
   await listActive(page);
   const card = await page.evaluate(() => {
     const ls = window.__app.listSession;

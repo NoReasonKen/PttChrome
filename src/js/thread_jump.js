@@ -14,7 +14,7 @@ import { createUnderlay, raiseSurfaces, releaseSurfaces, paintSurfaces, slideDur
 import { STACK_NOTICE_MS } from './stack_layer';
 import { PAGE } from './page_stack';
 import { recordFor } from './reading_record';
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { i18n } from './i18n';
 
 const KEYS = { '[': '[', '-': '[', ']': ']', '+': ']', '=': '=' };
@@ -203,7 +203,7 @@ export class ThreadJump extends HiddenArticleRoute {
   _slideToList() {
     const core = this.core;
     const stack = core.navigationStack;
-    if (!this.cover || !stack || !readEffectivePrefs().enableEasyReadingList) return false;
+    if (!this.cover || !stack || !easyReadingOn(readValuesWithDefault())) return false;
     const layer = stack.revealable();
     const underlay = createUnderlay(core, layer, stack.title, stack.appBar);
     const surfaces = raiseSurfaces([this.cover.el, document.getElementById('mobileAppBar')]);

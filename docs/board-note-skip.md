@@ -1,6 +1,6 @@
 # 跳過進板畫面（board_note_skip）
 
-pref `skipBoardEntryScreen`（預設 true）。實作 `src/js/board_note_skip.js`（檔頭有完整 pttbbs 出處），
+好讀行為：好讀開著就跳過，沒有自己的開關。實作 `src/js/board_note_skip.js`（檔頭有完整 pttbbs 出處），
 unit `tests/unit/board_note_skip.test.js`，offline e2e `tests/e2e/offline/board_note_skip.offline.spec.js`
 （素材 `scn-board-note-movie`）。PTT 端序列見 `docs/pttbbs-screen-protocol.md`「進版畫面的完整序列」。
 

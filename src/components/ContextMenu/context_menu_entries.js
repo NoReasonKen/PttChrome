@@ -172,7 +172,7 @@ export function buildContextMenuEntries(p) {
         { preview: previews.copyArticleLink, copy: true },
       );
     // 長推文一鍵發送：打一大段話，自動依 PTT 單則上限分段依序推出。
-    // 只在文章畫面出現（要按得到 X），總開關 enableLongPush 預設開。
+    // 只在文章畫面出現（要按得到 X），好讀開著才有。
     if (p.longPushEnabled)
       item("longPush", i18n("cmenu_longPush"), p.onLongPushClick);
     // 兩個小幫手是小眾功能，**預設不顯示**（enableInputHelper /

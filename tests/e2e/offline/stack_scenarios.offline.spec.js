@@ -38,7 +38,6 @@ const boardListEngaged = page => page.waitForFunction(() => {
 
 test('article list → article → back → the same article again replays end to end', async ({ page }) => {
   await bootScenario(page, ptt, reopen);
-  await ptt.applyPrefs(page, { enableEasyReadingList: true });
   await listActive(page);
   for (let round = 0; round < 2; round++) {
     await ptt.sendKey(page, 'Enter');
@@ -50,10 +49,8 @@ test('article list → article → back → the same article again replays end t
 });
 
 test('board list → board → back replays end to end', async ({ page }) => {
+  // Easy reading is on from the first frame, so the board list takes it over.
   await bootScenario(page, ptt, boardList);
-  // Article-list easy reading was already on before recording started; only
-  // board-list smooth scrolling was turned on inside the recording.
-  await ptt.applyPrefs(page, { enableEasyReadingList: true, enableBoardListSmoothScroll: true });
   await boardListEngaged(page);
   await ptt.sendKey(page, 'Enter');
   await listActive(page);
@@ -73,7 +70,7 @@ async function openBoardFromDashboard(page, cassette) {
   await page.evaluate(() => window.__app.onData('\x1b[H'));
   await dashboardVisible(page);
   await page.evaluate(() => window.__app.homeDashboard.openBoard('C_Chat'));
-  // The board's entry screen is skipped by the app (skipBoardEntryScreen), as
+  // The board's entry screen is skipped by the app (an easy-reading behaviour), as
   // in the recording. A Space of our own could land on the list once it shows
   // and move the selection off the recorded row.
   await listActive(page);
@@ -88,9 +85,12 @@ test('home dashboard → board → back replays end to end', async ({ page }) =>
 
 test('home dashboard → board → title search → back → back replays end to end', async ({ page }) => {
   await openBoardFromDashboard(page, homeSearch);
+  // `/` opens the search modal, which sends "/ → wait for the prompt → keyword".
   await ptt.sendKey(page, 'Slash');
-  await waitFed(page, fedBefore(homeSearch, 'open', 1));
-  await ptt.typeLine(page, homeSearch.meta.keyword);
+  const box = page.locator('input[name="searchKeyword"]');
+  await box.fill(homeSearch.meta.keyword);
+  await box.press('Enter');
+  await page.waitForFunction(() => window.__app.searchInFlight === false);
   await waitFed(page, fedBefore(homeSearch, 'back', 1));
   await listActive(page);
   await ptt.sendKey(page, 'ArrowLeft');

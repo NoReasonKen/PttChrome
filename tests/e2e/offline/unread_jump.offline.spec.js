@@ -59,7 +59,7 @@ const range = (from, to, markOf) => {
 test.describe('跳到第一篇未讀（F7）', () => {
   test('F7 送 End（擋下瀏覽器預設動作）→ 讀到已讀區 → 跳號停在第一篇未讀', async ({ page }) => {
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false });
+    await ptt.applyPrefs(page, { enableEasyReading: false });
     await drawList(page, range(1233, 1235, () => ' '), 1233);
     await page.evaluate(() => {
       window.__f7Prevented = null;
@@ -88,7 +88,7 @@ test.describe('跳到第一篇未讀（F7）', () => {
 
   test('End 這頁還沒走進已讀區 ⇒ 送 PgUp 再讀一頁', async ({ page }) => {
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false });
+    await ptt.applyPrefs(page, { enableEasyReading: false });
     await drawList(page, range(1233, 1235, () => ' '), 1233);
     await page.evaluate(() => window.__app.setInputAreaFocus());
     await collectSent(page);

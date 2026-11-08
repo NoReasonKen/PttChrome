@@ -85,7 +85,7 @@ async function installSim(page, simOpts, imageLines = []) {
 async function openArticle(page, simOpts, { imageLines = [], imageProfile } = {}) {
   await bootOffline(page, ptt, imageProfile ? { imageProfile } : undefined);
   await ptt.applyPrefs(page, {
-    enableEasyReadingList: false, showFloorNumbers: true,
+    showFloorNumbers: true,
     ...(imageLines.length ? { enablePicPreview: true } : {})
   });
   await installSim(page, simOpts, imageLines);

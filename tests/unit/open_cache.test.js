@@ -6,7 +6,7 @@ import {
   OPEN_CACHE_PREFIX,
   _resetOpenCacheForTest,
 } from "../../src/js/open_cache";
-import { DEFAULT_PREFS, NATIVE_SAFE_MODE_KEYS } from "../../src/js/pref_storage";
+import { DEFAULT_PREFS } from "../../src/js/pref_storage";
 
 const PAGE = "https://example.test/PttChrome/";
 
@@ -46,9 +46,8 @@ const reg = (scriptURL) => ({ active: { scriptURL }, unregister: vi.fn(async () 
 beforeEach(() => _resetOpenCacheForTest());
 
 describe("open cache（頁面端）", () => {
-  test("預設開；不送鍵 ⇒ 不在安全模式名單", () => {
+  test("預設開；不送鍵 ⇒ 不是好讀行為，保留自己的開關", () => {
     expect(DEFAULT_PREFS.enableOpenCache).toBe(true);
-    expect(NATIVE_SAFE_MODE_KEYS).not.toContain("enableOpenCache");
   });
 
   test("開：等頁面 load 完才註冊 sw.js（不跟開站搶頻寬）", () => {

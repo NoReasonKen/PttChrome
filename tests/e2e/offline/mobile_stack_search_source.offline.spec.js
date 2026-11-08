@@ -21,7 +21,7 @@ const AUTHOR_RESULTS = { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topi
 
 // The board's list, then Alpha opened from it and read to its middle.
 async function sourceFromList(page, options = {}) {
-  await bootNestedShortcutSearch(page, { easyList: true, ...options });
+  await bootNestedShortcutSearch(page, { ...options });
   // The app guards system Back only once the reader has acted.
   await ptt.sendKey(page, 'ArrowLeft');
   await waitList(page, FULL_LIST);
@@ -147,7 +147,7 @@ test('a nested search unwinds one level per Back, each revealing the page below'
 // (#83). Returns the row at the top of the view. `comments`: Alpha ends with
 // its sign-off and comments up to that line (`withComments`).
 async function longSourceFromList(page, { comments = 0 } = {}) {
-  await bootNestedShortcutSearch(page, { easyList: true, alphaLines: 80 });
+  await bootNestedShortcutSearch(page, { alphaLines: 80 });
   // The article PTT opens and later reopens as Alpha.
   await page.evaluate(() => { window.__alpha = window.__shortcutServer.state.open; });
   if (comments) await withComments(page, comments);
@@ -384,7 +384,7 @@ test('the next page PTT sends for an article kept over its edited copy rebuilds 
 // answers no page past line `stop` until paging resumes. Returns the row at
 // the top of the view and the line the reading stopped at.
 async function partlyReadSource(page, { lines, stop }) {
-  await bootNestedShortcutSearch(page, { easyList: true, alphaLines: lines });
+  await bootNestedShortcutSearch(page, { alphaLines: lines });
   await page.evaluate(stop => {
     const state = window.__shortcutServer.state;
     window.__alpha = state.open;
@@ -494,7 +494,7 @@ test('a source touched while it is revealed swipes again once it takes over', as
 // out only near the view; the scrolling has laid out each one. Returns the row
 // at the top of the view.
 async function sourceScrolledToItsEnd(page, lines) {
-  await bootNestedShortcutSearch(page, { easyList: true, alphaLines: 80 });
+  await bootNestedShortcutSearch(page, { alphaLines: 80 });
   // PTT's copy is this long when the list opens it.
   await page.evaluate(lines => { window.__shortcutServer.state.open.lines = lines; }, lines);
   await ptt.sendKey(page, 'ArrowLeft');
@@ -537,7 +537,7 @@ test('half a swipe back from the results shows a long source scrolled to its end
 // The comment bar, folded into the toolbar's push button.
 const pushBtn = page => page.locator('[data-key="X"]');
 const commentInput = page => page.locator('#commentBar [name="commentBarText"]');
-const withCommentBar = page => ptt.applyPrefs(page, { enableLongPush: true, enableCommentBar: true, mobileCommentBarFold: true });
+const withCommentBar = page => ptt.applyPrefs(page, { mobileCommentBarFold: true });
 const hinted = (page, text) => recordedHints(page).then(hints => hints.some(hint => hint.includes(text)));
 const pendingShown = page => page.evaluate(() => !!window.__app.view._listLoadingOwners?.has('stackPending'));
 
@@ -685,7 +685,7 @@ const loadedPreviews = (page, root) => page.evaluate(root => [...document.queryS
     img.getBoundingClientRect().height > 0).length, root);
 
 test('the source revealed by Back from the results shows the image previews the reader saw', async ({ page }) => {
-  await bootNestedShortcutSearch(page, { easyList: true, images: true });
+  await bootNestedShortcutSearch(page, { images: true });
   await expect.poll(() => loadedPreviews(page, MAIN)).toBe(1);
   await tapShortcut(page, 'author');
   await waitList(page, AUTHOR_RESULTS);
@@ -979,8 +979,8 @@ test('Share on the revealed source shares its link at once, within the tap, with
 // Home dashboard → board Test → Alpha read to its middle, each page alive
 // under the next.
 async function alphaFromDashboard(page) {
-  await bootNestedShortcutSearch(page, { easyList: true, loggedIn: true, homeMenu: true, ptList: true });
-  await ptt.applyPrefs(page, { enableHomeDashboard: true });
+  await bootNestedShortcutSearch(page, { loggedIn: true, homeMenu: true, ptList: true });
+  await ptt.applyPrefs(page, { enableEasyReading: true });
   // Favorites already fetched: the dashboard fetches nothing from this board.
   await page.evaluate(() => {
     const home = window.__app.homeDashboard;
@@ -1082,8 +1082,8 @@ test('Back from the results reopens the source though the results still settle a
 });
 
 test('a revealed source with inline previews goes when PTT shows the main menu instead', async ({ page }) => {
-  await bootNestedShortcutSearch(page, { easyList: true, images: true, homeMenu: true, ptList: true });
-  await ptt.applyPrefs(page, { enableHomeDashboard: true });
+  await bootNestedShortcutSearch(page, { images: true, homeMenu: true, ptList: true });
+  await ptt.applyPrefs(page, { enableEasyReading: true });
   await ptt.sendKey(page, 'ArrowLeft');
   await waitList(page, FULL_LIST);
   await tapCard(page, '[Talk] Alpha topic');

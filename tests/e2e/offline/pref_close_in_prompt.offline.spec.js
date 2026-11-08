@@ -46,14 +46,7 @@ test.describe('好讀模式停在 prompt 上（離線重放）', () => {
 
   async function openArticleInEasyReading(page) {
     await bootOffline(page, ptt);
-    // 這個 describe 用 X 當「把 PTT 叫出推文 prompt」的手段，守的是 prompt 上關設定
-    // 頁不可變全黑。預設情況下 X 會被攔去開長推文（使用者的 byte 被吞掉，改由狀態
-    // 機送一個 X 探路，之後 Ctrl-C 退出），所以這裡關掉攔截；攔截本身守在
-    // long_push.offline.spec.js。
-    await ptt.applyPrefs(page, {
-      enableEasyReading: true,
-      pushKeyOpensLongPush: false,
-    });
+    await ptt.applyPrefs(page, { enableEasyReading: true });
     await replayCassette(page, cassette, { easyReading: true });
     expect(await rowCount(page)).toBeGreaterThan(0);
   }
@@ -64,8 +57,10 @@ test.describe('好讀模式停在 prompt 上（離線重放）', () => {
     test.setTimeout(90000);
     await openArticleInEasyReading(page);
 
-    // X 推文 → 好讀切成原生鏡像（keydown 路徑）
-    await ptt.sendKey(page, 'X');
+    // 單字元鍵 → 好讀切成原生鏡像（keydown 路徑）。這裡守的是「prompt 上關設定頁
+    // 不可變全黑」，用哪個鍵叫出 prompt 無關；X 會被攔去開長推文（守在
+    // long_push.offline.spec.js），所以用 y，PTT 回的沿用推文 prompt 那幀。
+    await ptt.sendKey(page, 'y');
     await feedRaw(page, PUSH_PROMPT);
     await waitScreenSettled(page);
     expect(await functionMode(page)).toBe(true);

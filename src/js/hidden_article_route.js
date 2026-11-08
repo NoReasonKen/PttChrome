@@ -71,13 +71,16 @@ export class HiddenArticleRoute {
   }
 
   // The route continues out of sight: the sessions that would present the
-  // screens on the way are parked, as for any external navigation.
+  // screens on the way are parked, as for any external navigation. The
+  // article list is parked even when it never presented this board (the
+  // article was opened some other way): it would otherwise take over the
+  // first list frame on the way and follow the route's screens.
   _hold() {
     const core = this.core;
     this.held = true;
     core.holdBusy?.(true);
     core.easyReading?._enterFunctionMode();
-    core.listSession?.beginExternalNavigation();
+    core.listSession?.beginExternalNavigation({ fromIdle: true });
     core.boardListSession?.beginExternalNavigation();
   }
 

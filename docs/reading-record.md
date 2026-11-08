@@ -138,7 +138,7 @@ N1 本身沒有變：探針仍然不碰 external，只有序列的擁有者能�
   - 主功能表、看板列表、站內信、精華區 ⇒ 不回。
 - 列表 session 在斷線時被 disable 成 idle。`beginExternalNavigation({ fromIdle: true })` 讓它照樣停進外部 hold；否則 `s<板>` 落地那一幀 idle 會直接 seed，採用 server 的預設游標，之後的 `<編號>⏎` 就和本地選取對不上。列表好讀沒開時維持 idle。
 - 收手：自己登出不回；這條連線從沒登入過（重連失敗）就保留上一份；登入後離開主功能表、或 deep link 也在等登入（使用者剛給的連結較新）就作廢。`ReconnectResume` 要建在 `DeepLinkController` 之後，同一次 settle 讓 deep link 先跑。
-- 開關：pref `reconnectResume`（設定 → 一般「斷線重連後回到原處」，預設開）。關掉時斷線不記，重連途中才關也在出發前作廢，停在主功能表。
+- 開關：好讀行為，跟著好讀開關（`enableEasyReading`）。好讀關掉時斷線不記，重連途中才關也在出發前作廢，停在主功能表。
 - 待回目標平常只在記憶體（同 deep link）；例外是 APK 回收重建與下面的開站接回，兩者都走 localStorage `SNAPSHOT_KEY`。debug 錄製檔記 `reconnectResume.capture／restoreSnapshot／countdown／cancel／dispatch／discard`。
 
 ## 開站回到上次的地方
@@ -170,10 +170,10 @@ search-result recovery document above for bounds and ambiguity handling.
   the same reading place, they retain that visible snapshot instead of
   recomputing its viewport using changed row heights. Foreground checkpoints
   wait for stable geometry and do not run while the document is hidden.
-- 接：開機讀一次就刪（`readSnapshot`）。`bootResumeMode`：APK 回收重建且 `reconnectResume` 開 ⇒ 照舊直接出發；其餘 `resumeLastPlace` 開 ⇒ 計畫帶 `fromOpen`。超過 `SNAPSHOT_MAX_AGE_MS`（12 小時）不接。
+- 接：開機讀一次就刪（`readSnapshot`）。`bootResumeMode`：好讀關 ⇒ 不接；APK 回收重建 ⇒ 照舊直接出發；其餘 ⇒ 計畫帶 `fromOpen`。超過 `SNAPSHOT_MAX_AGE_MS`（12 小時）不接。
 - 出發前倒數：登入回主功能表後先顯示底部提示「即將回到上次的地方：<板>…」＋「取消」（`#resumeLastPlace`，`OPEN_RESUME_DELAY_MS`），倒數完再確認一次（連線中、還在主功能表、AID 跳文沒在跑、deep link 沒在等）才 `startResume`。使用者按取消、自己走開（離開主功能表）、倒數中斷線、deep link 登記 ⇒ 一個鍵都不送。提示的滑鼠事件不外傳（`App._onUploadLayer` 認 `isResumeToastTarget`）。
 - deep link 進來時以 deep link 為準：同斷線重連的 superseded。
-- 開關：pref `resumeLastPlace`（設定 → 一般「開站回到上次的地方」，預設開；會送鍵 ⇒ 在安全模式名單內）。e2e 預設關（同一個 context 重整會自己送鍵），live 的共用 session 也關。
+- 開關：沒有自己的開關，好讀開著就做（會送鍵 ⇒ 好讀行為）。e2e 預設關（同一個 context 重整會自己送鍵），live 的共用 session 也關。
 
 Debug recordings include `reconnectResume.diagnostics` at recording start, even
 when recovery decisions preceded recording. It reports the boot snapshot read

@@ -894,7 +894,6 @@ test.describe('滑鼠（離線重放）', () => {
       await bootOffline(page, ptt);
       await ptt.applyPrefs(page, {
         enableEasyReading: false,
-        enableEasyReadingList: false,
         useMouseBrowsing: true,
         mouseLeftClick: true,
         ...prefs,
@@ -950,7 +949,6 @@ test.describe('滑鼠（離線重放）', () => {
       await bootOffline(page, ptt);
       await ptt.applyPrefs(page, {
         enableEasyReading: false,
-        enableEasyReadingList: false,
         useMouseBrowsing: true,
         mouseLeftClick: true,
         mouseEdgePaging: true,
@@ -1272,7 +1270,7 @@ test.describe('滑鼠（離線重放）', () => {
       await replayListCassette(page, listCassette2);
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
       await ptt.applyPrefs(page, {
-        enableEasyReadingList: true,
+        enableEasyReading: true,
         easyReadingListPrefetchCount: 200,
       });
       await page.waitForFunction(

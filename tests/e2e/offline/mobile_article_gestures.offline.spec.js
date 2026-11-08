@@ -1,5 +1,4 @@
 const { test, expect } = require('@playwright/test');
-const ptt = require('../helpers/ptt');
 const { waitRectStable, waitPreviewsSettled } = require('../helpers/layout');
 const { cdp, touchDrag } = require('../helpers/real_input');
 const { pauseClockNow } = require('../helpers/clock');
@@ -191,18 +190,6 @@ for (const key of ['[', '=', ']']) {
     await expect.poll(() => gestureSent(page)).toContain(key);
   });
 }
-
-test('disabling article gestures restores ordinary input; previews remain usable', async ({ page }) => {
-  await bootGestureArticle(page);
-  await ptt.applyPrefs(page, { articleHorizontalGestures: false });
-  await expect(page.locator('.main')).not.toHaveClass(/articleHorizontalGestures/);
-  const main = await waitRectStable(page, '.main');
-  const width = page.viewportSize().width;
-  await touchDrag(page, { x: width - 24, y: main.top + 100 }, { x: 12, y: main.top + 100 });
-  await expect(page.locator(DRAWER)).toHaveCount(0);
-  await waitPreviewsSettled(page);
-  expect(await gestureSent(page)).toBe('');
-});
 
 test('a preview tap still opens the viewer while a horizontal preview drag opens only the drawer', async ({ page }) => {
   await bootGestureArticle(page);

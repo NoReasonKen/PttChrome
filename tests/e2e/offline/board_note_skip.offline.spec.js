@@ -1,4 +1,4 @@
-// 跳過進板畫面（src/js/board_note_skip.js，pref skipBoardEntryScreen）—— 真瀏覽器＋完整 boot 鏈。
+// 跳過進板畫面（src/js/board_note_skip.js，好讀開著時的行為）—— 真瀏覽器＋完整 boot 鏈。
 //
 // unit（tests/unit/board_note_skip.test.js）蓋掉判斷與狀態機；這裡守的是 unit 摸不到的接線：
 // 送出出口（telnet._sendEscaped → onDataSent）真的 arm 得起來、settle listener 的順序讓代按的鍵
@@ -10,7 +10,7 @@
 // 一次餵完 ⇒ 落在 pressanykey；動畫中送 q 的分支由 unit 守。
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
-const { loadCassette, bootScenario, waitFed, waitScreenSettled } = require('../helpers/replay');
+const { loadCassette, bootScenario, waitFed, waitScreenSettled, feedRaw } = require('../helpers/replay');
 
 const cas = loadCassette('scn-board-note-movie');
 // 全合成的小卷（主功能表 → s → 選擇看板 prompt），接上面那卷的動畫／文章列表 recv：
@@ -68,12 +68,39 @@ const screenState = (page) =>
     };
   });
 
+// 好讀列表自己送的鍵：接手時的跳號（N⏎ 或 N＋空白）與整幀重繪（\f）。
+const listOwnKey = (k) => /^(\d+(\r| +))?\f?$/.test(k);
+
+// 好讀接手首幀那張看板列表時的跳號與重繪：錄製時好讀沒接手它，卷裡沒有這些回應 ⇒
+// 照 PTT 回：列表只有一列，怎麼跳游標都停在那一列 ⇒ 重餵首幀。回傳接手完、線路
+// 靜下來時已送出的鍵數，之後送出的鍵才算被測的那一下。
+async function answerBoardListTakeover(page, firstFrame) {
+  let seen = 0;
+  for (let i = 0; i < 50; i++) {
+    const st = await page.evaluate(() => ({
+      sent: window.__replay.sent.slice(),
+      quiet: window.__app.commandQueue.idle && !window.__app.buf._settleTimer,
+      owner: window.__app.buf.listRenderOwner,
+    }));
+    const asks = st.sent.slice(seen).filter(listOwnKey);
+    seen = st.sent.length;
+    for (let k = 0; k < asks.length; k++) await feedRaw(page, firstFrame);
+    if (!asks.length && st.quiet && st.owner === 'board-list') return seen;
+    await page.waitForTimeout(100); // sleep-ok: poll interval while answering the takeover's own keys
+  }
+  throw new Error('board list easy reading did not take the first frame over');
+}
+
 test.describe('跳過進板畫面（scenario 重放）', () => {
   test('看板列表 Enter → 動畫進板畫面 ⇒ 自動代按一鍵，直接落在文章列表', async ({ page }) => {
     test.skip(!cas, '缺 scn-board-note-movie');
     // 好讀開著才驗得到「進板公告沒有被當成文章開」。
     await bootScenario(page, ptt, cas, { prefs: { enableEasyReading: true } });
     expect((await screenState(page)).row0).toContain('看板列表');
+    const before = await answerBoardListTakeover(
+      page,
+      Buffer.from(cas.steps[0].recv, 'base64').toString('latin1')
+    );
 
     await ptt.sendKey(page, 'Enter');
     await waitFed(page, cas.steps.length);
@@ -84,14 +111,19 @@ test.describe('跳過進板畫面（scenario 重放）', () => {
     expect(s.last).toContain('文章選讀');
     expect(s.active).toBe(false);
     expect(s.easyReading).toBe(false);
-    // 代按的鍵恰好一個（pressanykey ⇒ 空白，fullRepaint 尾附 \f），沒有多送任何鍵落進文章列表。
-    expect(s.sent).toEqual(['\r', ' \f']);
+    // 代按的鍵恰好一個（pressanykey ⇒ 空白，fullRepaint 尾附 \f）；之後只有好讀列表接手
+    // 文章列表的跳號預讀，沒有別的鍵落進文章列表。
+    const sent = s.sent.slice(before);
+    expect(sent.slice(0, 2)).toEqual(['\r', ' \f']);
+    expect(sent.slice(2).filter((k) => !listOwnKey(k))).toEqual([]);
   });
 
   test('主選單 s → 搜尋彈窗送出板名 → 進板畫面 ⇒ 同樣自動代按', async ({ page }) => {
     const c = selectCassette();
     test.skip(!c, '缺 scn-board-note-select／scn-board-note-movie');
-    await bootScenario(page, ptt, c);
+    // 搜尋彈窗只在好讀開著時接手 `s`；主功能表上的首頁儀表板先標成剛更新過，不去抓我的最愛。
+    await bootScenario(page, ptt, c, { prefs: { enableEasyReading: true } });
+    await page.evaluate(() => { window.__app.homeDashboard._state.fetchedAt = Date.now(); });
     expect((await screenState(page)).row0).toContain('主功能表');
 
     await ptt.sendKey(page, 's');
@@ -109,30 +141,13 @@ test.describe('跳過進板畫面（scenario 重放）', () => {
 
     const s = await screenState(page);
     expect(s.active).toBe(false);
-    expect(s.sent).toEqual(['s\f', 'Android \f', '\b'.repeat(7) + 'Android\r', ' \f']);
+    expect(s.sent.slice(0, 4)).toEqual(['s\f', 'Android \f', '\b'.repeat(7) + 'Android\r', ' \f']);
+    expect(s.sent.slice(4).filter((k) => !listOwnKey(k))).toEqual([]);
   });
 
-  test('pref 關 ⇒ 停在進板畫面，一個鍵都不代按', async ({ page }) => {
+  test('好讀關 ⇒ 停在進板畫面，一個鍵都不代按', async ({ page }) => {
     test.skip(!cas, '缺 scn-board-note-movie');
-    await bootScenario(page, ptt, cas, { prefs: { skipBoardEntryScreen: false } });
-
-    await ptt.sendKey(page, 'Enter');
-    await waitFed(page, 2);
-    await waitScreenSettled(page);
-    await expect.poll(async () => (await screenState(page)).queueIdle).toBe(true);
-
-    const s = await screenState(page);
-    expect(s.last).toContain('請按任意鍵繼續');
-    expect(s.active).toBe(false);
-    expect(s.sent).toEqual(['\r']);
-    expect(s.fed).toBe(2);
-  });
-
-  test('安全模式（全部用原生）開著 ⇒ 自己的 pref 開著也停在進板畫面', async ({ page }) => {
-    test.skip(!cas, '缺 scn-board-note-movie');
-    await bootScenario(page, ptt, cas, {
-      prefs: { nativeSafeMode: true, skipBoardEntryScreen: true },
-    });
+    await bootScenario(page, ptt, cas, { prefs: { enableEasyReading: false } });
 
     await ptt.sendKey(page, 'Enter');
     await waitFed(page, 2);

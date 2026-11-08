@@ -1,4 +1,4 @@
-// 寬螢幕雙欄閱讀（pref enableSplitReading，預設開）：讀文章時，終端機左邊的空白處列出
+// 寬螢幕雙欄閱讀（好讀行為）：讀文章時，終端機左邊的空白處列出
 // 剛才那份文章列表，點一篇就換過去讀，像 Gmail／RSS 閱讀器。設計見 docs/split-reader.md
 // —— 改這支之前先讀它。
 //
@@ -21,7 +21,7 @@ import { blacklistHit, listFilterOf } from './list_row_filter';
 import { listRowIdentity, subjectKey, subjectMatches } from './long_push_anchor';
 import { charCells } from './string_util';
 import { serializedOpHint } from './serialized_op_gate';
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { recordFor } from './reading_record';
 import { HINT_ERROR } from './status_hint';
 
@@ -194,7 +194,7 @@ export function paneWidthFor(sideSpace) {
 }
 
 function enabled() {
-  return !!readEffectivePrefs().enableSplitReading;
+  return easyReadingOn(readValuesWithDefault());
 }
 
 function readCollapsed() {

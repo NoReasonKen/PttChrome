@@ -233,38 +233,27 @@ describe("ReconnectResume（何時出發）", () => {
     expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
   });
 
-  // 開關（pref reconnectResume，預設開）：替使用者送鍵的功能都要能關。
-  describe("關掉「斷線重連回到原處」", () => {
+  // Reconnect resume is part of easy reading: it follows the easy-reading switch.
+  describe("easy reading off", () => {
     const prefs = (values) =>
       vi.stubGlobal("window", {
         localStorage: { getItem: () => JSON.stringify({ values }), setItem() {} }
       });
     afterEach(() => vi.unstubAllGlobals());
 
-    test("斷線時是關的 ⇒ 不記、重連登入後一個鍵都不送", () => {
-      prefs({ reconnectResume: false });
-      const h = harness();
-      h.settle(MAIN_MENU);
-      h.rr.capture(false);
-      expect(h.rr.hasPending()).toBe(false);
-      h.settle(MAIN_MENU);
-      expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
-      expect(h.core.autoLogin.stop).not.toHaveBeenCalled();
-    });
-
-    test("斷線後才關（重連途中）⇒ 也不出發", () => {
+    test("turned off while reconnecting ⇒ does not set off", () => {
       const h = harness();
       h.settle(MAIN_MENU);
       h.rr.capture(false);
       expect(h.rr.hasPending()).toBe(true);
-      prefs({ reconnectResume: false });
+      prefs({ enableEasyReading: false });
       h.settle(MAIN_MENU);
       expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
       expect(h.rr.hasPending()).toBe(false);
     });
 
-    test("安全模式（全部用原生）開著 ⇒ 自己的 pref 開著也不記、不送", () => {
-      prefs({ nativeSafeMode: true, reconnectResume: true });
+    test("easy reading off ⇒ records and sends nothing", () => {
+      prefs({ enableEasyReading: false });
       const h = harness();
       h.settle(MAIN_MENU);
       h.rr.capture(false);
@@ -273,7 +262,7 @@ describe("ReconnectResume（何時出發）", () => {
       expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
     });
 
-    test("預設是開的", () => {
+    test("on by default", () => {
       prefs({});
       const h = harness();
       h.settle(MAIN_MENU);

@@ -114,18 +114,12 @@ test('an article without a header reached by a key PTT answers directly takes it
   expect(await sent(page)).toEqual([']\f', 'Q', ' \f', '\r\f']);
 });
 
-test('an article without a header opened from the native list takes its row out of sight', async ({ page }) => {
-  await bootThreadBoard(page, { open: 600, nativeList: true, thread: HEADERLESS });
-  await expect.poll(() => bar(page)).toEqual(CAROL);
-  await settledOn(page, 600);
-});
-
 // Easy reading already runs when the article opens again, and on a link that
 // answers within the settle window it reads the next pages before the first
 // one settles.
-test('a long article without a header opened again from the native list takes its row each time', async ({ page }) => {
+test('a long article without a header opened again from the list takes its row each time', async ({ page }) => {
   const thread = FAR_BOARD.map(article => article.num === 600 ? { ...article, headerless: true, lines: 60 } : article);
-  await bootThreadBoard(page, { open: 600, nativeList: true, thread, delay: 20 });
+  await bootThreadBoard(page, { open: 600, fromList: true, thread, delay: 20 });
   await expect.poll(() => bar(page)).toEqual(CAROL);
   await settledOn(page, 600);
   for (let round = 0; round < 3; round++) {

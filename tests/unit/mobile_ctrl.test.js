@@ -12,7 +12,7 @@ function ctx() {
     setMobileCtrlArmed: vi.fn((on) => (core.mobileCtrlArmed = !!on)),
     aidNavigation: { active: false },
     longPush: { active: false },
-    easyReading: { tryReenterFromNative: () => false, _onKeyDown: vi.fn(), noteTextInput: vi.fn() },
+    easyReading: { _onKeyDown: vi.fn(), noteTextInput: vi.fn() },
     activeListSession: () => null,
     noteListNativeInput: vi.fn(),
   };

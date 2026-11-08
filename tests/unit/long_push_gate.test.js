@@ -27,7 +27,7 @@ const LIST_ROW =
 // prompt 幀：底列被 s 的輸入列蓋掉，pageState 還停在上一幀的 3。
 const PROMPT_ROW = "請輸入看板名稱(按空白鍵自動搜尋)：XBO";
 
-const PREFS_ON = { enableLongPush: true, pushKeyOpensLongPush: true };
+const PREFS_ON = { enableEasyReading: true };
 const base = (over) => ({
   key: "X",
   prefs: PREFS_ON,
@@ -84,10 +84,10 @@ describe("longPushAvailable（選單與攔截共用的可用性）", () => {
     ).toBe(false);
   });
 
-  test("總開關關掉 → 不可用", () => {
+  test("好讀關掉 → 不可用", () => {
     expect(
       longPushAvailable({
-        prefs: { enableLongPush: false, pushKeyOpensLongPush: true },
+        prefs: { enableEasyReading: false },
         pageState: 3,
         lastRowText: READ_ROW,
       })
@@ -124,21 +124,8 @@ describe("shouldInterceptPushKey", () => {
     expect(shouldInterceptPushKey(base({ [mod]: true }))).toBe(false);
   });
 
-  test("新開關關掉 → 不攔（逃生門）", () => {
-    expect(
-      shouldInterceptPushKey(
-        base({ prefs: { enableLongPush: true, pushKeyOpensLongPush: false } })
-      )
-    ).toBe(false);
-  });
-
-  // 從屬關係：總開關關掉時，新開關就算是開的也不得攔截。
-  test("enableLongPush 關掉 → 不攔，即使新開關是開的", () => {
-    expect(
-      shouldInterceptPushKey(
-        base({ prefs: { enableLongPush: false, pushKeyOpensLongPush: true } })
-      )
-    ).toBe(false);
+  test("好讀關掉 → 不攔（原生推文）", () => {
+    expect(shouldInterceptPushKey(base({ prefs: { enableEasyReading: false } }))).toBe(false);
   });
 
   // 這條擋的是「按 s 打看板名 XBOX，第一個字被吞去開輸入框」。

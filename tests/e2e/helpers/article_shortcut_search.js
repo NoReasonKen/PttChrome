@@ -3,7 +3,7 @@ const ptt = require('./ptt');
 const { waitScreenSettled, waitConnected } = require('./replay');
 const { bootGestureArticle, revealArticleDrawer, beginArticleTouch } = require('./article_gestures');
 const { nextFrames } = require('./real_input');
-const { MAIN } = require('./stack_routes');
+const { MAIN, recordHints, recordedHints } = require('./stack_routes');
 
 // Controlled PTT boundary, derived from upstream read.c select_read,
 // read_cmd_quit, read_loader and bbs.c view_postinfo. The actual application,
@@ -96,7 +96,13 @@ async function bootShortcutSearch(page, options = {}) {
         state.selected = 'child';
         state.searched = true;
       } else if (command === '\r') state.surface = state.selected;
-      else if (command) return;
+      else if (/^\d+\r$/.test(command) && state.surface === 'list') {
+        // The easy-reading list's number jumps: 101 (1 in results) is the first row.
+        const index = Number(command.slice(0, -1)) - (state.filtered ? 1 : 101);
+        state.selected = index <= 0 ? 'source' : 'child';
+      } else if (['\x1b[1~', '\x1b[4~', '\x1b[5~', '\x1b[6~'].includes(command) && state.surface === 'list') {
+        // Home, End and paging: the whole list fits on one page.
+      } else if (command) return;
       if (options.pausePrompt && state.surface === 'authorPrompt') return;
       if (options.wrongPrompt && state.surface === 'authorPrompt') state.surface = 'list';
       setTimeout(() => app.onData(frame()), 0);
@@ -111,8 +117,16 @@ async function bootShortcutSearch(page, options = {}) {
     app.onData(frame());
   }, options);
   await waitScreenSettled(page, { 1: 'Source article' });
+  // The source replaces the booted article with no navigation edge, as bootImageArticle's own article does.
+  await page.evaluate(() => window.__app.easyReading.enterEasyReading());
+  await expect(page.locator(SCREEN)).toContainText('Original reading position.');
   await expect(page.locator(MAIN)).toHaveClass(/articleHorizontalGestures/);
+  await recordHints(page);
 }
+
+// Whether a notice was shown since boot. Notices are brief, so they are
+// recorded as they show rather than read from the page.
+const hinted = (page, text) => recordedHints(page).then(hints => hints.some(hint => hint.includes(text)));
 
 async function searchAuthor(page) {
   await revealArticleDrawer(page);
@@ -124,7 +138,7 @@ const SCREEN = `${MAIN} #mainContainer`;
 const visibleText = page => page.locator(SCREEN).innerText();
 
 async function waitSearchResults(page) {
-  await expect.poll(() => page.locator('body').innerText()).toContain('Same-author search results');
+  await expect.poll(() => hinted(page, 'Same-author search results')).toBe(true);
   await expect.poll(() => visibleText(page)).toContain('Source article');
 }
 
@@ -134,7 +148,7 @@ async function nativeBack(page) {
 
 async function openSearchResult(page, { thread = false } = {}) {
   await ptt.sendKey(page, 'Enter');
-  await expect.poll(() => visibleText(page)).toContain(thread ? 'Re: [Test] Source article' : 'Result article');
+  await expect(page.locator('#mobileAppBar .mobileAppBarTitle')).toContainText(thread ? 'Re: [Test] Source article' : '[Test] Result article');
   await expect(page.locator(MAIN)).toHaveClass(/articleHorizontalGestures/);
 }
 
@@ -152,10 +166,8 @@ const NESTED_ARTICLES = [
   { aid: '1gIeu-3D', fn: 'M.1783270974.A.0CD', author: 'bob', title: '[Talk] Delta topic', body: 'Delta', push: 40 }
 ];
 
-// options.easyList: the reader's default list owner (cards).
 // options.loggedIn: this connection first passes the main menu, as a real
 //   login does, so reconnect/open resume may capture and store a plan.
-// options.resumeLastPlace: reloads resume the last place (the product default).
 // `homeMenu`: the main menu has My Favorites, so the home dashboard shows on it.
 // `dynamicRows`: model negotiated terminal rows separately from application layout.
 // `alphaLines`: Alpha runs that many lines, over several PTT pages.
@@ -165,11 +177,8 @@ const NESTED_ARTICLES = [
 // `ptList`: screens behave as PTT's do where the default server simplifies: a
 //   list's footer names its keys, (y)回應 among them, `s<board>` from a list
 //   lands on the board's full list, and the main menu has its title bar.
-async function bootNestedShortcutSearch(page, { easyList = false, loggedIn = false, resumeLastPlace = false, legacyCaptions = false, extraArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false, images = false, ptList = false } = {}) {
-  await bootGestureArticle(page, { resumeLastPlace });
-  // The image-article boot disables the easy-reading list; the reader's
-  // default enables it before any list from this server is seen.
-  if (easyList) await ptt.applyPrefs(page, { enableEasyReadingList: true });
+async function bootNestedShortcutSearch(page, { loggedIn = false, legacyCaptions = false, extraArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false, images = false, ptList = false } = {}) {
+  await bootGestureArticle(page);
   await installNestedServer(page, { surface: loggedIn ? 'main' : 'article', legacyCaptions, extraArticles, homeMenu, dynamicRows, pinned, alphaLines, urls, images, ptList });
   if (loggedIn) {
     await waitScreenSettled(page, { 0: '主功能表' });
@@ -559,12 +568,16 @@ const scrollTop = page => page.locator(MAIN).evaluate(el => el.scrollTop);
 
 // The reader scrolls the first nested article to its middle with a real touch
 // drag. Holding still before release leaves no fling, so the position is
-// deterministic once the browser's own scrolling settles.
+// deterministic once the browser's own scrolling settles. The drag starts
+// above the comment bar, which covers the foot of the article, and travels
+// half the reading area: a full one ends within the two rows the reading
+// record already counts as the article's end.
 async function readToMiddle(page) {
   const main = await page.locator(MAIN).boundingBox();
+  const bar = await page.locator('#commentBar').boundingBox();
   const x = main.x + main.width / 2;
-  const from = main.y + main.height - 20;
-  const to = main.y + 20;
+  const from = Math.min(main.y + main.height, bar ? bar.y : Infinity) - 20;
+  const to = from - (from - main.y) / 2;
   const contact = await beginArticleTouch(page, { x, y: from });
   for (let step = 1; step <= 10; step++) await contact.move({ x, y: from + (to - from) * step / 10 });
   await contact.release();
@@ -607,7 +620,7 @@ async function tapShortcut(page, key) {
 }
 
 module.exports = {
-  bootShortcutSearch, searchAuthor, nativeBack, openSearchResult, visibleText, waitSearchResults,
+  bootShortcutSearch, searchAuthor, nativeBack, openSearchResult, visibleText, waitSearchResults, hinted,
   bootNestedShortcutSearch, nestedSessionAfterLogin, waitArticle, waitList, waitIdle, tapShortcut, topLine, readToMiddle,
   tapCard, disconnectAndReconnect
 };

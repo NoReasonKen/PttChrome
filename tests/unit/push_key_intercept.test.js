@@ -36,8 +36,7 @@ beforeEach(() => {
   // 預設值就是「攔」，這裡明寫出來當文件。
   writeValues({
     ...readValuesWithDefault(),
-    enableLongPush: true,
-    pushKeyOpensLongPush: true,
+    enableEasyReading: true,
   });
 });
 
@@ -46,7 +45,6 @@ function keyCtx(over) {
   const o = over || {};
   const keyboard = { onKeyDown: vi.fn() };
   const easyReading = {
-    tryReenterFromNative: () => false,
     _onKeyDown: vi.fn(),
   };
   const buf = makeBuf(o.buf);
@@ -124,8 +122,7 @@ describe("入口 1／3：鍵盤（term_view.onKeyDown）", () => {
   });
 
   test.each([
-    ["pref 關掉", { pref: { pushKeyOpensLongPush: false } }],
-    ["總開關關掉", { pref: { enableLongPush: false } }],
+    ["easy reading off", { pref: { enableEasyReading: false } }],
     ["文章列表", { buf: { pageState: 2, getRowText: () => LIST_ROW } }],
     ["站內信 pager", { buf: { getRowText: () => MAIL_ROW } }],
     ["prompt 幀（陳舊的 pageState 3）", { buf: { getRowText: () => PROMPT_ROW } }],

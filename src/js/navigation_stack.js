@@ -11,7 +11,7 @@
 // ArticleGestures owns the surfaces that slide away; this module owns the
 // stack and the layers; a handoff is its own object (stack_handoff.js), and a
 // deleted source kept shown is another (stack_kept_source.js).
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { sameBoard } from './screen_titles';
 import {
   createPageStack, pushPage, popPage, revealTarget, withLayer, backPastRevealed, spendsLayer, boundLayers, pageShown, PAGE
@@ -182,7 +182,7 @@ export class NavigationStack {
   }
 
   _stacksBoard(board) {
-    return !!(this.core.mobile && board && readEffectivePrefs().enableEasyReadingList);
+    return !!(this.core.mobile && board && easyReadingOn(readValuesWithDefault()));
   }
 
   // The open was abandoned: the captured page is no lower page of anything.
@@ -416,7 +416,7 @@ export class NavigationStack {
     const appBar = shown.appBar || EMPTY_TOOLBAR_CONTEXT.appBar;
     const h = this.handoff;
     if (h?.layer && h.toolbar) return { ...h.toolbar, appBar, locked: false };
-    const push = this.showsArticleLayer() && commentBarEnabled(readEffectivePrefs());
+    const push = this.showsArticleLayer() && commentBarEnabled(readValuesWithDefault());
     const refresh = this.refreshesRevealed();
     return { ...EMPTY_TOOLBAR_CONTEXT, appBar, push, refresh, locked: true };
   }

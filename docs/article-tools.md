@@ -8,7 +8,7 @@
 
 ## 規則
 
-- **一個 byte 都不送**：資料全取自好讀的累積頁（`buf.pageLines`，用 `buf.getRowText(r, 0, cols, acc)` 讀），跳到某列＝捲好讀的視口（`easy_reading.scrollToArticleRow` → `_scrollToPageRow`，量畫出來的 `[srow]` 節點、先 `renderChunksAround`），AID 只用免費的網址列（`aid_navigation.findLocalPostAid`，不按 Q）。它不改原生畫面、不攔鍵，所以**不在**安全模式名單內，也不經閱讀紀錄。
+- **一個 byte 都不送**：資料全取自好讀的累積頁（`buf.pageLines`，用 `buf.getRowText(r, 0, cols, acc)` 讀），跳到某列＝捲好讀的視口（`easy_reading.scrollToArticleRow` → `_scrollToPageRow`，量畫出來的 `[srow]` 節點、先 `renderChunksAround`），AID 只用免費的網址列（`aid_navigation.findLocalPostAid`，不按 Q）。它不改原生畫面、不攔鍵，所以**不是**好讀行為（好讀關著時文章本來就不是好讀，自然不出現），也不經閱讀紀錄。
 - **只在好讀文章裡**：pageState 3＋`easyReading._enabled`＋不在 functionMode＋累積頁非空。原生 pmore 手上只有眼前這一屏，統計會是錯的 ⇒ 不出現。好讀往下讀、累積頁長大時增量重算（只讀新列）；首列變了或累積頁變短（換文章、從頭重讀）就整份重來，選中的人不在新文章裡就取消。
 - **推文的讀法**：舊格式 `agent_parse.parseCommentLine`（`comment_parse.parseComment` 的版面，已對過 pttbbs），新格式 `parseModernCommentLine`，緊接的 `│` 列接成同一則的內容。作者取檔頭（`parseArticleHeader`，小寫），推文者大小寫不分。
 - **圖片**：一列裡的網址逐條判（不跨列；被折行的長網址縮圖會載入失敗，`onError` 換下一個候選，全失敗整格收掉）。imgur 單張先試 `m` 縮圖再試原圖、twimg 先試 `name=small`，再接 `image_proxy` 的候選（代理設定照用）；相簿、tenor 分享頁、影片、svg 不收；同網址只收一次，最多 `IMAGE_LIMIT` 張。

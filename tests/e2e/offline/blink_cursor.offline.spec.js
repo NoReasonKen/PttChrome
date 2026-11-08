@@ -71,7 +71,6 @@ test.describe('PTT 有游標時隱藏閃爍游標（離線）', () => {
     await bootWithClock(page);
     await ptt.applyPrefs(page, {
       enableEasyReading: false,
-      enableEasyReadingList: false,
     });
     // 預設值就該是開的（pref_storage DEFAULT_PREFS），不 hardcode 期望值。
     expect(await ptt.getPref(page, 'autoHideBlinkCursor')).toBe(true);
@@ -86,7 +85,6 @@ test.describe('PTT 有游標時隱藏閃爍游標（離線）', () => {
     await bootWithClock(page);
     await ptt.applyPrefs(page, {
       enableEasyReading: false,
-      enableEasyReadingList: false,
     });
 
     await feedRaw(page, PLAIN_ROW_NO_CURSOR);
@@ -99,7 +97,6 @@ test.describe('PTT 有游標時隱藏閃爍游標（離線）', () => {
     await bootWithClock(page);
     await ptt.applyPrefs(page, {
       enableEasyReading: false,
-      enableEasyReadingList: false,
     });
 
     await feedRaw(page, LIST_ROW_WITH_CURSOR);
@@ -122,7 +119,6 @@ test.describe('PTT 有游標時隱藏閃爍游標（離線）', () => {
     await bootWithClock(page);
     await ptt.applyPrefs(page, {
       enableEasyReading: false,
-      enableEasyReadingList: false,
       autoHideBlinkCursor: false,
     });
 
@@ -160,7 +156,6 @@ test.describe('閃爍相位的省電不變量（離線）', () => {
     await bootWithClock(page);
     await ptt.applyPrefs(page, {
       enableEasyReading: false,
-      enableEasyReadingList: false,
     });
 
     await feedRaw(page, PLAIN_ROW_NO_CURSOR);
@@ -176,7 +171,6 @@ test.describe('閃爍相位的省電不變量（離線）', () => {
     await bootWithClock(page);
     await ptt.applyPrefs(page, {
       enableEasyReading: false,
-      enableEasyReadingList: false,
     });
 
     await feedRaw(page, SCREEN_WITH_BLINK_TEXT);

@@ -21,6 +21,9 @@ async function bootMenu(page, boards) {
   await page.evaluate(async (texts) => {
     const { rememberSearch } = await import('/src/js/search_history.js');
     texts.forEach((t) => rememberSearch('board', t));
+    // The home dashboard over the main menu would fetch favorites when it shows,
+    // and search waits for that fetch: mark them fresh.
+    window.__app.homeDashboard._state.fetchedAt = Date.now();
   }, boards);
   await drawMainMenu(page);
 }

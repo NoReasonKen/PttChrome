@@ -20,7 +20,7 @@ import {
   FETCH_TIMEOUT_MS,
 } from "../../src/js/help_menu";
 import { boardEntryArms } from "../../src/js/board_note_skip";
-import { DEFAULT_PREFS, effectivePrefs } from "../../src/js/pref_storage";
+import { DEFAULT_PREFS } from "../../src/js/pref_storage";
 import { HELP_FAV_PAGE1, HELP_FAV_PAGE2 } from "./fixtures/help_menu_rows";
 
 const BOARD_LIST = [
@@ -270,25 +270,16 @@ describe("跳過進板畫面不被說明選單誤 arm", () => {
   });
 });
 
-describe("開關：好讀總開關＋說明選單自己的子開關", () => {
-  test("預設開（兩個都開 ⇒ 接管）", () => {
-    expect(DEFAULT_PREFS.enableHelpMenuPopup).toBe(true);
-    expect(helpMenuPopupEnabled(effectivePrefs({ ...DEFAULT_PREFS }))).toBe(true);
-  });
-
-  test("任一個關 ⇒ 原生", () => {
-    expect(helpMenuPopupEnabled({ ...DEFAULT_PREFS, enableHelpMenuPopup: false })).toBe(false);
+describe("開關：好讀開關", () => {
+  test("預設開 ⇒ 接管；好讀關 ⇒ 原生", () => {
+    expect(helpMenuPopupEnabled(DEFAULT_PREFS)).toBe(true);
     expect(helpMenuPopupEnabled({ ...DEFAULT_PREFS, enableEasyReading: false })).toBe(false);
   });
 
-  test("安全模式 ⇒ 原生（各項設定不動）", () => {
-    expect(helpMenuPopupEnabled(effectivePrefs({ ...DEFAULT_PREFS, nativeSafeMode: true }))).toBe(false);
-  });
-
-  test("控制器預設讀生效偏好：子開關關掉 ⇒ 一個鍵都不送", () => {
+  test("the controller reads the stored switch: easy reading off ⇒ sends nothing", () => {
     vi.stubGlobal("window", {
       localStorage: {
-        getItem: () => JSON.stringify({ values: { enableHelpMenuPopup: false } }),
+        getItem: () => JSON.stringify({ values: { enableEasyReading: false } }),
         setItem() {},
       },
     });

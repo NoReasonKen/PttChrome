@@ -87,9 +87,8 @@ const pane = (page) => page.locator('#splitReader');
 
 async function boot(page, viewport, prefs) {
   await page.setViewportSize(viewport);
-  await bootOffline(page, ptt, { splitReader: true });
-  // 好讀列表會自己補頁、改送鍵：這裡只測左欄，用原生列表。
-  await ptt.applyPrefs(page, Object.assign({ enableEasyReadingList: false }, prefs || {}));
+  await bootOffline(page, ptt);
+  if (prefs) await ptt.applyPrefs(page, prefs);
   await page.evaluate(() => window.__app.setInputAreaFocus());
 }
 
@@ -135,8 +134,8 @@ test.describe('寬螢幕雙欄閱讀', () => {
 
   test('滾輪在左欄上 ⇒ 捲左欄，文章不翻頁、不送鍵', async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 560 });
-    await bootOffline(page, ptt, { splitReader: true });
-    await ptt.applyPrefs(page, { enableEasyReadingList: false, useMouseBrowsing: true });
+    await bootOffline(page, ptt);
+    await ptt.applyPrefs(page, { useMouseBrowsing: true });
     await page.evaluate(() => window.__app.setInputAreaFocus());
     await openFromList(page, 0);
     await expect(pane(page)).toBeVisible();
@@ -167,13 +166,6 @@ test.describe('寬螢幕雙欄閱讀', () => {
     await openFromList(page, 2);
     expect(await page.evaluate(() => window.__app.view._articleBoard)).toBe('Test');
     expect(await page.evaluate(() => window.__app.splitReader.state.visible)).toBe(false);
-    await expect(pane(page)).toHaveCount(0);
-  });
-
-  test('pref 關 ⇒ 不出現', async ({ page }) => {
-    await boot(page, WIDE, { enableSplitReading: false });
-    await openFromList(page, 2);
-    expect(await page.evaluate(() => window.__app.view._articleBoard)).toBe('Test');
     await expect(pane(page)).toHaveCount(0);
   });
 });

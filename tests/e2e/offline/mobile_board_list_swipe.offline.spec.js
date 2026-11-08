@@ -28,7 +28,6 @@ const listShows = (page, board) => expect.poll(() => boardsIn(page, MAIN)).toCon
 // leave held.
 async function groupOverClassList(page) {
   await bootScenario(page, ptt, folder);
-  await ptt.applyPrefs(page, { ...folder.meta.prefs, articleHorizontalGestures: true });
   await boardListEngaged(page);
   await listShows(page, 'OtherBBS');
   await ptt.sendKey(page, 'Enter');
@@ -96,7 +95,7 @@ async function snappedBack(page, main) {
   expect((await waitRectStable(page, MAIN)).left).toBeCloseTo(main.left, 0);
 }
 
-test('a vertical drag, a swipe to half, a left swipe or the preference turned off never go back', async ({ page }) => {
+test('a vertical drag, a swipe to half or a left swipe never go back', async ({ page }) => {
   const { main, y } = await groupOverClassList(page);
   const width = page.viewportSize().width;
   const x = main.left + main.width / 2;
@@ -116,13 +115,6 @@ test('a vertical drag, a swipe to half, a left swipe or the preference turned of
   contact = await beginArticleTouch(page, { x: width - 20, y });
   await contact.move({ x: 20, y });
   await expect(page.locator('[data-article-drawer]')).toHaveCount(0);
-  await contact.release();
-  await snappedBack(page, main);
-
-  await ptt.applyPrefs(page, { articleHorizontalGestures: false });
-  await expect(page.locator(MAIN)).not.toHaveClass(/articleHorizontalGestures/);
-  contact = await beginArticleTouch(page, { x: 20, y });
-  await contact.move({ x: width - 20, y });
   await contact.release();
   await snappedBack(page, main);
   await nextFrames(page, 10);

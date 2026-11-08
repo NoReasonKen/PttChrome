@@ -27,7 +27,6 @@ describe("searchPrefSettings", () => {
   test("中文子字串命中標題", () => {
     const rows = zh("好讀", { limit: 50 });
     expect(keysOf(rows)).toContain("enableEasyReading");
-    expect(keysOf(rows)).toContain("enableEasyReadingList");
     expect(find(rows, "enableEasyReading").matchedVia).toBe("title");
   });
 
@@ -71,9 +70,9 @@ describe("searchPrefSettings", () => {
   });
 
   test("只出現在說明文字裡的詞也命中", () => {
-    // 「熱門看板」只在 tooltip_enableBoardListSmoothScroll 出現，標題沒有。
-    const rows = zh("熱門看板", { limit: 50 });
-    const hit = find(rows, "enableBoardListSmoothScroll");
+    // 「跳過進板畫面」只在 tooltip_enableEasyReading 出現，標題沒有。
+    const rows = zh("跳過進板畫面", { limit: 50 });
+    const hit = find(rows, "enableEasyReading");
     expect(hit).toBeTruthy();
     expect(hit.matchedVia).toBe("tooltip");
   });
@@ -116,9 +115,9 @@ describe("searchPrefSettings", () => {
   });
 
   test("預設截斷到 MAX_RESULTS", () => {
-    const rows = zh("啟用");
+    const rows = zh("顯示");
     expect(rows.length).toBeLessThanOrEqual(MAX_RESULTS);
-    expect(zh("啟用", { limit: 100 }).length).toBeGreaterThan(MAX_RESULTS);
+    expect(zh("顯示", { limit: 100 }).length).toBeGreaterThan(MAX_RESULTS);
   });
 
   test("兩個語系拿到同一組 key、不同的顯示文字", () => {

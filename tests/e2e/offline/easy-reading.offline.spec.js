@@ -282,7 +282,8 @@ test.describe('好读模式翻页（离线重放）', () => {
   }
 });
 
-// 好读 End→原生跳到底：需带 'end' step 的 article cassette（录制时 RECORD_END=1）。
+// 关好读：用带 'end' step 的 article cassette（stock-end：多页长文，当年录给已移除的
+// End→原生）。'end' step 不会被喂（好读的 End 只在本地跳到底，不送键）。
 const endCassette = findCassettes('article').find((c) => c.steps.some((s) => s.on === 'end'));
 
 // REGRESSION: 好读自动开影片时，直式影片（如 480×854）在旧的固定 width:640px 下
@@ -330,43 +331,11 @@ test.describe('好读内嵌影片尺寸（离线重放）', () => {
   });
 });
 
-test.describe('好读 End 切回原生（离线重放）', () => {
+test.describe('关好读（离线重放）', () => {
   test.skip(!endCassette, '尚无带 end step 的 cassette；录制时设 RECORD_END=1');
 
-  test('End 切回原生、跳到文章最底、好读自订列隐藏', async ({ page }) => {
-    test.setTimeout(90000);
-    await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReading: true });
-    await replayCassette(page, endCassette, { easyReading: true });
-
-    // 重放完自动翻页部分后应在好读模式。
-    expect(await page.evaluate(() => window.__app.view.useEasyReadingMode)).toBe(true);
-
-    // 触发 End：switchToNativeAtBottom 送 \x1b[4~ → player 喂 'end' step（原生底部画面）。
-    await page.evaluate(() => window.__app.easyReading.switchToNativeAtBottom());
-
-    await expect(async () => {
-      const after = await page.evaluate(() => {
-        const a = window.__app;
-        const lr = document.getElementById('easyReadingLastRow');
-        const mc = document.getElementById('mainContainer');
-        return {
-          useEasyReadingMode: a.view.useEasyReadingMode,
-          mcChildren: mc ? mc.childNodes.length : -1,
-          lastRowDisplay: lr ? getComputedStyle(lr).display : 'no-el',
-          screen: mc ? mc.innerText : '',
-        };
-      });
-
-      expect(after.useEasyReadingMode).toBe(false); // 切回原生
-      expect(after.mcChildren).toBeLessThanOrEqual(24); // 单页原生 DOM，非好读累积
-      expect(after.screen).toContain('說明'); // 原生状态列
-      expect(after.screen).toContain('100%'); // 在最底
-    }).toPass();
-  });
-
   // 切原生的**本地保险**：exitEasyReading 不得依赖 ^L 的伺服器往返才收掉长页。
-  // 按下热键时若还有 PageDown 在途，End／^L 的重绘会被 pttbbs 的 typeahead 跳绘（P4）
+  // 关好读时若还有 PageDown 在途，^L 的重绘会被 pttbbs 的 typeahead 跳绘（P4）
   // 吞掉，DOM 就一直停在数千列的累积长页且捲到底 —— 使用者看到的是「卡在最底部、
   // PgUp 没反应」。所以这里**完全不喂任何后续 bytes**，直接验画面已经收回 24 列。
   test('切原生不等伺服器回应：立刻收回 24 列且捲軸歸零', async ({ page }) => {
@@ -400,33 +369,6 @@ test.describe('好读 End 切回原生（离线重放）', () => {
       // 列表好读的 engage 闸读这个旗标；留着 true 就是「半永久原生模式」。
       expect(after.startedEasyReading).toBe(false);
     }).toPass();
-  });
-
-  // toggle 的另一半：原生模式下再按一次热键切回好读，并倒回文章开头重新累积。
-  test('原生下再按熱鍵 → 切回好讀並倒回文章開頭', async ({ page }) => {
-    test.setTimeout(90000);
-    await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReading: true });
-    await replayCassette(page, endCassette, { easyReading: true });
-    await page.evaluate(() => window.__app.easyReading.switchToNativeAtBottom());
-    await expect.poll(() => page.evaluate(() => window.__app.view.useEasyReadingMode)).toBe(false);
-    // 原生底部那一幀（player 喂的 'end' step）落地之后才按热键。
-    await waitScreenSettled(page);
-
-    // 断言点是**线路**而不是某个出口函式（2026-09-20）：reenterFromTop 的 Home 是
-    // 机器 byte，走 App.sendMachineBytes 而不是 view._send（推导见
-    // src/js/easy_reading.js#_send）。量 window.__replay.sent 直接证明 byte 到了
-    // socket —— 那才是这条测试真正在乎的事，也不会再被「换了哪个出口」弄假。
-    const before = await page.evaluate(() => window.__replay.sent.length);
-    // 真键盘：keydown 由浏览器生成，经 #t 的 listener 进 term_view.onKeyDown 的原生分支。
-    await page.locator('#t').focus();
-    await page.keyboard.press('F8');
-
-    await expect.poll(() => page.evaluate(() => window.__app.view.useEasyReadingMode)).toBe(true);
-    // 在文末按下 → 必须送 Home 倒回第 1 行，否则长页只会有文末那一屏
-    await expect
-      .poll(() => page.evaluate((n) => window.__replay.sent.slice(n).join(''), before))
-      .toContain('\x1b[1~');
   });
 });
 

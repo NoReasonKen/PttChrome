@@ -7,72 +7,23 @@ import { isAndroidApp } from "./android_bridge";
 export const DEFAULT_PREFS = {
   // general
   //dbcsDetect    : false,
-  // 安全模式「全部用原生」：PTT 改版、增強功能認錯畫面時的一鍵逃生門。開著時
-  // NATIVE_SAFE_MODE_KEYS 在**讀取端**一律當成關（effectivePrefs），各自的 pref
-  // 原封不動 ⇒ 關掉安全模式就回到使用者原本的設定。預設關。
-  nativeSafeMode: false,
   enablePicPreview: true,
   enableNotifications: true,
   // 水球／系統訊息收件匣（js/message_inbox.js）：這次連線收到的水球與廣播留在鈴鐺裡。
-  // 只看收到的資料、一個 byte 都不送 ⇒ 不在安全模式名單內。
+  // 只看收到的資料、一個 byte 都不送 ⇒ 不是好讀行為，保留自己的開關。
   enableMessageInbox: true,
-  // 文章好讀模式：整篇累積成一份可自由捲動的長頁（見 docs/easy-reading.md）。
-  // **2026-09 起預設開**（功能已成熟，且是本專案與原版 term.ptt.cc 最主要的差異）。
-  // 關掉＝逐位元回到原生的一次一頁，逃生門仍在設定頁。
+  // 好讀：整個 app 唯一的好讀開關（見 easyReadingOn）。文章整篇累積成一份可自由捲動的
+  // 長頁（docs/easy-reading.md），列表、看板列表與其他好讀行為也都跟著它。預設開；
+  // 關掉＝每個地方都回到原生。
   enableEasyReading: true,
-  // List easy reading (v4): accumulate the board article list across pages into
-  // one scrollable ASCENDING list (older→newer, like native) so blacklisted rows
-  // can be removed entirely (no blank gaps). Engages on entering a board list.
-  // **2026-09 起預設開**，理由與政策同 enableEasyReading（功能已成熟）。
-  enableEasyReadingList: true,
-  // 看板列表平滑捲動（js/board_list_session.js）：把 PTT 一頁 20 列的看板列表累積
-  // 成一整段序列畫進捲動視口，捲動交給瀏覽器 —— 與文章列表好讀同一套引擎。
-  // **只作用於「我的最愛」與「分類看板」的子分類**（footer 指紋，board.c:1279-1290）；
-  // 全部看板／熱門看板／「新文章」模式一律維持原生的一次一頁。
-  // **2026-09 起預設開**，與 enableEasyReading／enableEasyReadingList 同一套政策
-  // （功能已成熟）。關掉＝那兩類看板列表回到原生的一次一頁。
-  enableBoardListSmoothScroll: true,
-  // 非導覽操作結束後自動切回好讀（list_session.js / board_list_session.js）。
-  // 兩件事由這一顆開關同時管（它們是同一個承諾的兩半，拆兩顆會出現「A 類凍結但
-  // B 類不回復」這種沒人想要的中間態）：
-  //   L1 A 類鍵（[ ] = \ + - < > , . { } t／看板列表的 t v V）走凍結交易，全程不切原生
-  //   L2 B 類鍵（/ v s Ctrl-P 子畫面…）操作完成、畫面靜下來之後自動回好讀
-  // **預設開**：它是上面兩個 pref 的子功能，母開關開著時它就該跟著生效，
-  // 預設關等於沒做。關掉＝逐位元回到 2026-09-03 之前（黏性原生：開文／離板
-  // 才回好讀），這是使用者拍板的逃生門 —— 判定類功能的最後一道防線就是設定開關。
-  enableListNativeAutoResume: true,
-  // 跳過進板畫面（js/board_note_skip.js）：從看板列表／選擇看板進板時，進板公告
-  // （含動畫）由程式代按一鍵收掉，直接落在文章列表。預設開；文章列表按 `b` 看
-  // 進板畫面不受影響。
-  skipBoardEntryScreen: true,
-  // 說明選單好讀（js/help_menu.js）：新版 h 說明選單改成一次列出全部指令的彈窗
-  // （手機 bottom sheet），會替使用者送 PgDn 補頁。是文章好讀的子開關：
-  // enableEasyReading 關著時一律原生（沿用原本的行為）。預設開。
-  enableHelpMenuPopup: true,
-  reconnectResume: true,
-  // 開站回到上次的地方（js/reconnect_resume.js）：分頁切到背景／關掉時存書籤（本機、不上雲），
-  // 下次開站登入後倒數、可取消，再替使用者送鍵回去 ⇒ 在安全模式名單內。預設開。
-  resumeLastPlace: true,
-  // 首頁儀表板（js/home_dashboard.js）：主功能表上蓋一層我的最愛／最近看板／新信面板，
-  // 打開時快取過期會自己去抓一次我的最愛（Ctrl+Z f → q）⇒ 在安全模式名單內。
-  enableHomeDashboard: true,
-  // 寬螢幕雙欄閱讀（js/split_reader.js）：讀文章時在終端機左邊的空白列出剛才的文章列表，
-  // 點一篇會替使用者送 s<板>⏎ → <編號>⏎ → ⏎ 換文 ⇒ 在安全模式名單內。
-  enableSplitReading: true,
   // 文章工具側欄（js/article_tools.js）：好讀文章時在終端機右邊的空白放 AID／推文統計／
-  // 推文者／圖片牆。資料全取自累積頁、跳列只捲視口，一個 byte 都不送 ⇒ 不在安全模式名單內。
+  // 推文者／圖片牆。資料全取自累積頁、跳列只捲視口，一個 byte 都不送 ⇒ 不是好讀行為，保留自己的開關。
   enableArticleTools: true,
-  // 讀完接著讀下一篇（js/next_article.js）：好讀文末放下一篇的標題卡，點了才替使用者送
-  // s<板>⏎ → <編號>⏎ → ⏎ 換文 ⇒ 在安全模式名單內。
-  enableNextArticleCard: true,
   // Target number of VISIBLE (non-blacklisted) rows the background prefetch
   // accumulates before stopping; continuation is demand-driven (navigate near
   // an edge). 0 disables the background fill (current page + demand only).
   // 看板列表平滑捲動共用這個目標值（同一種「先抓多少列」的取捨）。
   easyReadingListPrefetchCount: 200,
-  // Live 文（作者還在更新）收到新內容時自動跳到最後一頁。預設開：追 Live 文時
-  // 停在舊的一頁沒有意義，不追的人也只有在畫面真的被 server 推新內容時才會動到。
-  endTurnsOnLiveUpdate: true,
   // 選取文字即自動複製到剪貼簿（終端機慣例）。預設開：BBS 上「選起來就是要複製」，
   // 而且選取本身不會有別的用途。實作在 pttchrome.jsx#onMouseUp。
   copyOnSelect: true,
@@ -81,35 +32,23 @@ export const DEFAULT_PREFS = {
   enableBell: true,
   antiIdleTime: 180,
   lineWrap: 78,
-  // Easy reading: pressing this key jumps to the post bottom and switches back to
-  // native mode (so native in-post search '/' becomes usable). Toggle off to let the
-  // key fall through to the native terminal instead. Key value is an e.key string.
-  easyReadingEndSwitchNative: true,
-  easyReadingEndSwitchKey: "F8",
-  // 好讀文章的搜尋交給瀏覽器：Ctrl+F 不攔截（開瀏覽器尋找列）、`/` 改顯示提示。
-  // 關掉＝舊行為（Ctrl+F 本地翻頁、`/` 送 PTT 原生搜尋）。理由見
-  // easy_reading.js#easyReadingFindKeyAction。
-  easyReadingBrowserFind: true,
   // AID 跳文後「返回原文」的快捷鍵（e.key 字串）。預設 F9：F 鍵送不到 PTT
   // （term_keyboard 的 KeyMap 沒有它們，keyEventToBytes 回 null），而 Chrome 已
-  // 佔用 F1/F3/F5/F6/F7/F10/F11/F12，F8 又給了 easyReadingEndSwitchKey。
+  // 佔用 F1/F3/F5/F6/F7/F10/F11/F12。
   aidNavBackKey: "F9",
   // 「複製本篇連結」（deep link）的快捷鍵。預設 F2：上面那串被 Chrome 佔用的
-  // F 鍵之外，F8/F9 又已經給了上面兩個功能，剩下的就是 F2/F4。
+  // F 鍵之外，F9 又已經給了上面的功能，剩下的就是 F2/F4/F8。
   deepLinkCopyKey: "F2",
   // 「跳到第一篇未讀」（文章列表，docs/unread-jump.md）的快捷鍵。預設 F7（使用者指定）：
   // Chrome 的 F7 是「鍵盤瀏覽模式」對話框，keydown 被 preventDefault 就不會出現。
   unreadJumpKey: "F7",
   // 指令面板（js/command_palette.js）：一個輸入框整合進板、貼網址開文、搜尋、各功能與
   // 設定項。快捷鍵預設 F4：上面那串之外剩下的 F 鍵；Ctrl+K 不行（pttbbs 編輯器／輸入欄／
-  // pager 都在用）。只在按下快捷鍵／點右鍵選單時才動 ⇒ 不在安全模式名單內。
+  // pager 都在用）。只在按下快捷鍵／點右鍵選單時才動 ⇒ 不是好讀行為，保留自己的開關。
   enableCommandPalette: true,
   commandPaletteKey: "F4",
   // 指令面板空白時列出最近去過的看板與我的最愛、打板名開頭時排最前（command_palette.quickBoardItems）。
   paletteQuickBoards: true,
-  // 重新整理（docs/screen-refresh.md）：F5／⌘R 在看板列表、文章列表、文章裡改成
-  // 重整 PTT 畫面（其他畫面照舊交給瀏覽器）。瀏覽器網址列旁的重新整理按鈕頁面攔不到。
-  refreshKeyIntercept: true,
   // 兩次重新整理至少相隔幾秒（0 ＝不限制）。pttbbs 開源碼查無讀取頻率限制，這是保守預設。
   refreshMinIntervalSec: 5,
   // 外部連結被**這個**分頁接手時（人在別的分頁）發出通知：標題閃爍 + 系統通知。
@@ -161,7 +100,7 @@ export const DEFAULT_PREFS = {
 
   // 開站快取（public/sw.js、js/open_cache.js、docs/open-cache.md）：Service Worker 讓帶 hash
   // 的程式檔直接用這台裝置存的那份，開站只問網頁本身一次。預設開；關掉＝unregister＋清 cache，
-  // 回到瀏覽器自己逐檔確認。一個 byte 都不送 PTT ⇒ 不在安全模式名單。
+  // 回到瀏覽器自己逐檔確認。一個 byte 都不送 PTT ⇒ 不是好讀行為，保留自己的開關。
   enableOpenCache: true,
 
   // 滑鼠（設定頁的「滑鼠」分頁）。決策層是純函式 js/mouse_regions.js，合約與
@@ -275,9 +214,8 @@ export const DEFAULT_PREFS = {
   // 手機版面的字級（px，文章與列表卡片；列數跟著算）。與桌機 fontSize 分開 ——
   // 那組會跨裝置同步過來。值域與正規化見 mobile_layout.normalizeMobileFontPx。
   mobileFontSize: 16,
-  // 手機 App Bar：點標題捲回頂端（app_bar_scroll_top.js）。只捲畫面、不送鍵 ⇒ 不在安全模式清單。
+  // 手機 App Bar：點標題捲回頂端（app_bar_scroll_top.js）。只捲畫面、不送鍵 ⇒ 不是好讀行為，保留自己的開關。
   mobileAppBarScrollTop: true,
-  articleHorizontalGestures: true,
   // PTT 自己畫了 '>' 游標的畫面（列表／選單）不再疊一個閃爍游標 —— 兩個游標同框是
   // 重複資訊。輸入框／編輯器不走 pttbbs 的 cursor_show，閃爍游標照舊顯示，位置資訊
   // 不會消失，所以預設開。判定見 comment_parse.js#hasServerCursorMark。
@@ -314,10 +252,10 @@ export const DEFAULT_PREFS = {
   // 自己的推文：只染 id 格（綠），帳號取自選單底部狀態列（term_view._selfId）。
   highlightSelfComments: true,
   // 新推文標記（js/new_comments.js）：重開讀過的文章時，上次讀完之後的推文前面畫一條灰線。
-  // 推文數只記在這個瀏覽器、一個 byte 都不送 ⇒ 不在安全模式名單內。
+  // 推文數只記在這個瀏覽器、一個 byte 都不送 ⇒ 不是好讀行為，保留自己的開關。
   markNewComments: true,
   // 文章列表的「+N」（js/new_comments.js#listNewPush）：讀過的文章推文數多了幾分。
-  // 跟新推文標記共用同一份本機紀錄、一個 byte 都不送 ⇒ 不在安全模式名單內。
+  // 跟新推文標記共用同一份本機紀錄、一個 byte 都不送 ⇒ 不是好讀行為，保留自己的開關。
   listNewPushCount: true,
   enableAutoFixUrl: true, // detect & show a repaired link below a broken URL
   // 裸網域（無 scheme、無路徑，如 indiegametw.com）原位變成可點連結。
@@ -341,32 +279,12 @@ export const DEFAULT_PREFS = {
   // 右鍵／長按選單開著時，把選單作用的那篇文章框起來（js/menu_target_highlight.js）。
   highlightMenuTarget: true,
 
-  // 長推文一鍵發送（右鍵選單→輸入一大段話，自動依 PTT 單則上限分段依序推出）。
-  // 預設開：不點就不會作用，而且 PTT 本來就沒有「一次推一長串」的辦法。
-  enableLongPush: true,
-
-  // 在文章裡按推文鍵（X／%）時，改開長推文輸入框而不是 PTT 原生的單則推文 prompt。
-  // 三條入口（鍵盤／底列功能鍵按鈕／IME）共用判準，見 long_push_gate.js。
-  // **從屬於 enableLongPush**（那個關掉時這個必定失效）。預設開：長推文本來就能送
-  // 單則，多一層輸入框換到的是自動分段與游標錨定保護。留這個開關是逃生門——攔截
-  // 若在某個畫面誤判，關掉就回到原生推文。文章列表按 X 一律不攔。
-  pushKeyOpensLongPush: true,
-
-  // 好讀文章底部常駐推文列（js/comment_bar.js）：好讀文章最下面一條「推／噓／→＋文字」，
-  // Enter 就推出去（走長推文管線）。**從屬於 enableLongPush**；會替使用者送鍵 ⇒ 在安全模式名單內。
-  enableCommentBar: true,
   // 長按／右鍵推文的選單多一項「回覆這則」：推文列切成 →、預填「帳號 」。只預填、不送鍵
-  // ⇒ 不在安全模式名單（安全模式下推文列不出現，這一項也跟著不出現）。
+  // ⇒ 保留自己的開關（好讀關著時推文列不出現，這一項也跟著不出現）。
   commentReplyMenu: true,
   // 手機把推文列收進底部導覽：平常不佔畫面，點導覽的「推文」才滑出來並叫出鍵盤；
-  // 送出／收鍵盤／返回就收回。關掉＝手機也常駐。桌機不受影響。不送鍵 ⇒ 不在安全模式名單。
+  // 送出／收鍵盤／返回就收回。關掉＝手機也常駐。桌機不受影響。不送鍵 ⇒ 不是好讀行為，保留自己的開關。
   mobileCommentBarFold: true,
-
-  // 按搜尋鍵（文章列表的 / ? a Z；文章列表／看板列表／主功能表的 s）時改開搜尋彈窗，
-  // 不送 PTT 原生 prompt。理由：PTT 的
-  // 輸入記憶被列表好讀的跳號污染（article_search.js 檔頭），彈窗自己記關鍵字（只存
-  // 本機）。預設開；關掉＝逃生門，回到原生 prompt。手機工具列的搜尋鈕不受它影響。
-  searchKeyOpensModal: true,
 
   blacklist: "", // newline-separated user ids
   titleBlacklist: "", // newline-separated title keywords (board-list only)
@@ -431,41 +349,10 @@ export const readValuesWithDefault = () => {
   }
 };
 
-// 安全模式要關掉的 pref：會改寫 PTT 原生畫面、替使用者送鍵，或攔下原本會送給 PTT
-// 的按鍵的功能。使用者自己按下去才動的（跳到未讀、設為已讀、AID 跳文、滑鼠點擊、
-// 圖片上傳）不在內，自動登入有自己的開關也不在內。
-export const NATIVE_SAFE_MODE_KEYS = Object.freeze([
-  "enableEasyReading",
-  "articleHorizontalGestures",
-  "enableEasyReadingList",
-  "enableBoardListSmoothScroll",
-  "enableListNativeAutoResume",
-  "skipBoardEntryScreen",
-  "enableHelpMenuPopup",
-  "reconnectResume",
-  "resumeLastPlace",
-  "enableHomeDashboard",
-  "enableSplitReading",
-  "enableNextArticleCard",
-  "endTurnsOnLiveUpdate",
-  "easyReadingEndSwitchNative",
-  "refreshKeyIntercept",
-  "searchKeyOpensModal",
-  "pushKeyOpensLongPush",
-  "enableCommentBar"
-]);
-
-// 功能判斷要用的「實際生效」偏好：安全模式開著時把上面那串蓋成 false。回傳新物件，
-// 不動傳入的 values。**只能拿來判斷，不可寫回**（寫回會把使用者的設定蓋掉）；要改
-// 偏好的路徑（讀出→改一個 key→writeValues）一律用 readValuesWithDefault。
-export const effectivePrefs = values => {
-  if (!values || !values.nativeSafeMode) return values;
-  const out = { ...values };
-  for (const key of NATIVE_SAFE_MODE_KEYS) out[key] = false;
-  return out;
-};
-
-export const readEffectivePrefs = () => effectivePrefs(readValuesWithDefault());
+// Easy reading is one switch for the whole application (enableEasyReading).
+// Everything easy reading does runs whenever it is on and never while it is off;
+// this is the one question code asks.
+export const easyReadingOn = values => !!(values && values.enableEasyReading);
 
 export const writeValues = values => {
   let next = values;

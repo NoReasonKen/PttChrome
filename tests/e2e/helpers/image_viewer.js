@@ -32,7 +32,6 @@ async function bootImageArticle(page, opts = {}) {
   }
   await ptt.applyPrefs(page, {
     enableEasyReading: true,
-    enableEasyReadingList: false,
     enablePicPreview: true,
     useMouseBrowsing: true,
     mouseLeftClick: true,

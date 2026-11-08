@@ -35,11 +35,11 @@ const MAIN = '.main:not([data-stack-layer])';
 // (cchat-list-nav.json).
 async function bootArticleList(page) {
   const nav = loadCassette('cchat-list-nav');
-  await bootOffline(page, ptt, { articleGestures: true });
-  await ptt.applyPrefs(page, { enableEasyReading: true, enableEasyReadingList: false, useMouseBrowsing: true, mouseLeftClick: true });
+  await bootOffline(page, ptt);
+  await ptt.applyPrefs(page, { enableEasyReading: true, useMouseBrowsing: true, mouseLeftClick: true });
   await replayListCassette(page, nav);
   await page.waitForFunction(() => window.__app.buf.pageState === 2);
-  await ptt.applyPrefs(page, { enableEasyReadingList: true, easyReadingListPrefetchCount: 200 });
+  await ptt.applyPrefs(page, { easyReadingListPrefetchCount: 200 });
   await page.waitForFunction(() => window.__app.listSession.state === 'active' &&
     window.__app.commandQueue.idle && window.__app.buf.listLines.length > 50);
 }
@@ -75,7 +75,7 @@ async function bootDashboard(page, cassette = homeBoard) {
 }
 
 // The board search the dashboard (or the search key) sent reached C_Chat.
-// The app skips the board's entry screen itself (skipBoardEntryScreen), so a
+// The app skips the board's entry screen itself (an easy-reading behaviour), so a
 // Space of our own is pressed only once that skip is over and left the screen
 // to us: one that lands after the list shows pages it down, moving the
 // selection off the recorded row (#112).
@@ -99,7 +99,6 @@ const boardListEngaged = page => page.waitForFunction(() => {
 // (scn-stack-boardlist-board.json).
 async function bootBoardList(page) {
   await bootScenario(page, ptt, boardList);
-  await ptt.applyPrefs(page, { enableEasyReadingList: true, enableBoardListSmoothScroll: true });
   await boardListEngaged(page);
 }
 

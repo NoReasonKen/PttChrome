@@ -298,19 +298,8 @@ async function installAutoLoginPrefs(page, extra) {
           // 上一輪殘留的連線還沒被 PTT 收掉時照樣會問（one-shot guard 的 unit 守護
           // 在 tests/unit/auto_login_2fa.test.js）。
           autoLoginDupConn: 'N',
-          // 首頁儀表板登入後會自己送 Ctrl+Z f 抓我的最愛：live 的共用 session 不准有
-          // 測試以外的按鍵（會跟 spec 的鍵搶線）。功能本身由 offline spec 守。
-          enableHomeDashboard: false,
-          // 雙欄閱讀的左欄是浮層：核心 spec 的版面檢查只看終端機，不需要它。
-          enableSplitReading: false,
-          // 文章工具側欄同理（好讀文章右邊的浮層）。
+          // 文章工具側欄是好讀文章右邊的浮層：核心 spec 的版面檢查只看終端機，不需要它。
           enableArticleTools: false,
-          // 底部常駐推文列同理（疊在好讀文章最下面）。
-          enableCommentBar: false,
-          // 文末的下一篇標題卡同理（好讀累積頁尾端多一張卡片）。
-          enableNextArticleCard: false,
-          // 開站回到上次的地方：live 的共用 session 不准有測試以外的按鍵。
-          resumeLastPlace: false,
           autoLoginSkipWelcome: true,
         },
         extra || {}
@@ -416,7 +405,7 @@ async function autoLoginBoot(page, opts) {
 // 2) 立即生效的 key 走 window.__app.onPrefChange（showFloorNumbers/blacklist 等，會 redraw）。
 async function applyPrefs(page, extra) {
   await page.evaluate(
-    (args) => {
+    async (args) => {
       let cur = {};
       try {
         cur = JSON.parse(window.localStorage.getItem(args.KEY) || '{}');
@@ -428,17 +417,14 @@ async function applyPrefs(page, extra) {
       if (!app) return;
       for (const k of Object.keys(args.extra)) {
         const v = args.extra[k];
-        if (k === 'enableEasyReading') {
-          // onPrefChange('enableEasyReading') 是 no-op；開啟交給 easy_reading live 讀。
-          // 關閉時不能只設 useEasyReadingMode=false（React 樹 desync → 畫面凍結），
-          // 必須走完整退出配方：easy_reading.js 的 exitEasyReading()
-          // （還原 DOM/pageLines + Ctrl-L 重畫 + unmount React 樹）。
-          if (!v && app.view.useEasyReadingMode) {
-            app.easyReading.exitEasyReading();
-          }
-        } else {
-          app.onPrefChange(k, v);
+        // 文章好讀關閉時不能只設 useEasyReadingMode=false（React 樹 desync → 畫面凍結），
+        // 必須走完整退出配方：easy_reading.js 的 exitEasyReading()
+        // （還原 DOM/pageLines + Ctrl-L 重畫 + unmount React 樹）。
+        if (k === 'enableEasyReading' && !v && app.view.useEasyReadingMode) {
+          app.easyReading.exitEasyReading();
         }
+        // 同設定頁（onValuesPrefChange）：好讀開關也帶著列表、看板列表與手勢一起切。
+        app.onPrefChange(k, v);
       }
     },
     { KEY: PREF_KEY, extra }
@@ -446,7 +432,7 @@ async function applyPrefs(page, extra) {
 }
 
 // 動態讀取「有效 pref 值」（DEFAULT_PREFS 疊 localStorage），避免在測試裡 hardcode 可設定的快捷鍵。
-// 預設鍵改動（如 easyReadingEndSwitchKey: End→F8）時測試免改。dev build 由 main.js 暴露 window.__readPrefs。
+// 預設鍵改動時測試免改。dev build 由 main.js 暴露 window.__readPrefs。
 async function getPref(page, key) {
   return page.evaluate((k) => window.__readPrefs()[k], key);
 }
@@ -512,8 +498,6 @@ async function resetSession(page) {
     enableEasyReading: false,
     showFloorNumbers: false,
     blacklist: '',
-    enableEasyReadingList: false,
-    enableBoardListSmoothScroll: false,
   });
   // 關好讀會送 Ctrl-L 要整頁重畫（見 applyPrefs）⇒ 只有那時才需要等重畫回來。
   if (wasEasyReading) await waitScreenChanged(page, before);
@@ -561,8 +545,8 @@ async function gotoBoard(page, board) {
     });
 
   await sendKey(page, 's');
-  // 兩條路：預設 pref searchKeyOpensModal 開著 ⇒ `s` 開搜尋彈窗（docs/article-search.md），
-  // 彈窗自己「s → 等 prompt → 板名」；關著（錄製工具）⇒ 原生 prompt。
+  // 兩條路：好讀開著 ⇒ `s` 開搜尋彈窗（docs/article-search.md），彈窗自己
+  // 「s → 等 prompt → 板名」；好讀關著（錄製的準備階段）⇒ 原生 prompt。
   // 原生那條必須等搜尋 prompt 真的出現再打字：太早打，板名字元會被主選單當捷徑吃掉
   // （實測 "C_Chat" 的 C 選到 (C)lass 進了分組討論區）。
   await page.waitForFunction(
@@ -587,9 +571,9 @@ async function gotoBoard(page, board) {
       .catch(() => {});
     if (w === 'list') return waitScreenIdle(page);
     if (w === 'pass') {
-      // 跳過進板畫面（pref skipBoardEntryScreen，預設開）從送出板名那一刻就 active，會自己
+      // 跳過進板畫面（好讀行為）從送出板名那一刻就 active，會自己
       // 代按收掉進板畫面 ⇒ 先等它收完再重判，別跟它搶鍵：它的鍵先到時，這裡的空白會落進
-      // 文章列表（docs/board-note-skip.md）。pref 關／它放手時 active 為 false，照舊自己按。
+      // 文章列表（docs/board-note-skip.md）。好讀關／它放手時 active 為 false，照舊自己按。
       await page
         .waitForFunction(() => !(window.__app.boardNoteSkip && window.__app.boardNoteSkip.active), null, {
           timeout: 15000,

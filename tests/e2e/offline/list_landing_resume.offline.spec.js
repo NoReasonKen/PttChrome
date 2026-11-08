@@ -31,8 +31,7 @@ async function engage(page) {
   await replayListCassette(page, mark);
   await page.waitForFunction(() => window.__app.buf.pageState === 2);
   await ptt.applyPrefs(page, {
-    enableEasyReadingList: true,
-    enableListNativeAutoResume: true,
+    enableEasyReading: true,
     easyReadingListPrefetchCount: 0
   });
   await expect

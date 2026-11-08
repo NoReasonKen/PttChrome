@@ -47,7 +47,9 @@ async function drawList(page) {
 
 async function bootOnList(page, prefs) {
   await bootOffline(page, ptt);
-  await ptt.applyPrefs(page, { enableEasyReadingList: false, ...(prefs || {}) });
+  // The palette has its own switch. The list here is drawn by hand on the
+  // native screen: easy reading off, so no list takeover sends keys of its own.
+  await ptt.applyPrefs(page, { enableEasyReading: false, ...(prefs || {}) });
   await drawList(page);
   await page.evaluate(() => {
     window.__f4Prevented = null;

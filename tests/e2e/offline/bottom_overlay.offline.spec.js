@@ -115,7 +115,6 @@ test.describe('浮層不蓋住文末', () => {
           const opts = {};
           for (const k of combo) if (k !== 'imageViewer') opts[k] = true;
           await bootOffline(page, ptt, opts);
-          await ptt.applyPrefs(page, { enableEasyReadingList: false });
           await openArticle(page, { full, imageViewer: combo.includes('imageViewer') });
           if (combo.includes('pixivLookup')) await expectPixivOverlayClosed(page);
           if (combo.includes('nextArticle')) await expect(page.locator('#nextArticleCard')).toBeVisible();

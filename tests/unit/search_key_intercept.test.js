@@ -15,7 +15,7 @@ LIST_ROWS[23] = " 文章選讀  (y)回應(X)推文(^X)轉錄 ";
 
 beforeEach(() => {
   localStorage.clear();
-  writeValues({ ...readValuesWithDefault(), searchKeyOpensModal: true });
+  writeValues({ ...readValuesWithDefault(), enableEasyReading: true });
 });
 
 function ctxOnList(over) {
@@ -40,7 +40,7 @@ function ctxOnList(over) {
     bbscore: {
       aidNavigation: { active: false },
       longPush: { active: false },
-      easyReading: { tryReenterFromNative: () => false, _onKeyDown: vi.fn(), noteTextInput: vi.fn() },
+      easyReading: { _onKeyDown: vi.fn(), noteTextInput: vi.fn() },
       buf,
       openSearchModal,
       openLongPushModal: vi.fn(),
@@ -99,8 +99,8 @@ describe("鍵盤（onKeyDown）", () => {
     expect(keyboard.onKeyDown).toHaveBeenCalled();
   });
 
-  test("pref 關掉 ⇒ 原生", () => {
-    writeValues({ ...readValuesWithDefault(), searchKeyOpensModal: false });
+  test("easy reading off ⇒ native", () => {
+    writeValues({ ...readValuesWithDefault(), enableEasyReading: false });
     const { ctx, keyboard, openSearchModal } = ctxOnList();
     TermView.prototype.onKeyDown.call(ctx, keyEvent("/"));
     expect(openSearchModal).not.toHaveBeenCalled();

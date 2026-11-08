@@ -37,7 +37,7 @@ for (const entry of ['tap', 'pull']) {
     await page.setViewportSize({ width: 412, height: 840 });
     const thread = [...FAR_BOARD, { num: 39, author: 'alice', title: '[Talk] Source', date: '9/01' }]
       .map(a => ({ ...a, lines: 100, withHeader: true, wrapBody: true }));
-    await bootThreadBoard(page, { open: 39, nativeList: true, nextArticle: true, thread });
+    await bootThreadBoard(page, { open: 39, fromList: true, nextArticle: true, thread });
     await expect.poll(() => page.evaluate(() => window.__app.easyReading.easyReadingReachedPageEnd)).toBe(true);
     const card = page.locator('#nextArticleCard');
     await expect(card).toBeVisible();

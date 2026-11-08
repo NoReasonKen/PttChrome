@@ -151,7 +151,7 @@ beforeEach(() => {
   window.localStorage.clear();
   window.localStorage.setItem(
     PREF_KEY,
-    JSON.stringify({ values: { enableEasyReadingList: true, enableListNativeAutoResume: true } })
+    JSON.stringify({ values: { enableEasyReading: true } })
   );
   vi.useFakeTimers();
 });
@@ -408,14 +408,14 @@ describe("外部導覽的出口：序列停在列表時交回靜置探針", () =
     expectRestoredAfterFill(h, 350010);
   });
 
-  test("沒有 fromIdle（一般跳文）／列表好讀沒開 ⇒ idle 照舊不動", () => {
+  test("沒有 fromIdle（一般跳文）／easy reading off ⇒ idle 照舊不動", () => {
     const h = makeSession();
     h.s.disable();
     h.s.beginExternalNavigation();
     expect(h.s.state).toBe("idle");
     window.localStorage.setItem(
       PREF_KEY,
-      JSON.stringify({ values: { enableEasyReadingList: false } })
+      JSON.stringify({ values: { enableEasyReading: false } })
     );
     h.s.beginExternalNavigation({ fromIdle: true });
     expect(h.s.state).toBe("idle");
@@ -576,16 +576,6 @@ describe("落地即回好讀：重新整理／搜尋／跳到未讀不切原生�
     vi.advanceTimersByTime(9900);
     expect(h.s._renderMode).toBe("frozen");
     vi.advanceTimersByTime(200);
-    expect(h.s._renderMode).toBe("native");
-  });
-
-  test("pref 自動回復關掉 ⇒ 舊行為：一開始就切原生鏡像", () => {
-    const h = makeSession();
-    window.localStorage.setItem(
-      PREF_KEY,
-      JSON.stringify({ values: { enableEasyReadingList: true, enableListNativeAutoResume: false } })
-    );
-    new ScreenRefresh(h.core)._dispatch({ kind: "article-list", board: "C_Chat" });
     expect(h.s._renderMode).toBe("native");
   });
 });

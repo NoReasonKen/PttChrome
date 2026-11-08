@@ -250,8 +250,8 @@ describe("MessageInbox", () => {
     expect(inbox.state.items).toEqual([]);
   });
 
-  test("安全模式不影響（不送鍵的功能）", () => {
-    setPrefs({ nativeSafeMode: true });
+  test("works with easy reading off too (it sends nothing)", () => {
+    setPrefs({ enableEasyReading: false });
     const inbox = make();
     inbox.noteData(wire("aaa", "一"));
     expect(inbox.state.items).toHaveLength(1);

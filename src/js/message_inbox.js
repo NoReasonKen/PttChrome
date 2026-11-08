@@ -11,7 +11,7 @@
 //   且在 REPAINT_WINDOW_MS 內就當成重畫。
 // - 新信提示：標題列中段的「你有新信件」由無變有時收一則（noteScreen，見 newMailOnScreen）。
 import { b2u, WATERBALL_SCAN_RE, BROADCAST_SCAN_RE } from './string_util';
-import { readEffectivePrefs } from './pref_storage';
+import { readValuesWithDefault } from './pref_storage';
 import { parseBoardName, parseHeaderTitle } from './screen_titles';
 import { NEW_MAIL_MARK } from './mobile_app_bar';
 import { i18n } from './i18n';
@@ -97,7 +97,7 @@ export function newMailOnScreen(row0, pageState) {
 }
 
 function enabled() {
-  return readEffectivePrefs().enableMessageInbox !== false;
+  return readValuesWithDefault().enableMessageInbox !== false;
 }
 
 export function MessageInbox(core, opts) {

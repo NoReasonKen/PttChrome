@@ -19,7 +19,7 @@ import { BRD_HEADER_ROWS, boardListRowNums } from './board_list_parse';
 import { BOARD_LIST, isArticleListTitleRow, rowHasTitle, parseBoardName } from './screen_titles';
 import { isArticleListFooter, isBoardListFooter } from './screen_captions';
 import { OWNER_BOARD_LIST } from './list_render_owner';
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { cursorOffsets, paintedRowsAreBufRows } from './cursor_anchor';
 import { offsetTopWithin } from './scroll_anchor';
 import { internRow } from './term_char_intern';
@@ -638,7 +638,7 @@ export function TermView() {
     }
     // A refresh key then refreshes a revealed list once PTT shows it (#124).
     if (this.bbscore.articleGestures?.holdsInput() && isRefreshKeyEvent(e) &&
-        readEffectivePrefs().refreshKeyIntercept && this.bbscore.screenRefresh?.target()?.kind === 'revealed') {
+        easyReadingOn(readValuesWithDefault()) && this.bbscore.screenRefresh?.target()?.kind === 'revealed') {
       e.preventDefault();
       this.bbscore.screenRefresh.refresh('key');
       return;
@@ -1457,7 +1457,7 @@ TermView.prototype = {
     if (!isPasting && isPushKey(text)) {
       var pushFacts = pushGateFacts(this.bbscore);
       if (pushFacts && shouldInterceptPushKey({
-            key: text, prefs: readEffectivePrefs(),
+            key: text, prefs: readValuesWithDefault(),
             pageState: pushFacts.pageState, lastRowText: pushFacts.lastRowText,
             cursorOnInputField: pushFacts.cursorOnInputField
           }) && this.bbscore.openLongPushModal && this.bbscore.openLongPushModal())
@@ -1531,7 +1531,7 @@ TermView.prototype = {
     this._keyOutcome = null;
     // 單一字元（手機工具列的推文 X）：真鍵盤的字元是 keypress 送的
     // （term_keyboard._onKeyDown 對單字元 return false），合成的 keydown 沒有後續
-    // keypress ⇒ 沒人接手（例如 pushKeyOpensLongPush 關掉時）就補走同一條 keypress。
+    // keypress ⇒ 沒人接手（例如好讀關掉時）就補走同一條 keypress。
     // 組合鍵沒有 keypress（瀏覽器本來就不發），控制碼由 keydown 那條送。
     if (!down.defaultPrevented && keyName.length === 1 && !ctrl && !alt)
       this._keyboard.onKeyPress(new KeyboardEvent('keypress', { key: keyName, cancelable: true }));
@@ -1608,7 +1608,7 @@ TermView.prototype = {
     // reach PTT anyway (term_keyboard.keyEventToBytes returns null for them).
     // With no back stack this is a no-op hint, not a swallowed key.
     if (this.bbscore.aidNavigation && !e.ctrlKey && !e.altKey && !e.metaKey &&
-        e.key === readEffectivePrefs().aidNavBackKey) {
+        e.key === readValuesWithDefault().aidNavBackKey) {
       e.preventDefault();
       this.bbscore.aidNavigation.back();
       return;
@@ -1617,7 +1617,7 @@ TermView.prototype = {
     // the same reason as the one above: an F-key never reaches PTT anyway, and
     // it must work in easy reading as well as native.
     if (this.bbscore.deepLinkController && !e.ctrlKey && !e.altKey && !e.metaKey &&
-        e.key === readEffectivePrefs().deepLinkCopyKey) {
+        e.key === readValuesWithDefault().deepLinkCopyKey) {
       e.preventDefault();
       this.bbscore.deepLinkController.copyCurrentPostLink();
       return;
@@ -1625,7 +1625,7 @@ TermView.prototype = {
     // 「跳到第一篇未讀」hotkey (pref unreadJumpKey, default F7)：同上，F 鍵送不到 PTT。
     // start() 一律接手（不能用的畫面給提示），不交還瀏覽器。
     if (this.bbscore.unreadJump && !e.ctrlKey && !e.altKey && !e.metaKey &&
-        e.key === readEffectivePrefs().unreadJumpKey) {
+        e.key === readValuesWithDefault().unreadJumpKey) {
       e.preventDefault();
       this.bbscore.unreadJump.start();
       return;
@@ -1633,7 +1633,7 @@ TermView.prototype = {
     // 指令面板 hotkey (pref commandPaletteKey, default F4)：同上，F 鍵送不到 PTT。
     // openCommandPalette 回 false（ContextMenu 還沒 mount）⇒ 不吞鍵。
     if (this.bbscore.openCommandPalette && !e.ctrlKey && !e.altKey && !e.metaKey) {
-      var palettePrefs = readEffectivePrefs();
+      var palettePrefs = readValuesWithDefault();
       if (palettePrefs.enableCommandPalette &&
           e.key === palettePrefs.commandPaletteKey &&
           this.bbscore.openCommandPalette()) {
@@ -1641,29 +1641,16 @@ TermView.prototype = {
         return;
       }
     }
-    // 重新整理（F5／⌘R，pref refreshKeyIntercept）：看板列表／文章列表／文章改成重整
+    // 重新整理（F5／⌘R，好讀行為）：看板列表／文章列表／文章改成重整
     // PTT 畫面。refresh() 回 false ＝這個畫面不支援 ⇒ 不 preventDefault，瀏覽器照常
     // 重新載入（beforeunload 會先問）。F 鍵與 ⌘ 組合本來就送不到 PTT。
     if (this.bbscore.screenRefresh && isRefreshKeyEvent(e) &&
-        readEffectivePrefs().refreshKeyIntercept &&
+        easyReadingOn(readValuesWithDefault()) &&
         this.bbscore.screenRefresh.refresh('key')) {
       e.preventDefault();
       return;
     }
-    // Switch-to-native is a TOGGLE: the gate below owns the key while easy reading is
-    // on, and this owns it while we are back in native inside a post. Without it there
-    // is no way back into easy reading for the current post at all — the user has to
-    // walk out to a list and open another one ("半永久原生模式"). functionMode is
-    // excluded (we are already mirroring native there, and _evalFunctionModeExit will
-    // resume on its own), and pageState 3 keeps it out of lists/menus/editors.
-    if (!this.useEasyReadingMode && !this.buf.easyReadingFunctionMode &&
-        this.buf.pageState === 3 && !e.ctrlKey && !e.altKey &&
-        this.bbscore.easyReading &&
-        this.bbscore.easyReading.tryReenterFromNative(e)) {
-      e.preventDefault();
-      return;
-    }
-    // 推文鍵（X / %）改開「長推文一鍵發送」。pref pushKeyOpensLongPush，預設開。
+    // 推文鍵（X / %）改開「長推文一鍵發送」（好讀行為）。
     //
     // **排在所有 dispatch 之前**：下面 easyReading._onKeyDown 的 default 分支會
     // _enterFunctionMode()，那個函式結尾的同步 redraw 把 mainDisplay.scrollTop 歸
@@ -1679,7 +1666,7 @@ TermView.prototype = {
       var pushFacts = pushGateFacts(this.bbscore);
       if (pushFacts && shouldInterceptPushKey({
             key: e.key, ctrlKey: e.ctrlKey, altKey: e.altKey, metaKey: e.metaKey,
-            prefs: readEffectivePrefs(),
+            prefs: readValuesWithDefault(),
             pageState: pushFacts.pageState, lastRowText: pushFacts.lastRowText,
             cursorOnInputField: pushFacts.cursorOnInputField
           }) && this.bbscore.openLongPushModal && this.bbscore.openLongPushModal()) {
@@ -1687,7 +1674,7 @@ TermView.prototype = {
         return;
       }
     }
-    // 搜尋鍵（文章列表的 / ? a Z）改開搜尋彈窗（pref searchKeyOpensModal，預設開；
+    // 搜尋鍵（文章列表的 / ? a Z）改開搜尋彈窗（好讀行為；
     // docs/article-search.md）。排在列表好讀 keyOwner 之前：那邊會把它當 passthrough
     // 直接送出去。同樣「先開成功、再吞」。
     if (tryOpenSearchModal(this.bbscore, e.key, e)) {
@@ -1734,9 +1721,9 @@ TermView.prototype = {
           // (onToggleLiveHelperModalState returns true). When the helper isn't
           // running it's a noop returning undefined → fall through to native End,
           // so End keeps jumping to the bottom in list/article (see bug: End dead
-          // in list/article whenever endTurnsOnLiveUpdate was enabled).
+          // in list/article whenever the Live-article helper was enabled).
           if ((this.bbscore.buf.pageState == 2 || this.bbscore.buf.pageState == 3) &&
-            this.bbscore.endTurnsOnLiveUpdate &&
+            easyReadingOn(readValuesWithDefault()) &&
             this.bbscore.onToggleLiveHelperModalState()) {
             stop = true;
           }

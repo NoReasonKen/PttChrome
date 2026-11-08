@@ -49,7 +49,7 @@ test.describe('列表好读：关设定页（离线）', () => {
       await bootOffline(page, ptt);
       await replayListCassette(page, nav);
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
-      await ptt.applyPrefs(page, { enableEasyReadingList: true });
+      await ptt.applyPrefs(page, { enableEasyReading: true });
       await page.waitForFunction(
         () => {
           const app = window.__app;

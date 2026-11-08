@@ -71,11 +71,6 @@ const inSection = (tab, sectionKey, sectionTooltipKey, items) => [
 export const PREF_SEARCH_ITEMS = [
   // ── 一般 ────────────────────────────────────────────────────────
   ...inSection("general", "options_general", false, [
-    {
-      key: "nativeSafeMode",
-      titleKey: "options_nativeSafeMode",
-      tooltipKey: "tooltip_nativeSafeMode",
-    },
     { key: "enablePicPreview", titleKey: "options_enablePicPreview" },
     { key: "enableNotifications", titleKey: "options_enableNotifications" },
     { key: "deepLinkHandoffNotify", titleKey: "options_deepLinkHandoffNotify" },
@@ -89,61 +84,15 @@ export const PREF_SEARCH_ITEMS = [
       titleKey: "options_showStatusHints",
       tooltipKey: "tooltip_showStatusHints",
     },
-    { key: "enableEasyReading", titleKey: "options_enableEasyReading" },
     {
-      key: "enableHelpMenuPopup",
-      titleKey: "options_enableHelpMenuPopup",
-      tooltipKey: "tooltip_enableHelpMenuPopup",
-    },
-    { key: "enableEasyReadingList", titleKey: "options_enableEasyReadingList" },
-    {
-      key: "enableBoardListSmoothScroll",
-      titleKey: "options_enableBoardListSmoothScroll",
-      tooltipKey: "tooltip_enableBoardListSmoothScroll",
-    },
-    {
-      key: "enableListNativeAutoResume",
-      titleKey: "options_enableListNativeAutoResume",
-      tooltipKey: "tooltip_enableListNativeAutoResume",
-    },
-    {
-      key: "skipBoardEntryScreen",
-      titleKey: "options_skipBoardEntryScreen",
-      tooltipKey: "tooltip_skipBoardEntryScreen",
-    },
-    {
-      key: "enableHomeDashboard",
-      titleKey: "options_enableHomeDashboard",
-      tooltipKey: "tooltip_enableHomeDashboard",
-    },
-    {
-      key: "enableSplitReading",
-      titleKey: "options_enableSplitReading",
-      tooltipKey: "tooltip_enableSplitReading",
-    },
-    {
-      key: "enableNextArticleCard",
-      titleKey: "options_enableNextArticleCard",
-      tooltipKey: "tooltip_enableNextArticleCard",
+      key: "enableEasyReading",
+      titleKey: "options_enableEasyReading",
+      tooltipKey: "tooltip_enableEasyReading",
     },
     {
       key: "enableArticleTools",
       titleKey: "options_enableArticleTools",
       tooltipKey: "tooltip_enableArticleTools",
-    },
-    {
-      key: "easyReadingBrowserFind",
-      titleKey: "options_easyReadingBrowserFind",
-      tooltipKey: "tooltip_easyReadingBrowserFind",
-    },
-    {
-      key: "easyReadingEndSwitchNative",
-      titleKey: "options_easyReadingEndSwitchNative",
-    },
-    {
-      key: "easyReadingEndSwitchKey",
-      titleKey: "options_easyReadingEndSwitchKey",
-      tooltipKey: "tooltip_easyReadingEndSwitchKey",
     },
     {
       key: "aidNavBackKey",
@@ -176,28 +125,12 @@ export const PREF_SEARCH_ITEMS = [
       tooltipKey: "tooltip_paletteQuickBoards",
     },
     {
-      key: "refreshKeyIntercept",
-      titleKey: "options_refreshKeyIntercept",
-      tooltipKey: "tooltip_refreshKeyIntercept",
-    },
-    {
       key: "refreshMinIntervalSec",
       titleKey: "options_refreshMinIntervalSec",
       tooltipKey: "tooltip_refreshMinIntervalSec",
     },
-    { key: "endTurnsOnLiveUpdate", titleKey: "options_endTurnsOnLiveUpdate" },
     { key: "copyOnSelect", titleKey: "options_copyOnSelect" },
     { key: "enableBell", titleKey: "options_enableBell" },
-    {
-      key: "reconnectResume",
-      titleKey: "options_reconnectResume",
-      tooltipKey: "tooltip_reconnectResume",
-    },
-    {
-      key: "resumeLastPlace",
-      titleKey: "options_resumeLastPlace",
-      tooltipKey: "tooltip_resumeLastPlace",
-    },
     {
       key: "antiIdleTime",
       titleKey: "options_antiIdleTime",
@@ -212,17 +145,6 @@ export const PREF_SEARCH_ITEMS = [
       key: "enableLiveArticleHelper",
       titleKey: "options_enableLiveArticleHelper",
     },
-    { key: "enableLongPush", titleKey: "options_enableLongPush" },
-    {
-      key: "pushKeyOpensLongPush",
-      titleKey: "options_pushKeyOpensLongPush",
-      tooltipKey: "tooltip_pushKeyOpensLongPush",
-    },
-    {
-      key: "enableCommentBar",
-      titleKey: "options_enableCommentBar",
-      tooltipKey: "tooltip_enableCommentBar",
-    },
     {
       key: "commentReplyMenu",
       titleKey: "options_commentReplyMenu",
@@ -232,11 +154,6 @@ export const PREF_SEARCH_ITEMS = [
       key: "mobileCommentBarFold",
       titleKey: "options_mobileCommentBarFold",
       tooltipKey: "tooltip_mobileCommentBarFold",
-    },
-    {
-      key: "searchKeyOpensModal",
-      titleKey: "options_searchKeyOpensModal",
-      tooltipKey: "tooltip_searchKeyOpensModal",
     },
   ]),
   ...inSection("general", "options_appearance", null, [
@@ -280,11 +197,6 @@ export const PREF_SEARCH_ITEMS = [
       key: "mobileAppBarScrollTop",
       titleKey: "options_mobileAppBarScrollTop",
       tooltipKey: "tooltip_mobileAppBarScrollTop",
-    },
-    {
-      key: "articleHorizontalGestures",
-      titleKey: "options_articleHorizontalGestures",
-      tooltipKey: "tooltip_articleHorizontalGestures",
     },
   ]),
   ...inSection("general", "options_cursorHighlight", null, [

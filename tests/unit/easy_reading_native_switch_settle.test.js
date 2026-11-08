@@ -1,20 +1,18 @@
-// 回歸守護：好讀模式下按 F8 切原生，畫面「卡在最後一頁」（非特定文章，長文較常見）。
+// 回歸守護：好讀翻頁途中退出好讀（右鍵「取消好讀」），好讀不得被自動重新開啟。
+// （當年的症狀出自已移除的 F8 切原生：畫面「卡在最後一頁」；退出路徑同一條。）
 //
-// 症狀根因不是渲染，而是好讀被**自動重新啟用**：F8 (switchToNativeAtBottom) 送 End 跳到
-// 文末後 exitEasyReading，畫面靜止下來的第一個 settle 產生了一個**假的「列表(2)→文章(3)」
-// 邊緣**，nextEasyReadingState 判定「使用者剛從列表進到一篇文章」→ enterEasyReading()。
-// 重新開啟的好讀從文末那一頁開始累積，footer 已是 100% ⇒ 不再送 PageDown ⇒ 畫面就停在
-// 最後一頁不動。
+// 根因不是渲染，而是好讀被**自動重新啟用**：exitEasyReading 之後畫面靜止下來的第一個
+// settle 產生了一個**假的「列表(2)→文章(3)」邊緣**，nextEasyReadingState 判定「使用者
+// 剛從列表進到一篇文章」→ enterEasyReading()。
 //
 // 假邊緣從何而來：settle timer 只在畫面**靜止** SETTLE_MS(50ms) 後 fire，而好讀自動翻頁
 // 每 ~30-40ms 就有一次 server 活動 ⇒ 整段翻頁期間 timer 一直被 re-arm、從未 fire ⇒
-// settledPageState 仍停在進文章前的「列表(2)」，從沒升級成 3。docs/easy-reading.md 當年
-// 寫的「退出抑制天生正確：switchToNativeAtBottom 後 settledPageState 仍 3、不再升級」這個
-// 假設，只在「翻頁途中至少 settle 過一次」時成立；長文章翻頁久，整段沒有 50ms 空檔的機率
+// settledPageState 仍停在進文章前的「列表(2)」，從沒升級成 3。「退出抑制天生正確：
+// 退出後 settledPageState 仍 3、不再升級」這個假設，只在「翻頁途中至少 settle 過一次」時成立；長文章翻頁久，整段沒有 50ms 空檔的機率
 // 更高，所以更容易中。
 //
-// 實錄：t=1231..2021 每 32~43ms 一次 recv（自動翻頁，
-// 全程無 50ms 空檔）→ t=2035 easyReading.exit → t=2135 easyReading.enter。
+// 時序：每 32~43ms 一次 recv（自動翻頁，全程無 50ms 空檔）→ easyReading.exit →
+// 約 100ms 後 easyReading.enter。
 //
 // 用真的 TermBuf.prototype.notify/_armSettleTimer/_touchRows 驅動 30ms notify + 50ms
 // settle 鏈（不建構 TermBuf，constructor 會摸 document），配真的 EasyReading。
@@ -22,17 +20,12 @@ import { TermBuf } from "../../src/js/term_buf";
 import { EasyReading } from "../../src/js/easy_reading";
 
 vi.mock("../../src/js/pref_storage", () => {
-  const readValuesWithDefault = vi.fn(() => ({
-    enableEasyReading: true,
-    easyReadingEndSwitchNative: true,
-    easyReadingEndSwitchKey: "F8"
-  }));
-  // easy_reading 讀的是 readEffectivePrefs（安全模式覆寫層）；委派給同一個 mock。
-  return { readValuesWithDefault, readEffectivePrefs: () => readValuesWithDefault() };
+  const readValuesWithDefault = vi.fn(() => ({ enableEasyReading: true }));
+  return { readValuesWithDefault, easyReadingOn: (v) => !!(v && v.enableEasyReading) };
 });
 
 // 這些 parser 的正確性有自己的測試；這裡只驗 settle 邊緣的接線。狀態列由 `screen.status`
-// 直接給（翻頁中 = 40%，F8 跳到文末後 = 100%），不必真的畫 Big5 畫面。
+// 直接給（翻頁中 = 40%，退出後重繪 = 100%），不必真的畫 Big5 畫面。
 const screen = vi.hoisted(() => ({
   status: { rowIndexStart: 100, rowIndexEnd: 122, pagePercent: 40 }
 }));
@@ -119,7 +112,7 @@ function serverFrame(buf) {
   buf.notify();
 }
 
-describe("F8 切原生後不得被過期的 settledPageState 重新開啟好讀", () => {
+describe("退出好讀後不得被過期的 settledPageState 重新開啟好讀", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     screen.status = { rowIndexStart: 100, rowIndexEnd: 122, pagePercent: 40 };
@@ -128,8 +121,8 @@ describe("F8 切原生後不得被過期的 settledPageState 重新開啟好讀"
     vi.useRealTimers();
   });
 
-  // 重現用的完整劇本：列表 → 進文章 → 連續自動翻頁（全程無 50ms 空檔）→ F8。
-  function runUntilF8(buf, er) {
+  // 重現用的完整劇本：列表 → 進文章 → 連續自動翻頁（全程無 50ms 空檔）→ 取消好讀。
+  function runUntilExit(buf, er) {
     // 好讀開著、文章已開始翻頁
     er.startedEasyReading = true;
     buf.pageState = 3;
@@ -145,19 +138,19 @@ describe("F8 切原生後不得被過期的 settledPageState 重新開啟好讀"
     expect(buf.settledPageState).toBe(2);
     expect(buf.pageState).toBe(3);
 
-    er.switchToNativeAtBottom();       // F8
-    // End 跳到文末 + ^L 整頁重繪回來，footer 變 100%
+    er.exitEasyReading();              // 取消好讀
+    // 原生畫面重繪回來
     screen.status = { rowIndexStart: 368, rowIndexEnd: 390, pagePercent: 100 };
     serverFrame(buf);
     vi.advanceTimersByTime(300);       // 畫面靜止 → 第一次 settle
   }
 
-  it("翻頁途中按 F8：settle 不得產生假的 2->3 邊緣而重新開啟好讀", () => {
+  it("翻頁途中取消好讀：settle 不得產生假的 2->3 邊緣而重新開啟好讀", () => {
     const buf = makeBuf();
     const { er, view } = makeER(buf);
     const enterSpy = vi.spyOn(er, "enterEasyReading");
 
-    runUntilF8(buf, er);
+    runUntilExit(buf, er);
 
     expect(enterSpy).not.toHaveBeenCalled();
     expect(er._enabled).toBe(false);

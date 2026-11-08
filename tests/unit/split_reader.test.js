@@ -4,9 +4,8 @@
 const prefOverride = vi.hoisted(() => ({}));
 vi.mock("../../src/js/pref_storage", async (importOriginal) => {
   const real = await importOriginal();
-  return { ...real, readEffectivePrefs: () => ({ ...real.readEffectivePrefs(), ...prefOverride }) };
+  return { ...real, readValuesWithDefault: () => ({ ...real.readValuesWithDefault(), ...prefOverride }) };
 });
-import { DEFAULT_PREFS, NATIVE_SAFE_MODE_KEYS } from "../../src/js/pref_storage";
 import { parseBlacklist, parseTitleBlacklist } from "../../src/js/comment_parse";
 import {
   listRowUnread,
@@ -340,22 +339,18 @@ describe("SplitReader：何時出現", () => {
       expect(t.split.state.visible).toBe(false);
     }
   });
-  test("pref 關 ⇒ 不出現；讀到一半關掉 ⇒ 下一次 settle 收起", () => {
+  test("好讀關 ⇒ 不出現；讀到一半關掉 ⇒ 下一次 settle 收起", () => {
     const t = makeCore();
     t.show(PAGE());
     t.read("C_Chat", "carol", "[閒聊] 第三篇");
     expect(t.split.state.visible).toBe(true);
-    prefOverride.enableSplitReading = false;
+    prefOverride.enableEasyReading = false;
     try {
       t.read("C_Chat", "carol", "[閒聊] 第三篇");
       expect(t.split.state.visible).toBe(false);
     } finally {
-      delete prefOverride.enableSplitReading;
+      delete prefOverride.enableEasyReading;
     }
-  });
-  test("預設開，而且在安全模式名單內", () => {
-    expect(DEFAULT_PREFS.enableSplitReading).toBe(true);
-    expect(NATIVE_SAFE_MODE_KEYS).toContain("enableSplitReading");
   });
   test("改過標題的文章（列表≠檔頭）從列表進 ⇒ 照樣標出來；在文章裡換到別篇 ⇒ 不再信舊游標", () => {
     const { split, show, read } = makeCore();

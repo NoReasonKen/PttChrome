@@ -7,10 +7,10 @@
 //   - 文章列表按 / 真的開得了彈窗，而且一個 byte 都沒送出去
 //   - 送出時「搜尋鍵 → 等 prompt 幀 → 關鍵字＋Enter」整條鏈接得起來（Big5）
 //   - 關鍵字記在本機，下次 ↑ 叫得回來（取代被跳號污染的 PTT 輸入記憶）
-//   - 設定關掉 ⇒ 回到 PTT 原生 prompt（逃生門）
+//   - 好讀關掉 ⇒ 回到 PTT 原生 prompt（逃生門）
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
-const { bootOffline, waitScreenSettled } = require('../helpers/replay');
+const { bootOffline, waitScreenSettled, drawListForEasyReading } = require('../helpers/replay');
 
 // 頁面裡已經載好 Big5 轉碼表，用它把畫面文字／期望值轉成 server 會送的 bytes。
 const U2B_SRC = `(str) => {
@@ -29,8 +29,11 @@ const toBig5 = (page, s) =>
 
 // 一整幀文章列表（指紋同 long_push.offline.spec.js 的 drawBoardList：row0／row2 反白、
 // 底列「文章選讀」、游標停在條目區第 0 欄）。
-async function drawArticleList(page) {
-  await page.evaluate((src) => {
+//
+// 好讀開著（搜尋彈窗是好讀的一部分），列表好讀會接手這一幀、送 jump 把游標帶到某篇：
+// 這裡照 PTT 回應，重畫同一頁、游標停在那一篇（`cursor`）。
+async function drawArticleList(page, cursor) {
+  await page.evaluate(({ src, cursor }) => {
     const u2b = new Function('return ' + src)();
     const REV = '\x1b[7m';
     const OFF = '\x1b[0m';
@@ -43,14 +46,17 @@ async function drawArticleList(page) {
       [1234, 'someoneElse', '[公告] 別篇'],
       [1235, 'thirdGuy', '[問卦] 又一篇'],
     ];
+    let at = 0;
     rows.forEach(([n, a, t], i) => {
+      if (n === cursor) at = i;
+      const head = (n === cursor ? '>' : ' ') + String(n).padStart(6);
       d += '\x1b[' + (4 + i) + ';1H' +
-        u2b(String(n).padStart(7) + '    ' + ' 9/01 ' + a.padEnd(13).slice(0, 13) + '□' + t);
+        u2b(head + '    ' + ' 9/01 ' + a.padEnd(13).slice(0, 13) + '□' + t);
     });
     d += '\x1b[24;1H' + u2b(' 文章選讀  (y)回應(X)推文(^X)轉錄 ');
-    d += '\x1b[4;1H';
+    d += '\x1b[' + (4 + at) + ';1H';
     window.__app.onData(d);
-  }, U2B_SRC);
+  }, { src: U2B_SRC, cursor });
   await waitScreenSettled(page, { 2: '編號', 23: '文章選讀' });
 }
 
@@ -76,11 +82,11 @@ const sentText = (page) => page.evaluate(() => (window.__sent || []).join(''));
 
 const modalInput = (page) => page.locator('input[name="searchKeyword"]');
 
-async function boot(page) {
+async function boot(page, { easyReading = true } = {}) {
   await bootOffline(page, ptt);
-  // 自己畫的列表驗的是**原生**路徑；列表好讀一 engage 就會自己往線路送機器鍵。
-  await ptt.applyPrefs(page, { enableEasyReadingList: false });
-  await drawArticleList(page);
+  await ptt.applyPrefs(page, { enableEasyReading: easyReading });
+  if (easyReading) await drawListForEasyReading(page, (num) => drawArticleList(page, num));
+  else await drawArticleList(page);
 }
 
 test.describe('搜尋彈窗（離線）', () => {
@@ -95,12 +101,14 @@ test.describe('搜尋彈窗（離線）', () => {
     await modalInput(page).fill('問卦');
     await modalInput(page).press('Enter');
     await expect(modalInput(page)).toHaveCount(0);
-    // 第一步：只有搜尋鍵（＋保證整幀重繪的 \f），關鍵字還沒出去
-    await expect.poll(() => sentText(page)).toBe('/\f');
+    // 第一步：只有搜尋鍵（＋保證整幀重繪的 \f；PTT 遲遲不回時再補要一次重繪），關鍵字
+    // 還沒出去。逐幀等、立刻畫 prompt：PTT 約一秒沒畫 prompt，列表好讀就放棄這次搜尋。
+    await page.waitForFunction(() => /^\/\f+$/.test((window.__sent || []).join('')), null, { polling: 'raf' });
 
     await drawPrompt(page, '搜尋標題: ');
     const kw = await toBig5(page, '問卦');
-    await expect.poll(() => sentText(page)).toBe('/\f' + kw + '\r');
+    // 列表好讀代送的鍵尾附 \f（保證整幀重繪）；之後列表好讀自己的跳號不算。
+    await expect.poll(() => sentText(page)).toMatch(new RegExp('^/\f+' + kw + '\r\f'));
   });
 
   // REGRESSION（live 錄製檔 live-2026-10-07T12-51-14：`/\f` → End → `\r` 先上線，關鍵字
@@ -112,20 +120,22 @@ test.describe('搜尋彈窗（離線）', () => {
     await ptt.sendKey(page, '/');
     await modalInput(page).fill('問卦');
     await modalInput(page).press('Enter');
-    await expect.poll(() => sentText(page)).toBe('/\f');
+    await page.waitForFunction(() => /^\/\f+$/.test((window.__sent || []).join('')), null, { polling: 'raf' });
 
     await ptt.sendKey(page, 'End');
     await ptt.sendKey(page, 'Enter');
-    expect(await sentText(page)).toBe('/\f');
+    expect(await sentText(page)).toMatch(/^\/\f+$/);
 
     await drawPrompt(page, '搜尋標題: ');
     const kw = await toBig5(page, '問卦');
-    await expect.poll(() => sentText(page)).toBe('/\f' + kw + '\r');
-    // server 回搜尋結果（列表全幅重繪）⇒ 第二步收尾、閘門解除，鍵照常送出
+    const searched = new RegExp('^/\f+' + kw + '\r\f');
+    await expect.poll(() => sentText(page)).toMatch(searched);
+    // server 回搜尋結果（列表全幅重繪）⇒ 第二步收尾、閘門解除，鍵照常送出（X 在列表上
+    // 直送 PTT）
     await drawArticleList(page);
     await expect.poll(() => page.evaluate(() => window.__app.searchInFlight)).toBe(false);
-    await ptt.sendKey(page, 'End');
-    await expect.poll(() => sentText(page)).toBe('/\f' + kw + '\r\x1b[4~');
+    await ptt.sendKey(page, 'X');
+    await expect.poll(() => sentText(page).then((t) => t.replace(searched, ''))).toContain('X');
   });
 
   test('作者搜尋（a）同樣攔；關鍵字記在本機，下次 ↑ 叫得回來', async ({ page }) => {
@@ -136,10 +146,10 @@ test.describe('搜尋彈窗（離線）', () => {
     await modalInput(page).fill('someoneElse');
     await modalInput(page).press('Enter');
     await drawPrompt(page, '搜尋作者: ');
-    await expect.poll(() => sentText(page)).toBe('a\fsomeoneElse\r');
+    await expect.poll(() => sentText(page)).toBe('a\fsomeoneElse\r\f');
 
     // 回到列表再按一次 a：輸入框空的，↑ 叫回上一次的作者
-    await drawArticleList(page);
+    await drawListForEasyReading(page, (num) => drawArticleList(page, num));
     await ptt.sendKey(page, 'a');
     await expect(modalInput(page)).toBeVisible();
     await expect(modalInput(page)).toHaveValue('');
@@ -162,7 +172,7 @@ test.describe('搜尋彈窗（離線）', () => {
       await modalInput(page).fill(name);
       await modalInput(page).press('Enter');
       await drawPrompt(page, '搜尋作者: ');
-      await drawArticleList(page);
+      await drawListForEasyReading(page, (num) => drawArticleList(page, num));
     }
     await ptt.sendKey(page, 'a');
     await expect(page.locator('[data-search-history-item]')).toHaveText([
@@ -205,9 +215,8 @@ test.describe('搜尋彈窗（離線）', () => {
     expect(await sentText(page)).toBe('');
   });
 
-  test('設定關掉 → / 回到 PTT 原生 prompt（逃生門）', async ({ page }) => {
-    await boot(page);
-    await ptt.applyPrefs(page, { searchKeyOpensModal: false });
+  test('好讀關掉 → / 回到 PTT 原生 prompt（逃生門）', async ({ page }) => {
+    await boot(page, { easyReading: false });
     await collectSent(page);
     await ptt.sendKey(page, '/');
     await expect.poll(() => sentText(page)).toBe('/');

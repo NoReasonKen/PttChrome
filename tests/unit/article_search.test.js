@@ -142,7 +142,7 @@ describe("availableSearchKinds", () => {
 });
 
 describe("shouldInterceptSearchKey", () => {
-  const prefs = { searchKeyOpensModal: true };
+  const prefs = { enableEasyReading: true };
   test("文章列表按 / → 攔", () => {
     expect(shouldInterceptSearchKey({ key: "/", prefs, facts: articleList() })).toBe(true);
   });
@@ -163,7 +163,7 @@ describe("shouldInterceptSearchKey", () => {
     expect(shouldInterceptSearchKey({ key: "s", prefs, facts: f })).toBe(false);
   });
   test.each([
-    ["pref 關掉", { key: "/", prefs: { searchKeyOpensModal: false }, facts: articleList() }],
+    ["好讀關掉", { key: "/", prefs: { enableEasyReading: false }, facts: articleList() }],
     ["帶 Ctrl", { key: "a", ctrlKey: true, prefs, facts: articleList() }],
     ["帶 Alt", { key: "a", altKey: true, prefs, facts: articleList() }],
     ["看板列表的 /（是看板中文關鍵字，另一種 prompt）", { key: "/", prefs, facts: boardList() }],
@@ -491,8 +491,8 @@ describe("tryOpenSearchModal", () => {
     const core = coreOnArticleList(undefined);
     expect(tryOpenSearchModal(core, "/", null)).toBe(false);
   });
-  test("pref 關掉 ⇒ 連問都不問", () => {
-    writeValues({ ...readValuesWithDefault(), searchKeyOpensModal: false });
+  test("easy reading off ⇒ never asks (PTT's own prompt)", () => {
+    writeValues({ ...readValuesWithDefault(), enableEasyReading: false });
     const core = coreOnArticleList(true);
     expect(tryOpenSearchModal(core, "/", null)).toBe(false);
     expect(core.openSearchModal).not.toHaveBeenCalled();

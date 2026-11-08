@@ -992,16 +992,6 @@ export const PrefModal = ({
             <Tabs.Panel value="general">
               <PrefSection legendKey="options_general">
                 <PrefCheckbox
-                  name="nativeSafeMode"
-                  checked={values.nativeSafeMode}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_nativeSafeMode")}
-                </PrefCheckbox>
-                <Text size="xs" c="dimmed" mb="xs">
-                  {i18n("tooltip_nativeSafeMode")}
-                </Text>
-                <PrefCheckbox
                   name="enablePicPreview"
                   checked={values.enablePicPreview}
                   onChange={onCheckboxChange}
@@ -1050,95 +1040,12 @@ export const PrefModal = ({
                 <PrefCheckbox
                   name="enableEasyReading"
                   checked={values.enableEasyReading}
-                  disabled={values.nativeSafeMode}
                   onChange={onCheckboxChange}
                 >
                   {i18n("options_enableEasyReading")}
                 </PrefCheckbox>
-                <PrefCheckbox
-                  name="enableHelpMenuPopup"
-                  checked={values.enableHelpMenuPopup}
-                  disabled={values.nativeSafeMode || !values.enableEasyReading}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_enableHelpMenuPopup")}
-                </PrefCheckbox>
                 <Text size="xs" c="dimmed" mb="xs">
-                  {i18n("tooltip_enableHelpMenuPopup")}
-                </Text>
-                <PrefCheckbox
-                  name="enableEasyReadingList"
-                  checked={values.enableEasyReadingList}
-                  disabled={values.nativeSafeMode}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_enableEasyReadingList")}
-                </PrefCheckbox>
-                <PrefCheckbox
-                  name="enableBoardListSmoothScroll"
-                  checked={values.enableBoardListSmoothScroll}
-                  disabled={values.nativeSafeMode}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_enableBoardListSmoothScroll")}
-                </PrefCheckbox>
-                <Text size="xs" c="dimmed" mb="xs">
-                  {i18n("tooltip_enableBoardListSmoothScroll")}
-                </Text>
-                <PrefCheckbox
-                  name="enableListNativeAutoResume"
-                  checked={values.enableListNativeAutoResume}
-                  disabled={values.nativeSafeMode}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_enableListNativeAutoResume")}
-                </PrefCheckbox>
-                <Text size="xs" c="dimmed" mb="xs">
-                  {i18n("tooltip_enableListNativeAutoResume")}
-                </Text>
-                <PrefCheckbox
-                  name="skipBoardEntryScreen"
-                  checked={values.skipBoardEntryScreen}
-                  disabled={values.nativeSafeMode}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_skipBoardEntryScreen")}
-                </PrefCheckbox>
-                <Text size="xs" c="dimmed" mb="xs">
-                  {i18n("tooltip_skipBoardEntryScreen")}
-                </Text>
-                <PrefCheckbox
-                  name="enableHomeDashboard"
-                  checked={values.enableHomeDashboard}
-                  disabled={values.nativeSafeMode}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_enableHomeDashboard")}
-                </PrefCheckbox>
-                <Text size="xs" c="dimmed" mb="xs">
-                  {i18n("tooltip_enableHomeDashboard")}
-                </Text>
-                <PrefCheckbox
-                  name="enableSplitReading"
-                  checked={values.enableSplitReading}
-                  disabled={values.nativeSafeMode}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_enableSplitReading")}
-                </PrefCheckbox>
-                <Text size="xs" c="dimmed" mb="xs">
-                  {i18n("tooltip_enableSplitReading")}
-                </Text>
-                <PrefCheckbox
-                  name="enableNextArticleCard"
-                  checked={values.enableNextArticleCard}
-                  disabled={values.nativeSafeMode}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_enableNextArticleCard")}
-                </PrefCheckbox>
-                <Text size="xs" c="dimmed" mb="xs">
-                  {i18n("tooltip_enableNextArticleCard")}
+                  {i18n("tooltip_enableEasyReading")}
                 </Text>
                 <PrefCheckbox
                   name="enableArticleTools"
@@ -1150,35 +1057,6 @@ export const PrefModal = ({
                 <Text size="xs" c="dimmed" mb="xs">
                   {i18n("tooltip_enableArticleTools")}
                 </Text>
-                <PrefCheckbox
-                  name="easyReadingBrowserFind"
-                  checked={values.easyReadingBrowserFind}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_easyReadingBrowserFind")}
-                </PrefCheckbox>
-                <Text size="xs" c="dimmed" mb="xs">
-                  {i18n("tooltip_easyReadingBrowserFind")}
-                </Text>
-                <PrefCheckbox
-                  name="easyReadingEndSwitchNative"
-                  checked={values.easyReadingEndSwitchNative}
-                  disabled={values.nativeSafeMode}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_easyReadingEndSwitchNative")}
-                </PrefCheckbox>
-                <TextInput
-                  label={i18n("options_easyReadingEndSwitchKey")}
-                  name="easyReadingEndSwitchKey"
-                  readOnly
-                  disabled={!values.easyReadingEndSwitchNative}
-                  value={values.easyReadingEndSwitchKey}
-                  placeholder={i18n("tooltip_easyReadingEndSwitchKey")}
-                  onKeyDown={onHotkeyCapture}
-                  mb="xs"
-                  {...anchor("easyReadingEndSwitchKey")}
-                />
                 <TextInput
                   label={i18n("options_aidNavBackKey")}
                   name="aidNavBackKey"
@@ -1237,15 +1115,6 @@ export const PrefModal = ({
                 >
                   {i18n("options_paletteQuickBoards")}
                 </PrefCheckbox>
-                <PrefCheckbox
-                  name="refreshKeyIntercept"
-                  checked={values.refreshKeyIntercept}
-                  disabled={values.nativeSafeMode}
-                  onChange={onCheckboxChange}
-                  description={i18n("tooltip_refreshKeyIntercept")}
-                >
-                  {i18n("options_refreshKeyIntercept")}
-                </PrefCheckbox>
                 <NumberInput
                   label={i18n("options_refreshMinIntervalSec")}
                   description={i18n("tooltip_refreshMinIntervalSec")}
@@ -1258,14 +1127,6 @@ export const PrefModal = ({
                   mb="xs"
                   {...anchor("refreshMinIntervalSec")}
                 />
-                <PrefCheckbox
-                  name="endTurnsOnLiveUpdate"
-                  checked={values.endTurnsOnLiveUpdate}
-                  disabled={values.nativeSafeMode}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_endTurnsOnLiveUpdate")}
-                </PrefCheckbox>
                 <PrefCheckbox
                   name="copyOnSelect"
                   checked={values.copyOnSelect}
@@ -1280,28 +1141,6 @@ export const PrefModal = ({
                 >
                   {i18n("options_enableBell")}
                 </PrefCheckbox>
-                <PrefCheckbox
-                  name="reconnectResume"
-                  checked={values.reconnectResume}
-                  disabled={values.nativeSafeMode}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_reconnectResume")}
-                </PrefCheckbox>
-                <Text size="xs" c="dimmed" mb="xs">
-                  {i18n("tooltip_reconnectResume")}
-                </Text>
-                <PrefCheckbox
-                  name="resumeLastPlace"
-                  checked={values.resumeLastPlace}
-                  disabled={values.nativeSafeMode}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_resumeLastPlace")}
-                </PrefCheckbox>
-                <Text size="xs" c="dimmed" mb="xs">
-                  {i18n("tooltip_resumeLastPlace")}
-                </Text>
                 <NumberInput
                   label={i18n("options_antiIdleTime")}
                   description={i18n("tooltip_antiIdleTime")}
@@ -1343,42 +1182,9 @@ export const PrefModal = ({
                   {i18n("options_enableLiveArticleHelper")}
                 </PrefCheckbox>
                 <PrefCheckbox
-                  name="enableLongPush"
-                  checked={values.enableLongPush}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_enableLongPush")}
-                </PrefCheckbox>
-                <PrefCheckbox
-                  name="pushKeyOpensLongPush"
-                  checked={values.pushKeyOpensLongPush}
-                  disabled={!values.enableLongPush || values.nativeSafeMode}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_pushKeyOpensLongPush")}
-                </PrefCheckbox>
-                <Text size="xs" c="dimmed" mb="xs">
-                  {i18n("tooltip_pushKeyOpensLongPush")}
-                </Text>
-                <PrefCheckbox
-                  name="enableCommentBar"
-                  checked={values.enableCommentBar}
-                  disabled={!values.enableLongPush || values.nativeSafeMode}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_enableCommentBar")}
-                </PrefCheckbox>
-                <Text size="xs" c="dimmed" mb="xs">
-                  {i18n("tooltip_enableCommentBar")}
-                </Text>
-                <PrefCheckbox
                   name="commentReplyMenu"
                   checked={values.commentReplyMenu}
-                  disabled={
-                    !values.enableLongPush ||
-                    !values.enableCommentBar ||
-                    values.nativeSafeMode
-                  }
+                  disabled={!values.enableEasyReading}
                   onChange={onCheckboxChange}
                 >
                   {i18n("options_commentReplyMenu")}
@@ -1389,28 +1195,13 @@ export const PrefModal = ({
                 <PrefCheckbox
                   name="mobileCommentBarFold"
                   checked={values.mobileCommentBarFold}
-                  disabled={
-                    !values.enableLongPush ||
-                    !values.enableCommentBar ||
-                    values.nativeSafeMode
-                  }
+                  disabled={!values.enableEasyReading}
                   onChange={onCheckboxChange}
                 >
                   {i18n("options_mobileCommentBarFold")}
                 </PrefCheckbox>
                 <Text size="xs" c="dimmed" mb="xs">
                   {i18n("tooltip_mobileCommentBarFold")}
-                </Text>
-                <PrefCheckbox
-                  name="searchKeyOpensModal"
-                  checked={values.searchKeyOpensModal}
-                  disabled={values.nativeSafeMode}
-                  onChange={onCheckboxChange}
-                >
-                  {i18n("options_searchKeyOpensModal")}
-                </PrefCheckbox>
-                <Text size="xs" c="dimmed" mb="xs">
-                  {i18n("tooltip_searchKeyOpensModal")}
                 </Text>
               </PrefSection>
               <PrefSection legendKey="options_appearance">
@@ -1558,17 +1349,6 @@ export const PrefModal = ({
                 )}
                 {values.mobileLayout !== "off" && (
                   <>
-                    <PrefCheckbox
-                      name="articleHorizontalGestures"
-                      checked={values.articleHorizontalGestures}
-                      disabled={values.nativeSafeMode}
-                      onChange={onCheckboxChange}
-                    >
-                      {i18n("options_articleHorizontalGestures")}
-                    </PrefCheckbox>
-                    <Text size="xs" c="dimmed" mb="xs">
-                      {i18n("tooltip_articleHorizontalGestures")}
-                    </Text>
                     <PrefCheckbox
                       name="mobileAppBarScrollTop"
                       checked={values.mobileAppBarScrollTop}

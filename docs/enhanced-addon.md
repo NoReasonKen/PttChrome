@@ -632,18 +632,18 @@ index.jsx#onContextMenu` 開選單當下 `readValuesWithDefault()` 現讀，**�
   （暖機入口不偷下載／建完即毀）、`ui_behavior.offline.spec.js`（分頁切換＋三種 availability 的反灰）、
   `bare-domain-link.offline.spec.js`（總開關關閉時子選項開著也不推論）。
 
-### 安全模式：全部用原生（`nativeSafeMode`，預設關）
+### 一個好讀開關（`enableEasyReading`）
 
-- 用途：PTT 改版、增強功能認錯畫面時，使用者一個開關回到原生，不必逐項找。
-- 範圍＝`pref_storage.js#NATIVE_SAFE_MODE_KEYS`：會改寫原生畫面、替使用者送鍵、或攔下原本送給 PTT
-  的按鍵的功能（好讀三件、非導覽後自動回好讀、跳過進板畫面、斷線回原處、首頁儀表板、寬螢幕雙欄閱讀、Live 文自動到底、
-  好讀 F8 切原生、F5／搜尋鍵／推文鍵攔截）。使用者主動觸發的（跳到未讀、AID 跳文、滑鼠點擊、
-  圖片上傳）與自動登入（有自己的開關）不在內。新增這類功能時要把它的開關加進名單。
-- **只在讀取端覆寫，不寫回**：判斷一律讀 `readEffectivePrefs()`／`effectivePrefs(values)`
-  （`App.onValuesPrefChange` 先過它再分派）；要改偏好的路徑（讀出→改→`writeValues`）一律用
-  `readValuesWithDefault`，否則會把使用者的設定蓋掉。設定頁上被蓋掉的項目只反灰、值原樣保留。
-- 守護：`tests/unit/native_safe_mode.test.js`（行為＋靜態掃描「讀名單內 key 的檔案不准讀原始值」）、
-  `pref_modal_safe_mode.test.jsx`（反灰、存回原值）、`board_note_skip.offline.spec.js`（完整 boot 鏈）。
+- 用途：PTT 改版、增強功能認錯畫面時，使用者關掉好讀就回到原生，不必逐項找。
+- 好讀行為＝會改寫原生畫面、替使用者送鍵、或攔下原本送給 PTT 的按鍵的功能（文章／文章列表／看板列表好讀、
+  非導覽操作後自動回好讀、跳過進板畫面、斷線回原處、開站回到上次的地方、首頁儀表板、寬螢幕雙欄閱讀、下一篇卡片、
+  Live 文自動到底、說明選單彈窗、推文列與長推文、F5／搜尋鍵／推文鍵攔截、文章內搜尋交給瀏覽器、手機橫滑手勢）。
+  它們**沒有自己的開關**：好讀開著就做，關著一律不做。新增這類功能時不要再加開關。
+  使用者主動觸發的（跳到未讀、AID 跳文、滑鼠點擊、圖片上傳）、不送鍵的顯示功能與自動登入有自己的開關。
+- 判斷一律問 `pref_storage.easyReadingOn(values)`，不要另立分項 pref；設定頁只留好讀開關和「選哪一種好讀呈現」的子設定，
+  好讀關著時子設定反灰、值原樣保留。舊版存下的分項值（含雲端同步）不讀、不遷移。
+- 守護：`tests/unit/easy_reading_switch.test.js`（一個判斷＋靜態掃描「src 不再讀分項開關」）、
+  `pref_modal_easy_reading.test.jsx`（設定頁只有一個開關、子設定反灰）、`board_note_skip.offline.spec.js`（完整 boot 鏈）。
 
 ### 設定搜尋（`src/js/pref_search.js` ＋ `components/ContextMenu/PrefSearchBox.jsx`）
 左欄搜尋框 → 下拉結果 → 切分頁＋捲動＋短暫高亮。**與右鍵選單的「外部搜尋」

@@ -31,8 +31,8 @@ const listState = (page) =>
     };
   });
 
-async function engageListEasyReading(page) {
-  await ptt.applyPrefs(page, { enableEasyReadingList: true });
+// 卷的 meta.prefs 開著好讀：首幀一到，列表好讀就接手（預讀的 jump 在素材裡）。
+async function listEasyReadingEngaged(page) {
   await page.waitForFunction(() => {
     const app = window.__app;
     return (
@@ -87,7 +87,7 @@ test.describe('列表好讀（scenario 重放）', () => {
   test('A 類鍵 `]` 走凍結交易：全程看不到原生 24 列', async ({ page }) => {
     test.skip(!bracket, '缺 scn-list-bracket（yarn record:scenarios）');
     await bootScenario(page, ptt, bracket);
-    await engageListEasyReading(page);
+    await listEasyReadingEngaged(page);
 
     // 交易期間高頻取樣 listRenderMode：只要出現過一次 'native' 就是回歸。
     await page.evaluate(() => {
@@ -114,10 +114,11 @@ test.describe('列表好讀（scenario 重放）', () => {
   test('捲動把游標捲出視野後，按 ↓ 會先把它帶回畫面上', async ({ page }) => {
     test.skip(!nav, '缺 cchat-list-nav');
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false });
+    // 列表卷是原生畫面：好讀關著重放，畫好之後才打開，讓列表好讀接手這一幀。
+    await ptt.applyPrefs(page, { enableEasyReading: false });
     await replayListCassette(page, nav);
     await page.waitForFunction(() => window.__app.buf.pageState === 2);
-    await ptt.applyPrefs(page, { enableEasyReadingList: true, easyReadingListPrefetchCount: 200 });
+    await ptt.applyPrefs(page, { enableEasyReading: true, easyReadingListPrefetchCount: 200 });
     await page.waitForFunction(() => {
       const app = window.__app;
       return (
@@ -167,7 +168,7 @@ test.describe('AID 跳文 → 返回（scenario 重放）', () => {
   test('從列表好讀開的文章：跳文後可返回原文（aid 錨點＋捲動位置）', async ({ page }) => {
     test.skip(!aidBack, '缺 scn-aid-back（yarn record:scenarios）');
     await bootScenario(page, ptt, aidBack);
-    await engageListEasyReading(page);
+    await listEasyReadingEngaged(page);
     await watchHints(page);
 
     await ptt.sendKey(page, 'Enter');
@@ -208,7 +209,7 @@ test.describe('AID 跳文 → 返回（scenario 重放）', () => {
   test('跳文 → 返回之後，閱讀紀錄記著開文前的列表視野（退回列表時還原用）', async ({ page }) => {
     test.skip(!aidBack, '缺 scn-aid-back（yarn record:scenarios）');
     await bootScenario(page, ptt, aidBack);
-    await engageListEasyReading(page);
+    await listEasyReadingEngaged(page);
     const listBefore = await page.evaluate(() => window.__app.listSession.readingPosition());
     expect(listBefore && listBefore.topNum).toBeTruthy();
 
@@ -239,15 +240,16 @@ test.describe('AID 跳文 → 返回（scenario 重放）', () => {
   test('從 `/` 搜尋結果開的文章：返回走 aid 錨點，回得到原文', async ({ page }) => {
     test.skip(!aidBackSearch, '缺 scn-aid-back-search（yarn record:scenarios）');
     await bootScenario(page, ptt, aidBackSearch);
+    await listEasyReadingEngaged(page);
     await watchHints(page);
-    // 卷裡錄的是原生 `/` prompt 逐字打；搜尋彈窗（預設開）會把 `/` 攔走，這條守的是
-    // AID 返回錨點，不是搜尋入口 ⇒ 走原生路徑。
-    await ptt.applyPrefs(page, { searchKeyOpensModal: false });
 
+    // `/` 開搜尋彈窗，由它送「/ → 等 prompt → 關鍵字」。
     await ptt.sendKey(page, 'Slash');
-    await waitFed(page, 2);
-    await ptt.typeLine(page, aidBackSearch.meta.keyword);
-    await waitFed(page, 3);
+    const box = page.locator('input[name="searchKeyword"]');
+    await box.fill(aidBackSearch.meta.keyword);
+    await box.press('Enter');
+    await page.waitForFunction(() => window.__app.searchInFlight === false);
+    await listEasyReadingEngaged(page);
     await ptt.sendKey(page, 'Enter');
     await waitFed(page, rawIndex(aidBackSearch, 0));
     await waitArticleSettled(page);

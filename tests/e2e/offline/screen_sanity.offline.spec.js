@@ -26,18 +26,17 @@ test.describe('畫面健全性（離線逐卷）', () => {
   test('看板列表（原生）', async ({ page }) => {
     test.skip(!list, '尚無 list cassette');
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false });
+    await ptt.applyPrefs(page, { enableEasyReading: false });
     await replayCassette(page, list, { easyReading: false });
     expectSane(await screenSanity(page), list.__file);
   });
 
-  // 列表好讀（預設開）：檢查的是捲動視窗（_listWindowLines），不是原生 24 列。
+  // 列表好讀（好讀模式預設開）：檢查的是捲動視窗（_listWindowLines），不是原生 24 列。
   test('看板列表（列表好讀捲動視窗）', async ({ page }) => {
     test.skip(!nav, '尚無 cchat-list-nav cassette');
     await bootOffline(page, ptt);
     await replayListCassette(page, nav);
     await page.waitForFunction(() => window.__app.buf.pageState === 2);
-    await ptt.applyPrefs(page, { enableEasyReadingList: true });
     await page.waitForFunction(
       () =>
         window.__app.listSession.state === 'active' &&
@@ -80,7 +79,7 @@ test.describe('畫面健全性（離線逐卷）', () => {
   test('檢查器會抓到：漏字／格線位移／水平溢出／整列漏畫', async ({ page }) => {
     test.skip(!list, '尚無 list cassette');
     await bootOffline(page, ptt);
-    await ptt.applyPrefs(page, { enableEasyReadingList: false });
+    await ptt.applyPrefs(page, { enableEasyReading: false });
     await replayCassette(page, list, { easyReading: false });
     expectSane(await screenSanity(page), 'baseline');
 

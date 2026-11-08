@@ -294,8 +294,8 @@ test.describe('cassette 录制器', () => {
     }
 
     // ---- article 模式：进好读、逐页累积，录 byte 分页 + 每页文字快照 ----
-    // searchKeyOpensModal：下面 RECORD_SEARCH 走原生 `/` prompt 逐字打。
-    await applyPrefs(page, { enableEasyReading: true, showFloorNumbers: true, searchKeyOpensModal: false });
+    // 找文章时好读关着：下面 RECORD_SEARCH 走原生 `/` prompt 逐字打；开文前才打开好读。
+    await applyPrefs(page, { enableEasyReading: false, showFloorNumbers: true });
 
     // 定位目标文章（装 hook 前先到目标列，避免列表移动 recv 污染第一页）：
     //  - RECORD_SEARCH 设了 → '/' 标题搜寻指定文章（如黃仁勳那篇）；找不到(过期)即抛错。
@@ -352,7 +352,14 @@ test.describe('cassette 录制器', () => {
       };
     }, MAX_PAGES);
 
-    // 清掉 End 造成的列表 recv，再开文章。
+    // 打开好读：列表好读接手目标列（游标仍是那一篇）。等它静下来，清掉列表的 recv，再开文章。
+    await applyPrefs(page, { enableEasyReading: true });
+    await page.waitForFunction(
+      () => window.__app.listSession.state === 'active' && window.__app.commandQueue.idle,
+      null,
+      { timeout: 20000 }
+    );
+    await page.waitForTimeout(1500);
     await page.evaluate(() => {
       window.__rec.cur = [];
     });
@@ -381,7 +388,6 @@ test.describe('cassette 录制器', () => {
 
     // 收尾：到底(reachedPageEnd)时最后一页没有 page-down → 补 flush；触上限(capped)时
     // 最后一页已在 hook 内 flush 过、且已停止翻页（pageLines 与 steps 一致）→ 不再 flush。
-    // golden 必须在（可选的）End 切回原生「之前」读 pageLines（exitEasyReading 会清空它）。
     const golden = await page.evaluate(() => {
       const app = window.__app;
       if (!window.__rec.capped) window.__recFlush();
@@ -389,19 +395,6 @@ test.describe('cassette 录制器', () => {
       return buf.pageLines.map((_, r) => buf.getRowText(r, 0, buf.cols, buf.pageLines));
     });
 
-    // 可选：录「好读 End→原生跳到底」的 server 回应，存为 'end' step（player 等测试触发 \x1b[4~ 才喂）。
-    if (process.env.RECORD_END) {
-      await page.evaluate(() => {
-        window.__rec.cur = [];
-        window.__app.easyReading.switchToNativeAtBottom(); // 送 \x1b[4~ + exitEasyReading
-      });
-      await page.waitForTimeout(2500);
-      await page.evaluate(() => {
-        const recv = window.__rec.cur.join('');
-        window.__rec.cur = [];
-        window.__rec.steps.push({ on: 'end', recv: btoa(recv) });
-      });
-    }
 
     const fin = await page.evaluate(() => ({
       steps: window.__rec.steps,

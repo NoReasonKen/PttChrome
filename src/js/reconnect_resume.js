@@ -13,8 +13,8 @@
 //
 // 待回目標平常只在記憶體（同 deep link 的 pending）。存檔（localStorage SNAPSHOT_KEY）兩種：
 //   - Android APK 被系統回收（docs/android-app.md「renderer 被回收」）：App 切到背景
-//     （'pttandroid:stop'）時存，重建的頁面（config.restored）開機接回（pref reconnectResume）。
-//   - 開站回到上次的地方（pref resumeLastPlace，預設開；docs/reading-record.md「開站回到上次的
+//     （'pttandroid:stop'）時存，重建的頁面（config.restored）開機接回。
+//   - 開站回到上次的地方（docs/reading-record.md「開站回到上次的
 //     地方」）：分頁切到背景／關掉（visibilitychange hidden、pagehide）時存，下一次開站接回。
 //     手機瀏覽器回收分頁、使用者關掉再開，都像原生 App 一樣回到上次讀的文章或列表。出發前
 //     有一段倒數提示可以取消；deep link 進來時以 deep link 為準（同一套 superseded）。
@@ -27,13 +27,13 @@
 //     重連失敗之後登入成功仍回得去。
 //   - 登入後使用者先動了（離開主功能表）、或 deep link 也在等登入（使用者剛給的連結
 //     比斷線前的位置新）⇒ 作廢。
-//   - 使用者關掉了（pref reconnectResume，預設開）：斷線時不記，重連途中才關也不出發
+//   - 好讀關著（兩種接回都是好讀行為，替使用者送鍵）：斷線時不記，重連途中才關也不出發
 //     ⇒ 停在 PTT 原生的登入落點（主功能表）。
 
 import { isMainMenuRow } from './aid_navigation';
 import { recordFor } from './reading_record';
 import { boardNameFromKey } from './screen_titles';
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { isAndroidApp, androidRestored, STOP_EVENT } from './android_bridge';
 import { readSearchResultsContext, validateSearchResultsContext } from './search_results_context';
 import { resumeSearchResults } from './resume_search_results';
@@ -100,21 +100,16 @@ export function planFromSnapshot(snap, now) {
     : plan;
 }
 
+// Both resumes are easy-reading behaviours: they send keys on the reader's behalf.
 function enabled() {
-  return !!readEffectivePrefs().reconnectResume;
+  return easyReadingOn(readValuesWithDefault());
 }
 
-function openEnabled() {
-  return !!readEffectivePrefs().resumeLastPlace;
-}
-
-// 開機要不要接回存檔。純函式：APK 回收重建且 reconnectResume 開著 ⇒ 'restored'（照舊直接
-// 出發）；其餘（一般開站、APK 正常開啟、重建但只開了 resumeLastPlace）⇒ resumeLastPlace
-// 開著才 'open'（倒數、可取消）；都關 ⇒ null。
+// 開機要不要接回存檔。純函式：好讀關著 ⇒ null；APK 回收重建 ⇒ 'restored'（照舊直接
+// 出發）；其餘（一般開站、APK 正常開啟）⇒ 'open'（倒數、可取消）。
 export function bootResumeMode(restored, prefs) {
-  const p = prefs || {};
-  if (restored && p.reconnectResume) return 'restored';
-  return p.resumeLastPlace ? 'open' : null;
+  if (!easyReadingOn(prefs)) return null;
+  return restored ? 'restored' : 'open';
 }
 
 export function isResumeToastTarget(el) {
@@ -199,7 +194,7 @@ export function ReconnectResume(core, view, termBuf) {
     // 開機讀一次就刪：APK 回收重建或開站接回（各自的開關）才用，否則丟掉。
     const saved = readSnapshot();
     const snap = saved.snapshot;
-    const mode = bootResumeMode(isAndroidApp() && androidRestored(), readEffectivePrefs());
+    const mode = bootResumeMode(isAndroidApp() && androidRestored(), readValuesWithDefault());
     const plan = planFromSnapshot(snap, Date.now());
     this._bootDiagnostic = {
       storage: saved.status,
@@ -259,7 +254,7 @@ ReconnectResume.prototype = {
   },
 
   diagnostics: function() {
-    const prefs = readEffectivePrefs();
+    const prefs = readValuesWithDefault();
     return {
       boot: this._bootDiagnostic && { ...this._bootDiagnostic },
       recent: this._diagnostics.map(event => ({ ...event })),
@@ -268,8 +263,7 @@ ReconnectResume.prototype = {
       connectState: this._core.connectState,
       pendingKind: this._pending?.kind || this._countdown?.plan.kind || null,
       countingDown: !!this._countdown,
-      resumeLastPlace: !!prefs.resumeLastPlace,
-      reconnectResume: !!prefs.reconnectResume
+      easyReading: easyReadingOn(prefs)
     };
   },
 
@@ -281,7 +275,7 @@ ReconnectResume.prototype = {
   _scheduleCheckpoint: function() {
     if (this._checkpointTimer !== null || !this._loggedIn || this._core.connectState !== 1 ||
         (typeof document !== 'undefined' && document.hidden) ||
-        !(openEnabled() || (isAndroidApp() && enabled()))) return;
+        !enabled()) return;
     // A trailing throttle has a bounded delay even during continuous scrolling.
     // Re-read the location when it fires; never persist an event-time bookmark.
     const geometry = readingGeometry(this._core, this._view);
@@ -349,7 +343,7 @@ ReconnectResume.prototype = {
   // 沒登入、關掉了、沒有可回的地方 ⇒ 清掉存檔。
   saveSnapshot: function(options = {}) {
     let plan = null;
-    const want = openEnabled() || (isAndroidApp() && enabled());
+    const want = enabled();
     if (this._loggedIn && want && this._core && this._core.connectState === 1) {
       const core = this._core;
       const bm = recordFor(core).begin('reconnect-resume', { view: this._view, buf: this._termBuf });
@@ -507,7 +501,7 @@ ReconnectResume.prototype = {
     if (!this._pending) return;
     const core = this._core;
     if (core.connectState !== 1) return;
-    if (!(this._pending.fromOpen ? openEnabled() : enabled())) {
+    if (!enabled()) {
       this.discard('disabled');
       return;
     }

@@ -1,4 +1,4 @@
-import { readEffectivePrefs } from './pref_storage';
+import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { mobileToolbarContext } from './mobile_toolbar';
 import { i18n } from './i18n';
 import { serializedOpHint } from './serialized_op_gate';
@@ -87,7 +87,7 @@ export class ArticleGestures {
 
   available() {
     const core = this.core;
-    return !!(core.mobile && readEffectivePrefs().articleHorizontalGestures &&
+    return !!(core.mobile && easyReadingOn(readValuesWithDefault()) &&
       !serializedOpHint(core) &&
       core.conn?.isConnected && core.view.useEasyReadingMode && core.buf.startedEasyReading &&
       !core.buf.easyReadingFunctionMode && mobileToolbarContext(core).threadNav);
@@ -97,7 +97,7 @@ export class ArticleGestures {
   // swipes right to go back, under the same preference; neither has a drawer.
   // The kind of list, or null.
   listSwipeLevel() {
-    if (!readEffectivePrefs().articleHorizontalGestures || this.core.buf.pageState !== 2) return null;
+    if (!easyReadingOn(readValuesWithDefault()) || this.core.buf.pageState !== 2) return null;
     return [PAGE.ARTICLE_LIST, PAGE.BOARD_LIST].find(level => this._leaveable(level)) || null;
   }
 
@@ -183,7 +183,7 @@ export class ArticleGestures {
     const finished = this._finishLayerExit();
     const target = finished ? document.elementFromPoint(event.clientX, event.clientY) : event.target;
     const layer = this.stack.shownLayer();
-    if (!layer || !event.isPrimary || !readEffectivePrefs().articleHorizontalGestures || this._otherModalOpen()) return;
+    if (!layer || !event.isPrimary || !easyReadingOn(readValuesWithDefault()) || this._otherModalOpen()) return;
     if (this.settling) {
       if (!this.opened) return;
       this._finishDrawerSettle(true);

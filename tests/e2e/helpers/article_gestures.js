@@ -7,7 +7,7 @@ const DRAWER = '[data-article-drawer]';
 const PANEL = `${DRAWER} [role="dialog"]`;
 
 async function bootGestureArticle(page, options = {}) {
-  await bootImageArticle(page, { ...options, articleGestures: true });
+  await bootImageArticle(page, options);
   await expect(page.locator('.main')).toHaveClass(/articleHorizontalGestures/);
   await page.evaluate(() => {
     window.__gestureSent = [];

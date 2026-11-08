@@ -104,7 +104,7 @@ test.describe('好讀 functionMode（scenario 重放）', () => {
 
   test(':5 往回跳不重複累積、捲到落點；`/` 只提示瀏覽器搜尋、Ctrl+F 不送 ^F', async ({ page }) => {
     test.skip(!seekback, '缺 scn-er-seekback（yarn record:scenarios）');
-    await bootScenario(page, ptt, seekback, { prefs: { easyReadingBrowserFind: true } });
+    await bootScenario(page, ptt, seekback,);
     const fed = await openAndAccumulate(page, seekback);
     const rowTexts = () =>
       page.evaluate(() =>

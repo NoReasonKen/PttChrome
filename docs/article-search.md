@@ -76,7 +76,7 @@ navigation or list cleanup discards the pending notice.
 | IME／Android 軟鍵盤 | `term_view.onTextInput`（非貼上、單一字元） | 同上 |
 | 手機工具列「搜尋」 | `MobileToolbar` → ContextMenu `openSearch(context.search[0])`，**直接開彈窗、無子選單**（使用者定案：種類在彈窗上方切）。手機上 `SearchModal` 外殼換成 bottom sheet（`mobile` prop → `components/MobileSheet`，表單相同；系統返回＝收起） | 不看 pref |
 
-`shouldInterceptSearchKey`：key ∈ `/ ? a Z s`、無 Ctrl/Alt/Meta、pref `searchKeyOpensModal`（預設 true，**會同步**）、`availableSearchKinds(facts)` 含該種類。
+`shouldInterceptSearchKey`：key ∈ `/ ? a Z s`、無 Ctrl/Alt/Meta、好讀開著（`easyReadingOn`；搜尋鍵攔截沒有自己的開關，好讀關著就是原生 prompt）、`availableSearchKinds(facts)` 含該種類。
 `availableSearchKinds`（工具列共用）：游標在輸入欄（`buf.isCursorOnInputField`）⇒ 無；文章列表（`listRenderOwner==='article-list'` 或 `boardListContextKind==='article-list'`）⇒ title/author/push/board；看板列表、主功能表 ⇒ board；其他 ⇒ 無。
 - 看板列表的 `/` 是「看板中文關鍵字」（`board.c:2063`），**不攔**。
 - `s`＝board，只在可用種類含 board 的畫面攔（文章列表／看板列表／主功能表）；看板列表的 `a`／`Z` 不攔。小寫 `z` 是精華區（`bbs.c:4406`），不是推文數。
@@ -102,7 +102,7 @@ navigation or list cleanup discards the pending notice.
 - 關鍵字 `ansiHalfColorConv(u2b(text))`（queue 綁 raw `conn.send`）。
 - **在途閘門 `core.searchInFlight`**（`serialized_op_gate` 讀，期間吞鍵＋提示「搜尋中」）：少了它，搜尋鍵已上線、prompt 未到時按的 Enter 會把空 prompt 送出（＝取消），關鍵字落到列表變指令（live 錄製檔實證）。解除＝第二步 onDone／任一步 onFail／onFlushed（兩個 session 的 `_enqueuePassthroughStep` 都轉送 `onFlushed`）＋保底 `SEARCH_INFLIGHT_MAX_MS`。e2e 等搜尋完成一律等它（`core.spec.js#gotoLatestThread`），不可只看「列表＋游標不在輸入欄」。
 - **閱讀紀錄**：送出前領書籤（決策表 `article-search`；看板 `s` 走這條時是 `board-search`），prompt 沒開出來＝`fail`、第二步 onDone＝`done`。找不到符合條件時 PTT `vmsg` 後 `READ_REDRAW` 回原列表 ⇒ 列表好讀回原處；有結果時落在搜尋結果（MODE_SELECT），列表端比對編號空間不符自動丟棄。見 `docs/reading-record.md`。
-- 錄製工具（`record-cassette`／`record-scenarios` 的 aid-back-search）與重放原生 `/` 的 offline spec 明設 `searchKeyOpensModal:false`：卷裡錄的是原生 prompt 逐字打。
+- 錄製工具（`record-scenarios` 的 aid-back-search 等）在好讀開著時錄：搜尋走彈窗，卷裡錄的是彈窗送出的兩步。重放原生 `/` 的 offline spec 關好讀。
 
 ## 看板：原生補全橋接（`board_search_bridge.js`）
 

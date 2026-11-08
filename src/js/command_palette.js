@@ -51,8 +51,8 @@ export const PALETTE_ACTIONS = [
   { id: "copyLink", titleKey: "palette_copyLink", when: "copyLink", keywords: ["複製本篇連結", "複製連結", "分享", "copy link", "share", "url"] },
   { id: "back", titleKey: "palette_back", when: "back", keywords: ["返回原文", "返回", "上一篇", "back", "return"] },
   { id: "settings", titleKey: "palette_settings", when: null, keywords: ["設定", "偏好", "settings", "preferences", "options"] },
-  { id: "safeModeOn", titleKey: "palette_safeModeOn", when: "safeModeOff", keywords: ["安全模式", "全部用原生", "原生", "safe mode", "native"] },
-  { id: "safeModeOff", titleKey: "palette_safeModeOff", when: "safeModeOn", keywords: ["安全模式", "關閉安全模式", "safe mode", "native"] },
+  { id: "easyReadingOff", titleKey: "palette_easyReadingOff", when: "easyReadingOn", keywords: ["關閉好讀", "好讀", "原生", "安全模式", "easy reading", "native", "safe mode"] },
+  { id: "easyReadingOn", titleKey: "palette_easyReadingOn", when: "easyReadingOff", keywords: ["開啟好讀", "好讀", "easy reading"] },
 ];
 
 const norm = (s) => String(s || "").trim().toLowerCase();
@@ -91,7 +91,7 @@ function actionMatch(action, q, title) {
  * @param {object} ctx 開面板當下量好的事實：
  *   searchKinds: string[]（article_search.availableSearchKinds）
  *   refresh / unreadJump / markAllRead / copyLink / back: boolean
- *   safeMode: boolean（目前安全模式開著嗎）
+ *   easyReading: boolean（目前好讀開著嗎）
  *   title(key): string —— 動作標題（i18n；比對用，可省）
  *   lang: 設定搜尋用的語系（可省）
  *   quickBoards: { recent: string[], favorites: {name, desc}[] } | null（可省）
@@ -125,8 +125,8 @@ export function buildPaletteItems(query, ctx) {
     markAllRead: !!c.markAllRead,
     copyLink: !!c.copyLink,
     back: !!c.back,
-    safeModeOn: !!c.safeMode,
-    safeModeOff: !c.safeMode,
+    easyReadingOn: !!c.easyReading,
+    easyReadingOff: !c.easyReading,
   };
   const title = typeof c.title === "function" ? c.title : () => "";
   const strong = [];
