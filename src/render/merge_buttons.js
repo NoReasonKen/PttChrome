@@ -5,7 +5,9 @@
 // 桌機滑鼠移上去自動展開（純 CSS :hover，main.css `.floatTools`），觸控點一下展開、
 // 選完自動收合。理由：手機換行版面的文字佔滿全寬，攤開的一疊按鈕會蓋住文章／推文。
 //
-// 它們住在 #mainContainer 尾端、位置固定，不參與列 diff。舊版就刻意不用 Mantine
+// The foreground screen mounts tools outside the terminal in #screenTools;
+// standalone renderers keep them after their rows. Neither participates in row diff.
+// 舊版就刻意不用 Mantine
 // （Screen 的 root 不在 MantineProvider 底下，Mantine 元件在此會 throw），所以是
 // 純 <button> ＋ inline style 仿 Mantine xs 按鈕外觀 —— 樣式一字照抄。
 //

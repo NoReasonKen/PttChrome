@@ -140,6 +140,10 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
 - 展開：桌機純 CSS `@media (hover: hover) .floatTools:hover`；觸控 tap 圓鈕 toggle `data-open`，點了面板裡的工具自動收合。
   一個工具都不用顯示 ⇒ 整個「⋯」不出現（`screen.js#_syncOverlays`）。
 - debug 錄製：`App.setDebugMode`（唯一寫入點，PrefModal Switch 經 ContextMenu 呼叫）→ `view.debugRecordButton` → `enhance.debugRecordButton`；
+  The foreground screen mounts its shared tools in `#screenTools`, outside the
+  terminal stacking context: above home, below the App Bar and dialogs. Retained
+  page copies omit recording controls; the foreground renderer removes its tools
+  on release. Recording can start and export on home or the native main menu.
   錄製狀態真相在 `app.debugRecorder`（`js/debug_record_control.js`），每次 render 經 `enhance.isDebugRecording()` 現問（**不可改回布林快照**：游標底色慢路徑是不換 props 的重畫，快照會把錄製中蓋回灰），點擊走 `enhance.onDebugRecord`（引用穩定）。
   錄製中「⋯」掛 `data-recording`（紅）。「已下載」隱私提示是 React（`components/DebugRecordNotice`，`App.onDebugRecordDownloaded` 訂閱）。
   守護 `debug_record_render.test.js`、`app_debug_mode.test.js`、offline `debug_record`／`mobile_float_tools`。

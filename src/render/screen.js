@@ -133,13 +133,14 @@ function disposeNode(node) {
 }
 
 export class ScreenController {
-  constructor(screenRoot) {
+  constructor(screenRoot, floatingToolsRoot = null) {
     this.screenRoot = screenRoot;
     // The scroll container its inline previews load against: its own `.main`,
     // also while a stacked-page layer's copy is still detached.
     this._previewRoot = screenRoot.closest?.(".main") || null;
     this.container = el("div", { id: "mainContainer" });
     screenRoot.appendChild(this.container);
+    this._floatingToolsRoot = floatingToolsRoot || this.container;
 
     // 最後一次 update() 的 props（互動 state 改變時據此重畫）。
     this.props = null;
@@ -463,6 +464,7 @@ export class ScreenController {
     this.container.removeEventListener("click", this._onContainerClick);
     this.container.removeEventListener("keydown", this._onContainerKeyDown);
     this.container.removeEventListener("mousemove", this._onContainerMouseMove);
+    this._floatTools?.el.remove();
     this.container.remove();
     this._cache = null;
     this._prevFrame = null;
@@ -1629,10 +1631,16 @@ export class ScreenController {
       if (!this._floatTools) this._floatTools = createFloatingTools();
       this._floatTools.setTools(tools);
       this._syncFloatToolsActive();
-      wanted.push(this._floatTools.el);
+      if (this._floatingToolsRoot === this.container) {
+        wanted.push(this._floatTools.el);
+      } else if (this._floatTools.el.parentNode !== this._floatingToolsRoot) {
+        this._floatingToolsRoot.appendChild(this._floatTools.el);
+      }
     } else if (this._floatTools) {
       // 下次出現時從收合開始（換文章／離開文章頁不該留著上一次釘開的面板）。
       this._floatTools.setOpen(false);
+      if (this._floatingToolsRoot !== this.container)
+        this._floatTools.el.remove();
     }
     if (this._hoverPreview !== undefined) {
       if (!this._hoverHost) this._hoverHost = el("div", null);

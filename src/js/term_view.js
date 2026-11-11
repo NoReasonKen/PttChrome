@@ -1354,7 +1354,8 @@ TermView.prototype = {
         // List easy reading pins pageState:2 so computeAnnotations applies list
         // blacklist rules to the accumulated buffer even on transient frames.
         enhanceOverrides || {}
-      )
+      ),
+      document.getElementById('screenTools')
     );
   },
 

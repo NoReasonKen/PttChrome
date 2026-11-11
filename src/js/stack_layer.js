@@ -58,7 +58,9 @@ export class ScreenCopyLayer {
       position: 'absolute', left: rect.left + 'px', top: rect.top + 'px',
       width: rect.width + 'px', height: rect.height + 'px', margin: '0', translate: 'none', zIndex: '2'
     });
-    this.screen = renderScreen(this.frame.lines, forceWidth, enableLinkInlinePreview, false, this.el, enhance);
+    // Recording belongs to the foreground screen, never a retained page copy.
+    this.screen = renderScreen(this.frame.lines, forceWidth, enableLinkInlinePreview, false, this.el,
+      { ...enhance, debugRecordButton: false });
   }
 
   hide() {

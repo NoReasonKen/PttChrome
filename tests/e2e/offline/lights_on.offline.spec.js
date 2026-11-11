@@ -93,7 +93,7 @@ async function boot(page, prefs) {
   await recordSends(page);
   await feedRaw(page, articleFrame());
   await page.waitForFunction(
-    () => !!document.querySelector('#mainContainer #lightsOnBtn'),
+    () => !!document.querySelector('#screenTools #lightsOnBtn'),
     null,
     { timeout: 15000 }
   );
@@ -107,7 +107,7 @@ test.describe('開燈（離線）', () => {
     await ptt.applyPrefs(page, { enableEasyReading: false });
     await feedRaw(page, articleFrame());
     await page.waitForFunction(
-      () => !!document.querySelector('#mainContainer #lightsOnBtn'),
+      () => !!document.querySelector('#screenTools #lightsOnBtn'),
       null,
       { timeout: 15000 }
     );
