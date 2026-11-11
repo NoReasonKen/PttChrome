@@ -2105,6 +2105,33 @@ describe("無編號列的 clean-list 幀（只剩置底文的短頁）不得 see
     return { s, enqueued, banners, termBuf };
   }
 
+  test("initial presentation query uses the numbered-row guard without seeding or sending", () => {
+    const rowTexts = frame({ 3: ">" + NUMBERED.slice(1), 4: PINNED });
+    const { s, enqueued, termBuf } = landingSession(rowTexts, 3);
+    termBuf.cur_x = 0;
+    termBuf.cur_y = 3;
+    expect(s.awaitingPresentation()).toBe(true);
+    expect(s.state).toBe("idle");
+    expect(termBuf.listLines).toEqual([]);
+    expect(enqueued).toEqual([]);
+    for (const state of ["functionMode", "suspended", "opening", "active"]) {
+      s.state = state;
+      expect(s.awaitingPresentation()).toBe(false);
+    }
+    s.state = "idle";
+    termBuf.startedEasyReading = true;
+    expect(s.awaitingPresentation()).toBe(false);
+  });
+
+  test("initial presentation query does not hold a pinned-only page", () => {
+    const { s, termBuf, enqueued } = landingSession(frame({ 3: ">" + PINNED.slice(1), 4: PINNED }), 3);
+    termBuf.cur_x = 0;
+    termBuf.cur_y = 3;
+    expect(s.awaitingPresentation()).toBe(false);
+    expect(s.state).toBe("idle");
+    expect(enqueued).toEqual([]);
+  });
+
   test("分類器不變：兩列 ★置底＋空白仍是 clean-list（不變量 3a 的板尾保護不動）", () => {
     const rowTexts = frame({ 3: ">" + PINNED.slice(1), 4: PINNED });
     expect(

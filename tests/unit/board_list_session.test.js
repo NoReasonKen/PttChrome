@@ -319,6 +319,38 @@ describe("transitionBoardListSession（純 reducer）", () => {
 // ---------------------------------------------------------------------------
 
 describe("engage / 收攤", () => {
+  test("initial presentation query recognizes a ready page without taking ownership or sending keys", () => {
+    const { s, termBuf, enqueued } = makeSession();
+    termBuf._rowTexts = brdScreenRows();
+    termBuf.cur_x = 0;
+    termBuf.cur_y = 3;
+    expect(s.awaitingPresentation()).toBe(true);
+    expect(s.state).toBe("idle");
+    expect(termBuf.listRenderMode).toBe("native");
+    expect(termBuf.listRenderOwner).toBeNull();
+    expect(enqueued).toEqual([]);
+    termBuf.feed(brdScreenRows());
+    expect(s.state).toBe("active");
+  });
+
+  test("initial presentation query leaves unsupported screens and existing operations alone", () => {
+    const { s, termBuf, enqueued } = makeSession();
+    termBuf._rowTexts = brdScreenRows();
+    termBuf.cur_x = 0;
+    termBuf.cur_y = 3;
+    termBuf._rowTexts[2] = HEADER_NUM.replace("編號", "總數");
+    expect(s.awaitingPresentation()).toBe(false);
+    termBuf._rowTexts = brdScreenRows();
+    for (const state of ["functionMode", "suspended", "opening", "active"]) {
+      s.state = state;
+      expect(s.awaitingPresentation()).toBe(false);
+    }
+    s.state = "idle";
+    window.localStorage.setItem("pttchrome.pref.v1", JSON.stringify({ values: { enableEasyReading: false } }));
+    expect(s.awaitingPresentation()).toBe(false);
+    expect(enqueued).toEqual([]);
+  });
+
   test("進到我的最愛 → active，並宣告 buf.listRenderMode 的所有權", () => {
     const { s, termBuf } = makeSession();
     termBuf.feed(brdScreenRows());

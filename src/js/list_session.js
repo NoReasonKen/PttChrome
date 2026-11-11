@@ -1023,6 +1023,14 @@ export function ListSession(core, view, termBuf, queue) {
 }
 
 ListSession.prototype = {
+  // The first frame is already recognizable, but only screenSettled may seed
+  // or send keys. Let the view keep the preceding page until that takeover.
+  awaitingPresentation: function() {
+    if (this.state !== 'idle' || !this._engageEligible()) return false;
+    const facts = this._collectFacts(null);
+    return transitionListSession(this.state, this._settleEvent(facts, null)).next === 'active';
+  },
+
   // ---- settle pipeline -----------------------------------------------------
 
   _onScreenSettled: function() {

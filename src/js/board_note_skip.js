@@ -8,9 +8,10 @@
 //          mr = more(notes, NA);              // NA == PMORE_AUTO_EXIT
 //          if (mr == -1) ...; else if (mr != READ_NEXT) pressanykey();
 //      }
-//    `bnote_lastbid` 是行程內的 static cache ⇒ 同一連線第二次進同一板**不會**再畫
-//    （docs/pttbbs-screen-protocol.md「進版畫面的完整序列」）。⇒ 不可以預先送鍵：
-//    畫面沒出現時那一鍵會直接落進文章列表。一律「看到了才送」。
+//    bnote_lastbid caches the last entered board in this process, so a note
+//    is optional. Normal entry waits before dismissing. A known-board batch
+//    from the main menu may pre-answer with backtick: read.c and read_comms
+//    ignore it on a list. Any remaining notice still needs verified keys.
 // 2. 呼叫 Read() 的入口：看板列表 board_cmd_select（board.c:2343 起的鍵表：
 //    KEY_RIGHT／KEY_ENTER／'r'／'l'）、看板列表 `s` 的 board_cmd_search_global
 //    （board.c:2122，「搜尋全站看板」prompt ⏎）、主功能表 `s` 的 ReadSelect
@@ -95,6 +96,16 @@ function stripTrailingRedraw(bytes) {
   return String(bytes == null ? '' : bytes).replace(/\f+$/, '');
 }
 
+// One known destination from a verified main menu. The backtick is a real
+// pressanykey answer but has no binding in read.c/read_comms/bbs_global_cmds.
+// Unlike ';' or ':', it also opens no pmore page/line prompt on a long note.
+export function knownBoardEntryKeys(facts, name) {
+  if (!facts || facts.inputField || parseHelpMenuScreen(facts.rowTexts || []) ||
+      !rowHasAnyTitle(facts.rowTexts?.[0] || '', [MAIN_MENU]) ||
+      typeof name !== 'string' || !/^[A-Za-z0-9_-]{1,12}$/.test(name)) return null;
+  return 's' + name + '\r`';
+}
+
 // 這串 bytes 在看板列表上是不是「進入游標下的看板」。
 export function isBoardEntryKey(bytes) {
   const s = stripTrailingRedraw(bytes).replace(MOVE_PREFIX_RE, '');
@@ -109,6 +120,8 @@ export function boardEntryArms(rowTexts, bytes) {
   // (Help)」，caption 就是看板列表的標題（我的最愛…）⇒ 長得像看板列表。在那裡按 ⏎ 是
   // 執行游標下的說明項（多半不是進板），不 arm。
   if (parseHelpMenuScreen(rows)) return false;
+  const batch = /^s([A-Za-z0-9_-]{1,12})\r`$/.exec(stripTrailingRedraw(bytes));
+  if (batch && knownBoardEntryKeys({ rowTexts: rows }, batch[1])) return true;
   if (rowHasAnyTitle(row0, [BOARD_LIST, FAVOURITE, CLASS_LIST]))
     return isBoardEntryKey(bytes);
   // prompt 標題畫在 row 0（do_select 的 move(0,0)），輸入欄在 row 1。
@@ -253,6 +266,7 @@ BoardNoteSkip.prototype = {
     // 送不出去（斷線）時 onSend 立的旗標不會被 noteSent 消費，不可以留給使用者的下一鍵。
     this._ownSend = false;
     this._log('disarm', { reason: reason });
+    this._view.navigationEnded?.();
   },
 
   _onScreenSettled: function() {

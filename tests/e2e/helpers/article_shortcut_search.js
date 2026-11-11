@@ -1,6 +1,6 @@
 const { expect } = require('@playwright/test');
 const ptt = require('./ptt');
-const { waitScreenSettled, waitConnected } = require('./replay');
+const { bootOffline, waitScreenSettled, waitConnected } = require('./replay');
 const { bootGestureArticle, revealArticleDrawer, beginArticleTouch } = require('./article_gestures');
 const { nextFrames } = require('./real_input');
 const { MAIN, recordHints, recordedHints } = require('./stack_routes');
@@ -177,9 +177,14 @@ const NESTED_ARTICLES = [
 // `ptList`: screens behave as PTT's do where the default server simplifies: a
 //   list's footer names its keys, (y)回應 among them, `s<board>` from a list
 //   lands on the board's full list, and the main menu has its title bar.
-async function bootNestedShortcutSearch(page, { loggedIn = false, legacyCaptions = false, extraArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false, images = false, ptList = false } = {}) {
-  await bootGestureArticle(page);
-  await installNestedServer(page, { surface: loggedIn ? 'main' : 'article', legacyCaptions, extraArticles, homeMenu, dynamicRows, pinned, alphaLines, urls, images, ptList });
+async function bootNestedShortcutSearch(page, { loggedIn = false, startAtMain = false, boardEntry = null, legacyCaptions = false, extraArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false, images = false, ptList = false } = {}) {
+  if (startAtMain) await bootOffline(page, ptt);
+  else await bootGestureArticle(page);
+  await installNestedServer(page, { surface: loggedIn || startAtMain ? 'main' : 'article', boardEntry, legacyCaptions, extraArticles, homeMenu, dynamicRows, pinned, alphaLines, urls, images, ptList });
+  if (startAtMain) {
+    await waitScreenSettled(page, { 0: '主功能表' });
+    return;
+  }
   if (loggedIn) {
     await waitScreenSettled(page, { 0: '主功能表' });
     await page.evaluate(() => {
@@ -298,6 +303,15 @@ async function installNestedServer(page, session) {
         // CompleteBoard asks on row two; cancellation preserves this list.
         rows = { 0: '【主功能表】', 1: '請輸入看板名稱(按空白鍵自動搜尋)：' };
         cursor = [2, 35];
+      } else if (state.surface === 'boardPause') {
+        rows = { 0: 'Board entry notice', [termRows - 1]: '                         請按任意鍵繼續' };
+        inverse = [termRows - 1];
+      } else if (state.surface === 'boardPager') {
+        // PMORE_AUTO_EXIT leaves a multi-page note's footer blank.
+        rows = { 0: 'Board entry notice', 1: 'Long notice content' };
+      } else if (state.surface === 'boardMovie') {
+        // An interactive movie may mask the backtick; q cannot be masked.
+        rows = { 0: 'Board entry movie', [termRows - 1]: '互動式動畫播放中，可按 q 停止' };
       } else {
         const entries = listed();
         rows = {
@@ -362,7 +376,27 @@ async function installNestedServer(page, session) {
       state.filter = null;
       state.cursor = Math.max(0, listed().indexOf(current));
     };
+    const enterBoard = () => {
+      state.surface = session.boardEntry === 'pause' ? 'boardPause'
+        : session.boardEntry === 'pager' ? 'boardPager'
+          : session.boardEntry === 'movie' ? 'boardMovie' : 'list';
+    };
     const step = rest => {
+      if (state.surface === 'boardPause') {
+        state.surface = 'list';
+        return rest.slice(1);
+      }
+      if (state.surface === 'boardPager') {
+        if (rest.startsWith('\x1b[D')) {
+          state.surface = 'boardPause';
+          return rest.slice(3);
+        }
+        return rest.slice(1);
+      }
+      if (state.surface === 'boardMovie') {
+        if (rest[0] === 'q') state.surface = 'list';
+        return rest.slice(1);
+      }
       if (state.surface === 'boardPrompt') {
         if (rest[0] === '\x03') {
           state.surface = 'list';
@@ -370,9 +404,11 @@ async function installNestedServer(page, session) {
         }
         const end = rest.indexOf('\r');
         if (end < 0) return '';
-        state.board = rest.slice(0, end);
+        // Board completion erases its preview before committing the name.
+        state.board = [...rest.slice(0, end)].reduce((text, ch) =>
+          ch === '\b' || ch === '\x7f' ? text.slice(0, -1) : text + ch, '');
         state.filter = null;
-        state.surface = 'list';
+        enterBoard();
         return rest.slice(end + 1);
       }
       if (state.surface === 'prompt') {
@@ -463,7 +499,7 @@ async function installNestedServer(page, session) {
           // From an article the board jump keeps its subset (aid_navigation).
           if (state.surface === 'main' || (session.ptList && state.surface === 'list')) state.filter = null;
           state.board = value;
-          state.surface = 'list';
+          enterBoard();
         } else if (!state.filter) {
           const index = listed().findIndex(article => article.aid === value);
           if (index < 0) state.surface = 'missing';

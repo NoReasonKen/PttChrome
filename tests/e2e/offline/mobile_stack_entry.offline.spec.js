@@ -106,14 +106,15 @@ test('an open PTT never answers slides back out over the list, with a notice', a
   expectSlidBackOut(await sampledFrames(page), page.viewportSize().width);
 });
 
-test('opening a board from the dashboard slides it in over the dashboard, showing the board\'s entry screen', async ({ page }) => {
+test('opening a board from the dashboard stays loading until its article list is presented', async ({ page }) => {
   await bootDashboard(page);
   await holdRepliesUntilEntryRests(page);
   await sampleEntryFrames(page);
   await page.locator('#homeDashboard [data-home-board="C_Chat"]').tap();
   const frames = await sampledFrames(page);
-  // The recorded board shows its entry screen first.
-  expect(frames.at(-1)).toMatchObject({ shows: 'entryScreen', lower: false });
+  // The skip owner handles the recorded entry notice behind the loading state.
+  expect(frames.filter(frame => frame.shows === 'entryScreen')).toEqual([]);
+  expect(frames.at(-1)).toMatchObject({ shows: 'articles', lower: false });
   expectSlidIn(frames, page.viewportSize().width, 'boards');
   await boardOpened(page);
 });

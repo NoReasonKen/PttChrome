@@ -603,6 +603,22 @@ async function replayListCassette(page, cassette) {
       const servedJumps = new Map();
       window.__stubWSSent = (data) => {
         window.__replay.sent.push(data);
+        // Older home cassettes record s, the exact board name, then Space for
+        // one entry pause. The known-board batch performs those same actions
+        // with a backtick as the pause answer. Preserve all recorded deltas,
+        // but deliver them together as PTT does with pending typeahead.
+        const batch = /^s([A-Za-z0-9_-]{1,12})\r`$/.exec(stripFF(data));
+        const opening = steps.slice(idx, idx + 3);
+        if (batch && opening.length === 3 && opening.every(step => step.on === 'raw') &&
+          stripFF(atob(opening[0].send)) === 's' &&
+          stripFF(atob(opening[1].send)) === batch[1] + '\r' &&
+          stripFF(atob(opening[2].send)) === ' ') {
+          idx += 3;
+          app.onData(opening.map(step => atob(step.recv)).join(''));
+          window.__replay.fed = idx;
+          if (idx >= steps.length) window.__replay.done = true;
+          return;
+        }
         if (idx < steps.length) {
           const next = steps[idx];
           const match = PATTERNS[next.on];

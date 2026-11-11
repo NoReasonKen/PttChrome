@@ -608,6 +608,7 @@ HomeDashboard.prototype = {
     // The dashboard stays alive under the board's article list (#31).
     core.articleGestures?.captureHomeLayer(name);
     const sent = submitSearch(core, 'board', name, {
+      knownBoard: true,
       onFail: () => {
         core.articleGestures?.dropPendingLayer();
         this._hint('開不了看板 ' + name + '（已停在原生畫面）', 0, HINT_ERROR);
