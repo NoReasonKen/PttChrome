@@ -281,6 +281,103 @@ describe("submitSearch（原生：共用 CommandQueue）", () => {
     return { core: { commandQueue: queue, activeListSession: () => null }, queue, sent };
   }
 
+  function atMain(core) {
+    const frame = mainMenu();
+    Object.assign(core, {
+      connectedUrl: { easyReadingSupported: true },
+      buf: {
+        rows: ROWS, cols: 80, pageState: 1,
+        getRowText: row => frame.rowTexts[row],
+        isCursorOnInputField: () => frame.inputField,
+        get cur_y() { return frame.curY; }
+      }
+    });
+    return frame;
+  }
+
+  test('a known board on the main menu sends one batch and waits for its verified destination', () => {
+    const { core, queue, sent } = nativeCore();
+    atMain(core);
+    const onDone = vi.fn();
+    expect(submitSearch(core, 'board', 'Test', { knownBoard: true, onDone })).toBe(true);
+    expect(sent).toEqual(['sTest\r`\f']);
+    queue.onSettle(null, promptFrame(1, '請輸入看板名稱(按空白鍵自動搜尋): Test', 1));
+    queue.onSettle(null, mainMenu());
+    expect(onDone).not.toHaveBeenCalled();
+    const target = articleList({ row0Reversed: true, row2Reversed: true });
+    target.rowTexts[2] = '  編號    日 期 作  者       文  章  標  題';
+    target.rowTexts[5] = '  101  1  9/01 reader       □ [Talk] Test';
+    const other = { ...target, rowTexts: target.rowTexts.slice() };
+    other.rowTexts[0] = '【板主:none】看板《Other》';
+    queue.onSettle(null, other);
+    expect(onDone).not.toHaveBeenCalled();
+    queue.onSettle(null, target);
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(core.searchInFlight).toBe(false);
+  });
+
+  test('a known-board batch releases the queue for an identified multi-page board note', () => {
+    const { core, queue, sent } = nativeCore();
+    atMain(core);
+    const onDone = vi.fn();
+    submitSearch(core, 'board', 'Test', { knownBoard: true, onDone });
+    const notice = { rowTexts: blank(), rows: ROWS, curX: 79, curY: ROWS - 1 };
+    notice.rowTexts[0] = 'Board notice';
+    queue.onSettle(null, notice);
+    expect(sent).toEqual(['sTest\r`\f']);
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(queue.idle).toBe(true);
+    expect(core.searchInFlight).toBe(false);
+  });
+
+  test.each(['not-known', 'easy-reading-off', 'unsupported', 'other-screen', 'input-field', 'unsafe-name'])
+    ('%s keeps the ordinary prompt-verified search', reason => {
+      const { core, queue, sent } = nativeCore();
+      const frame = atMain(core);
+      if (reason === 'easy-reading-off') writeValues({ enableEasyReading: false });
+      if (reason === 'unsupported') core.connectedUrl.easyReadingSupported = false;
+      if (reason === 'other-screen') frame.rowTexts[0] = '【分類看板】';
+      if (reason === 'input-field') frame.inputField = true;
+      submitSearch(core, 'board', reason === 'unsafe-name' ? 'Test`' : 'Test', { knownBoard: reason !== 'not-known' });
+      expect(sent).toEqual(['s\f']);
+      queue.flush();
+    });
+
+  test('a busy queue never receives a prebuilt known-board batch', () => {
+    const { core, queue, sent } = nativeCore();
+    atMain(core);
+    queue.enqueue({ keys: 'Q', expect: () => true });
+    submitSearch(core, 'board', 'Test', { knownBoard: true });
+    queue.onSettle(null, mainMenu());
+    expect(sent).toEqual(['Q', 's\f']);
+    queue.flush();
+  });
+
+  test('an existing list owner keeps its ordinary two-step search transaction', () => {
+    const { core } = nativeCore();
+    atMain(core);
+    const owner = { state: 'active', _beginPassthroughBytes: vi.fn() };
+    core.activeListSession = () => owner;
+    submitSearch(core, 'board', 'Test', { knownBoard: true });
+    const steps = owner._beginPassthroughBytes.mock.calls[0][0];
+    expect(steps.map(step => step.kind)).toEqual(['search-open', 'search-submit']);
+    steps[0].onFlushed();
+    expect(core.searchInFlight).toBe(false);
+  });
+
+  test('an unknown batch response fails after its redraw probe without repeating the navigation', () => {
+    const { core, queue, sent } = nativeCore();
+    atMain(core);
+    const onFail = vi.fn();
+    submitSearch(core, 'board', 'Test', { knownBoard: true, onFail });
+    queue._timedOut(queue._inFlight);
+    queue.onSettle(null, mainMenu());
+    expect(onFail).toHaveBeenCalledTimes(1);
+    expect(sent).toEqual(['sTest\r`\f', '\f']);
+    expect(queue.idle).toBe(true);
+    expect(core.searchInFlight).toBe(false);
+  });
+
   test('a partial repaint cannot complete a new condition or leave only its preceding query saved', () => {
     const { core, queue } = nativeCore();
     let current = articleList();

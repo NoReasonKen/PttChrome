@@ -20,6 +20,9 @@ import { recordFor } from './reading_record';
 import { SLOW_STEP_BUDGET } from './aid_navigation';
 import { candidateSearchResults, recordSearchResults, clearSearchResultsContext } from './search_results_context';
 import { isSearchResultsFrame, searchResultsLanded, SEARCH_RESULT_NOTICE } from './search_results_screen';
+import { knownBoardEntryKeys, boardNoteDecision } from './board_note_skip';
+import { classifyListScreen } from './list_session';
+import { serializedOpHint } from './serialized_op_gate';
 
 // 種類 → PTT 端的按鍵。`?` 與 `/` 是同一個指令（read.c:1430-1431），送出一律用 `/`。
 // `Z` 是推文數（大寫；小寫 z 是精華區，bbs.c:4406）。
@@ -263,7 +266,7 @@ export function submitSearch(core, kind, text, cb) {
     if (bm) recordFor(core).end(bm, outcome);
     bm = null;
   };
-  const built = buildSearchSteps(kind, text, {
+  const callbacks = {
     onDone: function(a, b) {
       if (a?.searchResults || isSearchResultsFrame(searchGateFacts(core), board)) recordSearchResults(core, candidate);
       end('done');
@@ -273,11 +276,30 @@ export function submitSearch(core, kind, text, cb) {
       end('fail');
       if (c.onFail) c.onFail(a, b);
     }
-  });
+  };
+  // Known dashboard destinations can bypass the intermediate board prompt.
+  // Select this only on a free wire: a queued batch could otherwise be sent
+  // after the verified main menu had already changed to another screen.
+  const batch = kind === 'board' && c.knownBoard && core?.commandQueue?.idle &&
+    !core.activeListSession?.() && !serializedOpHint(core) &&
+    easyReadingOn(readValuesWithDefault()) && core.connectedUrl?.easyReadingSupported
+    ? knownBoardEntryKeys(facts, text) : null;
+  const built = batch ? [{
+    keys: batch, kind: 'board-open-known', fullRepaint: true, ...SLOW_STEP_BUDGET,
+    ...callbacks,
+    expect: (snapshot, landing) => {
+      const classified = classifyListScreen(landing);
+      if (classified.kind === 'clean-list')
+        return classified.boardName?.toLowerCase() === text.toLowerCase();
+      // Release this command before the note owner queues its verified keys.
+      // Keeping it in flight until the final list would deadlock that owner.
+      return boardNoteDecision({ ...landing, ...classified }).action === 'skip';
+    }
+  }] : buildSearchSteps(kind, text, callbacks);
   if (!built || !core) return false;
   // The native prompt distinguishes a new search from an added condition even
   // on legacy captions. A generic select-mode list may instead be a digest.
-  built[0].onDone = () => {
+  if (!batch) built[0].onDone = () => {
     const prompt = searchGateFacts(core);
     const append = /^增加條件 /.test(prompt?.rowTexts[prompt.rows - 1] || '');
     candidate = candidateSearchResults(core, board, { kind, value: normalizeSearchText(kind, text) }, append);

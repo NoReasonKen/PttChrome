@@ -72,6 +72,7 @@ const EXEMPT = {
 // Specs that ask elementFromPoint only which surface is on top, never to pick a
 // point to click: the exclusion lists are about click targets, not stacking.
 const STACKING_ONLY = {
+  "mobile_easy_reading_entry.offline.spec.js": "checks which reading surface reaches paint; picks no click point",
   "mobile_stack_board_reveal.offline.spec.js": "checks that the dashboard copy stays on top; picks no click point",
   "mobile_stack_search_source.offline.spec.js": "samples which article row or native screen shows on top; picks no click point",
 };

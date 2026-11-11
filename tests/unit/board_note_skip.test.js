@@ -205,6 +205,13 @@ describe("純函式", () => {
     expect(boardEntryArms(ARTICLE_LIST.rows, "\x1b[C")).toBe(false);
   });
 
+  test('arms only the exact known-board batch on a main-menu frame', () => {
+    expect(boardEntryArms(MAIN_MENU.rows, 'sTest\r`\f')).toBe(true);
+    for (const keys of ['sTest\r', 'sTest\r``', 'sTest\r`x', 'sTest`\r`', 'sTest\r '])
+      expect(boardEntryArms(MAIN_MENU.rows, keys)).toBe(false);
+    expect(boardEntryArms(ARTICLE_LIST.rows, 'sTest\r`\f')).toBe(false);
+  });
+
   // 新版 UI 的文章列表 row 1 是 bbs.c 指令表生成的說明列，含「[s]選擇看板」
   // （在文章列表按 ⏎ 開文被 arm，文章被當進板公告送 ← 退出）。
   test("新版 UI 文章列表 row 1 的「[s]選擇看板」說明不算選擇看板 prompt", () => {
@@ -327,6 +334,27 @@ describe("完整流程", () => {
 });
 
 describe("停手條件", () => {
+
+  test("releases held rendering after the board entry finishes", () => {
+    const h = makeHarness(BOARD_LIST);
+    h.skip._view.navigationEnded = vi.fn(() => expect(h.skip.active).toBe(false));
+    h.userSend("\r");
+    h.settle(PAUSE);
+    expect(h.skip._view.navigationEnded).not.toHaveBeenCalled();
+    h.settle(ARTICLE_LIST);
+    expect(h.skip._view.navigationEnded).toHaveBeenCalledTimes(1);
+    h.settle(ARTICLE_LIST);
+    expect(h.skip._view.navigationEnded).toHaveBeenCalledTimes(1);
+  });
+
+  test("releases held rendering when a board-entry skip is flushed", () => {
+    const h = makeHarness(BOARD_LIST);
+    h.skip._view.navigationEnded = vi.fn(() => expect(h.skip.active).toBe(false));
+    h.userSend("\r");
+    h.settle(PAUSE);
+    h.queue.flush();
+    expect(h.skip._view.navigationEnded).toHaveBeenCalledTimes(1);
+  });
 
   test("easy reading off ⇒ never arms or sends", () => {
     const h = makeHarness(BOARD_LIST, {

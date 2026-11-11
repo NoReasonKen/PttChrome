@@ -211,6 +211,20 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
     也不會被 `notifyLayoutChanged` 清掉。列表好讀視窗與累積長頁照常畫。
   - 導航結束（owner 的 `active` 由真轉假，每條結束路徑都經過那個 setter）呼叫 `view.navigationEnded()`：
     有留著的幀就補畫一次；PTT 先送來新幀則由那一幀整頁重畫。
+  - Navigation holding follows the global easy-reading setting on supported sites,
+    including a fresh main menu or dashboard before the first article has enabled
+    its reading view. The article flag is not the application's mode switch.
+    Board-entry skipping also owns navigation: its notices stay behind the loading
+    state, and only the destination's presentation releases that state. Ending or
+    cancelling the skip requests a repaint of any held frame.
+  - Before an idle list takes over, `ListSession.awaitingPresentation()` and
+    `BoardListSession.awaitingPresentation()` query their normal settled-frame
+    transitions without running their actions. The view holds a recognized,
+    eligible first frame instead of briefly rendering its native grid; the usual
+    settle still owns seeding, key sending and presentation. Prompts, unsupported
+    lists and ongoing operations keep their existing handling. Coverage includes
+    fresh menu/dashboard entry, favorites and easy reading off in
+    `mobile_easy_reading_entry.offline.spec.js`.
   - 第一次開文章時列表是 `frozen`、文章好讀還沒接手（`useEasyReadingMode` 為假）：凍結的列表視窗留到好讀
     接手為止（`_listBufferFrame`），文章的第一頁不會先以格線出現。
   - 讀者自己在文章裡按的 prompt 鍵仍進 functionMode 鏡像原生（屬於 #160）。好讀關閉時一律照原生畫。

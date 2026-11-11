@@ -600,6 +600,15 @@ describe("HomeDashboard：自動抓我的最愛", () => {
 });
 
 describe("HomeDashboard：動作都接到原生鍵", () => {
+  test('a known board uses the batched search when the site supports easy reading', () => {
+    const { core, home, enqueued, show } = makeCore();
+    core.connectedUrl = { easyReadingSupported: true };
+    show(mainMenu());
+    expect(home.openBoard('C_Chat')).toBe(true);
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0].keys).toBe('sC_Chat\r`');
+  });
+
   test("點看板 ＝ 搜尋彈窗同一條 s<板>⏎", () => {
     const { home, enqueued, show } = makeCore();
     show(mainMenu());

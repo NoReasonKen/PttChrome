@@ -48,13 +48,12 @@ test.describe('首頁儀表板', () => {
     await expect(page.locator('#t')).toBeFocused();
   });
 
-  test('點卡片 ⇒ 走 s<板>（同搜尋彈窗的前往看板），點下去不變成點終端機', async ({ page }) => {
+  test('a dashboard card sends one known-board batch without terminal mouse keys', async ({ page }) => {
     await bootHome(page, { useMouseBrowsing: true, mouseLeftClick: true });
     await fetchFlow(page);
     await page.locator('[data-home-board="Stock"]').click();
     await expect.poll(() => peekCapture(page)).toContain('s');
-    // 只有搜尋的第一步（s＋\f），沒有滑鼠瀏覽送的 ↑↓／Enter。
-    expect(await takeCapture(page)).toBe('s\f');
+    expect(await takeCapture(page)).toBe('sStock\r`\f');
     await expect(page.locator('#t')).toBeFocused();
   });
 

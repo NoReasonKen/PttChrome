@@ -2,7 +2,7 @@
 // (#36): the real screen comes in from the right over that page's live layer
 // and shows only the loading state until PTT answers. A failed open slides it
 // back out over that page.
-import { HANDOFF_TIMEOUT_MS } from './page_stack';
+import { HANDOFF_TIMEOUT_MS, HANDOFF_REACH_POLL_MS } from './page_stack';
 import { createUnderlay, holdSurfaces, releaseSurfaces, paintSurfaces, slideDuration, freezeScroll } from './stack_motion';
 
 // The loading state's owner while a page slides in.
@@ -32,15 +32,23 @@ export class StackEntry {
     // Commit the start position, so the slide starts from it.
     this.surfaces[0].node.getBoundingClientRect();
     this._slide(0);
-    // An article, a screen to pass (a board's entry notice) or the editor is
-    // PTT's answer, by whatever route it came; otherwise the answer is the
-    // page a session presents. Prompts on the way are not.
+    // A board's entry notice is still navigation data while its skip owner
+    // handles it. Keep loading until the actual destination is presented.
+    // Other articles, pauses and editors are PTT's answer.
     this.settled = () => {
-      if ([3, 5, 6].includes(core.buf.pageState)) this.answered();
+      if ([3, 5, 6].includes(core.buf.pageState) && !core.boardNoteSkip?.active) this.answered();
     };
     core.buf.addEventListener('screenSettled', this.settled);
-    // An open that never reports an outcome still shows what PTT shows.
-    this.bound = setTimeout(() => this.answered(), HANDOFF_TIMEOUT_MS);
+    // An unknown outcome retains the normal fallback, but it must not uncover
+    // a notice another bounded navigation owner is still handling.
+    const timeout = () => {
+      if (this.loading && core.boardNoteSkip?.active) {
+        this.bound = setTimeout(timeout, HANDOFF_REACH_POLL_MS);
+        return;
+      }
+      this.answered();
+    };
+    this.bound = setTimeout(timeout, HANDOFF_TIMEOUT_MS);
   }
 
   get loading() {

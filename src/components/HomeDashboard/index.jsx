@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { i18n } from "../../js/i18n";
 import { HOME_DASHBOARD_ID } from "../../js/home_dashboard";
 import "./HomeDashboard.css";
@@ -57,7 +58,15 @@ export const HomeDashboard = ({ pttchrome, layer = false }) => {
 
   useEffect(() => {
     if (!home || typeof home.onChange !== "function") return undefined;
-    return home.onChange((s) => setState(s));
+    let visible = home.state.visible;
+    return home.onChange((s) => {
+      const changed = s.visible !== visible;
+      visible = s.visible;
+      // Terminal pages present synchronously. Hide/show the covering dashboard
+      // in the same turn, including when a batch skips intermediate screens.
+      if (changed) flushSync(() => setState(s));
+      else setState(s);
+    });
   }, [home]);
   useEffect(() => {
     if (!pttchrome || typeof pttchrome.onMobileChange !== "function")
@@ -67,7 +76,8 @@ export const HomeDashboard = ({ pttchrome, layer = false }) => {
 
   // The controller finds the dashboard through this registration, never by id.
   useLayoutEffect(() => {
-    if (layer || !home || typeof home.attachRoot !== "function") return undefined;
+    if (layer || !home || typeof home.attachRoot !== "function")
+      return undefined;
     const el = rootRef.current;
     home.attachRoot(el);
     return () => home.detachRoot(el);

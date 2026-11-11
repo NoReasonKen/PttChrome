@@ -6,6 +6,25 @@ unit `tests/unit/board_note_skip.test.js`，offline e2e `tests/e2e/offline/board
 
 ## 合約
 
+Known dashboard boards have one bounded shortcut from a verified main menu:
+`s` + board name + Enter + backtick are sent as one queued operation, followed by
+the normal full redraw. The backtick answers a single `pressanykey` but is ignored
+by article-list commands. Unlike semicolon and colon, it opens no page/line input
+in a long pmore notice. The exact batch arms this same skip owner.
+
+The batch completes on a verified list of the requested board, or releases the
+queue when a remaining notice is identified so this owner can dismiss it. Unknown
+screens, an unclosed board prompt and a different board are not success. This
+shortcut requires easy reading, a supported site, an idle queue, no active list
+owner or other serialized operation, and a safe known board name. Other searches
+retain prompt-by-prompt confirmation. Navigation still slides in immediately.
+
+PTT references: `Read` in `mbbsd/bbs.c`, `read_nav_cmds` and `read_common_cmds` in
+`mbbsd/read.c`, `bbs_global_cmds` in `mbbsd/psb.c`, and `vkey_any` in `mbbsd/io.c`.
+Coverage: `article_search.test.js`, `board_note_skip.test.js`, and
+`mobile_easy_reading_entry.offline.spec.js` cover no notice, a single pause, a
+multi-page notice and an interactive movie that ignores the backtick.
+
 - arm：送出出口 `TelnetConnection._sendEscaped → onDataSent → BoardNoteSkip.noteSent`。
   條件＝pref 開 ∧ 無 aidNavigation／longPush／logout 在跑 ∧（row0 是 看板列表／我的最愛／分類看板 標題
   ∧ bytes＝`⏎`/`→`/`r`/`l`，允許前綴 ↑↓（滑鼠點列）與尾 `\f`）∨（row0/1 是「選擇看板」「搜尋全站看板」

@@ -334,6 +334,14 @@ export function BoardListSession(core, view, termBuf, queue) {
 }
 
 BoardListSession.prototype = {
+  // Recognition may finish before the settled frame that owns initial entry.
+  // Reuse that transition without seeding a page or sending anything early.
+  awaitingPresentation: function() {
+    if (this.state !== 'idle' || !this._engageEligible()) return false;
+    const facts = this._collectFacts(null);
+    return transitionBoardListSession(this.state, this._settleEvent(facts, null)).next === 'active';
+  },
+
   // ---- settle pipeline ------------------------------------------------------
 
   _onScreenSettled: function() {

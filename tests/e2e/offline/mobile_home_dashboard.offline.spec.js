@@ -8,7 +8,7 @@ const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { bootOffline } = require('../helpers/replay');
 const { drawMainMenu } = require('../helpers/main_menu');
-const { drawFavorites, drawArticleList, drawBoardPrompt } = require('../helpers/home_screens');
+const { drawFavorites, drawArticleList } = require('../helpers/home_screens');
 const { startCapture, peekCapture, takeCapture } = require('../helpers/capture');
 const { touchDrag } = require('../helpers/real_input');
 const { waitRectStable, waitScrollStable } = require('../helpers/layout');
@@ -154,12 +154,11 @@ test.describe('手機首頁儀表板（離線重放）', () => {
     });
     await page.locator(`[data-home-board="${target}"]`).tap();
     await expect.poll(() => peekCapture(page)).toContain('s');
-    await drawBoardPrompt(page);
     await expect.poll(() => peekCapture(page)).toContain(target + '\r');
     await drawArticleList(page, target, [[1, ' '], [2, ' ']]);
     await expect(dashboard(page)).toHaveCount(0);
     // The board's easy-reading list then fetches its rows with its own jumps.
-    expect(await takeCapture(page)).toMatch(new RegExp('^s\\f' + target + '\\r'));
+    expect(await takeCapture(page)).toMatch(new RegExp('^s' + target + '\\r`\\f'));
 
     await drawMainMenu(page);
     await expect(dashboard(page)).toBeVisible();

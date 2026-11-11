@@ -106,6 +106,13 @@ navigation or list cleanup discards the pending notice.
 
 ## 看板：原生補全橋接（`board_search_bridge.js`）
 
+Known dashboard destinations opt into `submitSearch` with `knownBoard: true`.
+Only a supported easy-reading main menu on an idle, unowned wire may batch the
+search key, board name, Enter and backtick. The expected response is the requested
+board's verified list or an identified notice handed to `BoardNoteSkip`; all
+ordinary search-sheet input keeps the prompt-verified sequence. See
+[board entry](board-note-skip.md) for the protocol and fallback contract.
+
 比照 PTT 原生的看板名稱補全（`mbbsd/name.c#generalnamecomplete`，`CompleteBoard` 巨集）：
 - 逐字：`gnc_cb_data` 用 `SHM->bsorted` 二分搜「有沒有**看得到的**看板以這串開頭」（`completeboard_permission`：非 symbolic、非群組、有權限），沒有就 bell＋丟字。
 - 空白鍵：輸入延伸到所有符合者的共同前綴（唯一就補完整名），第 2 列畫「相關資訊一覽表」、第 3 列起逐欄列出；還有下一頁時底列「按空白鍵可列出更多項目」。欄寬＝輸入欄長＋2（`do_select` 22、看板列表 `s` 15），解析不寫死欄寬，依起始欄再依列排序。

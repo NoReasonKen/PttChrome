@@ -897,7 +897,8 @@ TermView.prototype = {
         this._gridRender = false;
         this._renderScreenLines(this.buf.pageLines, true, true, false,
           Object.assign({}, this._pageRenderOverrides(), { pageState: 3 }));
-      } else if (this.useEasyReadingMode && held && (this.buf.easyReadingFunctionMode ||
+      } else if (held && easyReadingOn(readValuesWithDefault()) && this.bbscore?.connectedUrl?.easyReadingSupported &&
+        ((!this.useEasyReadingMode && !this._listBufferFrame()) || this.buf.easyReadingFunctionMode ||
         (!this._listBufferFrame() && this.buf.pageState != 3 &&
           !(this.buf.settledPageState === 3 && this.buf.pageLines.length)))) {
         // App-driven navigation (a jump by article code, a shortcut search)
@@ -1102,6 +1103,11 @@ TermView.prototype = {
         // real exit moved to EasyReading._teardownAccumulationOffArticle (settle-driven).
         this._gridRender = false;
         this._renderScreenLines(this.buf.pageLines, /* dropHidden */ true, /* inlinePreview */ true, /* hoverPreview */ false, this._pageRenderOverrides());
+      } else if (this.bbscore?.listSession?.awaitingPresentation?.() ||
+        this.bbscore?.boardListSession?.awaitingPresentation?.()) {
+        // An idle list owner will take this recognized frame at screenSettled.
+        // Until then it is data, not a brief native page before the real list.
+        this._heldFrame = true;
       } else {
         // Native screen, OR easy reading sitting on a list/menu (pageState != 3):
         // one fixed screen. Hide the easy-reading overlay rows first when on.
@@ -1991,7 +1997,8 @@ TermView.prototype = {
   _navigationHeld: function() {
     var app = this.bbscore;
     return !!(app && ((app.aidNavigation && app.aidNavigation.active) ||
-      (app.articleShortcutSearch && app.articleShortcutSearch.active)));
+      (app.articleShortcutSearch && app.articleShortcutSearch.active) ||
+      (app.boardNoteSkip && app.boardNoteSkip.active)));
   },
 
   // The list easy-reading branch of redraw owns this frame. Article frames
