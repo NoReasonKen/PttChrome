@@ -575,4 +575,61 @@ describe("CommandQueue", () => {
     expect(q.onSettle({ serverWrites: 5 }, { __result: true })).toBe("done");
     expect(done).toHaveBeenCalled();
   });
+
+  test("a probed command's miss waits for data received after the probe", () => {
+    const sent = [];
+    let writes = 3;
+    const q = new CommandQueue({ send: k => sent.push(k), serverWrites: () => writes });
+    const done = vi.fn();
+    const fail = vi.fn();
+    q.enqueue(cmd("A", { timeoutMs: 250, probeTimeoutMs: 600, onDone: done, onFail: fail }));
+    writes = 4; // a stale redraw arrives after the command but before its probe
+    vi.advanceTimersByTime(250);
+    expect(sent).toEqual(["A", "\f"]);
+    expect(q.onSettle({ serverWrites: 4 }, { __result: false })).toBeFalsy();
+    expect(fail).not.toHaveBeenCalled();
+    expect(q.inFlightKind).toBe("test");
+    writes = 5;
+    expect(q.onSettle({ serverWrites: 5 }, { __result: true })).toBe("done");
+    expect(done).toHaveBeenCalled();
+    expect(fail).not.toHaveBeenCalled();
+  });
+
+  test("a successful frame received before the probe can still complete the command", () => {
+    let writes = 3;
+    const done = vi.fn();
+    const q = new CommandQueue({ send: () => {}, serverWrites: () => writes });
+    q.enqueue(cmd("A", { timeoutMs: 250, onDone: done }));
+    writes = 4;
+    vi.advanceTimersByTime(250);
+    expect(q.onSettle({ serverWrites: 4 }, { __result: true })).toBe("done");
+    expect(done).toHaveBeenCalled();
+    expect(q.idle).toBe(true);
+  });
+
+  test("a frame received after the probe still concludes a miss", () => {
+    let writes = 3;
+    const q = new CommandQueue({ send: () => {}, serverWrites: () => writes });
+    const fail = vi.fn();
+    q.enqueue(cmd("A", { timeoutMs: 250, probeTimeoutMs: 600, onFail: fail }));
+    writes = 4;
+    vi.advanceTimersByTime(250);
+    q.onSettle({ serverWrites: 4 }, { __result: false });
+    writes = 5;
+    expect(q.onSettle({ serverWrites: 5 }, { __result: false })).toBe("miss");
+    expect(fail).toHaveBeenCalledWith("miss", expect.anything());
+  });
+
+  test("frames received before the probe do not extend its window", () => {
+    let writes = 3;
+    const q = new CommandQueue({ send: () => {}, serverWrites: () => writes });
+    const fail = vi.fn();
+    q.enqueue(cmd("A", { timeoutMs: 250, probeTimeoutMs: 600, onFail: fail }));
+    writes = 4;
+    vi.advanceTimersByTime(250);
+    vi.advanceTimersByTime(500);
+    q.onSettle({ serverWrites: 4 }, { __result: false });
+    vi.advanceTimersByTime(101);
+    expect(fail).toHaveBeenCalledWith("timeout");
+  });
 });

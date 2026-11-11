@@ -994,6 +994,58 @@ function demandSession({ numStart = 100, count = 60 } = {}) {
   return { s, enqueued, queue, nums, loading, banners, termBuf, offsets };
 }
 
+describe("prefetch anchor response ownership", () => {
+  afterEach(() => vi.useRealTimers());
+
+  test("a previous command's late redraw cannot discard the anchor and add a search sync jump", () => {
+    vi.useFakeTimers();
+    const { s } = demandSession({ numStart: 1233, count: 3 });
+    const sent = [];
+    let writes = 0;
+    const queue = new CommandQueue({
+      send: (keys) => sent.push(keys),
+      serverWrites: () => writes,
+    });
+    s._queue = queue;
+    s._selectedNum = 1233;
+    s._serverNum = 1235;
+
+    queue.enqueue({
+      keys: "A", kind: "previous", timeoutMs: 250,
+      expect: (_, facts) => facts.previousDone,
+    });
+    s._enqueuePrefetch(true, "fill");
+    vi.advanceTimersByTime(250); // A asks for a redraw before its original answer.
+    expect(sent).toEqual(["A", "\f"]);
+    writes = 1;
+    queue.onSettle({ serverWrites: writes }, { previousDone: true });
+    expect(sent.at(-1)).toBe("1233\r\f");
+
+    // A's late redraw is received before B's probe, but settles afterward.
+    writes = 2;
+    vi.advanceTimersByTime(250);
+    const landed = (cursorRowNum) => ({
+      kind: "clean-list", cursorRowNum, curX: 0, curY: 3, rows: 24,
+    });
+    expect(queue.onSettle({ serverWrites: writes }, landed(1235))).toBeNull();
+    expect(queue.inFlightKind).toBe("prefetch-anchor-up");
+    expect(s._serverNum).toBe(1235);
+
+    writes = 3;
+    expect(queue.onSettle({ serverWrites: writes }, landed(1233))).toBe("done");
+    expect(sent.at(-1)).toBe("\x1b[5~");
+    writes = 4;
+    queue.onSettle({ serverWrites: writes }, landed(1233));
+    expect(queue.idle).toBe(true);
+    expect(s._serverNum).toBe(s._selectedNum);
+
+    const beforeSearch = sent.length;
+    s._beginPassthroughBytes("a");
+    expect(sent.slice(beforeSearch)).toEqual(["a\f"]);
+    queue.flush();
+  });
+});
+
 describe("demand 邊距（提早預補隱藏 round-trip 延遲）", () => {
   // bodyRows B = 20。視窗距 buffer 邊 < 2B 就該補（舊規則 < B 太晚：使用者
   // 已貼近邊緣才開始抓，每次都吃滿兩個 round-trip 的等待）。
