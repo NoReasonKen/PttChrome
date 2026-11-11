@@ -75,8 +75,8 @@ afterEach(() => {
 });
 
 // lines：累積頁每一列的文字（"" ＝ 空白列）；bgRows：有底色的列號。
-// floatTools：#mainContainer 最後面掛浮動工具（render/screen.js 把它跟列放在一起，main.css
-// position: fixed 釘在視窗上，不在文章的流裡）。
+// floatTools models a standalone renderer without an external tools host.
+// Foreground tools live in #screenTools; fixed tools beside rows remain outside article flow.
 function setup(lines, { bar = true, bgRows = [], mobile = false, floatTools = false } = {}) {
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -234,8 +234,8 @@ test("有底色的空白列算內容：卡片不蓋在它上面", async () => {
   expect(s.card.getBoundingClientRect().top).toBeGreaterThanOrEqual(s.mc.children[5].getBoundingClientRect().bottom);
 });
 
-// 有圖說的文章 #mainContainer 最後面是浮動工具（合併圖說），
-// 它釘在視窗上方，被當成「最後一個有內容的節點」⇒ 卡片被往上拉到文章中間。
+// Standalone renderers can keep fixed tools after the rows. Counting those tools
+// as the last content node would pull the card into the middle of the article.
 test("#mainContainer 尾端的浮動工具（position: fixed）不算內容：卡片仍接在最後一列內容下面", async () => {
   const s = setup([...content(8), ...Array(12).fill("")], { floatTools: true });
   await nextFrame();
