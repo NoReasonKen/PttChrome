@@ -92,7 +92,8 @@ export function CommandQueue(opts) {
   // also frozen into each settle snapshot). With it, a settle that carries no
   // data received after the in-flight command went out is no answer to it:
   // the screen it shows predates the command (a flushed command's late answer,
-  // or a settle held back by local repaints past the send).
+  // or a settle held back by local repaints past the send). Likewise only data
+  // received after the probe went out may end a probed command as 'miss'.
   this._serverWrites = opts.serverWrites || null;
   this._inFlight = null;
   this._pending = [];
@@ -163,6 +164,11 @@ CommandQueue.prototype = {
       this._maybeSendNext();
       this._maybeIdle();
       return 'done';
+    } else if (cmd._probed && this._predatesProbe(cmd, snapshot)) {
+      // A delayed settle cannot make an older frame answer this probe. It may
+      // still satisfy expect above, but cannot reject or extend this command.
+      this._emit('probe-pending', cmd);
+      return null;
     } else if (cmd._probed && this._concludes(cmd, facts)) {
       // The probe's full frame arrived and expect still says no — that is a
       // definitive MISS, not a maybe: hand the known-complete screen's facts
@@ -285,6 +291,7 @@ CommandQueue.prototype = {
     cmd._probeExtensions = 0;
     cmd._sentAt = Date.now();
     cmd._sentWrites = this._serverWrites ? this._serverWrites() : null;
+    cmd._probeWrites = null;
     this._armBoth(cmd);
     this._emit('send', cmd);
     // See cmd.onSend: last chance to derive state, and the ONLY point at which a
@@ -297,6 +304,11 @@ CommandQueue.prototype = {
   _predatesSend: function(cmd, snapshot) {
     const writes = snapshot && snapshot.serverWrites;
     return cmd._sentWrites != null && typeof writes === 'number' && writes <= cmd._sentWrites;
+  },
+
+  _predatesProbe: function(cmd, snapshot) {
+    const writes = snapshot && snapshot.serverWrites;
+    return cmd._probeWrites != null && typeof writes === 'number' && writes <= cmd._probeWrites;
   },
 
   _armBoth: function(cmd) {
@@ -321,6 +333,7 @@ CommandQueue.prototype = {
     if (this._inFlight !== cmd) return; // already completed/flushed
     if (cmd.probe !== false && !cmd._probed) {
       cmd._probed = true;
+      cmd._probeWrites = this._serverWrites ? this._serverWrites() : null;
       // SOFT only: re-arming hard here would grant a second full hard window
       // (2×hard worst case). The hard timer armed at send stays the absolute
       // deadline; if it already fired, this short probe window is the cap.
