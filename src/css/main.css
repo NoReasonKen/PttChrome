@@ -1648,6 +1648,12 @@ span {
    面板 absolute 貼在圓鈕外側，圓鈕本身永遠不動（撐大外框會把圓鈕推離滑鼠 ⇒
    :hover 來回閃）；面板 padding（不是 margin）當作與圓鈕之間的間距，滑鼠從圓鈕
    移到面板途中不會掉出 :hover。 */
+/* Shared screen tools sit above the home dashboard (140), below the App Bar
+   (150) and dialogs (200). The terminal's stacking context cannot cover home. */
+#screenTools {
+  position: relative;
+  z-index: 145;
+}
 .floatTools {
   position: fixed;
   z-index: 3000;

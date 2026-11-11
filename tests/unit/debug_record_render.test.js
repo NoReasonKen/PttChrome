@@ -10,6 +10,7 @@
 // real-input: tests/e2e/offline/debug_record.offline.spec.js
 import { mountScreen, unmountAll } from "./helpers/mount_screen";
 import { setupI18n, i18n } from "../../src/js/i18n";
+import { renderScreen } from "../../src/js/term_ui";
 
 beforeAll(() => setupI18n());
 afterEach(unmountAll);
@@ -47,6 +48,35 @@ function render(lines, enhance) {
 
 const rec = (s) => s.container.querySelector("#debugRecordBtn");
 const tools = (s) => s.container.querySelector("#floatTools");
+
+test("external tools survive article row updates and are removed on disable or release", () => {
+  const root = document.body.appendChild(document.createElement("div"));
+  const host = document.body.appendChild(document.createElement("div"));
+  const enhance = { pageState: 3, stableRows: true, debugRecordButton: true };
+  const draw = (lines, overrides = {}) => renderScreen(
+    lines, 20, false, false, root, { ...enhance, ...overrides }, host,
+  );
+  const screen = draw([line("body")]);
+  try {
+    const control = host.querySelector("#debugRecordBtn");
+    expect(control).not.toBeNull();
+    expect(root.querySelector("#floatTools")).toBeNull();
+    const lines = [line("body"), line("appended page")];
+    draw(lines);
+    expect(root.textContent).toContain("appended page");
+    expect(host.querySelector("#debugRecordBtn")).toBe(control);
+    draw(lines, { debugRecordButton: false });
+    expect(host.querySelector("#floatTools")).toBeNull();
+    draw(lines);
+    expect(host.querySelector("#debugRecordBtn")).toBe(control);
+    screen.release();
+    expect(host.children).toHaveLength(0);
+  } finally {
+    screen.release();
+    root.remove();
+    host.remove();
+  }
+});
 
 test("debug 模式關 ⇒ 沒有錄製鈕，也沒有「⋯」", () => {
   const s = render(MENU_LINES, { debugRecordButton: false });

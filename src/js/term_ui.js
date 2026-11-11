@@ -45,10 +45,11 @@ export function renderScreen(
   enableLinkHoverPreview,
   cont,
   enhance,
+  floatingToolsRoot = null,
 ) {
   let controller = controllers.get(cont);
   if (!controller) {
-    controller = new ScreenController(cont);
+    controller = new ScreenController(cont, floatingToolsRoot);
     controllers.set(cont, controller);
   }
   controller.update({

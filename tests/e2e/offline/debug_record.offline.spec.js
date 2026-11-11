@@ -17,8 +17,28 @@ const {
   waitScreenSettled,
 } = require('../helpers/replay');
 const { waitPreviewsSettled, waitScrollStable } = require('../helpers/layout');
+const { bootDashboard } = require('../helpers/stack_routes');
 
 const article = findCassette('article');
+
+test('desktop home and native main menu share the recording control', async ({ page }, testInfo) => {
+  await bootDashboard(page);
+  await page.evaluate(() => window.__app.setDebugMode(true));
+  const tools = page.locator('#floatTools');
+  await hoverFloatTools(page);
+  await page.locator('#debugRecordBtn').click({ timeout: 3000 });
+  await expect(tools).toHaveAttribute('data-recording', '');
+  await testInfo.attach('desktop-home-recording', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.locator('#homeDashboard [data-home-native]').click();
+  await expect(page.locator('#homeDashboard')).toHaveCount(0);
+  await expect(tools).toHaveCount(1);
+  await hoverFloatTools(page);
+  const [download] = await Promise.all([
+    page.waitForEvent('download'), page.locator('#debugRecordBtn').click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^ptt-debug-.*\.json$/);
+  await expect(tools).not.toHaveAttribute('data-recording', '');
+});
 
 const label = (page, key) => page.evaluate((k) => window.__i18n(k), key);
 
