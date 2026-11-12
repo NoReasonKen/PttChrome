@@ -254,7 +254,7 @@ describe("渲染鏈的佔位盒生命週期", () => {
   // annotationsKey 的操作**還是全量重建每一列 —— AI 校正逐筆回填一篇文章就數十次。
   // 重建出來的佔位盒若從零高度開始，整份長頁的圖片區同時塌陷再非同步撐回來
   // ＝閃爍＋閱讀位置往下跳。量測結果存在 module 級 memo（鍵＝href）才擋得住。
-  test("設定變動造成的全量重建：新節點的佔位盒第一幀就有高度（不塌陷）", () => {
+  test("設定變動造成的全量重建：新節點的佔位盒第一幀就有高度（不塌陷）", async () => {
     const { root, controller } = mount();
     const lines = linkLines(1, "a");
     controller.update(props(lines));
@@ -276,6 +276,8 @@ describe("渲染鏈的佔位盒生命週期", () => {
     Object.defineProperty(img, "offsetHeight", { configurable: true, value: 420 });
     beforeContent.appendChild(img);
     sizeObservers[0].emit();
+    // The spacer follows a size report on the next frame (#152).
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     expect(floorOf(before)).toBe("420px");
 
     controller.update(props(lines, { showFloorNumbers: true }));
