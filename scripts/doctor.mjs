@@ -7,6 +7,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { checkLocalDeps, installTargets } from "./check-remote-commits.mjs";
 import { inspectGitHooks } from "./check-git-hooks.mjs";
+import { inspectAgentDocuments, inspectAgentHooks } from "./check-agent-hooks.mjs";
 
 const require = createRequire(import.meta.url);
 const { sdkTool } = require("../tests/e2e/android/android_env.js");
@@ -14,7 +15,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const IS_WSL = process.platform === "linux" && /microsoft/i.test(os.release());
 
 export function parseOptions(argv) {
-  const options = { browser: false, android: false, web: false, device: false };
+  const options = { browser: false, android: false, web: false, device: false, agent: false };
   for (const arg of argv) {
     const key = arg.replace(/^--/, "");
     if (!arg.startsWith("--") || !Object.hasOwn(options, key))
@@ -202,6 +203,8 @@ export async function runDoctor(
     nodeVersion = process.versions.node,
     run = runCommand,
     hooks = inspectGitHooks,
+    agentDocuments = inspectAgentDocuments,
+    agentHooks = inspectAgentHooks,
     browserCheck = checkBrowser,
     webCheck = checkWeb,
     env = process.env,
@@ -211,7 +214,7 @@ export async function runDoctor(
   const add = (name, result) =>
     checks.push({
       name,
-      status: result.ok ? "PASS" : "FAIL",
+      status: result.status || (result.ok ? "PASS" : "FAIL"),
       message: result.message,
     });
   const skip = (name, flag) =>
@@ -243,6 +246,13 @@ export async function runDoctor(
       : "Installed dependencies are current with yarn.lock.",
   });
   add("Git hooks", hooks(root, { env }));
+  if (options.agent) {
+    add("Agent documents", agentDocuments(root));
+    add("Agent command guard", agentHooks(root, { env }));
+  } else {
+    skip("Agent documents", "--agent");
+    skip("Agent command guard", "--agent");
+  }
 
   if (options.browser) {
     if (local.yarnInstall)
@@ -297,7 +307,7 @@ export async function runDoctor(
   if (options.web) add("Web", await webCheck({ run }));
   else skip("Web", "--web");
   return {
-    code: checks.some((check) => check.status === "FAIL") ? 2 : 0,
+    code: checks.some((check) => ["FAIL", "UNVERIFIED"].includes(check.status)) ? 2 : 0,
     checks,
   };
 }

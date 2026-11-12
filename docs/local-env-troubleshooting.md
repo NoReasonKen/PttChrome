@@ -6,6 +6,14 @@ Run `yarn doctor` before working in a new or refreshed checkout. It checks Node,
 the pinned Yarn version, installed dependencies, and this checkout's Git hooks.
 Optional capabilities are checked only when requested:
 
+- `yarn doctor --agent`: check local agent instructions and project skills separately
+  from Git hooks and the agent command guard. Readable configuration alone leaves
+  the guard `UNVERIFIED`; it does not establish that the host loaded or trusted it.
+  Local setup supplies `.codex/agent-inputs.json` with a nonempty `paths` array
+  (`{ "paths": ["instructions.md", "guidance"] }` is an example). Entries name
+  readable files or directories relative to the checkout; absolute paths,
+  parent traversal and Windows-style paths are rejected. A missing or invalid
+  manifest is `FAIL` and needs local setup; the input names stay in local data.
 - `yarn doctor --browser`: launch Chromium and Firefox and render inline content.
   This catches missing browser downloads and system libraries before a test run.
 - `yarn doctor --android`: verify Android Platform Tools (`adb version`). A full
@@ -19,10 +27,41 @@ Optional capabilities are checked only when requested:
   execute the application page. Start `yarn start --host` separately if needed.
 
 Flags can be combined. Exit 0 means the requested capabilities passed; exit 2
-means an environment or usage problem. Unrequested capabilities are skipped.
+means an environment or usage problem, including requested agent enforcement
+that remains `UNVERIFIED`. Unrequested capabilities are skipped.
 The doctor never installs tools, starts Vite or an emulator, modifies a device,
 or connects to PTT. Fix the reported prerequisites before interpreting test
 failures as application regressions.
+
+### Agent command guard evidence
+
+After changing agent hosts, sessions, or hook configuration, run
+`node scripts/check-agent-hooks.mjs --prepare` inside the agent session. Issue
+the two printed canary commands as separate calls through that agent's actual
+shell tool, with the same checkout as the tool's working directory. The allowed
+command must run; the blocking command must be rejected by the hook before it
+reaches the shell. If it runs, it only records `NOT_BLOCKED` and exits: neither
+canary connects to PTT, calls GitHub, runs tests, or changes project content.
+Then run `yarn doctor --agent` to read the result.
+
+The local PreToolUse guard must forward these exact canary commands and its
+original JSON event to `node scripts/check-agent-hooks.mjs --observe` before
+the normal command policy. That handler returns exit 2 for the blocking canary.
+Review and trust the hook through the host's normal hook controls; configuration
+support and trust can differ between hosts. The [official Codex hooks guide](https://learn.chatgpt.com/docs/hooks)
+documents canonical `Bash` hook events and command-tool calls made from code mode.
+
+Evidence stays in this checkout's Git metadata. It requires both hook events,
+execution of only the allowed canary, the same agent session and hook-file
+fingerprint, and an age under two hours. A missing, stale, or partial receipt is
+`UNVERIFIED`; a blocking canary that reached the shell is `FAIL`. The receipt is
+workflow evidence, not tamper-proof security: a person able to edit local Git
+metadata can forge it. Manually feeding a hook JSON fixture tests policy only;
+it must never be presented as verification of the running host. Unit tests use
+temporary fixture repositories and do not verify the current agent session.
+Shell commands identify that session through `CODEX_THREAD_ID`, falling back to
+`CODEX_SESSION_ID`; hook handlers use the original event's `session_id` because
+their process may not receive those environment variables.
 
 判準通則：零 AssertionError、失敗案例耗時 0ms 或整批在 launch 階段就掛、同一支 spec 在別的 project／CI 全綠 ⇒ 環境問題，不要改被測 code。
 

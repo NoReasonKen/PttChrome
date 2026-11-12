@@ -18,12 +18,14 @@ describe("doctor options", () => {
       android: false,
       web: false,
       device: false,
+      agent: false,
     });
     expect(parseOptions(["--device", "--web"])).toEqual({
       browser: false,
       android: true,
       web: true,
       device: true,
+      agent: false,
     });
     expect(() => parseOptions(["--install"])).toThrow("Unknown option");
   });
@@ -213,7 +215,7 @@ describe("doctor result", () => {
     const deps = dependencies();
     const result = await runDoctor(root, parseOptions([]), deps);
     expect(result.code).toBe(0);
-    expect(result.checks.filter((c) => c.status === "SKIP")).toHaveLength(4);
+    expect(result.checks.filter((c) => c.status === "SKIP")).toHaveLength(6);
     expect(deps.run.mock.calls).toEqual([["yarn", ["--version"]]]);
   });
 
@@ -227,6 +229,31 @@ describe("doctor result", () => {
     expect(
       result.checks.filter((c) => c.status === "FAIL").map((c) => c.name),
     ).toEqual(["Dependencies", "Git hooks"]);
+  });
+
+  test("separates agent files, Git hooks, and unverified runtime enforcement", async () => {
+    const result = await runDoctor(root, parseOptions(["--agent"]), {
+      ...dependencies(),
+      agentDocuments: () => ({ ok: true, message: "Inputs readable." }),
+      agentHooks: () => ({ ok: false, status: "UNVERIFIED", message: "No runtime evidence." }),
+    });
+    expect(result.checks.filter((c) => ["Agent documents", "Git hooks", "Agent command guard"].includes(c.name))).toEqual([
+      expect.objectContaining({ name: "Git hooks", status: "PASS" }),
+      expect.objectContaining({ name: "Agent documents", status: "PASS" }),
+      expect.objectContaining({ name: "Agent command guard", status: "UNVERIFIED" }),
+    ]);
+    expect(result.code).toBe(2);
+  });
+
+  test("accepts current runtime evidence without changing independent document failures", async () => {
+    const result = await runDoctor(root, parseOptions(["--agent"]), {
+      ...dependencies(),
+      agentDocuments: () => ({ ok: false, message: "Inputs missing." }),
+      agentHooks: () => ({ ok: true, message: "Both actual-tool canaries observed." }),
+    });
+    expect(result.checks.find((c) => c.name === "Agent command guard").status).toBe("PASS");
+    expect(result.checks.find((c) => c.name === "Agent documents").status).toBe("FAIL");
+    expect(result.code).toBe(2);
   });
 
   test("validates Node and the pinned Yarn version independently", async () => {
