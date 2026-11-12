@@ -237,7 +237,7 @@ function trackInFlight(core, steps, flag) {
   };
   steps.forEach(function(step, i) {
     step.onFail = wrap(step.onFail);
-    step.onFlushed = end;
+    step.onFlushed = wrap(step.onFlushed);
     if (i === steps.length - 1) step.onDone = wrap(step.onDone);
   });
   return steps;

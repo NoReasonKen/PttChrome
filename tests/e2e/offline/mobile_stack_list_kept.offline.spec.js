@@ -9,6 +9,7 @@ const { bootThreadBoard, listActive } = require('../helpers/thread_jump');
 const { recordHints, recordedHints } = require('../helpers/stack_routes');
 const { revealArticleDrawer } = require('../helpers/article_gestures');
 const { touchDrag } = require('../helpers/real_input');
+const { waitScrollStable } = require('../helpers/layout');
 
 const MAIN = '.main:not([data-stack-layer])';
 const UNDERLAY = '[data-article-exit-underlay]';
@@ -198,12 +199,19 @@ test('scrolling down past the rows kept loads the articles posted meanwhile, and
   const view = page.locator(`${MAIN} .listBodyView`);
   // The reader scrolls up a little, then down past the rows kept: a list
   // already at its end gives no scroll to act on.
-  await view.evaluate(el => { el.scrollTop = Math.max(0, el.scrollTop - el.clientHeight / 2); });
+  const box = await view.boundingBox();
+  const x = box.x + box.width / 2;
+  const top = box.y + box.height / 3;
+  const bottom = box.y + box.height * 2 / 3;
+  const beforeEntry = await topEntry(page);
+  await touchDrag(page, { x, y: top }, { x, y: bottom });
+  // Loading earlier rows compensates scrollTop; the visible article identifies
+  // the reader's movement independently of those inserted rows.
+  await expect.poll(async () => Number((await topEntry(page)).num)).toBeLessThan(Number(beforeEntry.num));
+  await waitScrollStable(page, `${MAIN} .listBodyView`);
   await listActive(page);
-  await expect.poll(async () => {
-    await view.evaluate(el => { el.scrollTop = el.scrollHeight; });
-    return (await shownNow(page, 1195))?.author;
-  }, { timeout: 10000 }).toBe('newbie');
+  await touchDrag(page, { x, y: bottom }, { x, y: top });
+  await expect.poll(async () => (await shownNow(page, 1195))?.author, { timeout: 10000 }).toBe('newbie');
   await listActive(page);
   const now = await cards(page);
   for (const card of asLeft(before.cards)) {
