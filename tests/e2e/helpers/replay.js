@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const { installResizeObserverGuard } = require('./resize_observer_guard');
+const { installNativeGridGuard } = require('./native_grid_guard');
 const {
   beginImageRequest,
   endImageRequest,
@@ -98,6 +99,7 @@ async function installReplay(page, opts = {}) {
   const neverOpen = opts.neverOpen === true || !!openHost;
   const isBbsSrc = isBbsSocketUrl.toString();
   await installResizeObserverGuard(page);
+  await installNativeGridGuard(page);
   // 文章工具側欄（pref enableArticleTools）是好讀文章右邊的浮層，會擋掉落在那裡的滑鼠
   // ⇒ 預設關，只有 article_tools.offline.spec.js 以 opts.articleTools 打開。
   // 手機推文列收進底部導覽（pref mobileCommentBarFold，預設開）：打開推文列的 spec 多半在驗
