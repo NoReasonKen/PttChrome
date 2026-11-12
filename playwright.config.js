@@ -255,6 +255,7 @@ module.exports = defineConfig({
     gracefulShutdown: { signal: 'SIGTERM', timeout: 5000 },
     // 直接 npx playwright test（不走 yarn 前置 kill:dev）時仍能附到手動 dev server；
     // 走 yarn 腳本時前置已 kill:dev 清空 8080，等於每次全新，杜絕 stale bundle。
-    reuseExistingServer: true,
+    // Commit validation must fail on an occupied port instead of testing another checkout.
+    reuseExistingServer: process.env.PTT_E2E_FRESH_SERVER !== '1',
   },
 });
