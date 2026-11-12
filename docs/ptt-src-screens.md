@@ -34,7 +34,7 @@ tests/unit/ptt_src_screens.test.js  依幀名把第 0..i 幀疊進 app 自己的
 | `fav` | `fav_load`＋`fav_add_board`（seed 的 F 列）＋`Favorite()` | 看板列表（我的最愛） |
 | `menu` | `main_menu()` | 主功能表 |
 | `menu:newmail` | `currutmp->alerts \|= ALERT_NEW_MAIL`＋`main_menu()` | 有新信的主功能表 |
-| `wmsg:default`／`wmsg:ofo` | 收下 seed 的 W 列水球（`write_request`）＋`main_menu()`；ofo 加 `UF_PAGER_OFO` | 回水球畫面（之後送 ^R）。寄件人各佔一個在線的 `SHM->uinfo`，訊息照 `write_message_full` 的欄位直接填進 `currutmp->msgs`（呼叫它會對自己送 SIGUSR2） |
+| `wmsg:default`／`wmsg:ofo` | 收下 seed 的 W 列水球（`write_request`）＋`main_menu()`；ofo 加 `UF_WMSG_OFO` | 回水球畫面（之後送 ^R）。寄件人各佔一個在線的 `SHM->uinfo`，訊息照 `write_message_full` 的欄位直接填進 `currutmp->msgs`（呼叫它會對自己送 SIGUSR2） |
 
 第 4 個參數是列數（欄數恆 80，見下「寬終端」）。
 
@@ -106,6 +106,9 @@ pfterm 只在阻塞讀鍵前 flush。鍵送早了會被 typeahead 吃掉中間�
 - driver.c 本身是 UTF-8：要寫 Big5 字串用跳脫序列，且拆開寫（`"\xc3" "D"`，否則 `\xc3D` 被吃成一個跳脫）。
 - driver.c writes upstream structs directly, so upstream field renames break the build. Example: 2026-10-24
   `b500faf7` merged `fileheader_t.pad` and `recommend` into `int16_t rating`; the article command now sets `rating`.
+- Waterball setup uses `userinfo_t.wmsg = WMSG_ON` for senders and the recipient, and `UF_WMSG_OFO`
+  for the one-to-one interface. Upstream renamed the former pager field and constants in `c4a7085f`;
+  the generator follows upstream main, while committed screen fixtures retain parser coverage for older screens.
 - generate.sh pins `TZ=UTC`: the status-bar clock renders in local time, so a local run in another timezone
   would rewrite every fixture with a shifted clock.
 - Local runs need a `python` executable (upstream generates `common/sys/big5.c` with it). On Ubuntu install
