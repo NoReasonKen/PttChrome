@@ -10,7 +10,7 @@
 //   menu         主功能表（main_menu()）
 //   menu:newmail 同上，但有新信（ALERT_NEW_MAIL）
 //   wmsg:<模式>  先收下 seed 的 W 列水球（write_request），再進主功能表；模式 default＝一般
-//                水球、ofo＝一對一（UF_PAGER_OFO）。之後送 ^R 就是 upstream 的回水球畫面。
+//                水球、ofo＝一對一（UF_WMSG_OFO）。之後送 ^R 就是 upstream 的回水球畫面。
 // seed 檔（Big5，tab 分隔）：
 //   B <brdname> <class> <desc> <板主 ID，多位用 />          開一個看板（之後的 A／N 屬於它）
 //   A <owner> <date> <score>     <flags> <title>          一篇文章；flags: m=marked b=置底
@@ -118,7 +118,7 @@ static void inject_waterballs(void)
             userinfo_t *u = &SHM->uinfo[slot];
             STRLCPY(u->userid, wb_from[i]);
             u->pid = 10000 + slot;
-            u->pager = PAGER_ON;
+            u->wmsg = WMSG_ON;
         }
         msgque_t *m = &currutmp->msgs[i];
         m->pid = SHM->uinfo[slot].pid;
@@ -326,10 +326,10 @@ int main(int argc, char *argv[])
         main_menu();
     } else if (strncmp(entry, "wmsg:", 5) == 0) {
         if (strcmp(entry + 5, "ofo") == 0)
-            pwcuser.uflag |= UF_PAGER_OFO;
+            pwcuser.uflag |= UF_WMSG_OFO;
         else if (strcmp(entry + 5, "default") != 0)
             die("wmsg mode");
-        currutmp->pager = PAGER_ON;
+        currutmp->wmsg = WMSG_ON;
         inject_waterballs();
         write_request(0);
         main_menu();
