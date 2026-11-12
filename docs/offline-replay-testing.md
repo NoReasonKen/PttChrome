@@ -117,6 +117,13 @@ yarn test:e2e           # 仍連真實 PTT 的 live e2e（共存，--project=liv
   （自己 `bootOffline`、不共用檔案／port）。守護 `tests/unit/e2e_workers_policy.test.js`。
   實測（16 邏輯核）：offline 三 project 約 2.3 分（原串行約 10 分）、adverse 三桶 8 workers 約 3 分且未撞 DLL 崩潰。
 
+### Page guards installed by `installReplay`
+
+Every offline page gets two guards, so any spec that crosses the condition catches it without its own assertion:
+
+- **ResizeObserver loop** (`tests/e2e/helpers/resize_observer_guard.js`): a loop raised by one of the project's own observers fails the test.
+- **Native grid** (`tests/e2e/helpers/native_grid_guard.js`): with easy reading on and after login, a frame painted on PTT's grid, visible and not covered by the home dashboard or a page-stack layer, fails the test on `offline-mobile`. Known hits are allowed while their issue is open; each entry of its `ALLOWED` list names the issue, and fixing that issue removes the entry. `NATIVE_GRID_GUARD=report NATIVE_GRID_REPORT=<file.jsonl>` writes every hit with its allowed issue instead, to inventory a whole suite; `bootOffline(page, ptt, { nativeGridGuard: 'off' })` records hits without judging them.
+
 ## scenario 卷（`yarn record:scenarios`，2026-10）
 一段「要真 PTT 往返」的操作錄成可重放素材，取代 live e2e 的功能測項（live 只剩核心，見
 `tests/e2e/README.md`「live 範圍」）。錄製器 `tests/e2e/tools/record-scenarios.spec.js`，

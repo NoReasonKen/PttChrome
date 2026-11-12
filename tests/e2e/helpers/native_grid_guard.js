@@ -1,16 +1,18 @@
 // Native grid guard (#186): with easy reading on, PttChrome presents every
 // screen after login (#155), so a frame drawn on PTT's terminal grid is a
 // regression or an easy-reading gap. installReplay installs it on every offline
-// page, so any spec that crosses such a screen reports it.
+// page, so any spec that crosses such a screen reports it
+// (docs/offline-replay-testing.md, "Page guards").
 //
 // Signal: a frame TermView draws on the grid (_gridRender, not the list
 // easy-reading window) reaches paint visible and uncovered, while the
 // easy-reading pref is on and after the main menu has been seen once (login).
 //
-// NATIVE_GRID_GUARD selects what a hit does:
-//   report: append each distinct hit to NATIVE_GRID_REPORT (JSON lines) for the
-//           inventory over a whole suite; the test still passes.
-//   off (default until the inventory is done): record hits in the page only.
+// What a hit does (NATIVE_GRID_GUARD overrides the default):
+//   fail (default on offline-mobile): a hit outside ALLOWED fails the test softly.
+//   report: append every distinct hit, with its allowed issue, to
+//           NATIVE_GRID_REPORT (JSON lines) for an inventory over a suite.
+//   off (default elsewhere): record hits in the page only (window.__nativeGridGuard).
 
 const fs = require('fs');
 
@@ -132,12 +134,41 @@ function pageGuard({ tag }) {
   });
 }
 
-async function installNativeGridGuard(page) {
-  const mode = process.env.NATIVE_GRID_GUARD || 'off';
-  if (mode === 'report') {
-    const { test } = require('@playwright/test');
-    const out = process.env.NATIVE_GRID_REPORT;
-    if (!out) throw new Error('NATIVE_GRID_GUARD=report needs NATIVE_GRID_REPORT=<file.jsonl>');
+// Known hits, each waiting on the issue that removes it. Fixing an issue
+// removes its entry; the suite then proves no such frame is painted. The first
+// matching entry wins, so the narrower entries come first.
+const ALLOWED = [
+  { issue: 160, why: 'article prompt mirrored natively', match: (hit) => hit.functionMode },
+  { issue: 188, why: 'reconnect or reload recovery drives PTT through native screens',
+    match: (hit) => hit.resume != null },
+  { issue: 159, why: 'article-list key handed to the native view',
+    match: (hit) => hit.listState === 'functionMode' },
+  { issue: 189, why: 'unexpected pause screen after Back, and the list after it',
+    match: (hit) => hit.listState === 'suspended' },
+  { issue: 190, why: 'board-select prompt from the search history', match: (hit) => hit.title.includes('選擇看板') },
+  { issue: 191, why: 'native main menu opened from home, and the screens reached from it',
+    match: (hit, { test }) => hit.homeDismissed ||
+      (/ from a fresh main menu /.test(test) && !hit.title.includes('主功能表')) },
+  { issue: 187, why: 'main menu painted before the home dashboard covers it',
+    match: (hit) => hit.title.includes('主功能表') },
+];
+
+function allowedIssue(hit, where) {
+  const entry = ALLOWED.find((a) => a.match(hit, where));
+  return entry ? entry.issue : null;
+}
+
+// opts.mode overrides the default and the environment (the guard's own spec records only).
+async function installNativeGridGuard(page, opts = {}) {
+  const { test, expect } = require('@playwright/test');
+  let project = null;
+  try {
+    project = test.info().project.name;
+  } catch {}
+  const mode = opts.mode || process.env.NATIVE_GRID_GUARD || (project === 'offline-mobile' ? 'fail' : 'off');
+  const out = process.env.NATIVE_GRID_REPORT;
+  if (mode === 'report' && !out) throw new Error('NATIVE_GRID_GUARD=report needs NATIVE_GRID_REPORT=<file.jsonl>');
+  if (mode === 'fail' || mode === 'report') {
     page.on('console', (msg) => {
       const text = msg.text();
       if (!text.startsWith(TAG)) return;
@@ -145,13 +176,21 @@ async function installNativeGridGuard(page) {
       try {
         info = test.info();
       } catch {
-        return;
+        return; // after the test ended
       }
-      const spec = info.file.replace(/^.*\/tests\/e2e\//, '');
-      fs.appendFileSync(out, JSON.stringify({ spec, test: info.title, hit: JSON.parse(text.slice(TAG.length)) }) + '\n');
+      const hit = JSON.parse(text.slice(TAG.length));
+      const where = { spec: info.file.replace(/^.*\/tests\/e2e\//, ''), test: info.title };
+      const issue = hit.guardError ? null : allowedIssue(hit, where);
+      if (mode === 'report') {
+        fs.appendFileSync(out, JSON.stringify({ ...where, allowed: issue, hit }) + '\n');
+      } else if (issue == null) {
+        expect
+          .soft(hit, 'native grid painted under easy reading (tests/e2e/helpers/native_grid_guard.js)')
+          .toBeUndefined();
+      }
     });
   }
   await page.addInitScript(pageGuard, { tag: TAG });
 }
 
-module.exports = { installNativeGridGuard, NATIVE_GRID_TAG: TAG };
+module.exports = { installNativeGridGuard, allowedIssue, NATIVE_GRID_TAG: TAG };
