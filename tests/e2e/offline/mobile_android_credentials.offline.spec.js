@@ -2,6 +2,7 @@ const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { bootOffline, waitConnected } = require('../helpers/replay');
 const { drawMainMenu } = require('../helpers/main_menu');
+const { pauseClockNow } = require('../helpers/clock');
 const { expectPrivateArtifact, expectPrivateRecording } = require('../helpers/credential_privacy');
 
 const SECRET = 'JBSWY3DPEHPK3PXP';
@@ -22,6 +23,8 @@ async function installCredentialHost(page, source = 'manager', savedSecretSource
       localPresence: { user: false, password: false, otpSecret: savedSecretSource === 'local' },
       saveError: null,
       readError: null,
+      holdLoginRead: false,
+      releaseLoginRead: null,
       deleteError: null,
       local: null,
       manager: null,
@@ -75,9 +78,14 @@ async function installCredentialHost(page, source = 'manager', savedSecretSource
             reply = { id: request.id, ok: true, source: host.source, presence: host[key] };
           }
         }
-        queueMicrotask(() => {
+        const deliver = () => {
           for (const listener of listeners) listener({ data: JSON.stringify(reply) });
-        });
+        };
+        if (request.op === 'getLoginCredential' && host.holdLoginRead) {
+          host.releaseLoginRead = deliver;
+        } else {
+          queueMicrotask(deliver);
+        }
       },
     };
   }, { source, savedSecretSource, options });
@@ -383,6 +391,59 @@ test('mobile manager selection saving and retrieval retain unused legacy plainte
     expect(await sentCredentials(page)).not.toContain('synthetic-old-password');
     await expectLegacy(page, true);
   }
+});
+
+test('a disconnected favorites fetch preserves the cancelled manager retrieval hint', async ({ page }) => {
+  await installCredentialHost(page, 'manager', null, { legacy: true });
+  await bootOffline(page, ptt);
+  await page.clock.install();
+  await pauseClockNow(page);
+  await page.evaluate(() => {
+    const host = window.__credentialHost;
+    host.manager = { user: 'offline-reader', password: 'synthetic-password' };
+    host.readError = 'cancelled';
+    host.holdLoginRead = true;
+  });
+  let prepared = false;
+  const prepare = drawMainMenu(page).then(() => { prepared = true; });
+  await expect.poll(async () => {
+    await page.clock.runFor(50);
+    return prepared && await page.evaluate(() =>
+      window.__app.homeDashboard.state.fetching &&
+      window.__app.commandQueue.inFlightKind === 'home-fav-open');
+  }).toBe(true);
+  await prepare;
+
+  // The fixture leaves the favorites request unanswered, then establishes a
+  // fresh login connection through the same helper as the original safety case.
+  // Advance frames until that helper observes the connection, while holding the
+  // provider reply. Driver latency cannot consume the favorites timeout window.
+  let reconnected = false;
+  const reconnect = reconnectForLogin(page).then(() => { reconnected = true; });
+  await expect.poll(async () => {
+    await page.clock.runFor(50);
+    return reconnected && await page.evaluate(() =>
+      typeof window.__credentialHost.releaseLoginRead === 'function');
+  }).toBe(true);
+  await reconnect;
+  await page.evaluate(() => window.__credentialHost.releaseLoginRead());
+  const cancelled = await text(page, 'options_credentialsLogin_cancelled');
+  await expect(page.locator('.ListHint')).toHaveText(cancelled);
+  for (const forbidden of ['offline-reader', 'legacy-reader', 'synthetic-old-password']) {
+    expect(await sentCredentials(page)).not.toContain(forbidden);
+  }
+  await expectLegacy(page, true);
+
+  // Cross the former request's ordinary 3s timeout plus 2s probe window, while
+  // staying inside the cancellation hint's 6s lifetime.
+  await page.clock.runFor(5500);
+  expect(await page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
+  expect(await page.evaluate(() => window.__app.homeDashboard.state.fetching)).toBe(false);
+  for (const forbidden of ['offline-reader', 'legacy-reader', 'synthetic-old-password']) {
+    expect(await sentCredentials(page)).not.toContain(forbidden);
+  }
+  await expectLegacy(page, true);
+  expect(await page.locator('.ListHint').textContent()).toBe(cancelled);
 });
 
 test('mobile legacy cleanup requires confirmation and survives closing settings without changing other preferences', async ({ page }) => {

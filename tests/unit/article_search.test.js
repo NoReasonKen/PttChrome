@@ -18,6 +18,7 @@ import {
   SEARCH_INFLIGHT_MAX_MS,
   shouldInterceptSearchKey,
   submitSearch,
+  submitSerializedSteps,
   tryOpenSearchModal,
 } from "../../src/js/article_search";
 import { CommandQueue } from "../../src/js/command_queue";
@@ -481,6 +482,24 @@ describe("searchInFlight（序列化操作閘門）", () => {
     submitSearch(core, "title", "abc");
     queue.flush();
     expect(core.searchInFlight).toBe(false);
+  });
+
+  test.each(['native', 'list'])('%s cancellation clears the flag and notifies the operation owner', mode => {
+    const { core, queue } = nativeCore();
+    let submitted;
+    if (mode === 'list') core.activeListSession = () => ({
+      state: 'active',
+      _beginPassthroughBytes: steps => { submitted = steps; },
+    });
+    const onFlushed = vi.fn(() => expect(core.homeFavFetchInFlight).toBe(false));
+    submitSerializedSteps(core, [{
+      keys: '\x1af', kind: 'home-fav-open', expect: () => false, onFlushed,
+    }], { flag: 'homeFavFetchInFlight' });
+    expect(core.homeFavFetchInFlight).toBe(true);
+    if (mode === 'list') submitted[0].onFlushed();
+    else queue.flush();
+    expect(core.homeFavFetchInFlight).toBe(false);
+    expect(onFlushed).toHaveBeenCalledTimes(1);
   });
 
   test("保底計時器：任何終局都沒來也會在 SEARCH_INFLIGHT_MAX_MS 後解除", () => {

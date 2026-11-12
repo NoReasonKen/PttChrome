@@ -777,8 +777,8 @@ HomeDashboard.prototype = {
     }
     this._clearAutoTimer();
     this._set({ fetching: true });
-    // 保底：第一步被 flush（斷線）時 submitSerializedSteps 換掉了它的 onFlushed，
-    // 面板不能永遠停在「更新中」。
+    // Bound the complete multi-page fetch independently of each step's budget.
+    // Normal completion, failure and cancellation clear this watchdog.
     watchdog = setTimeout(function() {
       fail();
       if (core.commandQueue && core.commandQueue.flushKind) core.commandQueue.flushKind('home-fav');

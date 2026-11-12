@@ -683,6 +683,11 @@ App.prototype.onClose = function() {
   // reconnect starts back at the login screen, and firing a jump into whatever
   // the user does next is worse than making them click the link again.
   this.deepLinkController.reset();
+  // Every command belongs to the connection that just closed. Idle list
+  // sessions need not own outstanding work, such as a dashboard request.
+  // Cancel it after resetting the navigation owners, before a login can reuse
+  // this queue and receive an old request's timeout or redraw probe.
+  this.commandQueue.flush();
   // 收件匣跟著連線走：斷線清空。
   this.messageInbox.reset();
 
