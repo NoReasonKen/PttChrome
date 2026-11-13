@@ -170,6 +170,8 @@ const ALLOWED = [
   { issue: 160, why: 'article prompt mirrored natively', match: (hit) => hit.functionMode },
   { issue: 188, why: 'reconnect or reload recovery drives PTT through native screens',
     match: (hit) => hit.resume != null },
+  { issue: 206, why: "the native list shown while PttChrome's own list operation runs",
+    match: (hit) => hit.listState === 'functionMode' },
   { issue: 189, why: 'unexpected pause screen after Back, and the list after it',
     match: (hit) => hit.listState === 'suspended' },
   { issue: 190, why: 'board-select prompt from the search history', match: (hit) => hit.title.includes('選擇看板') },

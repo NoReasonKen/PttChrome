@@ -130,12 +130,16 @@ test.describe('搜尋彈窗（離線）', () => {
     const kw = await toBig5(page, '問卦');
     const searched = new RegExp('^/\f+' + kw + '\r\f');
     await expect.poll(() => sentText(page)).toMatch(searched);
-    // server 回搜尋結果（列表全幅重繪）⇒ 第二步收尾、閘門解除，鍵照常送出（X 在列表上
-    // 直送 PTT）
+    // server 回搜尋結果（列表全幅重繪）⇒ 第二步收尾、閘門解除，鍵照常交給列表處理
+    // （X 不是好讀呈現的鍵 ⇒ 列表亮出拒絕提示；閘門若還關著，提示不會出現）
     await drawArticleList(page);
     await expect.poll(() => page.evaluate(() => window.__app.searchInFlight)).toBe(false);
     await ptt.sendKey(page, 'X');
-    await expect.poll(() => sentText(page).then((t) => t.replace(searched, ''))).toContain('X');
+    await expect(page.locator('.ListHint')).toHaveText(
+      '好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）');
+    await expect(page.locator('.ListHint')).toHaveAttribute('data-level', 'error');
+    // The refused X sent nothing.
+    expect((await sentText(page)).replace(searched, '')).not.toContain('X');
   });
 
   test('作者搜尋（a）同樣攔；關鍵字記在本機，下次 ↑ 叫得回來', async ({ page }) => {

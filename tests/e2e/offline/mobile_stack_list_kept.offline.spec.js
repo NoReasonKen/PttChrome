@@ -310,16 +310,6 @@ test('a number jump within the rows loaded keeps every row as it was and selects
   }
 });
 
-test('a key sent in native mode shows PTT\'s list now once the list takes over again', async ({ page }) => {
-  await readReply(page);
-  await back(page);
-  // `b`, a key the list sends PTT as it is; the controlled PTT redraws the list.
-  await ptt.sendKey(page, 'b');
-  await expect.poll(async () => (await shownNow(page, 1181))?.mark, { timeout: 15000 }).toBe('M');
-  await listActive(page);
-  expect(await shownNow(page, 1181)).toMatchObject({ push: '20' });
-});
-
 test('tagging keeps the rows as they were, except the row tagged', async ({ page }) => {
   const before = await readReply(page);
   await back(page);
@@ -495,21 +485,14 @@ const LIST_CHANGED = /列表已更新/;
 // dave's author results, searched on the list, then his last article opened
 // from them and its same-subject search, then Back to the article and Back
 // to the results.
-// `native`: the results are the native same-subject search of Other topic
-// instead, which the app cannot run again.
-async function backToResultsThroughThreadSearch(page, { native = false } = {}) {
+async function backToResultsThroughThreadSearch(page) {
   await bootThreadBoard(page, {
-    open: native ? 1160 : 1150, size: 1190, fromList: true, thread: SEARCHED,
+    open: 1150, size: 1190, fromList: true, thread: SEARCHED,
     beforeOpen: async page => {
-      if (native) {
-        await ptt.sendKey(page, 'S');
-        await expect.poll(() => page.evaluate(() => window.__threadServer.state.filter)).toBe('[Talk] Other topic');
-      } else {
-        await ptt.sendKey(page, 'a');
-        await page.locator('input[name="searchKeyword"]').fill('dave');
-        await page.locator('input[name="searchKeyword"]').press('Enter');
-        await expect.poll(() => page.evaluate(() => window.__threadServer.state.byAuthor)).toBe('dave');
-      }
+      await ptt.sendKey(page, 'a');
+      await page.locator('input[name="searchKeyword"]').fill('dave');
+      await page.locator('input[name="searchKeyword"]').press('Enter');
+      await expect.poll(() => page.evaluate(() => window.__threadServer.state.byAuthor)).toBe('dave');
       await listActive(page);
     }
   });
@@ -541,12 +524,4 @@ test('search results shown again after a search from an article opened from them
   // Blank cards fill the rest of the screen.
   expect((await cards(page)).filter(card => card.num).map(card => `${card.num} ${card.author}`)).toEqual(['1 dave', '2 dave', '3 dave']);
   expect(await page.evaluate(() => window.__threadServer.state)).toMatchObject({ byAuthor: 'dave', filter: null });
-});
-
-test('search results shown again after PTT left them, whose search cannot run again, give way to PTT\'s list', async ({ page }) => {
-  await backToResultsThroughThreadSearch(page, { native: true });
-  expect((await cards(page)).filter(card => card.num).some(card => card.author === 'filler')).toBe(true);
-  await page.locator(`${MAIN} .listCard`).filter({ has: page.locator('.listCardNum', { hasText: /^1160$/ }) }).tap();
-  await expect.poll(() => page.locator(MAIN).first().innerText()).toContain('Body of article 1160 by erin');
-  expect(await recordedHints(page)).not.toContainEqual(expect.stringMatching(LIST_CHANGED));
 });

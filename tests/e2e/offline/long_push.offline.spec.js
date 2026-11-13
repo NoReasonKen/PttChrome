@@ -581,10 +581,12 @@ test.describe('長推文一鍵發送（離線）', () => {
     expect(await page.evaluate(() => window.__app.longPush.busy)).toBe(false);
   });
 
-  // 文章列表按 X 也是推文（bbs.c:4595 同一個 recommend），但**刻意不攔**：
-  // LongPushSession 的游標錨點要從文章標頭取，在列表上取不到 ⇒ 攔了等於拆掉唯一
-  // 擋住「推到別篇」的機制（long_push_gate.js 檔頭）。
-  test('文章列表按 X 不攔，維持原生', async ({ page }) => {
+  // X on the article list is also a push (bbs.c:4595, same recommend), but the
+  // long push is deliberately not offered there: LongPushSession's cursor anchor
+  // comes from the article header, which the list does not have (long_push_gate.js
+  // header). Over the easy-reading list X is not a key easy reading presents, so
+  // it is refused: no modal, nothing sent to PTT, the refusal hint shows.
+  test('on the article list X is refused: no long push, nothing sent', async ({ page }) => {
     await boot(page);
     const nums = [1233, 1234, 1235];
     const rows = [
@@ -596,8 +598,10 @@ test.describe('長推文一鍵發送（離線）', () => {
     await collectSent(page);
 
     await ptt.sendKey(page, 'X');
-    // X 直送 PTT（之後列表好讀自己的跳號不算）。
-    await expect.poll(() => sentText(page)).toMatch(/^X/);
+    await expect(page.locator('.ListHint')).toHaveText(
+      '好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）');
+    await expect(page.locator('.ListHint')).toHaveAttribute('data-level', 'error');
+    expect(await sentText(page)).toBe('');
     await expect(page.locator('[name="longPushText"]')).toHaveCount(0);
     await expect(page.getByTestId('longPushProgressStatus')).toHaveCount(0);
     expect(await page.evaluate(() => window.__app.longPush.busy)).toBe(false);
