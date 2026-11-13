@@ -262,6 +262,43 @@ describe("說明選單（h）：離開後回好讀時視野回到原處", () => 
     expectRestoredAfterFill(h, 350010);
   });
 
+  // The owner's report: closing the sheet showed PTT's page for an instant,
+  // then the view came back once the rows above it were fetched again.
+  test("the sheet over the easy-reading list closed ⇒ the list is back at once, on the rows it held, at the reader's view", () => {
+    const h = makeSession();
+    const hm = new HelpMenuController(h.core, null, { send() {}, enabled: () => true });
+    h.core.helpMenu = hm;
+    h.s._beginHelp();
+    expect(hm.holding).toBe(true);
+    step(h, "help").onDone(true);
+    expect(h.s._renderMode).toBe("native");
+    hm.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    hm.close();
+    const commands = h.enqueued.length;
+    hm.noteScreen(null); // PTT redraws the article list
+    expect(h.s.state).toBe("active");
+    expect(h.s._renderMode).toBe("buffer");
+    expect(h.termBuf.listLineNums.length).toBe(60);
+    expect(h.s._topNum).toBe(350010);
+    expect(h.s._pendingViewport).toBe(null);
+    expect(h.scrollWrites[h.scrollWrites.length - 1]).toBe(10 * ROW_H);
+    expect(h.enqueued.length).toBe(commands); // nothing fetched again
+  });
+
+  test("the sheet closed but PTT shows no list ⇒ the native excursion stays, and the list is rebuilt when it is back", () => {
+    const h = makeSession();
+    const hm = new HelpMenuController(h.core, null, { send() {}, enabled: () => true });
+    h.core.helpMenu = hm;
+    h.s._beginHelp();
+    step(h, "help").onDone(true);
+    hm.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    hm.close();
+    h.screen.curX = 20; // PTT is waiting for input
+    hm.noteScreen(null);
+    expect(h.s.state).toBe("functionMode");
+    expect(h.s._boardName).toBe(null);
+  });
+
   test("改看原生畫面、在原生說明選單裡自己離開 ⇒ 一樣回原處", () => {
     const h = makeSession();
     const { hm } = openHelp(h);

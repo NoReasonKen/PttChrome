@@ -42,6 +42,12 @@ bottom sheet（手機）一次列出**全部頁**的指令，點一下＝執行�
   認不出起點、頁數變了、離開逾時）、或 `HOLD_TIMEOUT_MS` 內沒等到說明選單；結束時 `view.navigationEnded()` 補畫被擋下的那一幀。
   不是從好讀頁要求的說明選單（主功能表、看板列表…）不 hold。守護：`tests/unit/help_menu.test.js`「hold of the page under the sheet」、
   offline `er_function_mode.offline.spec.js`、`easy-reading-list.offline.spec.js`。
+- **離開後列表原地接回**：彈窗離開（cancel）時，hold 解除的同一幀文章列表就接回去，不等靜置探針（`ListSession.resumeAfterHelp`）。
+  從 hold 住的列表關掉彈窗（`q`／Esc）＝PTT 只收到說明選單的鍵，重畫的就是彈窗底下那份列表 ⇒ 列表**保留緩衝**（還回 `_beginHelp`
+  記下的板名，不從 PTT 的單一頁 rebuild），而且先接回、再交回閱讀紀錄的書籤，還原在同一幀套用，視野一格都不動。
+  改看原生畫面之後才離開的（使用者可能在原生畫面執行了項目）照舊 rebuild、書籤先交回；執行某一項不還原。
+  守護：`tests/unit/reading_record_list.test.js`「the sheet over the easy-reading list closed」、offline
+  `easy-reading-list.offline.spec.js`「leaving the help menu keeps the list where the reader scrolled it, every frame」（逐幀量視口）。
 
 ## UI
 

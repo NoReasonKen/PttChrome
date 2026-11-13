@@ -327,15 +327,26 @@ describe("hold of the page under the sheet", () => {
   });
 
   test("left without running an item ⇒ the article list resumes at once; an item run leaves it to PTT", () => {
-    for (const [act, resumed] of [[(c) => c.close(), 1], [(c) => c.select(0), 0]]) {
+    // A closed sheet: the list keeps what it holds and is back before the
+    // reading record's restore. Left from PTT's own help screen: the list is
+    // read anew, after the restore was asked for.
+    for (const [act, calls] of [
+      [(c) => c.close(), ["resume:true", "restore"]],
+      [(c) => c.showNative(), ["restore", "resume:false"]],
+      [(c) => c.select(0), []],
+    ]) {
       const h = held();
-      let calls = 0;
-      h.core.listSession = { resumeAfterHelp: () => calls++ };
+      const log = [];
+      h.core.listSession = {
+        resumeAfterHelp: (kept) => log.push("resume:" + kept),
+        readingPosition: () => ({ kind: "list", board: "C_Chat", topNum: 10, scrollFrac: 0, cursorNum: 26 }),
+        requestViewportRestore: () => log.push("restore"),
+      };
       h.ctrl.expect();
       h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
       act(h.ctrl);
       h.ctrl.noteScreen(null);
-      expect(calls).toBe(resumed);
+      expect(log).toEqual(calls);
     }
   });
 
