@@ -1437,6 +1437,15 @@ ListSession.prototype = {
     this._scheduleResumeProbe();
   },
 
+  // The help menu was left without running an item (help_menu.noteScreen): the
+  // frame that settled is PTT's list again, so it is measured now instead of
+  // after the idle probe's wait. Anything else on screen stays with the probe.
+  resumeAfterHelp: function() {
+    if (this.state !== 'functionMode' || this._holdReason !== 'passthrough') return;
+    this._cancelResumeProbe();
+    this._tryResumeProbe(true);
+  },
+
   // 閱讀紀錄（reading_record）的列表量測：使用者現在看到的視野。
   //   { kind:'list', board, mode, topNum, topPinnedKey, scrollFrac, cursorNum }
   // 視口在 DOM 上 ⇒ 從 scrollTop 現場換算（不改任何欄位；重繪前的錨可能落後於

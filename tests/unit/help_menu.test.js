@@ -326,6 +326,19 @@ describe("hold of the page under the sheet", () => {
     expect(ctrl.holding).toBe(false);
   });
 
+  test("left without running an item ⇒ the article list resumes at once; an item run leaves it to PTT", () => {
+    for (const [act, resumed] of [[(c) => c.close(), 1], [(c) => c.select(0), 0]]) {
+      const h = held();
+      let calls = 0;
+      h.core.listSession = { resumeAfterHelp: () => calls++ };
+      h.ctrl.expect();
+      h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+      act(h.ctrl);
+      h.ctrl.noteScreen(null);
+      expect(calls).toBe(resumed);
+    }
+  });
+
   test("no help menu in time ⇒ the hold ends and the held frame is drawn", () => {
     const h = held();
     h.ctrl.expect();

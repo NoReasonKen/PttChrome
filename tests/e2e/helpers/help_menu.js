@@ -45,6 +45,8 @@ const ITEMS = [
 ];
 
 // 第 page 頁（1 起算），游標在全清單第 cursor 項（預設＝該頁第一項）。
+// opts.caption: the row-0 【caption】, which names the screen help was asked
+// from (default 我的最愛).
 async function drawHelpPage(page, pageNo, opts = {}) {
   const info = await page.evaluate(
     ({ CAPTION, ITEMS, pageNo, cursor, angel }) => {
@@ -81,7 +83,7 @@ async function drawHelpPage(page, pageNo, opts = {}) {
       window.__app.onData(d);
       return { perPage, total };
     },
-    { CAPTION, ITEMS, pageNo, cursor: opts.cursor, angel: opts.angel !== false }
+    { CAPTION: opts.caption || CAPTION, ITEMS, pageNo, cursor: opts.cursor, angel: opts.angel !== false }
   );
   await waitScreenSettled(page, { 0: '操作說明 (Help)', 2: ITEMS[(pageNo - 1) * info.perPage] });
   return info;

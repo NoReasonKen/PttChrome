@@ -314,6 +314,9 @@ HelpMenuController.prototype = {
         this._reset();
         if (wasOpen) this._emit();
         recordFor(this._core).end(bm, outcome);
+        // Left without running an item: the article list under the sheet takes
+        // this frame back at once, so PTT's own list is never shown between.
+        if (outcome === 'cancel') this._core?.listSession?.resumeAfterHelp?.();
       }
       return;
     }

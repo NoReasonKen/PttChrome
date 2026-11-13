@@ -379,7 +379,55 @@ test.describe('文章列表好读模式（离线）', () => {
         if (el) el.textContent = '';
       });
       // A soft keyboard delivers keys as text: one typed character is the key
-      // it names, so `k` moves the selection instead of being refused as text.
+      // it names (`h` below, `k` and `j` at the end).
+      // Text right after an Alt combination is dropped as a dead-key product
+      // (term_view.altRemapRecently); the Alt+t above is long past for a reader.
+      await page.evaluate(() => {
+        window.__app.view._altRemapAt = 0;
+      });
+      const sentBefore = await page.evaluate(() => window.__replay.sent.length);
+      await imeCommit(page, 'h');
+      await expect
+        .poll(() => page.evaluate((k) => window.__replay.sent.slice(k).join(''), sentBefore))
+        .toContain('h');
+      await expect(page.locator('.ListHint')).not.toContainText(UNSUPPORTED_KEY);
+      // The list stays on screen under the help menu sheet: PTT's help screen
+      // is never painted.
+      // The caption names the screen help was asked from: the article list's,
+      // not 【我的最愛】 (a board-list title, which leaves the list).
+      await drawHelpPage(page, 1, { caption: '文章列表' });
+      await expect(page.locator('[data-help-item]').first()).toBeVisible();
+      await expect(page.locator('.listBodyView')).toHaveCount(1);
+      expect(await page.evaluate(() =>
+        document.getElementById('mainContainer').textContent.includes('操作說明 (Help)'))).toBe(false);
+
+      // Leaving the help menu: the list is back in the same frame, PTT's own
+      // list is never shown between.
+      await page.evaluate(() => {
+        window.__nativeShown = false;
+        const tick = () => {
+          const app = window.__app;
+          if (!app.helpMenu.holding && app.buf.listRenderMode === 'native') window.__nativeShown = true;
+          window.__nativeTick = requestAnimationFrame(tick);
+        };
+        tick();
+      });
+      await page.keyboard.press('Escape');
+      await expect(page.locator('[data-help-item]')).toHaveCount(0);
+      // PTT answers the leave with its list redrawn as it stood: the cassette's
+      // bytes fed so far, replayed as one frame.
+      await page.evaluate((recv) => {
+        const d = recv.slice(0, window.__replay.fed).map((r) => atob(r)).join('');
+        window.__app.onData(d);
+      }, nav.steps.map((st) => st.recv));
+      await waitState(page, (x) => x.state === 'active' && x.renderMode === 'buffer');
+      expect(await page.evaluate(() => {
+        cancelAnimationFrame(window.__nativeTick);
+        return window.__nativeShown;
+      })).toBe(false);
+      await expect(page.locator('.listBodyView')).toHaveCount(1);
+
+      // Typed navigation keys move the selection instead of being refused as text.
       const selBefore = await page.evaluate(() => window.__app.listSession._selectedNum);
       await imeCommit(page, 'k');
       await expect
@@ -390,20 +438,6 @@ test.describe('文章列表好读模式（离线）', () => {
         .poll(() => page.evaluate(() => window.__app.listSession._selectedNum))
         .toBe(selBefore);
       await expect(page.locator('.ListHint')).not.toContainText('好讀模式目前不支援');
-
-      const sentBefore = await page.evaluate(() => window.__replay.sent.length);
-      await imeCommit(page, 'h');
-      await expect
-        .poll(() => page.evaluate((k) => window.__replay.sent.slice(k).join(''), sentBefore))
-        .toContain('h');
-      await expect(page.locator('.ListHint')).not.toContainText(UNSUPPORTED_KEY);
-      // The list stays on screen under the help menu sheet: PTT's help screen
-      // is never painted.
-      await drawHelpPage(page, 1);
-      await expect(page.locator('[data-help-item]').first()).toBeVisible();
-      await expect(page.locator('.listBodyView')).toHaveCount(1);
-      expect(await page.evaluate(() =>
-        document.getElementById('mainContainer').textContent.includes('操作說明 (Help)'))).toBe(false);
     } catch (e) {
       console.log('--- console tail ---');
       for (const l of logs.slice(-25)) console.log(l);
