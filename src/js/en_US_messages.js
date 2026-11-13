@@ -337,6 +337,15 @@ export const en_US = {
   "searchHistoryManager_title": {
     "message": "Manage search history"
   },
+  "recentBoardsManager_title": {
+    "message": "Manage recent boards"
+  },
+  "recentBoardsManager_help": {
+    "message": "Select entries, then move, pin or delete them with the buttons below. Pinned and Recent each hold up to 10 entries. A board visited 10 times is pinned automatically unless Pinned is full, and pinning resets its count. Entries marked \"Auto\" were pinned automatically."
+  },
+  "recentBoardsManager_empty": {
+    "message": "No recent boards"
+  },
   "searchHistoryManager_help": {
     "message": "Select entries, then move, pin or delete them with the buttons below. Pinned and Recent each hold up to 10 entries. A keyword searched 10 times is pinned automatically unless Pinned is full, and pinning resets its count. Entries marked \"Auto\" were pinned automatically."
   },
@@ -579,6 +588,9 @@ export const en_US = {
   },
   "tooltip_searchHistoryManager": {
     "message": "Pin, reorder or delete the search history shown under the search input"
+  },
+  "tooltip_recentBoardsManager": {
+    "message": "Pin, reorder or delete the recent boards shown on the home dashboard"
   },
 
   // debug recording mode (about tab, runtime-only)

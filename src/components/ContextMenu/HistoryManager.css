@@ -1,10 +1,9 @@
-/* 搜尋紀錄的管理頁（SearchHistoryManager.jsx）。 */
+/* Shared layout for search history and recently visited boards. */
 .searchHistoryManagerHeading {
   padding: 4px 0;
   border-bottom: 1px solid var(--mantine-color-default-border);
 }
 
-/* 勾選框｜關鍵字框（吃掉剩下的寬度）｜次數或「自動」：右邊那格不會被長字蓋住。 */
 .searchHistoryManagerEntry {
   display: flex;
   align-items: center;

@@ -141,6 +141,11 @@ ordinary search-sheet input keeps the prompt-verified sequence. See
 
 ## 搜尋紀錄（`search_history.js`，#70）
 
+Immutable entry rules now live in `history_entries.js`, shared with recent-board
+history. Both settings pages render the same `HistoryManager` and stylesheet;
+`SearchHistoryManager` retains the search-kind selector and search storage adapter.
+Search keywords remain case-sensitive and keep the existing v2 key and four kinds.
+
 localStorage `pttchrome.searchHistory.v2` = `{title,author,push,board}`，每類 `{ pinned: [{text, auto}], recent: [{text, uses}] }`。**不在 `pttchrome.pref.v1`** ⇒ 不同步、不進匯出（使用者要求）。v1 不搬（擁有者決定）。
 
 - 最近：MRU 去重（最新的在前）、上限 10，滿了最舊的掉出去。釘選：上限 10，使用者排的順序，不會被擠掉；滿了就不能再釘。

@@ -353,6 +353,15 @@
   "searchHistoryManager_title": {
     "message": "管理搜尋紀錄"
   },
+  "recentBoardsManager_title": {
+    "message": "管理最近看板"
+  },
+  "recentBoardsManager_help": {
+    "message": "勾選後用下方的按鈕上移、下移、釘選或刪除。釘選與最近各最多 10 筆。同一個看板造訪 10 次會自動釘選（釘選已滿時不會），釘選後次數歸零；標示「自動」的是自動釘選的。"
+  },
+  "recentBoardsManager_empty": {
+    "message": "沒有最近看板紀錄"
+  },
   "searchHistoryManager_help": {
     "message": "勾選後用下方的按鈕上移、下移、釘選或刪除。釘選與最近各最多 10 筆。同一個關鍵字搜尋 10 次會自動釘選（釘選已滿時不會），釘選後次數歸零；標示「自動」的是自動釘選的。"
   },
@@ -594,6 +603,9 @@
   },
   "tooltip_searchHistoryManager": {
     "message": "釘選、排序或刪除搜尋視窗下方的搜尋紀錄"
+  },
+  "tooltip_recentBoardsManager": {
+    "message": "釘選、排序或刪除首頁的最近看板紀錄"
   },
 
   // debug 錄製模式（關於分頁，runtime-only）

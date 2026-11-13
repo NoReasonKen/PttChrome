@@ -11,11 +11,24 @@
 // v1（只有一串字）不搬過來：舊紀錄沒有次數也沒有釘選，搬了也只是重新累積。
 // 守護 tests/unit/search_history.test.js。
 
+import {
+  HISTORY_RECENT_LIMIT,
+  HISTORY_PINNED_LIMIT,
+  HISTORY_AUTO_PIN_USES,
+  normalizeHistory,
+  historyOrder,
+  pinRoom,
+  rememberHistoryEntry,
+  pinHistoryEntries,
+  unpinHistoryEntries,
+  moveHistoryEntries,
+  removeHistoryEntries,
+} from './history_entries';
+
 const HISTORY_KEY = 'pttchrome.searchHistory.v2';
-export const MAX_SEARCH_HISTORY = 10;
-export const MAX_PINNED_SEARCH_HISTORY = 10;
-// 固定值，不是設定（#70）。
-export const AUTO_PIN_USES = 10;
+export const MAX_SEARCH_HISTORY = HISTORY_RECENT_LIMIT;
+export const MAX_PINNED_SEARCH_HISTORY = HISTORY_PINNED_LIMIT;
+export const AUTO_PIN_USES = HISTORY_AUTO_PIN_USES;
 export const SEARCH_KINDS = ['title', 'author', 'push', 'board'];
 // 種類的名稱（i18n key）：搜尋視窗與管理視窗共用。
 export const SEARCH_KIND_LABEL_KEY = {
@@ -25,42 +38,12 @@ export const SEARCH_KIND_LABEL_KEY = {
   board: 'searchModal_kindBoard',
 };
 
-function emptyKind() {
-  return { pinned: [], recent: [] };
-}
-
-function validText(t) {
-  return typeof t === 'string' && !!t;
-}
-
-// 同一個字只留第一筆；seen 跨兩段共用，釘選的就不會再出現在最近。
-function uniqueEntries(list, seen, entry) {
-  const out = [];
-  list.forEach((it) => {
-    if (!it || !validText(it.text) || seen.has(it.text)) return;
-    seen.add(it.text);
-    out.push(entry(it));
-  });
-  return out;
-}
-
 // 複製一份、補齊四類、丟掉形狀不對與重複的項目：讀進來的 JSON 與呼叫端傳的物件同一套。
 function cloneHistory(history) {
   const base = history && typeof history === 'object' ? history : {};
   const next = {};
   SEARCH_KINDS.forEach((k) => {
-    const src = base[k] && typeof base[k] === 'object' ? base[k] : emptyKind();
-    const seen = new Set();
-    next[k] = {
-      pinned: uniqueEntries(Array.isArray(src.pinned) ? src.pinned : [], seen, (it) => ({
-        text: it.text,
-        auto: it.auto === true,
-      })).slice(0, MAX_PINNED_SEARCH_HISTORY),
-      recent: uniqueEntries(Array.isArray(src.recent) ? src.recent : [], seen, (it) => ({
-        text: it.text,
-        uses: Number.isInteger(it.uses) && it.uses > 0 ? it.uses : 0,
-      })).slice(0, MAX_SEARCH_HISTORY),
-    };
+    next[k] = normalizeHistory(base[k]);
   });
   return next;
 }
@@ -68,93 +51,48 @@ function cloneHistory(history) {
 // 複製一份再改其中一類；不認得的種類原樣回傳。
 function changeKind(history, kind, change) {
   const next = cloneHistory(history);
-  if (next[kind]) change(next[kind]);
+  if (SEARCH_KINDS.includes(kind)) next[kind] = change(next[kind]);
   return next;
 }
 
 export function searchHistoryKind(history, kind) {
-  return cloneHistory(history)[kind] || emptyKind();
+  return SEARCH_KINDS.includes(kind) ? cloneHistory(history)[kind] : normalizeHistory(null);
 }
 
 // 搜尋紀錄區顯示的順序，也是 ↑ 叫回的順序。
 export function searchHistoryOrder(history, kind) {
-  const k = searchHistoryKind(history, kind);
-  return k.pinned.map((it) => it.text).concat(k.recent.map((it) => it.text));
+  return historyOrder(searchHistoryKind(history, kind));
 }
 
 // 釘選還放得下幾筆。
 export function searchPinRoom(history, kind) {
-  return MAX_PINNED_SEARCH_HISTORY - searchHistoryKind(history, kind).pinned.length;
+  return pinRoom(searchHistoryKind(history, kind));
 }
 
 // 送出一次搜尋：最新的往前提、次數 +1。已釘選的原地不動、不計數。
 // 次數到 AUTO_PIN_USES 就自動釘選；釘選滿了就先不釘，下一次搜尋再判斷。
 export function addSearchEntry(history, kind, text) {
-  const t = String(text == null ? '' : text).trim();
-  if (!t) return cloneHistory(history);
-  let uses = 0;
-  const next = changeKind(history, kind, (k) => {
-    if (k.pinned.some((it) => it.text === t)) return;
-    const old = k.recent.find((it) => it.text === t);
-    uses = (old ? old.uses : 0) + 1;
-    k.recent = [{ text: t, uses }, ...k.recent.filter((it) => it.text !== t)].slice(
-      0,
-      MAX_SEARCH_HISTORY,
-    );
-  });
-  return uses >= AUTO_PIN_USES ? pinEntries(next, kind, [t], true) : next;
-}
-
-// 從最近移到釘選的最後面（照最近的順序），次數歸零（釘選期間不計數）。
-// 放不下就整批不動，不擠掉任何一筆。
-function pinEntries(history, kind, texts, auto) {
-  return changeKind(history, kind, (k) => {
-    const picked = k.recent.filter((it) => texts.indexOf(it.text) >= 0);
-    if (!picked.length || k.pinned.length + picked.length > MAX_PINNED_SEARCH_HISTORY) return;
-    k.recent = k.recent.filter((it) => texts.indexOf(it.text) < 0);
-    picked.forEach((it) => k.pinned.push({ text: it.text, auto }));
-  });
+  return changeKind(history, kind, current => rememberHistoryEntry(current, text));
 }
 
 export function pinSearchEntries(history, kind, texts) {
-  return pinEntries(history, kind, texts, false);
+  return changeKind(history, kind, current => pinHistoryEntries(current, texts));
 }
 
 // 回到最近的最前面（照釘選的順序）、次數從 0 重算；最近滿了照常擠掉最舊的。
 export function unpinSearchEntries(history, kind, texts) {
-  return changeKind(history, kind, (k) => {
-    const back = k.pinned
-      .filter((it) => texts.indexOf(it.text) >= 0)
-      .map((it) => ({ text: it.text, uses: 0 }));
-    if (!back.length) return;
-    k.pinned = k.pinned.filter((it) => texts.indexOf(it.text) < 0);
-    k.recent = [...back, ...k.recent].slice(0, MAX_SEARCH_HISTORY);
-  });
+  return changeKind(history, kind, current => unpinHistoryEntries(current, texts));
 }
 
 // 勾到的釘選一起上移（delta -1）／下移（+1）一格，相對順序不變；最近的不受影響。
 // 擋在最前（後）面的那幾筆不動：前面那格也被勾到又沒移動，就跟著不動。
 export function moveSearchEntries(history, kind, texts, delta) {
-  return changeKind(history, kind, (k) => {
-    const list = k.pinned;
-    const picked = (i) => texts.indexOf(list[i].text) >= 0;
-    const n = list.length;
-    for (let step = 0; step < n; ++step) {
-      const i = delta < 0 ? step : n - 1 - step;
-      const j = i + delta;
-      if (!picked(i) || j < 0 || j >= n || picked(j)) continue;
-      [list[i], list[j]] = [list[j], list[i]];
-    }
-  });
+  return changeKind(history, kind, current => moveHistoryEntries(current, texts, delta));
 }
 
 // 管理視窗的「刪除 N 筆」：釘選和最近一起刪。
 export function removeSearchEntries(history, kind, texts) {
-  return changeKind(history, kind, (k) => {
-    const keep = (it) => texts.indexOf(it.text) < 0;
-    k.pinned = k.pinned.filter(keep);
-    k.recent = k.recent.filter(keep);
-  });
+  return changeKind(history, kind, current => removeHistoryEntries(current, texts));
 }
 
 // 讀壞掉的 JSON／localStorage 被關掉都只回空紀錄：附屬功能不可以炸掉呼叫端。

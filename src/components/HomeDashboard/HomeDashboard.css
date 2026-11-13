@@ -166,6 +166,15 @@ body.stackHoldHome #homeDashboard {
   border-radius: 999px;
 }
 
+.homeChip[data-pinned] {
+  background: var(--mantine-color-blue-light);
+  color: var(--mantine-color-blue-light-color);
+}
+
+.homeChip[data-pinned]:hover {
+  background: var(--mantine-color-blue-light-hover);
+}
+
 .homeEmpty,
 .homeHint {
   margin: 0;

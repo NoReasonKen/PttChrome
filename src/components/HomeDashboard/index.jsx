@@ -95,6 +95,7 @@ export const HomeDashboard = ({ pttchrome, layer = false }) => {
 
   if (!state || !state.visible) return null;
   const boards = state.boards;
+  const pinnedCount = state.recentHistory?.pinned.length || 0;
   const status = state.fetching
     ? i18n("home_updating")
     : state.savedAt
@@ -190,11 +191,12 @@ export const HomeDashboard = ({ pttchrome, layer = false }) => {
               <h3>{i18n("home_recents")}</h3>
             </div>
             <div className="homeChips" data-home-recents>
-              {state.recents.map((name) => (
+              {state.recents.map((name, index) => (
                 <Button
                   key={name}
                   className="homeChip"
                   data-home-recent={name}
+                  data-pinned={index < pinnedCount ? "" : undefined}
                   onClick={() => home.openBoard(name)}
                 >
                   {name}

@@ -1628,6 +1628,7 @@ export const ContextMenu = ({ pttchrome }) => {
           onDebugModeChange={onDebugModeChange}
           jumpTarget={showsSettings ? prefJump : null}
           registerBack={registerSettingsBack}
+          homeDashboard={pttchrome.homeDashboard}
         />
       </Suspense>
       <Suspense fallback={null}>
