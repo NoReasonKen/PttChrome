@@ -30,6 +30,7 @@ function harness({ enabled = true, startedEasyReading = true } = {}) {
     _termBuf: buf,
     // 真實實作：noteTextInput 的重點就是「有沒有正確接上 _enterFunctionMode」。
     _enterFunctionMode: EasyReading.prototype._enterFunctionMode,
+    enterNativeRoute: EasyReading.prototype.enterNativeRoute,
     refuseText: EasyReading.prototype.refuseText,
     _refuseUnsupported: EasyReading.prototype._refuseUnsupported
   };

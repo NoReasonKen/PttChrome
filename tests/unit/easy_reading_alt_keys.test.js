@@ -83,6 +83,7 @@ function makeEasyReading({ scrollTop = 500 } = {}) {
       calls.left += 1;
     },
     _leftoverKey: EasyReading.prototype._leftoverKey,
+    enterNativeRoute: EasyReading.prototype.enterNativeRoute,
     _refuseUnsupported: EasyReading.prototype._refuseUnsupported,
   };
   return { ctx, sent, calls, mainDisplay };

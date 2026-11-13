@@ -39,6 +39,9 @@ export const KEY_ANGEL = 'h';
 export const FETCH_TIMEOUT_MS = 3000;
 // 送出執行／離開鍵之後，畫面還停在說明選單多久就放手（保持原生，不再彈出）。
 export const LEAVE_TIMEOUT_MS = 4000;
+// How long an easy-reading page is kept on screen waiting for the help menu
+// it asked for (expect()).
+export const HOLD_TIMEOUT_MS = 3000;
 // 佇列有別人的命令在途時，等多久再看一次。
 const WIRE_RETRY_MS = 150;
 
@@ -208,6 +211,41 @@ HelpMenuController.prototype = {
     this._bookmark = null;
     this._outcome = 'cancel';
     this._clearTimers();
+    this._releaseHold();
+  },
+
+  // The reader asked for help from an easy-reading page (an article, the
+  // article list). That page stays on screen under the sheet: while `holding`,
+  // term_view draws none of PTT's help screens (its held branch). The hold ends
+  // when the help menu is over, when this visit is handed to the native screen,
+  // or when no help menu shows up in time.
+  expect: function() {
+    if (!this._enabled() || this.phase !== 'idle') return;
+    this._clearHoldTimer();
+    this.holding = true;
+    this._holdTimer = this._setTimeout(() => {
+      this._holdTimer = null;
+      if (this.phase === 'idle') this._releaseHold();
+    }, HOLD_TIMEOUT_MS);
+  },
+
+  _clearHoldTimer: function() {
+    if (this._holdTimer) this._clearTimeout(this._holdTimer);
+    this._holdTimer = null;
+  },
+
+  _releaseHold: function() {
+    this._clearHoldTimer();
+    if (!this.holding) return;
+    this.holding = false;
+    // The frame held back is drawn now, even when PTT sends nothing more.
+    const view = this._core && this._core.view;
+    if (view && view.navigationEnded) view.navigationEnded();
+  },
+
+  _toNative: function() {
+    this.phase = 'native';
+    this._releaseHold();
   },
 
   _clearTimers: function() {
@@ -283,7 +321,7 @@ HelpMenuController.prototype = {
     if (this.phase === 'leaving') {
       if (this._now() - this._leavingAt > LEAVE_TIMEOUT_MS) {
         this._log('leaveStuck', {});
-        this.phase = 'native';
+        this._toNative();
       }
       return;
     }
@@ -293,11 +331,12 @@ HelpMenuController.prototype = {
       this._outcome = 'cancel';
       // 起點必須是第 1 頁（server 恆從 curr=0 開始）；中途才看到的不接管。
       if (!this._enabled() || parsed.page !== 1) {
-        this.phase = 'native';
+        this._toNative();
         this._log('native', { reason: parsed.page !== 1 ? 'mid-page' : 'disabled' });
         return;
       }
       this.phase = 'open';
+      this._clearHoldTimer();
       this._caption = parsed.caption;
       this._totalPages = parsed.totalPages;
       this._angel = parsed.angel;
@@ -310,7 +349,7 @@ HelpMenuController.prototype = {
       this._log('native', { reason: 'resized' });
       this._clearTimers();
       this._fetchPage = 0;
-      this.phase = 'native';
+      this._toNative();
       this._emit();
       return;
     }
@@ -395,7 +434,7 @@ HelpMenuController.prototype = {
     const moved = this._fetchPage > 0 || this._lastPage > 1;
     this._clearTimers();
     this._fetchPage = 0;
-    this.phase = 'native';
+    this._toNative();
     this._log('native', { reason: 'user' });
     if (moved) this._send(KEY_HOME);
     this._emit();

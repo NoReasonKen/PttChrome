@@ -1386,7 +1386,7 @@ App.prototype.onFunctionKey = function(bytes, label) {
     this.easyReading._refuseUnsupported('key');
     return;
   }
-  if (plan.enterFunctionMode) this.easyReading._enterFunctionMode();
+  if (plan.enterFunctionMode) this.easyReading.enterNativeRoute(bytes);
   // `←` 走與鍵盤 ArrowLeft 完全同一條路，離開文章時才不會閃一下原生 24 列。
   if (plan.stopEasyReading) this.easyReading.stopEasyReading();
   if (!plan.send) return;

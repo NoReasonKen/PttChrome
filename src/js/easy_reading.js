@@ -1564,7 +1564,8 @@ EasyReading.prototype._teardownAccumulationOffArticle = function() {
 // (h H ?), which the help menu sheet presents on top of the mirror, and reply
 // (y Y r R), which has no easy-reading entrance yet and still opens PTT's own
 // reply prompts.
-export const ARTICLE_NATIVE_KEYS = 'hH?yYrR';
+const ARTICLE_HELP_KEYS = 'hH?';
+export const ARTICLE_NATIVE_KEYS = ARTICLE_HELP_KEYS + 'yYrR';
 const UNSUPPORTED_KEY_HINT = '好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）';
 const UNSUPPORTED_PASTE_HINT = '好讀模式目前不支援在文章貼上文字';
 const UNSUPPORTED_TEXT_HINT = '好讀模式目前不支援在文章輸入文字';
@@ -1664,7 +1665,8 @@ EasyReading.prototype.noteTextInput = function(text, isPasting) {
     return false;
   if (this.refuseText(text, isPasting ? 'paste' : 'text'))
     return true;
-  this._enterFunctionMode();
+  if (this._functionMode) return false;
+  this.enterNativeRoute(text);
   return false;
 };
 
@@ -2569,11 +2571,18 @@ EasyReading.prototype._onKeyDownProcessUI = function(e) {
     e.preventDefault();
 };
 
+// A help or reply character goes to PTT through the native mirror. For help,
+// the article stays on screen under the help menu sheet (help_menu.expect).
+EasyReading.prototype.enterNativeRoute = function(ch) {
+  if (!this._functionMode && ARTICLE_HELP_KEYS.indexOf(ch) >= 0) this._core?.helpMenu?.expect();
+  this._enterFunctionMode();
+};
+
 // A key none of the reading keys took. Returns true when it was refused (the
 // caller prevents it); a help or reply key opens the native mirror and still goes out.
 EasyReading.prototype._leftoverKey = function(e) {
   const what = articleLeftoverKey(e);
-  if (what === 'native') this._enterFunctionMode();
+  if (what === 'native') this.enterNativeRoute(e.key);
   if (what !== 'refuse') return false;
   this._refuseUnsupported('key');
   return true;

@@ -60,6 +60,23 @@ test.describe('好讀 functionMode（scenario 重放）', () => {
     const fed = await openAndAccumulate(page, help);
 
     // 舊 bug：h 在好讀的吞鍵清單裡，完全沒反應。
+    // The article stays on screen under the sheet: PTT's help screens are
+    // never painted, and the reading position does not move.
+    await page.evaluate(() => {
+      const d = window.__app.view.mainDisplay;
+      d.scrollTop = Math.floor((d.scrollHeight - d.clientHeight) / 2);
+    });
+    const pageUnder = () =>
+      page.evaluate(() => ({
+        top: window.__app.view.mainDisplay.scrollTop,
+        rows: document.querySelectorAll('#mainContainer [data-type="bbsline"]').length,
+        help: document.getElementById('mainContainer').textContent.includes('操作說明 (Help)'),
+      }));
+    const under = await pageUnder();
+    expect(under.top).toBeGreaterThan(0);
+    expect(under.rows).toBeGreaterThan(24);
+    let sawHelp = false;
+    const watch = setInterval(() => pageUnder().then((p) => { if (p.help) sawHelp = true; }).catch(() => {}), 30);
     await ptt.sendKey(page, 'h');
     await expect.poll(() => fnMode(page)).toBe(true);
     // PTT's help is a paged menu. The help menu popup fetches every page (PgDn round
@@ -76,6 +93,7 @@ test.describe('好讀 functionMode（scenario 重放）', () => {
     await waitBufSettled(page);
     expect(await fnMode(page)).toBe(true);
     expect(await bufText(page)).toContain('操作說明');
+    expect(await pageUnder()).toEqual(under);
 
     // Esc leaves the popup by sending q, as natively.
     await page.keyboard.press('Escape');
@@ -84,6 +102,9 @@ test.describe('好讀 functionMode（scenario 重放）', () => {
     // 'resume'：回好讀長頁，footer overlay 復現。
     expect(await page.evaluate(() => window.__app.view.useEasyReadingMode)).toBe(true);
     await expect.poll(() => lastRowDisplay(page)).toBe('block');
+    clearInterval(watch);
+    expect(sawHelp).toBe(false);
+    expect(await pageUnder()).toEqual(under);
   });
 
   test('r → 「回應至」（functionMode）→ q 取消，乾淨退出不卡死', async ({ page }) => {
@@ -143,6 +164,18 @@ test.describe('好讀 functionMode（scenario 重放）', () => {
     expect(await page.evaluate((k) => window.__replay.sent.slice(k), sentBefore)).toEqual([]);
     expect(await page.evaluate(() => window.__app.easyReading._currentPageSignature())).toBe(sigBefore);
     expect(await rowTexts()).toEqual(before);
+
+    // Ctrl+R (PTT's reply to a message) and Alt+R, its alias, likewise.
+    for (const key of ['Control+r', 'Alt+r']) {
+      await page.evaluate(() => {
+        const el = document.querySelector('.ListHint');
+        if (el) el.textContent = '';
+      });
+      await page.keyboard.press(key);
+      await expect(page.locator('.ListHint')).toContainText('好讀模式目前不支援這個按鍵');
+      expect(await fnMode(page)).toBe(false);
+      expect(await page.evaluate((k) => window.__replay.sent.slice(k), sentBefore)).toEqual([]);
+    }
   });
 
   test('pasted and input-method text over the article is refused; a footer button for an unpresented function too', async ({ page, context }) => {

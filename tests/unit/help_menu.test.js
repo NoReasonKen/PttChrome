@@ -18,6 +18,7 @@ import {
   KEY_PGDN,
   KEY_DOWN,
   FETCH_TIMEOUT_MS,
+  HOLD_TIMEOUT_MS,
 } from "../../src/js/help_menu";
 import { boardEntryArms } from "../../src/js/board_note_skip";
 import { DEFAULT_PREFS } from "../../src/js/pref_storage";
@@ -294,5 +295,62 @@ describe("開關：好讀開關", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+// Help asked for from an easy-reading page: the page stays under the sheet
+// (term_view holds PTT's help screens while `holding`).
+describe("hold of the page under the sheet", () => {
+  function held(opts) {
+    const h = makeController(opts);
+    h.ended = 0;
+    h.core.view = { navigationEnded: () => h.ended++ };
+    return h;
+  }
+
+  test("holds from the request until the help menu is closed and left", () => {
+    const h = held();
+    const ctrl = h.ctrl;
+    ctrl.expect();
+    expect(ctrl.holding).toBe(true);
+    ctrl.noteScreen(null); // the old page settles once before the help screen
+    expect(ctrl.holding).toBe(true);
+    ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    expect(ctrl.phase).toBe("open");
+    h.fire(HOLD_TIMEOUT_MS); // the wait for the menu is over once it is open
+    expect(ctrl.holding).toBe(true);
+    ctrl.close();
+    expect(ctrl.holding).toBe(true);
+    ctrl.noteScreen(null); // PTT left the help menu
+    expect(ctrl.phase).toBe("idle");
+    expect(ctrl.holding).toBe(false);
+  });
+
+  test("no help menu in time ⇒ the hold ends and the held frame is drawn", () => {
+    const h = held();
+    h.ctrl.expect();
+    h.fire(HOLD_TIMEOUT_MS);
+    expect(h.ctrl.holding).toBe(false);
+    expect(h.ended).toBe(1);
+  });
+
+  test("handing the visit to the native screen ends the hold", () => {
+    const h = held();
+    h.ctrl.expect();
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    h.ctrl.showNative();
+    expect(h.ctrl.phase).toBe("native");
+    expect(h.ctrl.holding).toBe(false);
+    expect(h.ended).toBe(1);
+  });
+
+  test("a help menu nobody asked for from easy reading is not held; popup off ⇒ no hold", () => {
+    const a = held();
+    a.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    expect(a.ctrl.phase).toBe("open");
+    expect(a.ctrl.holding).toBeFalsy();
+    const b = held({ enabled: false });
+    b.ctrl.expect();
+    expect(b.ctrl.holding).toBeFalsy();
   });
 });

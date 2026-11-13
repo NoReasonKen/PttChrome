@@ -1999,7 +1999,8 @@ TermView.prototype = {
     var app = this.bbscore;
     return !!(app && ((app.aidNavigation && app.aidNavigation.active) ||
       (app.articleShortcutSearch && app.articleShortcutSearch.active) ||
-      (app.boardNoteSkip && app.boardNoteSkip.active)));
+      (app.boardNoteSkip && app.boardNoteSkip.active) ||
+      (app.helpMenu && app.helpMenu.holding)));
   },
 
   // The list easy-reading branch of redraw owns this frame. Article frames
