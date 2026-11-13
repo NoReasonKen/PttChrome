@@ -155,6 +155,18 @@ function pageGuard({ tag, log }) {
 // removes its entry; the suite then proves no such frame is painted. The first
 // matching entry wins, so the narrower entries come first.
 const ALLOWED = [
+  // Easy-reading gaps (#161): main-menu areas shown natively on every visit
+  // (mobile_easy_reading_gaps.offline.spec.js).
+  ...[
+    [195, '精華文章'],
+    [196, '私人信件區'],
+    [196, '郵件選單'],
+    [199, '休閒聊天區'],
+    [200, '個人設定區'],
+    [201, '系統資訊區'],
+    [198, '網路遊樂場'],
+    [197, '編特別名單'],
+  ].map(([issue, title]) => ({ issue, why: `easy-reading gap: ${title}`, match: (hit) => hit.title.includes(title) })),
   { issue: 160, why: 'article prompt mirrored natively', match: (hit) => hit.functionMode },
   { issue: 188, why: 'reconnect or reload recovery drives PTT through native screens',
     match: (hit) => hit.resume != null },
