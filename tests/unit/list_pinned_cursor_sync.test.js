@@ -123,9 +123,9 @@ function walkToLastStep(enqueued, start) {
 }
 
 describe("置底列選取：cursor-relative 鍵先把真游標走到該置底列", () => {
-  test("Ctrl-Q（passthrough）：jump → End → 逐格 → 才送 \\x11", () => {
+  test("_beginPassthroughBytes(\x11)：jump → End → 逐格 → 才送 \\x11", () => {
     const { s, enqueued } = makeSession();
-    s.onKeyDown(keyEvent("q", { ctrlKey: true }));
+    s._beginPassthroughBytes("\x11");
     expect(enqueued[0].kind).toBe("native-pinned-jump"); // 修前：直接 native-key
     const { steps, facts } = walkToLastStep(enqueued, 0);
     const last = steps[steps.length - 1];
@@ -142,7 +142,7 @@ describe("置底列選取：cursor-relative 鍵先把真游標走到該置底列
 
   test("最後一格不是目標置底列 ⇒ expect 不過；逾時則不送鍵、停在原頁", () => {
     const { s, enqueued, hints } = makeSession();
-    s.onKeyDown(keyEvent("q", { ctrlKey: true }));
+    s._beginPassthroughBytes("\x11");
     const { steps, facts } = walkToLastStep(enqueued, 0);
     const last = steps[steps.length - 1];
     const wrong = { ...facts, curY: 21, rowTexts: facts.rowTexts.slice() };
@@ -201,7 +201,7 @@ describe("置底列選取：cursor-relative 鍵先把真游標走到該置底列
 
   test("End 落點剛好就是目標置底列 ⇒ 不走方向鍵，直接送鍵", () => {
     const { enqueued, s } = makeSession();
-    s.onKeyDown(keyEvent("q", { ctrlKey: true }));
+    s._beginPassthroughBytes("\x11");
     enqueued[0].onDone({});
     const end = enqueued[1];
     expect(end.expect({}, { ...endFacts(), curY: 21 })).toBe(true);
@@ -214,7 +214,7 @@ describe("置底列選取：cursor-relative 鍵先把真游標走到該置底列
     const { enqueued, s } = makeSession();
     s._selectedPinnedKey = null;
     s._selectedNum = 120;
-    s.onKeyDown(keyEvent("q", { ctrlKey: true }));
+    s._beginPassthroughBytes("\x11");
     expect(enqueued[0].kind).toBe("native-sync-jump");
     expect(enqueued[0].keys).toBe("120\r");
   });

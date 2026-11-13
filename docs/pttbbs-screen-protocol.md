@@ -1080,8 +1080,9 @@ underline** ⇒ reverse 更早就被攤平成 fg/bg 互換），所以擦除條�
 ## 11.7 吃「真游標那一列」的 Ctrl 鍵（2026-09-13 CONFIRMED @ read.c / board.c）
 
 列表好讀的本地導覽（T1）是零網路的，**server 的真實游標長期落後選取**（通常停在背景
-prefetch 的落點）。所以任何「對游標所在那一列動作」的鍵，代送前一定要先跑
-`native-sync-jump` 腿。
+prefetch 的落點）。所以任何「對游標所在那一列動作」的鍵，送出前一定要先跑
+`native-sync-jump` 腿。文章列表好讀自 #159 起不再代送這些鍵（一律拒絕並提示，使用者關掉好讀才用得到），
+本節仍是 `_beginPassthroughBytes`（PttChrome 自己的搜尋／標已讀／重整序列）與看板列表原生路徑的依據。
 
 **權威判準是 `read_comms[ch-1].needitem === 1`（新版 cmd_t 的 `need_item`），不是下面這張表**：
 `i_read_key` 的 one-key 分派（`read.c:996-1005`）只有 `needitem` 非零時才把
@@ -1110,7 +1111,7 @@ prefetch 的落點）。所以任何「對游標所在那一列動作」的鍵�
 | `Ctrl-A` | `bbs.c:4532` | `{ 1, show_filename }` | **是** |
 | `Ctrl-E` | `bbs.c:4536` | `{ 1, manage_post }` | **是** |
 | `%` | `bbs.c:4560` | `{ 1, recommend }`（m3itoc 式推文） | **是** |
-| `Ctrl-C` | :950 | `ClearTagList()`（全域） | 否，但 FULLUPDATE 只重畫當前頁 ⇒ 緩衝其他頁 tag 殘留，歸 T3-B |
+| `Ctrl-C` | :950 | `ClearTagList()`（全域） | 否，但 FULLUPDATE 只重畫當前頁 ⇒ 緩衝其他頁 tag 殘留，好讀的文章列表一律拒絕這個鍵 |
 | `Ctrl-F` / `Ctrl-B` | :880 / :886 | 翻頁同義鍵 | 否（刻意不納白名單，維持與瀏覽器快捷鍵的分界） |
 
 ### 看板列表（`mbbsd/board.c`）

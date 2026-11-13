@@ -77,7 +77,7 @@ const parkFacts = (num, curY, rowText) => {
 describe("cursor-sync 腿的落地身分驗證", () => {
   test("身分相符 → 照常送下游那顆鍵", () => {
     const { s, enqueued } = makeSession();
-    s.adoptUserBytes("\x18");
+    s._beginPassthroughBytes("\x18");
     const leg = enqueued[0];
     expect(leg.kind).toBe("native-sync-jump");
     expect(leg.expect(null, parkFacts(21342, 5, listRow(21342, "alice", "[閒聊] 我選的這篇")))).toBe(true);
@@ -91,7 +91,7 @@ describe("cursor-sync 腿的落地身分驗證", () => {
     // 期間板上刪過文 ⇒ 21342 這個行號現在是別人的文章。舊碼只驗編號，
     // 會若無其事地把 ^X 送出去、對別篇開轉錄。
     const { s, enqueued, hints } = makeSession();
-    s.adoptUserBytes("\x18");
+    s._beginPassthroughBytes("\x18");
     const leg = enqueued[0];
     expect(leg.expect(null, parkFacts(21342, 5, listRow(21342, "bob", "[新聞] 完全不同的文")))).toBe(true);
     hints.length = 0;
@@ -107,7 +107,7 @@ describe("cursor-sync 腿的落地身分驗證", () => {
     // 空列／已刪除列（作者欄是 "-"）會落在這裡。把 unknown 一起擋掉＝一批
     // 「按了就切原生」的假陽性，比原本的問題更常見。
     const { s, enqueued } = makeSession();
-    s.adoptUserBytes("\x18");
+    s._beginPassthroughBytes("\x18");
     const leg = enqueued[0];
     expect(leg.expect(null, parkFacts(21342, 5, ""))).toBe(true);
     leg.onDone();
@@ -117,7 +117,7 @@ describe("cursor-sync 腿的落地身分驗證", () => {
   test("反向守護：本地那一列讀不出身分（沒有基準）照舊放行", () => {
     const { s, enqueued, hints } = makeSession();
     s._termBuf.listLines = [rowOf("".padEnd(80))]; // 緩衝裡是空列
-    s.adoptUserBytes("\x18");
+    s._beginPassthroughBytes("\x18");
     const leg = enqueued[0];
     expect(leg.expect(null, parkFacts(21342, 5, listRow(21342, "bob", "[新聞] 別篇")))).toBe(true);
     hints.length = 0;
@@ -132,7 +132,7 @@ describe("cursor-sync 腿的落地身分驗證", () => {
     s._termBuf.listLines = [
       rowOf(listRow(21342, "alice", "[閒聊] 這是一個非常長的標題會被列表截斷掉尾巴")),
     ];
-    s.adoptUserBytes("\x18");
+    s._beginPassthroughBytes("\x18");
     const leg = enqueued[0];
     expect(leg.expect(null, parkFacts(21342, 5, listRow(21342, "alice", "[閒聊] 這是一個非常長的標題會被列表截…")))).toBe(true);
     leg.onDone();

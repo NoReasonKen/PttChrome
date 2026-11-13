@@ -63,7 +63,7 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
     |---|---|---|---|
     | 文章 pager（非信件） | 推文 X | 回文 y | 重整／到底 End／按鍵／更多（更多內：分享、`[` `]` `=` 同主題、`b` `f` 前後篇，`THREAD_NAV_KEYS`） |
     | 信件 pager | （空） | 回信 y | 同上 |
-    | 文章列表（非輸入欄） | 搜尋 | 發文 Ctrl+P（`{key:'p',altKey}` Alt remap，避開瀏覽器列印） | 同上 |
+    | 文章列表（非輸入欄） | 搜尋 | 發文 Ctrl+P（`{key:'p',altKey}` Alt remap，避開瀏覽器列印；列表好讀開著時 Alt+字母＝Ctrl+字母會被拒絕並提示，等發文有好讀入口前要先關好讀） | 同上 |
     | 看板列表／主功能表 | 搜尋 | （空） | 同上 |
     | 其他 | 搜尋（`availableSearchKinds` 非空）或空 | （空） | 同上（重整／到底反灰） |
 

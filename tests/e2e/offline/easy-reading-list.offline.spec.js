@@ -154,6 +154,19 @@ async function waitState(page, pred, timeout = 15000) {
   return last;
 }
 
+// Easy reading refused what the reader just did (#159): the hint is shown at
+// error level, the list stays active on its buffer, and nothing was sent.
+async function expectRefused(page, before, text) {
+  const hint = page.locator('.ListHint');
+  await expect(hint).toHaveText(text);
+  await expect(hint).toHaveAttribute('data-level', 'error');
+  const after = await waitState(page, (x) => x.queueIdle);
+  expect(after.state).toBe('active');
+  expect(after.renderMode).toBe('buffer');
+  expect(after.sentCount).toBe(before.sentCount);
+}
+const UNSUPPORTED_KEY = '好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）';
+
 // 门控机制 smoke：不开 list 好读，直接用键盘 / conn.send 触发
 // 门控 map，验证 cassette 每个 step 都喂得进真 parser、终局画面回到看板列表。
 // 这条守的是 replayListCassette + 录制器产物本身 —— 视窗逻辑坏掉不影响它。
@@ -329,7 +342,7 @@ test.describe('文章列表好读模式（离线）', () => {
     }
   });
 
-  test('未列键单按切原生（2026-07-10 passthrough）：z → 切原生＋代送、frozen 期间吞键有提示', async ({ page }) => {
+  test('a PTT command key is refused: nothing is sent and the reader is told', async ({ page }) => {
     test.setTimeout(60000);
     const logs = ptt.attachConsole(page);
     try {
@@ -341,26 +354,35 @@ test.describe('文章列表好读模式（离线）', () => {
       await page.waitForFunction(() => window.__app.buf.pageState === 2);
       await ptt.applyPrefs(page, {
         enableEasyReading: true,
-        easyReadingListPrefetchCount: 0
+        easyReadingListPrefetchCount: 0,
+        // Refusals are shown even with ordinary status hints off.
+        showStatusHints: false
       });
       const before = await waitState(page, (x) => x.state === 'active' && x.queueIdle);
 
       await page.locator('#t').focus();
-      // seed 落点 server 游标=选取 → 免 sync 腿：单按 z 直接切原生＋代送。
-      await page.keyboard.press('z');
-      const after = await waitState(
-        page,
-        (x) => x.state === 'functionMode' && x.renderMode === 'native',
-        10000
-      );
-      expect(after.state).toBe('functionMode');
-      // 代送恰好一键（z 一个 byte；cassette 无对应 step，server 无回应＝良性）。
-      // 2026-09-03 起尾附 \f（Ctrl-L）：PTT 完全忽略某个键时是零 byte 零 settle，
-      // 没有它命令只能等满 3s timeout —— 使用者要盯著原生画面发呆，
-      //「操作完成后自动回好读」也无从触发。协定 §6：\f 全域被 igetch 拦截。
-      expect(after.sentCount).toBe(before.sentCount + 1);
-      const sent = await page.evaluate(() => window.__replay.sent.slice(-1)[0]);
-      expect(sent).toBe('z\f');
+      for (const key of ['z', 'v', 'Control+p', 'Alt+t', 'Tab']) {
+        await page.evaluate(() => {
+          const el = document.querySelector('.ListHint');
+          if (el) el.textContent = '';
+        });
+        await page.keyboard.press(key);
+        await expectRefused(page, before, UNSUPPORTED_KEY);
+      }
+      await expect(page.locator('.listBodyView')).toHaveCount(1);
+
+      // Help is a feature easy reading presents (the help menu sheet): `h` is
+      // not refused, it asks PTT for its help screen.
+      await page.evaluate(() => {
+        const el = document.querySelector('.ListHint');
+        if (el) el.textContent = '';
+      });
+      const sentBefore = await page.evaluate(() => window.__replay.sent.length);
+      await page.keyboard.press('h');
+      await expect
+        .poll(() => page.evaluate((k) => window.__replay.sent.slice(k).join(''), sentBefore))
+        .toContain('h');
+      await expect(page.locator('.ListHint')).not.toContainText(UNSUPPORTED_KEY);
     } catch (e) {
       console.log('--- console tail ---');
       for (const l of logs.slice(-25)) console.log(l);
@@ -426,11 +448,11 @@ test.describe('文章列表好读模式（离线）', () => {
     }
   });
 
-  test('贴上原生指令一次生效：Shift+Insert 不被吞、paste 走 native-paste 只送一次', async ({ page, context }) => {
+  test('paste over the list: Shift+Insert itself sends nothing, the pasted text is refused', async ({ page, context }) => {
     // 回归（2026-08「AID 文章码要贴两次」）：Shift+Insert 曾落 passthrough →
     // preventDefault 取消浏览器贴上 → #t 收不到 paste 事件，PTT 只收到 \x1b[2~。
-    // 这里锁两件事：① 该按键本身不送任何 byte、不切原生；② 真正的 paste 事件
-    // 经 App.onPasteDone → ListSession.onPaste，整串一次送出并切原生镜像。
+    // Two things: ① the key itself sends no byte and changes no state; ② the
+    // real paste event (App.onPasteDone → ListSession.onPaste) is refused.
     test.setTimeout(60000);
     const logs = ptt.attachConsole(page);
     const AID = '#1gTTD8RU';
@@ -456,23 +478,14 @@ test.describe('文章列表好读模式（离线）', () => {
       expect(afterKey.state).toBe('active');
       expect(afterKey.renderMode).toBe('buffer');
 
-      // ② 真贴上：写进剪贴簿 → Ctrl/Cmd+V，paste 事件由浏览器生成（helpers/real_input）。
-      // seed 落点 server 游标＝选取 → 免 sync 腿，整串直接进 native-paste。
+      // ② A real paste (clipboard → Ctrl/Cmd+V, the browser makes the paste
+      // event): refused, nothing reaches PTT.
       await context.grantPermissions(['clipboard-read', 'clipboard-write']);
       await pasteText(page, AID);
-
-      const after = await waitState(
-        page,
-        (x) => x.state === 'functionMode' && x.renderMode === 'native',
-        10000
-      );
-      // 恰好一次送出、内容完整（不得拆成逐字或漏字）。
-      expect(after.sentCount).toBe(before.sentCount + 1);
-      const sent = await page.evaluate(() => window.__replay.sent.slice(-1)[0]);
-      expect(sent).toBe(AID + '\f'); // 同 native-key：尾附 \f 保证必有一帧
-      // 没有多余的 Insert 跳脱序列混进去。
+      await expectRefused(page, before, '好讀模式目前不支援在列表貼上文字');
       const all = await page.evaluate(() => window.__replay.sent.join(''));
       expect(all).not.toContain('\x1b[2~');
+      expect(all).not.toContain(AID);
     } catch (e) {
       console.log('--- console tail ---');
       for (const l of logs.slice(-25)) console.log(l);
@@ -1280,91 +1293,6 @@ test.describe('置底文 Enter 开启（离线，pinned 卷）', () => {
   });
 });
 
-// 2026-07-10：'/' 与 'v' 的模拟交易退役——非白名单键一键切原生（passthrough：
-// 可选 sync 腿 → enter-function-mode → 代送原键），prompt 由原生镜像显示。
-// 2026-09-03（本檔兩條的語意反轉）：原生操作**做完之後**不再停在原生 —— 畫面
-// 靜下來（RESUME_QUIET_MS=250ms 內沒有 server 活動也沒有使用者送 byte）就由靜置
-// 探針自動切回好讀（resume+rebuild，不變量 15 照舊）。
-// `/` 不在這裡：好讀開著時搜尋鍵一律開搜尋彈窗（article_search.offline.spec.js）。
-test.describe('passthrough 一键切原生（离线，mark 卷）', () => {
-  const mark = loadCassette('cchat-list-mark');
-
-  test('v 一键切原生：sync 腿→代送 v→原生 prompt→Enter 取消→自动回好读', async ({ page }) => {
-    test.skip(!mark, '缺 cchat-list-mark cassette');
-    test.setTimeout(60000);
-    const logs = ptt.attachConsole(page);
-    try {
-      await bootOffline(page, ptt);
-      // 好讀預設開：不先關的話列表好讀在首幀就會自己 engage、用預設預抓 200 開始 fill，
-      // 搶在下面設定預抓數之前（時紅時綠）。先關，下面打開時才 engage。
-      await ptt.applyPrefs(page, { enableEasyReading: false });
-      await replayListCassette(page, mark);
-      await page.waitForFunction(() => window.__app.buf.pageState === 2);
-      await ptt.applyPrefs(page, {
-        enableEasyReading: true,
-        easyReadingListPrefetchCount: 0
-      });
-      let s = await waitState(page, (x) => x.state === 'active' && x.queueIdle);
-
-      // 选取设为卷内 jump 目标：passthrough 的 native-sync-jump 序号必须与录制
-      // jump step 一致，门控才会喂。
-      const markJumpNum = (mark.steps.find((st) => st.on === 'jump') || {}).num;
-      expect(markJumpNum).toBeTruthy();
-      await page.evaluate((n) => {
-        const ls = window.__app.listSession;
-        ls._selectedNum = n;
-        ls._selectedPinnedKey = null;
-        ls._forceRedraw();
-      }, markJumpNum);
-
-      // 'v' → native-sync-jump（jump step）→ 切原生＋代送 v（mark step 喂 prompt
-      // 画面）→ 原生镜像显示 getdata prompt。
-      await page.locator('#t').focus();
-      await page.keyboard.press('v');
-      s = await waitState(
-        page,
-        (x) => x.state === 'functionMode' && x.renderMode === 'native',
-        10000
-      );
-      // 原生镜像＝server 的 prompt 画面（不再是 frozen 快照）。
-      // **等的条件必须是内容本身**：state 翻成 functionMode 是在
-      // `_beginPassthroughBytes` 当下，而 prompt 画面要等代送的 'v' 上线、门控喂完
-      // mark step、再重绘才会到 —— 两者之间有真实的时间差。拿 state 当等待条件、
-      // 拿画面当断言，机器忙的时候就会偶发红（2026-09-20 实录：同一条单跑绿、
-      // 三支 spec 同批跑红一次）。同档 '/' 那条早就是 poll 内容的写法，比照办理。
-      await page
-        .waitForFunction(
-          () =>
-            Array.from(
-              document.querySelectorAll('#mainContainer [data-type="bbsline"]')
-            ).some((el) => el.textContent.includes('未讀')),
-          null,
-          { timeout: 10000 }
-        )
-        .catch(async () => {
-          // 超时也要留下可读的现场（同档其他条的 console tail 惯例）。
-          console.log('screen rows:', JSON.stringify(await dumpScreenRows(page)));
-          throw new Error('原生 prompt 画面未到齐（找不到「未讀」）');
-        });
-
-      // Enter 取消（cancel step 喂 FULLUPDATE）→ 操作完成、画面静下来 ⇒ 靜置探針
-      // 自动把我们切回好读。这就是本次改动要的行为：使用者除了非导览操作本身，
-      // 大部分时间都看不到原生模式。
-      await page.keyboard.press('Enter');
-      s = await waitState(
-        page,
-        (x) => x.state === 'active' && x.renderMode === 'buffer',
-        15000
-      );
-      await expect(page.locator('.listBodyView')).toHaveCount(1);
-    } catch (e) {
-      console.log('--- console tail ---');
-      for (const l of logs.slice(-25)) console.log(l);
-      throw e;
-    }
-  });
-});
-
 // ---------------------------------------------------------------------------
 // 中文輸入法（IME）在列表好讀下的兩件事，都是使用者回報的「切到中文模式打字，
 // 整個畫面就卡住」的組成部分：
@@ -1372,9 +1300,9 @@ test.describe('passthrough 一键切原生（离线，mark 卷）', () => {
 //      #t 的幾何契約主場在 cursor_shape.offline.spec.js，但那裡的兩條刻意關掉
 //      enableEasyReadingList；列表好讀的環境（cassette／pref／waitState）在本檔，
 //      而且斷言不同（要的是「落在視窗內」而非「貼齊該格」），所以放這裡。
-//   2. 組完字送出必須先切成原生鏡像，否則 PTT 畫的 prompt 被累積緩衝視窗蓋住。
-// IME 的 keydown keyCode 是 229，被 keyEventFilter 擋在 onKeyDown 之外 ⇒ 走不到
-// _classifyKey 的 passthrough，這兩件事都得靠 onTextInput 那條共用漏斗。
+//   2. Committed text is refused with a hint (#159): the list has no place to
+//      type into. The IME's keydown (keyCode 229) never reaches onKeyDown, so
+//      this goes through the shared onTextInput funnel.
 // 純邏輯守護：tests/unit/row_anchor.test.js、tests/unit/list_text_input.test.js。
 // ---------------------------------------------------------------------------
 test.describe('中文輸入法（離線）', () => {
@@ -1466,39 +1394,14 @@ test.describe('中文輸入法（離線）', () => {
     }
   });
 
-  test('組完字送出：切原生鏡像＋走 CommandQueue（Big5，恰送一次）', async ({ page }) => {
+  test('text committed by an input method over the list is refused', async ({ page }) => {
     test.setTimeout(60000);
     const logs = ptt.attachConsole(page);
-    const TEXT = '測試';
     try {
       const before = await engaged(page);
-      // seed 落點 server 游標＝選取 ⇒ 免 sync 腿（cassette 沒有那一腿的素材）。
-      await page.evaluate(() => {
-        const ls = window.__app.listSession;
-        ls._serverNum = ls._selectedNum;
-      });
-
       await composeStart(page);
-      await composeEnd(page, TEXT);
-
-      const after = await waitState(
-        page,
-        (x) => x.state === 'functionMode' && x.renderMode === 'native',
-        10000
-      );
-      // 恰好一次送出（不得裸送 + 佇列各送一次）
-      expect(after.sentCount).toBe(before.sentCount + 1);
-      const sent = await page.evaluate(() => window.__replay.sent.slice(-1)[0]);
-      // Big5：兩個全形字 = 4 bytes，每個 byte < 256（裸送 UTF-16 會是 2 個 >0xFF 的碼位）
-      // 尾巴多一個 \f（同 native-key，保證必有一幀可判定）。
-      expect(sent.slice(-1)).toBe('\f');
-      const body = sent.slice(0, -1);
-      expect(body.length).toBe(4);
-      expect(Math.max(...[...body].map((c) => c.charCodeAt(0)))).toBeLessThan(256);
-      expect(body).not.toBe(TEXT);
-      // 原生鏡像：第二層捲動視口收掉，畫面回到固定 24 列
-      expect(after.viewportPx).toBe(-1);
-      expect(after.domRows).toBe(24);
+      await composeEnd(page, '測試');
+      await expectRefused(page, before, '好讀模式目前不支援在列表輸入文字');
     } catch (e) {
       console.log('--- console tail ---');
       for (const l of logs.slice(-25)) console.log(l);
@@ -1506,3 +1409,4 @@ test.describe('中文輸入法（離線）', () => {
     }
   });
 });
+
