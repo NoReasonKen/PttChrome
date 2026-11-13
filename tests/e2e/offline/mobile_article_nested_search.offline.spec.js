@@ -5,6 +5,9 @@ const {
 } = require('../helpers/article_shortcut_search');
 const ptt = require('../helpers/ptt');
 const { MAIN, recordHints, recordedHints } = require('../helpers/stack_routes');
+const { recordSearchTaps, attachSearchTapFailure } = require('../helpers/search_tap_diagnostics');
+
+test.afterEach(async ({ page }, info) => attachSearchTapFailure(page, info));
 
 // The real screen, not a prepared list layer kept underneath it.
 const SCREEN = `${MAIN} #mainContainer`;
@@ -126,7 +129,7 @@ test.describe('with the easy-reading list', () => {
   });
 
   test('mixed exploration unwinds one step at a time to the first source position', async ({ page }) => {
-    await bootNestedShortcutSearch(page);
+    await recordSearchTaps(page, () => bootNestedShortcutSearch(page));
     const position = await readToMiddle(page);
     await tapShortcut(page, 'author');
     await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });

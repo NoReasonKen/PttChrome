@@ -124,7 +124,10 @@ test('a long article without a header opened again from the list takes its row e
   await settledOn(page, 600);
   for (let round = 0; round < 3; round++) {
     await ptt.sendKey(page, 'ArrowLeft');
-    await expect.poll(() => page.evaluate(() => window.__app.buf.pageState === 2 && window.__app.commandQueue.idle)).toBe(true);
+    // The buffer recognizes the list before its revealed layer hands input
+    // back. A hardware key in that interval is still blocked by the exit gate.
+    await listActive(page);
+    await expect.poll(() => page.evaluate(() => !window.__app.articleGestures.holdsInput())).toBe(true);
     await ptt.sendKey(page, 'ArrowRight');
     await expect.poll(() => bar(page), `round ${round}`).toEqual(CAROL);
     await settledOn(page, 600);

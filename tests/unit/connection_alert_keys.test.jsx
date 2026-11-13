@@ -16,10 +16,10 @@ import { setupI18n, i18n } from "../../src/js/i18n";
 
 const onDismiss = vi.fn();
 
-const mountAlert = () =>
+const mountAlert = (props = {}) =>
   render(
     <MantineProvider>
-      <ConnectionAlert onDismiss={onDismiss} />
+      <ConnectionAlert onDismiss={onDismiss} {...props} />
     </MantineProvider>,
   );
 
@@ -73,6 +73,29 @@ describe("斷線提示：終端機按鍵照擋", () => {
 
 // 這一組就是回報的症狀。
 describe("斷線提示：其他 UI 的按鍵必須放行", () => {
+  // real-input: tests/e2e/offline/connect_failure.offline.spec.js
+  test("a foreground UI receives keys before focus leaves the terminal", () => {
+    const t = mountTerminalInput();
+    mountAlert({ shouldYieldKeyboard: () => true });
+    expect(fireEvent.keyDown(t, { key: "Escape", keyCode: 27 })).toBe(true);
+    expect(fireEvent.keyDown(t, { key: "Enter", keyCode: 13 })).toBe(true);
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  test("keyboard ownership is read when the key arrives without rerendering the alert", () => {
+    const t = mountTerminalInput();
+    let foregroundUiOpen = false;
+    mountAlert({ shouldYieldKeyboard: () => foregroundUiOpen });
+    expect(fireEvent.keyDown(t, { key: "a", keyCode: 65 })).toBe(false);
+    foregroundUiOpen = true;
+    expect(fireEvent.keyDown(t, { key: "Enter", keyCode: 13 })).toBe(true);
+    expect(onDismiss).not.toHaveBeenCalled();
+    foregroundUiOpen = false;
+    expect(fireEvent.keyDown(t, { key: "a", keyCode: 65 })).toBe(false);
+    fireEvent.keyDown(t, { key: "Enter", keyCode: 13 });
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
   test("設定對話框的輸入框仍能打字", () => {
     const input = mountDialogInput();
     mountAlert();
