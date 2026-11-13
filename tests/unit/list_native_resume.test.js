@@ -410,14 +410,14 @@ describe("A 類鍵（凍結交易）：全程不切原生", () => {
     expect(h.enqueued.at(-1).kind).toBe("list-retry");
   });
 
-  test("Ctrl 組合（含 Ctrl-C ClearTagList）永遠是 B 類，不得混進 A 類", () => {
+  test("Ctrl combos (incl. Ctrl-C ClearTagList) are never in-place keys: they stay unsupported", () => {
     // Ctrl-C 是 FULLUPDATE 但**只重畫當前那一頁** ⇒ 緩衝裡其他頁的 tag 標記會
     // 殘留，所以刻意不進 INPLACE_KEYS。結構上由 _classifyKey 的 e.ctrlKey 分支
     // 先攔下（在 A 類判斷之前），這裡守護那個順序不被調換。
     const h = activeSession();
     for (const k of ["c", "t", "p"])
       expect(h.s._classifyKey(keyEvent(k, { ctrlKey: true })).class).toBe(
-        "passthrough"
+        "unsupported"
       );
   });
 });
@@ -432,7 +432,7 @@ describe("切原生時的提示措辭", () => {
     h.s.state = "active";
     h.s._renderMode = "buffer";
     h.s._selectedNum = null;
-    h.s.onKeyDown(keyEvent("z"));
+    h.s._beginPassthroughBytes("z");
     expect(h.banners.some((m) => m.includes("操作完成後自動恢復"))).toBe(true);
   });
 });

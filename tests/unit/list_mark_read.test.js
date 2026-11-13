@@ -352,7 +352,7 @@ describe("passthrough 單步序列的既有行為不受影響", () => {
   test("一般非白名單鍵仍是一道命令、expect 恆真、沒有 onFail", () => {
     const { s, enqueued } = makeSession();
     s._serverNum = 101;
-    expect(s.onFunctionKey("d")).toBe(true);
+    s._beginPassthroughBytes("d");
     expect(enqueued).toHaveLength(1);
     expect(enqueued[0].kind).toBe("native-key");
     expect(enqueued[0].keys).toBe("d");

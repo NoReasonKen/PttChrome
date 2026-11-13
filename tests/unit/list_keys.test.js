@@ -1,11 +1,10 @@
-// 列表好讀鍵盤合約（2026-07-10 起，2026-09-03 補 A/B 分類）：白名單＝導覽/開文/
-// 跳號/離板；A 類鍵（[ ] = \ + - < > , . { } t，原地重繪）走凍結交易全程不切原生；
-// 其餘 B 類鍵一律
-// 「一鍵切原生」——有序號選取且 server 游標未同步時先序列化 native-sync-jump
-//（buffer 本地導航零網路，真游標停在舊位置；jump＋key 不能同 tick 直送——pttbbs
-// typeahead 會跳過重繪，協定 §2），完成後 enter-function-mode（原生 excursion，
-// 不變量 15：拋 cache）＋raw 代送原鍵。舊 [ ] = / v / `/` 模擬交易與 airlock
-// 兩段式（同鍵二連擊）皆退役。
+// List easy-reading keyboard contract: whitelist = navigation / open / number
+// jump / leave; the in-place keys ([ ] = \ + - < > , . { } t) run as frozen
+// transactions that never switch to native; every other key is refused (#159):
+// preventDefault, nothing enqueued or sent, state and render mode unchanged, an
+// error-level hint. The serialized native sequence (_beginPassthroughBytes) is
+// kept for PttChrome's own operations (search, mark read, refresh) and is
+// exercised directly here.
 import { ListSession, transitionListSession } from "../../src/js/list_session";
 
 function makeSession() {
@@ -70,78 +69,73 @@ function keyEvent(key, mods = {}) {
   };
 }
 
-describe("ListSession 非白名單鍵一鍵切原生（[ ] = 沒反應回歸，2026-07-10）", () => {
-  // 舊行為：[ ] = 走模擬 relative 交易（僅數字選取可用；pinned/無選取 noop 吞鍵，
-  // 要再按一次 airlock）→「按了沒反應也沒讀取中」。新合約：非導覽白名單鍵一律
-  // 「同步 server 游標（有序號且未同步時）→ 切原生鏡像 → 代送該鍵」——單按即生效。
-  test("active＋數字選取未同步：按 z（B 類）→ preventDefault、先 sync-jump、完成後切原生＋代送 z", () => {
-    const { s, sent, enqueued } = makeSession();
-    s._view.flashListHint = () => {};
-    s.state = "active";
-    s._selectedNum = 42;
-    const e = keyEvent("z");
-    s.onKeyDown(e);
-    // 鍵本身不得同 tick passthrough（sync 腿還在途，typeahead 會卡畫面）
-    expect(e.defaultPrevented).toBe(true);
-    expect(sent).toEqual([]);
-    expect(s._renderMode).toBe("frozen"); // sync 腿期間不閃原生
-    expect(enqueued.length).toBe(1);
-    expect(enqueued[0].keys).toBe("42\r");
-    expect(enqueued[0].kind).toBe("native-sync-jump");
-    // sync 完成 → 切原生鏡像＋代送該鍵（走 queue：in-flight 吸收 settle，
-    // 防 sync 落地的 clean-list settle 提早 resume——live soak race）
-    enqueued[0].onDone();
-    expect(s.state).toBe("functionMode");
-    expect(s._renderMode).toBe("native");
-    expect(sent).toEqual([]); // 不裸送
-    expect(enqueued[1].kind).toBe("native-key");
-    expect(enqueued[1].keys).toBe("z");
-    expect(enqueued[1].expect()).toBe(true); // 任一 settle 即回應
-    // 尾附 \f：PTT 完全忽略該鍵時是零 byte 零 settle，沒有它只能等 3s timeout。
-    expect(enqueued[1].fullRepaint).toBe(true);
-  });
+const KEY_HINT =
+  "好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）";
 
-  test("已同步（_serverNum===選取）→ 跳過 sync 腿，直接切原生＋代送", () => {
-    const { s, sent, enqueued } = makeSession();
-    s._view.flashListHint = () => {};
-    s.state = "active";
-    s._selectedNum = 7;
-    s._serverNum = 7;
-    s.onKeyDown(keyEvent("Z"));
-    expect(s.state).toBe("functionMode");
-    expect(enqueued.length).toBe(1); // 免 sync 腿，只有 native-key
-    expect(enqueued[0].kind).toBe("native-key");
-    expect(enqueued[0].keys).toBe("Z");
-    expect(sent).toEqual([]);
-  });
+// An active session over the buffer that records every hint with all arguments.
+function activeRefusalSession() {
+  const ctx = makeSession();
+  const hints = [];
+  ctx.s._view.flashListHint = (...a) => hints.push(a);
+  ctx.s.state = "active";
+  ctx.s._renderMode = "buffer";
+  ctx.s._boardName = "C_Chat";
+  ctx.s._selectedNum = 42;
+  ctx.s._serverNum = 7; // lagging real cursor: a sync leg must NOT start either
+  return { ...ctx, hints };
+}
 
-  test("pinned 選取（無序號）：a 無跳號可同步 → 直接切原生＋代送（不再 noop 吞鍵）", () => {
-    const { s, sent, enqueued } = makeSession();
-    s._view.flashListHint = () => {};
-    s.state = "active";
-    s._selectedNum = null;
-    s._selectedPinnedKey = "arrenwu|[公告] 板規";
+function expectRefused(ctx, e) {
+  expect(e.defaultPrevented).toBe(true);
+  expect(ctx.sent).toEqual([]);
+  expect(ctx.enqueued).toEqual([]);
+  expect(ctx.s.state).toBe("active");
+  expect(ctx.s._renderMode).toBe("buffer");
+  expect(ctx.s._boardName).toBe("C_Chat"); // the cache is not dropped
+  expect(ctx.s._holdReason).toBe(null);
+  expect(ctx.queue.flushed).toBeUndefined();
+  expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
+}
+
+describe("ListSession refuses keys easy reading does not present (#159)", () => {
+  const UNSUPPORTED = [
+    ["z", {}],
+    ["v", {}],
+    ["Z", { shiftKey: true }],
+    ["p", { ctrlKey: true }], // Ctrl-P: post
+    ["q", { ctrlKey: true }], // Ctrl-Q: query author
+    ["x", { ctrlKey: true }], // Ctrl-X: cross-post (not a clipboard key)
+    ["]", { ctrlKey: true }], // Ctrl-]: a control byte
+    ["t", { altKey: true, code: "KeyT" }], // Alt+T: this app's alias of Ctrl-T
+    ["Insert", {}], // bare Insert (Shift+Insert is the paste shortcut)
+  ];
+  test.each(UNSUPPORTED)(
+    "%s %j → prevented, nothing enqueued or sent, state and render mode unchanged, hint shown",
+    (key, mods) => {
+      const ctx = activeRefusalSession();
+      const e = keyEvent(key, mods);
+      ctx.s.onKeyDown(e);
+      expectRefused(ctx, e);
+    }
+  );
+
+  test("pinned selection (no number) is refused the same way", () => {
+    const ctx = activeRefusalSession();
+    ctx.s._selectedNum = null;
+    ctx.s._selectedPinnedKey = "arrenwu|[公告] 板規";
     const e = keyEvent("a");
-    s.onKeyDown(e);
-    expect(e.defaultPrevented).toBe(true);
-    expect(s.state).toBe("functionMode");
-    expect(enqueued.length).toBe(1);
-    expect(enqueued[0].kind).toBe("native-key");
-    expect(enqueued[0].keys).toBe("a");
-    expect(sent).toEqual([]);
+    ctx.s.onKeyDown(e);
+    expectRefused(ctx, e);
   });
 
-  // The key would act on another row (#158): it is never sent, the page stays.
-  test("sync 腿失敗 → 不代送，停在原頁等下拉重新整理", () => {
-    const { s, enqueued } = makeSession();
-    s._view.flashListHint = () => {};
-    s.state = "active";
-    s._selectedNum = 42;
-    s.onKeyDown(keyEvent("z"));
-    enqueued[0].onFail("timeout");
-    expect(s.failed()).toBe(true);
-    expect(s._renderMode).toBe("frozen");
-    expect(enqueued.length).toBe(1);
+  test("a refused key leaves the selection and the next key untouched", () => {
+    const ctx = activeRefusalSession();
+    ctx.s.onKeyDown(keyEvent("z"));
+    ctx.hints.length = 0;
+    ctx.s.onKeyDown(keyEvent("z"));
+    expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
+    expect(ctx.s._selectedNum).toBe(42);
+    expect(ctx.enqueued).toEqual([]);
   });
 
   test("←/q/e 離板 → v5 交易化：frozen＋先同步 server 游標再送離板鍵", () => {
@@ -280,9 +274,9 @@ describe("passthrough sync 腿期間 frozen（不得閃現原生畫面）", () =
   });
 });
 
-describe("v5 互動封閉：keyClass 白名單枚舉＋未列鍵一鍵切原生", () => {
+describe("v5 closed interaction: keyClass whitelist enumeration", () => {
   // 枚舉即合約（docs/easy-reading-list.md §Operation classes）：白名單＝導覽/開文/跳號/離板；
-  // 其餘一律 passthrough（sync＋切原生＋代送），airlock 兩段式已退役。
+  // 其餘一律 unsupported（拒絕並提示，#159）。
   const WHITELIST_BEHAVIOR = [
     // [key, 預期 state, 預期佇列 kind（null=不佇列）]
     ["ArrowUp", "active", null],
@@ -300,11 +294,9 @@ describe("v5 互動封閉：keyClass 白名單枚舉＋未列鍵一鍵切原生"
     ["]", "functionMode", "inplace-sync-jump"],
     ["=", "functionMode", "inplace-sync-jump"],
     ["t", "functionMode", "inplace-sync-jump"],
-    // B 類鍵（開 prompt／進子畫面／換一份清單）→ passthrough：sync 後切原生再代送
-    ["v", "functionMode", "native-sync-jump"],
-    ["/", "functionMode", "native-sync-jump"],
-    ["z", "functionMode", "native-sync-jump"],
-    ["s", "functionMode", "native-sync-jump"],
+    // Help: PTT's help screen is asked for through the serialized sequence and
+    // the help menu sheet presents it.
+    ["h", "functionMode", "native-sync-jump"],
   ];
   test.each(WHITELIST_BEHAVIOR)("白名單 %s → state=%s", (key, state, kind) => {
     const { s, enqueued } = makeSession();
@@ -319,102 +311,25 @@ describe("v5 互動封閉：keyClass 白名單枚舉＋未列鍵一鍵切原生"
     else expect(enqueued).toEqual([]); // 空 buffer：nav 本地 no-op、零佇列
   });
 
-  test("單按未列鍵完整流程：z → sync → 切原生＋代送＋提示（airlock 二連擊退役）", () => {
-    const { s, sent, enqueued } = makeSession();
-    const hints = [];
-    s._view.flashListHint = (m) => hints.push(m);
-    s.state = "active";
-    s._renderMode = "buffer";
-    s._selectedNum = 42;
-    const e = keyEvent("z");
-    s.onKeyDown(e);
-    expect(e.defaultPrevented).toBe(true); // 代送模式：原事件不放行
-    expect(enqueued[0].kind).toBe("native-sync-jump");
-    enqueued[0].onDone();
-    expect(s.state).toBe("functionMode");
-    expect(s._renderMode).toBe("native");
-    expect(enqueued[1].kind).toBe("native-key");
-    expect(enqueued[1].keys).toBe("z");
-    expect(hints.length).toBeGreaterThan(0); // 事後告知已切原生
+  test("adoptUserBytes: refused on the wire exit too (bypassing key dispatch changes nothing)", () => {
+    // The net at the single wire exit of real keyboard/IME bytes (term_view._send):
+    // bytes that reach it over the buffer came from no entrance easy reading
+    // presents. Machine bytes go through App.sendMachineBytes and never get here.
+    const ctx = activeRefusalSession();
+    expect(ctx.s.adoptUserBytes("\x18")).toBe(true);
+    expect(ctx.sent).toEqual([]);
+    expect(ctx.enqueued).toEqual([]);
+    expect(ctx.s.state).toBe("active");
+    expect(ctx.s._renderMode).toBe("buffer");
+    expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
   });
 
-  // 2026-09-13 起 Ctrl 組合**也代送**（原本斷言「放行給原生鍵盤路徑、零命令」）：
-  // 那條「不代送」路徑跳過 sync 腿，而 read.c 有一整組對真游標那列動作的 Ctrl 鍵
-  //（Ctrl-Q/S/T/D）⇒ 查詢作者查到別人。詳見本檔末的 cursor-relative describe。
-  test("Ctrl-P（發文）→ 一鍵切原生，並序列化代送 \\x10", () => {
-    const { s, sent, enqueued } = makeSession();
-    s._view.flashListHint = () => {};
-    s.state = "active";
-    s._selectedNum = 42;
-    const e = keyEvent("p");
-    e.ctrlKey = true;
-    s.onKeyDown(e);
-    expect(e.defaultPrevented).toBe(true); // 代送模式：原事件不放行，免得送兩次
-    expect(enqueued[0].kind).toBe("native-sync-jump");
-    enqueued[0].onDone();
-    expect(enqueued[1].kind).toBe("native-key");
-    expect(enqueued[1].keys).toBe("\x10");
-    expect(sent).toEqual([]); // 走佇列，不裸送
-    expect(s.state).toBe("functionMode");
-    expect(s._renderMode).toBe("native");
-  });
-
-  test("剪貼簿組合鍵（Ctrl-C/A/V）放行給 app 層（不吞、不轉態）", () => {
-    // 成員資格＝「真的有人接手」：c/a 由 term_view 的 doCopy/doSelectAll，
-    // v 由 term_keyboard._onKeyDown 的 `return false`（讓給瀏覽器原生貼上）。
-    const { s } = makeSession();
-    s.state = "active";
-    for (const k of ["c", "a", "v"]) {
-      const e = keyEvent(k);
-      e.ctrlKey = true;
-      s.onKeyDown(e);
-      expect(e.defaultPrevented).toBe(false);
-      expect(s.state).toBe("active");
-    }
-  });
-
-  test("Ctrl-X（轉錄）不是剪貼簿鍵 → 一鍵切原生，並序列化代送 \\x18", () => {
-    // 回歸（2026-09-19「Ctrl+X 轉錄轉到別篇」）：
-    // 舊碼把 'x' 列進剪貼簿白名單 → 早退且不 preventDefault，而 term_view 的 ctrl
-    // 分支只接 c/a ⇒ 落到 term_keyboard 的 CtrlShiftMap['x']=24 **裸送 ^X**，
-    // 跳過 cursor-sync 腿。^X 在文章列表是 read_comms 的 { 1, cross_post }
-    //（bbs.c:4555，needitem=1 ⇒ 吃 server 真游標那一列）而本地導覽零網路
-    // ⇒ 轉錄到背景 prefetch 的落點那一篇。
-    // 終端機畫面不可編輯、focus 在恆空的 #t ⇒ 瀏覽器「剪下」本來就沒有作用對象。
-    const { s, sent, enqueued } = makeSession();
-    s._view.flashListHint = () => {};
-    s.state = "active";
-    s._selectedNum = 42;
-    const e = keyEvent("x");
-    e.ctrlKey = true;
-    s.onKeyDown(e);
-    expect(e.defaultPrevented).toBe(true);
-    expect(enqueued[0].kind).toBe("native-sync-jump");
-    expect(enqueued[0].keys).toBe("42\r"); // 先把真游標停到選取那一列
-    enqueued[0].onDone();
-    expect(enqueued[1].kind).toBe("native-key");
-    expect(enqueued[1].keys).toBe("\x18");
-    expect(sent).toEqual([]); // 走佇列，永不裸送
-    expect(s.state).toBe("functionMode");
-  });
-
-  test("adoptUserBytes：線路出口的 fail-closed 網（繞過按鍵分派也同步得到）", () => {
-    // 治本層（2026-09-19）：sync 腿從「每個按鍵分派點自己 opt-in」改成「byte 要上線
-    // 時一律檢查」。入口是 term_view._send —— 真鍵盤／IME 的唯一出口。
-    // 這條測的是網本身：即使有人繞過 onKeyDown 直接送 byte，照樣先跑 sync 腿。
-    // 註（2026-09-20）：這張網**只管使用者來源的 byte**。機器狀態機走
-    // App.sendMachineBytes，不經這裡——理由見 src/js/list_user_bytes.js 檔頭。
-    const { s, sent, enqueued } = makeSession();
-    s._view.flashListHint = () => {};
-    s.state = "active";
-    s._renderMode = "buffer";
-    s._selectedNum = 42;
-    s._serverNum = 7; // 真游標落後選取（背景 prefetch 的落點）
-    expect(s.adoptUserBytes("\x18")).toBe(true);
-    expect(enqueued[0].kind).toBe("native-sync-jump");
-    enqueued[0].onDone();
-    expect(enqueued[1].keys).toBe("\x18");
-    expect(sent).toEqual([]);
+  test("adoptUserBytes: with opts.conv the text goes to noteTextInput (refused with the text hint)", () => {
+    const ctx = activeRefusalSession();
+    expect(ctx.s.adoptUserBytes("測試", { conv: true })).toBe(true);
+    expect(ctx.enqueued).toEqual([]);
+    expect(ctx.sent).toEqual([]);
+    expect(ctx.hints).toEqual([["好讀模式目前不支援在列表輸入文字", 4000, "error"]]);
   });
 
   test("adoptUserBytes：原生鏡像下不接手（選取即真游標，沒東西要保護）", () => {
@@ -455,37 +370,6 @@ describe("v5 互動封閉：keyClass 白名單枚舉＋未列鍵一鍵切原生"
     expect(s._renderMode).toBe("buffer"); // 不因按鍵本身切原生
     expect(enqueued).toEqual([]); // 不得送 \x1b[2~
     expect(sent).toEqual([]);
-  });
-
-  test("反向守護：純 Insert（無 shift）仍是 passthrough 鍵", () => {
-    const { s, enqueued } = makeSession();
-    s._view.flashListHint = () => {};
-    s.state = "active";
-    s._selectedNum = 42;
-    const e = keyEvent("Insert");
-    s.onKeyDown(e);
-    expect(e.defaultPrevented).toBe(true);
-    expect(s.state).toBe("functionMode");
-    expect(enqueued[0].kind).toBe("native-sync-jump");
-  });
-
-  test("v / `/`（舊 T2 模擬已拔除）→ 同 passthrough：sync 完成後代送、切原生", () => {
-    // 已讀設定/標題搜尋改由原生畫面接手（單按切原生），模擬 prompt/overlay 退役。
-    for (const key of ["v", "/"]) {
-      const { s, sent, enqueued } = makeSession();
-      s._view.flashListHint = () => {};
-      s.state = "active";
-      s._renderMode = "buffer";
-      s._selectedNum = 42;
-      s.onKeyDown(keyEvent(key));
-      expect(enqueued[0].kind).toBe("native-sync-jump");
-      expect(enqueued[0].keys).toBe("42\r");
-      enqueued[0].onDone();
-      expect(s.state).toBe("functionMode");
-      expect(s._renderMode).toBe("native");
-      expect(enqueued[1].kind).toBe("native-key");
-      expect(enqueued[1].keys).toBe(key);
-    }
   });
 
   test("select 清單離開（←）：leave onDone 清 _selectMode＋_boardName（回主列表必 rebuild）", () => {
@@ -553,7 +437,7 @@ describe("v5 互動封閉：keyClass 白名單枚舉＋未列鍵一鍵切原生"
     // 全量 flush 屬合法（之後無 expect），此處只驗「入列當下」。
     const begins = [
       ["[（A 類凍結交易）", (s) => s.onKeyDown(keyEvent("["))],
-      ["v", (s) => s.onKeyDown(keyEvent("v"))],
+      ["v（序列化原生序列）", (s) => s._beginPassthroughBytes("v")],
       ["ArrowLeft", (s) => s.onKeyDown(keyEvent("ArrowLeft"))],
       ["Enter開文", (s) => s.onKeyDown(keyEvent("Enter"))],
     ];
@@ -606,7 +490,7 @@ describe("passthrough 黏性原生（2026-07-10 UX：不自動彈回好讀）", 
     };
   }
 
-  test("代送後的 clean-list settle → 停在原生鏡像（不彈回 buffer）", () => {
+  test("序列化代送後的 clean-list settle → 停在原生鏡像（不彈回 buffer）", () => {
     const { s, enqueued } = makeSession();
     s._view.flashListHint = () => {};
     s.state = "active";
@@ -614,7 +498,7 @@ describe("passthrough 黏性原生（2026-07-10 UX：不自動彈回好讀）", 
     s._boardName = "C_Chat";
     s._selectedNum = 42;
     s._termBuf.listLineNums = [41, 42, 43];
-    s.onKeyDown(keyEvent("z"));
+    s._beginPassthroughBytes("z");
     enqueued[0].onDone(); // sync 完成 → 切原生＋native-key 入列
     enqueued[1].onDone && enqueued[1].onDone(); // key 回應完成
     // 原生操作完成後的列表重繪 settle → 必須 STAY（黏性；回好讀由靜置探針決定）
@@ -657,7 +541,7 @@ describe("passthrough 黏性原生（2026-07-10 UX：不自動彈回好讀）", 
     s._view.flashListHint = () => {};
     s.state = "active";
     s._selectedNum = 42;
-    s.onKeyDown(keyEvent("z"));
+    s._beginPassthroughBytes("z");
     enqueued[0].onDone(); // 切原生（hold）
     const menuFacts = { kind: "menu", boardName: null, rowTexts: [], nums: [], rows: 24, curY: 5, curX: 0, cursorRowNum: null };
     s._dispatch(s._settleEvent(menuFacts), menuFacts);
@@ -690,7 +574,7 @@ describe("native excursion 一律拋棄 cache（多輪搜尋/過濾汙染回歸�
     };
   }
 
-  test("單按 Z 切原生（過濾情境）→ 開文返回後必 rebuild（丟舊 buffer）", () => {
+  test("序列化送 Z 切原生（過濾情境）→ 開文返回後必 rebuild（丟舊 buffer）", () => {
     const { s, enqueued } = makeSession();
     let resets = 0;
     s._view.flashListHint = () => {};
@@ -700,7 +584,7 @@ describe("native excursion 一律拋棄 cache（多輪搜尋/過濾汙染回歸�
     s._boardName = "movie";
     s._selectedNum = 42;
     s._termBuf.listLineNums = [41, 42, 43]; // 舊搜尋殘留 buffer
-    s.onKeyDown(keyEvent("Z")); // 單按 → passthrough（sync→原生過濾）
+    s._beginPassthroughBytes("Z"); // sync → 原生過濾
     enqueued[0].onDone();
     expect(s.state).toBe("functionMode");
     // 黏性 hold：原生過濾完成的 clean-list settle 停在鏡像（不彈回）
@@ -867,22 +751,6 @@ describe("無字元實體鍵不得觸發原生 excursion（Caps Lock/F2「畫面
     expect(enqueued).toEqual([]);
   });
 
-  test("反向守護：Ctrl-P（發文，CtrlShiftMap 有對應）仍是 passthrough 切原生", () => {
-    // 這條守的是「別把有 bytes 的 Ctrl 組合誤判成 T0 ignore」。代送與否見上面那條
-    // 與本檔末的 cursor-relative describe（2026-09-13 起代送）。
-    const { s, enqueued } = makeSession();
-    s._view.flashListHint = () => {};
-    s.state = "active";
-    s._selectedNum = 42;
-    s._serverNum = 42; // 真游標已同步 ⇒ 免 sync 腿，只剩代送那一腿
-    const e = keyEvent("p", { ctrlKey: true });
-    s.onKeyDown(e);
-    expect(s.state).toBe("functionMode");
-    expect(s._renderMode).toBe("native");
-    expect(e.defaultPrevented).toBe(true);
-    expect(enqueued.length).toBe(1);
-    expect(enqueued[0].keys).toBe("\x10");
-  });
 });
 
 describe("read.c 導覽同義鍵＝本地導覽零 server（空白鍵「畫面跑掉」回歸，2026-08）", () => {
@@ -959,90 +827,7 @@ describe("read.c 導覽同義鍵＝本地導覽零 server（空白鍵「畫面�
 //
 // keyEventToBytes 的 ctrlKey 分支本來就算得出 bytes（CtrlShiftMap，Ctrl-Q → \x11），
 // 所以舊註解「not resendable / can't serialize a key we don't own」的前提早已不成立。
-describe("cursor-relative Ctrl／Alt 組合鍵先同步真游標（查詢作者跑掉，2026-09-13）", () => {
-  test("Ctrl-Q（查詢作者）→ 先 native-sync-jump，落地後才代送 \\x11", () => {
-    const { s, sent, enqueued } = makeSession();
-    s._view.flashListHint = () => {};
-    s.state = "active";
-    s._renderMode = "buffer";
-    s._selectedNum = 42;
-    s._serverNum = 7; // 真游標落在別處（背景 prefetch 帶走的）
-    const e = keyEvent("q", { ctrlKey: true });
-    s.onKeyDown(e);
-
-    // 代送模式：原事件不放行（放行＝原生鍵盤路徑裸送，就是這個 bug）
-    expect(e.defaultPrevented).toBe(true);
-    expect(sent).toEqual([]);
-    expect(enqueued[0].kind).toBe("native-sync-jump");
-    expect(enqueued[0].keys).toBe("42\r");
-
-    enqueued[0].onDone();
-    expect(s.state).toBe("functionMode");
-    expect(s._renderMode).toBe("native");
-    expect(enqueued[1].kind).toBe("native-key");
-    expect(enqueued[1].keys).toBe("\x11");
-    // 尾附 \f 的契約照舊（PTT 忽略某鍵時零 byte 零 settle，沒有它只能等滿 3s）
-    expect(enqueued[1].fullRepaint).toBe(true);
-    expect(sent).toEqual([]);
-  });
-
-  test("Ctrl-Q：真游標已在選取上 → 免 sync 腿，直接代送（快路徑不回歸）", () => {
-    const { s, sent, enqueued } = makeSession();
-    s._view.flashListHint = () => {};
-    s.state = "active";
-    s._renderMode = "buffer";
-    s._selectedNum = 42;
-    s._serverNum = 42;
-    const e = keyEvent("q", { ctrlKey: true });
-    s.onKeyDown(e);
-
-    expect(e.defaultPrevented).toBe(true);
-    expect(enqueued.length).toBe(1);
-    expect(enqueued[0].kind).toBe("native-key");
-    expect(enqueued[0].keys).toBe("\x11");
-    expect(sent).toEqual([]);
-  });
-
-  test("Ctrl 組合的 bytes 不得過 u2b：Ctrl-] 送 \\x1d，與原生鍵盤路徑同一個 byte", () => {
-    // CtrlShiftMap 的 '[' / '\\' / ']' 曾是 219/220/221（upstream keyCode bug，已修成
-    // 27/28/29，見 term_keyboard_ctrl_map.test.js）。這條守「passthrough 送出的就是
-    // keyEventToBytes 的控制碼，不被任何轉碼改寫」。
-    const { s, enqueued } = makeSession();
-    s._view.flashListHint = () => {};
-    s.state = "active";
-    s._renderMode = "buffer";
-    s._selectedNum = 42;
-    s._serverNum = 42;
-    s.onKeyDown(keyEvent("]", { ctrlKey: true }));
-
-    expect(enqueued.length).toBe(1);
-    expect(enqueued[0].keys).toBe("\x1d");
-  });
-
-  test("Alt 重映射鍵 Alt-T（＝^T TagThread，read.c:957）同樣走 sync → 代送", () => {
-    // Alt remap（Alt＝PTT 的 Ctrl，全 26 字母，見 term_keyboard）是**本 app 自己造
-    // 的送鍵入口**，不是瀏覽器快捷鍵 ⇒ 與 Ctrl 組合同級。
-    // 舊碼 onKeyDown 開頭 `if (clipboard || e.altKey || e.metaKey) return;` 把它整個
-    // early-return 掉：連原生鏡像都不切就由 TermKeyboard 裸送，比 Ctrl 那條更隱蔽
-    //（好讀畫面完全不動，server 狀態卻已改變）。
-    const { s, sent, enqueued } = makeSession();
-    s._view.flashListHint = () => {};
-    s.state = "active";
-    s._renderMode = "buffer";
-    s._selectedNum = 42;
-    s._serverNum = 7;
-    const e = keyEvent("t", { altKey: true });
-    s.onKeyDown(e);
-
-    expect(e.defaultPrevented).toBe(true);
-    expect(sent).toEqual([]);
-    expect(enqueued[0].kind).toBe("native-sync-jump");
-    enqueued[0].onDone();
-    expect(enqueued[1].kind).toBe("native-key");
-    expect(enqueued[1].keys).toBe("\x14"); // ^T
-    expect(s._renderMode).toBe("native");
-  });
-
+describe("Ctrl／Alt combos: only the non-remap Alt combos still pass to the browser", () => {
   test("反向守護：非字母的 Alt 組合仍整個放行給瀏覽器", () => {
     // Alt remap 只涵蓋 26 個字母。數字、方向鍵這類 Alt 組合仍是瀏覽器／OS 的
     //（Alt+← 是上一頁），維持早退：不轉態、不 preventDefault、零命令。
@@ -1090,121 +875,62 @@ describe("cursor-relative Ctrl／Alt 組合鍵先同步真游標（查詢作者�
 });
 
 // ---------------------------------------------------------------------------
-// Alt＝PTT 的 Ctrl，全 26 字母（2026-09）。列表好讀底下每一顆都必須走 passthrough
-// 的 cursor-sync 腿 —— Ctrl 鍵有一票是對「真游標那一列」動作的（docs §11.7），
-// 好讀的選取列與 server 游標不同步時裸送就會對錯的文章生效。
+// Alt = PTT's Ctrl, all 26 letters. Over the list each one is a PTT command key
+// easy reading does not present: refused (#159), never sent.
 // ---------------------------------------------------------------------------
-describe("Alt remap 全 26 字母（列表好讀）", () => {
-  function activeSession() {
-    const r = makeSession();
-    r.s._view.flashListHint = () => {};
-    r.s.state = "active";
-    r.s._renderMode = "buffer";
-    r.s._selectedNum = 42;
-    r.s._serverNum = 7; // 與選取列不同步 ⇒ 必須先跑 sync 腿
-    return r;
-  }
-
+describe("Alt remap, all 26 letters (list easy reading)", () => {
   const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
-  test("26 個字母都走 sync → 代送對應控制碼 → 切原生鏡像", () => {
-    LETTERS.forEach((L, i) => {
-      const { s, sent, enqueued } = activeSession();
+  test("every letter is refused: prevented, nothing enqueued or sent, mirror not entered", () => {
+    LETTERS.forEach((L) => {
+      const ctx = activeRefusalSession();
       const e = keyEvent(L.toLowerCase(), { altKey: true, code: "Key" + L });
-      s.onKeyDown(e);
-
-      expect(e.defaultPrevented).toBe(true);
-      expect(sent).toEqual([]); // 不得裸送上線
-      expect(enqueued[0].kind).toBe("native-sync-jump");
-      enqueued[0].onDone();
-      expect(enqueued[1].kind).toBe("native-key");
-      expect(enqueued[1].keys).toBe(String.fromCharCode(i + 1));
-      expect(s._renderMode).toBe("native");
+      ctx.s.onKeyDown(e);
+      expectRefused(ctx, e);
     });
   });
 
-  test("j/k/n/p 不得變成本地移游標 —— altRemap 攔截必須排在 _classifyKey 之前", () => {
-    // 這四顆同時也是導覽白名單的同義鍵（read.c 的 ↑↓ 同義鍵）。順序一反，
-    // Alt+J 就會變成「本地把游標往下移一格」而不是送 ^J 給 PTT，而且完全無聲。
-    for (const [key, code, out] of [
-      ["j", "KeyJ", "\x0a"],
-      ["k", "KeyK", "\x0b"],
-      ["n", "KeyN", "\x0e"],
-      ["p", "KeyP", "\x10"],
+  test("Alt+j/k/n/p are refused and do not move the selection locally (altRemap precedes _classifyKey)", () => {
+    // These four are also navigation synonyms in the whitelist. If the order
+    // flipped, Alt+J would move the cursor down one row silently.
+    for (const [key, code] of [
+      ["j", "KeyJ"],
+      ["k", "KeyK"],
+      ["n", "KeyN"],
+      ["p", "KeyP"],
     ]) {
-      const { s, enqueued } = activeSession();
-      const before = s._selectedNum;
-      s.onKeyDown(keyEvent(key, { altKey: true, code }));
-
-      expect(s._selectedNum).toBe(before); // 游標沒被本地移動
-      expect(enqueued[0].kind).toBe("native-sync-jump");
-      enqueued[0].onDone();
-      expect(enqueued[1].keys).toBe(out);
-    }
-  });
-
-  test("Alt+M（＝\\r）走代送，不是序列化開文", () => {
-    // ^M 是 Enter 的控制碼別名（vtkbd.h:86-88）。與 Ctrl+M 同路：走原生鏡像開文，
-    // 不經 {class:'open'} 的序列化交易。既有行為，這裡釘住不要漂掉。
-    const { s, enqueued } = activeSession();
-    s.onKeyDown(keyEvent("m", { altKey: true, code: "KeyM" }));
-
-    expect(enqueued[0].kind).toBe("native-sync-jump");
-    enqueued[0].onDone();
-    expect(enqueued[1].kind).toBe("native-key");
-    expect(enqueued[1].keys).toBe("\r");
-    // 不得出現序列化開文那條路
-    expect(enqueued.some((c) => c.kind === "open")).toBe(false);
-  });
-
-  test("Alt+C/A/V/X 不被剪貼簿白名單早退吃掉", () => {
-    // clipboard 判定寫的是 `e.ctrlKey && !e.altKey` ⇒ Alt 版必須落到 remap 這條。
-    // 有人日後把 `!e.altKey` 拿掉，這四顆就會靜默變回「複製／全選／貼上／剪下」。
-    for (const [L, out] of [
-      ["C", "\x03"],
-      ["A", "\x01"],
-      ["V", "\x16"],
-      ["X", "\x18"],
-    ]) {
-      const { s, sent, enqueued } = activeSession();
-      const e = keyEvent(L.toLowerCase(), { altKey: true, code: "Key" + L });
-      s.onKeyDown(e);
-
-      expect(e.defaultPrevented).toBe(true);
-      expect(sent).toEqual([]);
-      expect(enqueued[0].kind).toBe("native-sync-jump");
-      enqueued[0].onDone();
-      expect(enqueued[1].keys).toBe(out);
-    }
-  });
-
-  test("macOS 形態（e.key 失真／dead key）在 session 層同樣接得住", () => {
-    // 這層以前只測過 key:'t' 的 Windows 形態 ⇒ mac 是盲區。session 自己呼叫
-    // altRemapCharCode，少了 e.code 就會整條啞掉。
-    for (const [key, code, out] of [
-      ["√", "KeyV", "\x16"],
-      ["Dead", "KeyE", "\x05"], // ⌥E 是組合重音的 dead key
-      ["ß", "KeyS", "\x13"], // 'ß'.toUpperCase() === 'SS'，只有 code 救得了
-      ["µ", "KeyM", "\x0d"], // 'µ'.toUpperCase() 是希臘 Μ，不是 ASCII M
-    ]) {
-      const { s, enqueued } = activeSession();
+      const ctx = activeRefusalSession();
+      const before = ctx.s._selectedNum;
       const e = keyEvent(key, { altKey: true, code });
-      s.onKeyDown(e);
-
-      expect(e.defaultPrevented).toBe(true);
-      expect(enqueued[0].kind).toBe("native-sync-jump");
-      enqueued[0].onDone();
-      expect(enqueued[1].keys).toBe(out);
+      ctx.s.onKeyDown(e);
+      expect(ctx.s._selectedNum).toBe(before);
+      expectRefused(ctx, e);
     }
   });
 
-  test("已同步時免 sync 腿，直接代送", () => {
-    const { s, enqueued } = activeSession();
-    s._serverNum = 42; // 與選取列一致
-    s.onKeyDown(keyEvent("w", { altKey: true, code: "KeyW" }));
+  test("Alt+C/A/V/X are not eaten by the clipboard early return", () => {
+    // The clipboard test reads `e.ctrlKey && !e.altKey`: the Alt versions must
+    // reach the refusal, not silently become copy / select all / paste / cut.
+    for (const L of ["C", "A", "V", "X"]) {
+      const ctx = activeRefusalSession();
+      const e = keyEvent(L.toLowerCase(), { altKey: true, code: "Key" + L });
+      ctx.s.onKeyDown(e);
+      expectRefused(ctx, e);
+    }
+  });
 
-    expect(enqueued.length).toBe(1);
-    expect(enqueued[0].kind).toBe("native-key");
-    expect(enqueued[0].keys).toBe("\x17");
+  test("macOS shapes (distorted e.key / dead key) are refused at the session layer too", () => {
+    // session calls altRemapCharCode itself; without e.code it would go mute.
+    for (const [key, code] of [
+      ["√", "KeyV"],
+      ["Dead", "KeyE"], // Option+E is the dead key of the combining accent
+      ["ß", "KeyS"], // 'ß'.toUpperCase() === 'SS'; only code identifies it
+      ["µ", "KeyM"], // 'µ'.toUpperCase() is Greek Μ, not ASCII M
+    ]) {
+      const ctx = activeRefusalSession();
+      const e = keyEvent(key, { altKey: true, code });
+      ctx.s.onKeyDown(e);
+      expectRefused(ctx, e);
+    }
   });
 });

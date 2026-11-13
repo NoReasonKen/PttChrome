@@ -893,7 +893,7 @@ API**，唯一入口就是原生選單 ⇒ 依本檔「手勢與瀏覽器返回�
 
 ### 列表好讀的 `ListSession.onFunctionKey(bytes)`
 
-回 `true` ＝我接手了。合約與 `onPaste` 同形：
+回 `true` ＝我接手了。合約與 `onPaste` 同形（`onPaste` 自 #159 起對列表一律拒絕貼上並給提示）：
 
 | 狀態 | 行為 |
 |---|---|
@@ -901,7 +901,7 @@ API**，唯一入口就是原生選單 ⇒ 依本檔「手勢與瀏覽器返回�
 | `opening` | 提示「開啟文章中，請稍候…」後回 `true` |
 | `functionMode` + `frozen` | 提示「指令處理中，請稍候…」後回 `true` |
 | 白名單（`←` leave／方向鍵 nav／`→`・Enter open） | 走 reducer 既有的 `_beginLeave` / `_moveSelection` / `_beginOpen` |
-| 其餘 | `_beginPassthroughBytes(bytes)`：切原生 ＋ 經 CommandQueue 送出（**永不靜默**） |
+| 其餘（白名單以外的位元組） | 拒絕：什麼都不送，提示「好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）」（錯誤等級，狀態提示關著也看得到；#159 前是切原生代送，已移除）。**永不靜默** |
 
 `_classifyBytes` **刻意獨立於 `_classifyKey`，不要合併**：後者認 `q`/`e`/`j`/`k` 這些
 **字元**為導覽鍵（那是使用者按下的按鍵），而 byte 層看到的 `'q'` 就只是 `'q'`。
@@ -1133,7 +1133,7 @@ motion / drag 回報、中鍵與右鍵回報、水平滾輪（xterm 66/67）、D
 | `tests/unit/footer_keys.test.js` | 功能鍵解析：單鍵可點／**複合鍵拆 atom（`tokenizeKeyGroup` 的全有全無清單）**／具名鍵 byte／**DBCS 欄位換算**／`functionKeyRows` |
 | `tests/unit/screen_fnkeys_render.test.js` | `a.fnKey` 的屬性、`onClick`、與部分底色共存、沒給 `fnKeys` 時 DOM 逐字不變 |
 | `tests/unit/function_key_click_plan.test.js` | 文章好讀先進 functionMode／`←` 走 stopEasyReading |
-| `tests/unit/list_function_key.test.js` | 列表好讀的 `onFunctionKey` / `onMouseExitClick`（白名單走 reducer、其餘 passthrough、忙碌時給提示） |
+| `tests/unit/list_function_key.test.js` | 列表好讀的 `onFunctionKey` / `onMouseExitClick`（白名單走 reducer、其餘拒絕並給提示、忙碌時給忙碌提示） |
 | `tests/unit/screen_dirty_rows.test.js` | 切 pref 後按鈕真的出現／消失（`annotationsKey` 的回歸鎖，兩條分支各一） |
 | `tests/unit/mouse_dblclick_skip.test.js` | 第二次 mousedown 不得 `preventDefault`（雙擊選字） |
 | `tests/unit/fixtures/screen_golden/list_native_fnkeys.html`／`article_footer_fnkeys.html` | 整列 DOM 快照（含複合組拆成的相鄰多顆 `a.fnKey`） |

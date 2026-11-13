@@ -126,8 +126,9 @@ function collectLegs() {
   }
   {
     const { s, enqueued } = makeSession();
-    // IME 送字（ASCII 即可，u2b 對 <0x80 直接透傳、不需 Big5 表）
-    s.noteTextInput("ab");
+    // The serialized text-send sequence with the native-input kind (the board
+    // list still sends IME text this way); easy reading's list no longer does.
+    s._beginPassthroughBytes("ab", { kind: "native-input" });
     enqueued[0].onDone({});
     push("text-input", enqueued);
   }

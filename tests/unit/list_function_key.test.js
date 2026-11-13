@@ -1,8 +1,7 @@
 // 列表好讀模式下，滑鼠點畫面上的功能鍵按鈕（`[←]回上層` / `[→]閱讀` / `[c]新文章`）。
 //
-// 合約（v5 封閉互動，docs/easy-reading-list.md §Operation classes）：白名單以外的鍵＝一鍵切
-// 原生，**永不靜默**。滑鼠點功能鍵語意上完全等同按下那個鍵，所以必須走同一條路 ——
-// 直送 byte 會讓它落在使用者看不見的畫面上，而且繞過 CommandQueue。
+// 合約（v5 封閉互動，docs/easy-reading-list.md §Operation classes）：白名單以外的鍵一律拒絕（#159）：
+// 不送、不切原生、給提示。滑鼠點功能鍵語意上完全等同按下那個鍵，所以走同一條路。
 import { ListSession } from "../../src/js/list_session";
 import { LEFT_ARROW } from "../../src/js/function_key_plan";
 
@@ -132,43 +131,46 @@ describe("白名單鍵走 reducer 的既有交易", () => {
   });
 });
 
-describe("白名單以外 → passthrough（切原生 ＋ 送出，絕不靜默）", () => {
-  test("[c]新文章：進 functionMode 並把鍵排進 CommandQueue", () => {
-    const { s, sent, enqueued, hints } = makeSession();
-    expect(s.onFunctionKey("c")).toBe(true);
-    expect(sent).toEqual([]);
-    const nativeKey = enqueued.find((c) => c.kind === "native-key");
-    expect(nativeKey).toBeTruthy();
-    expect(nativeKey.keys).toBe("c");
-    expect(hints.join()).toContain("已切至原生操作");
+const KEY_HINT = "好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）";
+
+describe("Outside the whitelist → refused (#159)", () => {
+  test("[c], Ctrl-P and other unlisted bytes: nothing enqueued or sent, state unchanged, hint shown", () => {
+    for (const b of ["c", "\x10"]) {
+      const { s, sent, enqueued, hints } = makeSession();
+      const hintArgs = [];
+      s._view.flashListHint = (...a) => hintArgs.push(a);
+      expect(s.onFunctionKey(b)).toBe(true);
+      expect(sent).toEqual([]);
+      expect(enqueued).toEqual([]);
+      expect(s.state).toBe("active");
+      expect(s._renderMode).toBe("buffer");
+      expect(hintArgs).toEqual([[KEY_HINT, 4000, "error"]]);
+      expect(hints).toEqual([]);
+    }
   });
 
-  test("真游標落後選取時先補一段同步跳轉，再送鍵", () => {
+  test("a lagging real cursor does not start a sync leg", () => {
     const { s, enqueued } = makeSession();
-    s._serverNum = 101; // 真游標還停在第一篇
+    s._serverNum = 101;
     s.onFunctionKey("c");
-    expect(enqueued[0].kind).toBe("native-sync-jump");
-    expect(s._renderMode).toBe("frozen");
-  });
-
-  test("Ctrl-P（\\x10）也走 passthrough，不會被當成導覽鍵", () => {
-    const { s, enqueued } = makeSession();
-    s.onFunctionKey("\x10");
-    const nativeKey = enqueued.find((c) => c.kind === "native-key");
-    expect(nativeKey.keys).toBe("\x10");
+    expect(enqueued).toEqual([]);
+    expect(s._renderMode).toBe("buffer");
   });
 });
 
-describe("_classifyBytes 刻意獨立於 _classifyKey", () => {
-  // _classifyKey 認 q/e/j/k/n/p 這些**字元**為導覽鍵（那是使用者按下的按鍵）；
-  // byte 層看到的 'q' 就只是 'q'。合併兩者會把「按鍵」與「送位元組」攪在一起。
-  test("字面 'q' / 'j' / 'k' 在 byte 層是 passthrough，不是 leave/nav", () => {
+describe("_classifyBytes is deliberately independent of _classifyKey", () => {
+  // _classifyKey reads the characters q/e/j/k/n/p as navigation keys (what the
+  // user pressed); at the byte level a 'q' is just a 'q'. Merging the two would
+  // mix up "key" with "bytes to send".
+  test("literal 'q' / 'j' / 'k' are unsupported at the byte level, not leave/nav", () => {
     ["q", "e", "j", "k", "n", "p", " "].forEach((b) => {
       const { s, enqueued } = makeSession();
+      const selected = s._selectedNum;
+      expect(s._classifyBytes(b).class, `byte ${JSON.stringify(b)}`).toBe("unsupported");
       s.onFunctionKey(b);
-      const nativeKey = enqueued.find((c) => c.kind === "native-key");
-      expect(nativeKey, `byte ${JSON.stringify(b)} 應走 passthrough`).toBeTruthy();
-      expect(nativeKey.keys).toBe(b);
+      expect(enqueued).toEqual([]);
+      expect(s._selectedNum).toBe(selected);
+      expect(s.state).toBe("active");
     });
   });
 });

@@ -170,7 +170,7 @@ const ALLOWED = [
   { issue: 160, why: 'article prompt mirrored natively', match: (hit) => hit.functionMode },
   { issue: 188, why: 'reconnect or reload recovery drives PTT through native screens',
     match: (hit) => hit.resume != null },
-  { issue: 159, why: 'article-list key handed to the native view',
+  { issue: 206, why: "the native list shown while PttChrome's own list operation runs",
     match: (hit) => hit.listState === 'functionMode' },
   { issue: 189, why: 'unexpected pause screen after Back, and the list after it',
     match: (hit) => hit.listState === 'suspended' },
