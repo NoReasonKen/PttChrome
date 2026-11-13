@@ -20,6 +20,7 @@ const {
 } = require('../helpers/replay');
 // 滾輪 smoke 會量 rect 又會動指標 ⇒ 版面穩定契約要求走這個模組
 // （tests/unit/e2e_layout_settle.test.js 靜態守護）。
+const { drawHelpPage } = require('../helpers/help_menu');
 const { waitRectStable, waitScrollStable } = require('../helpers/layout');
 const {
   pasteText,
@@ -383,6 +384,13 @@ test.describe('文章列表好读模式（离线）', () => {
         .poll(() => page.evaluate((k) => window.__replay.sent.slice(k).join(''), sentBefore))
         .toContain('h');
       await expect(page.locator('.ListHint')).not.toContainText(UNSUPPORTED_KEY);
+      // The list stays on screen under the help menu sheet: PTT's help screen
+      // is never painted.
+      await drawHelpPage(page, 1);
+      await expect(page.locator('[data-help-item]').first()).toBeVisible();
+      await expect(page.locator('.listBodyView')).toHaveCount(1);
+      expect(await page.evaluate(() =>
+        document.getElementById('mainContainer').textContent.includes('操作說明 (Help)'))).toBe(false);
     } catch (e) {
       console.log('--- console tail ---');
       for (const l of logs.slice(-25)) console.log(l);

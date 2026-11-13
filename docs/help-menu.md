@@ -36,12 +36,12 @@ bottom sheet（手機）一次列出**全部頁**的指令，點一下＝執行�
 - **認不出 ⇒ 原生**：指紋任一要素失配、任一非空白項目列解析不了 ⇒ 整張不認。守護
   `tests/unit/parse_failure_degrade.test.js`「說明選單好讀」。
 
-- **好讀頁留在彈窗底下（#160）**：從好讀文章按 `h`（或說明按鈕）時，文章好讀先呼叫 `helpMenu.expect()` 再進
-  functionMode。`holding` 為真期間 `term_view._navigationHeld()` 成立 ⇒ redraw 走 held 分支，PTT 的說明幀一張都不畫，
+- **好讀頁留在彈窗底下（#160）**：從好讀文章或好讀文章列表按 `h`（或說明按鈕）時，文章好讀／`ListSession._beginHelp` 先呼叫
+  `helpMenu.expect()` 再切原生鏡像。`holding` 為真期間 `term_view._navigationHeld()` 成立 ⇒ redraw 走 held 分支，PTT 的說明幀一張都不畫，
   好讀長頁與閱讀位置原封不動。結束條件：說明選單結束回 idle、這一次交給原生（`_toNative`：使用者選「原生畫面」、
   認不出起點、頁數變了、離開逾時）、或 `HOLD_TIMEOUT_MS` 內沒等到說明選單；結束時 `view.navigationEnded()` 補畫被擋下的那一幀。
   不是從好讀頁要求的說明選單（主功能表、看板列表…）不 hold。守護：`tests/unit/help_menu.test.js`「hold of the page under the sheet」、
-  offline `er_function_mode.offline.spec.js`。
+  offline `er_function_mode.offline.spec.js`、`easy-reading-list.offline.spec.js`。
 
 ## UI
 

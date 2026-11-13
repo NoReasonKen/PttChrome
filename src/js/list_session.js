@@ -1739,6 +1739,8 @@ ListSession.prototype = {
   _beginHelp: function() {
     // The native excursion asks PTT for the list anew (#125).
     this._spendLayer('nativePassthrough');
+    // The list stays on screen under the sheet (help_menu.expect).
+    this._core.helpMenu?.expect();
     this._beginPassthroughBytes('h', { kind: 'help', hint: null });
   },
 
