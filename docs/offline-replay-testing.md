@@ -149,7 +149,7 @@ Every offline page gets two guards, so any spec that crosses the condition catch
 
 | 卷 | 內容 | spec |
 |---|---|---|
-| `scn-er-help`／`scn-er-reply`／`scn-er-seekback` | 好讀 h 說明、r 回應至（需帳號）、`:N` 往回跳 | `er_function_mode.offline` |
+| `scn-er-help`／`scn-er-reply`／`scn-er-seekback` | 好讀 h 說明、r 回應至（需帳號）、`:`／貼上／IME／底列按鈕被拒絕（#160，原 `:N` 往回跳改用於此） | `er_function_mode.offline` |
 | `scn-list-bracket` | 列表好讀 `]`（A 類凍結交易） | `scenario_navigation.offline` |
 | `scn-aid-back`／`scn-aid-back-search` | AID 跳文 → 返回（列表好讀開文／`/` 搜尋結果開文） | `scenario_navigation.offline` |
 | `scn-deep-link` | hashchange deep link 完整落地＋F2（需帳號） | `deep_link_landing.offline` |

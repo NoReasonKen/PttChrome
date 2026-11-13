@@ -87,7 +87,7 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
     （看板列表的 `v` 只作用在游標那個看板）留在長按選單。
     觸覺回饋 `navigator.vibrate(HAPTIC_MS)`（APK 無 VIBRATE 權限＝no-op）。
   - 送鍵只走 `view.sendKeyAsUser(keyName, mods?)`，並先 `App.noteUserAction()`（等待進度條）。不可 `view._send`（列表好讀＝在序列化交易
-    中途插隊）、不可 `App.onFunctionKey`（文章好讀會先進 functionMode ⇒ PgDn 不捲動）。
+    中途插隊）、不可 `App.onFunctionKey`（文章好讀會先進 functionMode ⇒ PgDn 不捲動；#160 後未呈現的鍵還會被拒絕）。
     推文 `X` 是單字元：`sendKeyAsUser` 在 keydown 沒人接手時補走 `_keyboard.onKeyPress`。
   - `mousedown` preventDefault（不搶 `#t` 焦點）＋ mousedown/mouseup/click stopPropagation
     （App 的滑鼠入口在 window）。守護 `tests/unit/mobile_toolbar.test.jsx`。
@@ -231,7 +231,7 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
     `mobile_easy_reading_entry.offline.spec.js`.
   - 第一次開文章時列表是 `frozen`、文章好讀還沒接手（`useEasyReadingMode` 為假）：凍結的列表視窗留到好讀
     接手為止（`_listBufferFrame`），文章的第一頁不會先以格線出現。
-  - 讀者自己在文章裡按的 prompt 鍵仍進 functionMode 鏡像原生（屬於 #160）。好讀關閉時一律照原生畫。
+  - 讀者自己在文章裡按的 prompt 鍵：#160 之後只有說明與回應（工具列回覆鈕、說明鈕）進 functionMode 鏡像原生，其他送出未呈現指令的工具列鍵被拒絕並顯示提示。好讀關閉時一律照原生畫。
   - 守護：offline `mobile_er_geometry.offline.spec.js`（搜尋、開文、AID 跳文、返回：cell 大小與頁寬零變化、
     `notifyLayoutChanged` 零次）。
 

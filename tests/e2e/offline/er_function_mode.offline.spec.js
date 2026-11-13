@@ -9,6 +9,7 @@
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { loadCassette, bootScenario, waitFed } = require('../helpers/replay');
+const { pasteText, imeSetComposition, imeCommit } = require('../helpers/real_input');
 
 const help = loadCassette('scn-er-help');
 const reply = loadCassette('scn-er-reply');
@@ -59,6 +60,23 @@ test.describe('好讀 functionMode（scenario 重放）', () => {
     const fed = await openAndAccumulate(page, help);
 
     // 舊 bug：h 在好讀的吞鍵清單裡，完全沒反應。
+    // The article stays on screen under the sheet: PTT's help screens are
+    // never painted, and the reading position does not move.
+    await page.evaluate(() => {
+      const d = window.__app.view.mainDisplay;
+      d.scrollTop = Math.floor((d.scrollHeight - d.clientHeight) / 2);
+    });
+    const pageUnder = () =>
+      page.evaluate(() => ({
+        top: window.__app.view.mainDisplay.scrollTop,
+        rows: document.querySelectorAll('#mainContainer [data-type="bbsline"]').length,
+        help: document.getElementById('mainContainer').textContent.includes('操作說明 (Help)'),
+      }));
+    const under = await pageUnder();
+    expect(under.top).toBeGreaterThan(0);
+    expect(under.rows).toBeGreaterThan(24);
+    let sawHelp = false;
+    const watch = setInterval(() => pageUnder().then((p) => { if (p.help) sawHelp = true; }).catch(() => {}), 30);
     await ptt.sendKey(page, 'h');
     await expect.poll(() => fnMode(page)).toBe(true);
     // PTT's help is a paged menu. The help menu popup fetches every page (PgDn round
@@ -75,6 +93,7 @@ test.describe('好讀 functionMode（scenario 重放）', () => {
     await waitBufSettled(page);
     expect(await fnMode(page)).toBe(true);
     expect(await bufText(page)).toContain('操作說明');
+    expect(await pageUnder()).toEqual(under);
 
     // Esc leaves the popup by sending q, as natively.
     await page.keyboard.press('Escape');
@@ -83,6 +102,9 @@ test.describe('好讀 functionMode（scenario 重放）', () => {
     // 'resume'：回好讀長頁，footer overlay 復現。
     expect(await page.evaluate(() => window.__app.view.useEasyReadingMode)).toBe(true);
     await expect.poll(() => lastRowDisplay(page)).toBe('block');
+    clearInterval(watch);
+    expect(sawHelp).toBe(false);
+    expect(await pageUnder()).toEqual(under);
   });
 
   test('r → 「回應至」（functionMode）→ q 取消，乾淨退出不卡死', async ({ page }) => {
@@ -111,64 +133,77 @@ test.describe('好讀 functionMode（scenario 重放）', () => {
     else expect(await lastRowDisplay(page)).toBe('none');
   });
 
-  test(':5 往回跳不重複累積、捲到落點；`/` 只提示瀏覽器搜尋、Ctrl+F 不送 ^F', async ({ page }) => {
+  test('`/` only hints at the browser find, Ctrl+F sends no ^F, and `:` is refused with a message', async ({ page }) => {
     test.skip(!seekback, '缺 scn-er-seekback（yarn record:scenarios）');
-    await bootScenario(page, ptt, seekback,);
-    const fed = await openAndAccumulate(page, seekback);
+    await bootScenario(page, ptt, seekback);
+    await openAndAccumulate(page, seekback);
     const rowTexts = () =>
       page.evaluate(() =>
         window.__app.buf.pageLines.map((r) => r.map((c) => c.ch).join('').replace(/\s+$/, ''))
       );
     const before = await rowTexts();
-    const accEnd = await page.evaluate(() => window.__app.view._accEndRow);
     expect(before.length).toBeGreaterThan(40);
-
-    // ---- `/`：本地提示，不送 PTT、不進 functionMode ----
     const sentBefore = await page.evaluate(() => window.__replay.sent.length);
+    const sigBefore = await page.evaluate(() => window.__app.easyReading._currentPageSignature());
+
+    // `/`: a local hint, nothing goes to PTT, no native mirror.
     await ptt.sendKey(page, 'Slash');
     await expect(page.locator('.ListHint')).toContainText(/Ctrl\+F|⌘F/);
     expect(await fnMode(page)).toBe(false);
 
-    // ---- Ctrl+F：不送 ^F（pmore 的 ^F 會移頁指標） ----
-    const sigBefore = await page.evaluate(() => window.__app.easyReading._currentPageSignature());
+    // Ctrl+F: no ^F (pmore's ^F would move the page pointer).
     await ptt.sendKey(page, 'Control+f');
-    // 柵欄：下一個 `:` 必定會送出；等它出現在送出紀錄，再斷言它前面什麼都沒有。
-    await ptt.sendKey(page, ':');
-    await waitFed(page, fed + 1);
-    const sent = await page.evaluate((k) => window.__replay.sent.slice(k), sentBefore);
-    expect(sent.join('')).not.toContain('/');
-    expect(sent.join('')).not.toContain('\x06');
-    expect(sent[0]).toBe(':');
-    expect(await page.evaluate(() => window.__app.easyReading._currentPageSignature())).toBe(sigBefore);
 
-    // ---- :5 往回跳 ----
-    await expect.poll(() => fnMode(page)).toBe(true);
-    await ptt.typeLine(page, '5');
-    // 落點那一幀＋realign（:<文末>\r）都餵完、functionMode 退出、_accEndRow 回到文末。
-    await waitFed(page, seekback.steps.length);
-    await page.waitForFunction(
-      (end) => {
-        const a = window.__app;
-        return (
-          a.easyReading._functionMode === false &&
-          !a.buf.easyReadingHealInFlight &&
-          a.view._accEndRow === end &&
-          !a.buf.timerUpdate &&
-          !a.buf._settleTimer
-        );
-      },
-      accEnd
-    );
-    // 修前症狀：_accEndRow 倒退 ⇒ 自動翻頁把已累積的內容重複接到尾巴。素材已全部餵完，
-    // 若有人再送 PageDown 只會落空——直接檢查它沒送。
-    const after = await rowTexts();
-    expect(after).toEqual(before);
-    const extra = await page.evaluate(() => window.__replay.sent.join(''));
-    expect(extra.split('\x1b[6~').length - 1).toBe(
-      seekback.steps.filter((s) => s.on === 'pagedown').length
-    );
-    const top = await page.evaluate(() => window.__app.view.mainDisplay.scrollTop);
-    const chh = await page.evaluate(() => window.__app.view.chh);
-    expect(top).toBeLessThan(chh * 12);
+    // `:` (go to a line) is a PTT prompt easy reading does not present (#160):
+    // refused with a message, shown even with status hints off.
+    await ptt.applyPrefs(page, { showStatusHints: false });
+    await ptt.sendKey(page, ':');
+    await expect(page.locator('.ListHint')).toContainText('好讀模式目前不支援這個按鍵');
+    await expect(page.locator('.ListHint')).toHaveAttribute('data-level', 'error');
+    expect(await fnMode(page)).toBe(false);
+    expect(await page.evaluate((k) => window.__replay.sent.slice(k), sentBefore)).toEqual([]);
+    expect(await page.evaluate(() => window.__app.easyReading._currentPageSignature())).toBe(sigBefore);
+    expect(await rowTexts()).toEqual(before);
+
+    // Ctrl+R (PTT's reply to a message) and Alt+R, its alias, likewise.
+    for (const key of ['Control+r', 'Alt+r']) {
+      await page.evaluate(() => {
+        const el = document.querySelector('.ListHint');
+        if (el) el.textContent = '';
+      });
+      await page.keyboard.press(key);
+      await expect(page.locator('.ListHint')).toContainText('好讀模式目前不支援這個按鍵');
+      expect(await fnMode(page)).toBe(false);
+      expect(await page.evaluate((k) => window.__replay.sent.slice(k), sentBefore)).toEqual([]);
+    }
+  });
+
+  test('pasted and input-method text over the article is refused; a footer button for an unpresented function too', async ({ page, context }) => {
+    test.skip(!seekback, '缺 scn-er-seekback（yarn record:scenarios）');
+    await bootScenario(page, ptt, seekback);
+    await openAndAccumulate(page, seekback);
+    await ptt.applyPrefs(page, { showStatusHints: false });
+    const sentBefore = await page.evaluate(() => window.__replay.sent.length);
+    const refused = async (text) => {
+      await expect(page.locator('.ListHint')).toContainText(text);
+      await expect(page.locator('.ListHint')).toHaveAttribute('data-level', 'error');
+      expect(await fnMode(page)).toBe(false);
+      expect(await page.evaluate((k) => window.__replay.sent.slice(k), sentBefore)).toEqual([]);
+      await expect.poll(() => lastRowDisplay(page)).toBe('block');
+    };
+
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await pasteText(page, '#1abCDeFG');
+    await refused('好讀模式目前不支援在文章貼上文字');
+
+    await page.locator('#t').focus();
+    await imeSetComposition(page, '測');
+    await imeCommit(page, '測試');
+    await refused('好讀模式目前不支援在文章輸入文字');
+
+    // A function-key button of the footer, for a function easy reading does
+    // not present (switch board).
+    await page.evaluate(() => window.__app.onFunctionKey('s'));
+    await refused('好讀模式目前不支援這個按鍵');
   });
 });

@@ -815,7 +815,7 @@ API**，唯一入口就是原生選單 ⇒ 依本檔「手勢與瀏覽器返回�
 | 標註 | `screen_annotations.js#applyFunctionKeys` | 把結果掛進 `result[row].fnKeys`（**只寫 `result`，不碰 `base`**） |
 | 渲染 | `render/link_segment.js` | `a.fnKey` 分支，開/關邊界與 mention 同一套舞步 |
 | 送鍵漏斗 | `App.onFunctionKey(bytes, label)` | 唯一入口，形狀比照 `onPasteDone` |
-| 決策（純函式） | `src/js/function_key_plan.js` | `functionKeyClickPlan({bytes, mode})` |
+| 決策（純函式） | `src/js/function_key_plan.js` | `functionKeyClickPlan({bytes, mode, nativeMirror})` |
 
 **pttbbs 校準**（逐條查證，非畫面反推）：
 
@@ -871,7 +871,7 @@ API**，唯一入口就是原生選單 ⇒ 依本檔「手勢與瀏覽器返回�
 1. `modalShown` → return（元素層 listener 早跑，`mouse_click` 攔不到，見上方優先權表）
 2. `serializedOpHint`（AID 跳文／長推文在途）→ 提示後 return。條件與提示文字是**四條送字入口共用**的述詞（`serialized_op_gate.js`：另三條是 `term_view.onKeyDown`／`onTextInput`、`App.onPasteDone`）
 3. `listSession.onFunctionKey(bytes)` 回 true → 它接手了（v5 封閉互動，見下）
-4. `functionKeyClickPlan` → 文章好讀時**先** `_enterFunctionMode()` 再送 byte
+4. `functionKeyClickPlan` → 文章好讀時：說明／回應按鈕**先** `_enterFunctionMode()` 再送 byte；其餘按鈕**拒絕**（不送、不鏡像，顯示「好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）」，#160）；已鏡像原生 prompt 時（`nativeMirror`）照送
 5. `commandQueue.inFlightKind` → 提示後 return
 6. `view._send(bytes)`
 
@@ -1132,7 +1132,7 @@ motion / drag 回報、中鍵與右鍵回報、水平滾輪（xterm 66/67）、D
 | `tests/unit/i18n_parity.test.js` | 兩語系 key 集合一致 |
 | `tests/unit/footer_keys.test.js` | 功能鍵解析：單鍵可點／**複合鍵拆 atom（`tokenizeKeyGroup` 的全有全無清單）**／具名鍵 byte／**DBCS 欄位換算**／`functionKeyRows` |
 | `tests/unit/screen_fnkeys_render.test.js` | `a.fnKey` 的屬性、`onClick`、與部分底色共存、沒給 `fnKeys` 時 DOM 逐字不變 |
-| `tests/unit/function_key_click_plan.test.js` | 文章好讀先進 functionMode／`←` 走 stopEasyReading |
+| `tests/unit/function_key_click_plan.test.js` | 文章好讀：說明／回應先進 functionMode、其餘按鈕拒絕（#160）／`←` 走 stopEasyReading |
 | `tests/unit/list_function_key.test.js` | 列表好讀的 `onFunctionKey` / `onMouseExitClick`（白名單走 reducer、其餘拒絕並給提示、忙碌時給忙碌提示） |
 | `tests/unit/screen_dirty_rows.test.js` | 切 pref 後按鈕真的出現／消失（`annotationsKey` 的回歸鎖，兩條分支各一） |
 | `tests/unit/mouse_dblclick_skip.test.js` | 第二次 mousedown 不得 `preventDefault`（雙擊選字） |

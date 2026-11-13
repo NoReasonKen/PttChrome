@@ -19,6 +19,9 @@
 // 左方向鍵。與 term_keyboard 的 KeyMap['ArrowLeft'] 同一個序列；
 // list_session._enqueueLeaveKey 用的也是它。
 export const LEFT_ARROW = '\x1b[D';
+// 與 easy_reading.ARTICLE_NATIVE_KEYS 同一組（這個檔零相依，所以各寫一份；
+// tests/unit/function_key_click_plan.test.js 守護兩份一致）。
+export const NATIVE_KEYS = 'hH?yYrR';
 
 // mode：'article-easy'（文章好讀，累積長頁在畫面上）／其餘一律當原生處理。
 export function functionKeyClickPlan(input) {
@@ -26,6 +29,12 @@ export function functionKeyClickPlan(input) {
   const bytes = o.bytes;
   const articleEasy = o.mode === 'article-easy';
   if (!bytes) return { enterFunctionMode: false, stopEasyReading: false, send: false };
+  // 文章好讀沒有呈現的功能（#160）：不送，呼叫端顯示「目前不支援」。說明
+  // （h／H／?，說明選單彈窗接手）與回應（y／Y／r／R，等好讀有回應入口）保留原生路線。已經鏡像原生 prompt
+  // （nativeMirror）時照送：那是使用者正在操作的 PTT 畫面。
+  if (articleEasy && !o.nativeMirror && bytes !== LEFT_ARROW && !(bytes.length === 1 && NATIVE_KEYS.indexOf(bytes) >= 0)) {
+    return { enterFunctionMode: false, stopEasyReading: false, send: false, refuse: true };
+  }
   if (!articleEasy) {
     return { enterFunctionMode: false, stopEasyReading: false, send: true };
   }

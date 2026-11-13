@@ -20,6 +20,7 @@ const {
 } = require('../helpers/replay');
 // 滾輪 smoke 會量 rect 又會動指標 ⇒ 版面穩定契約要求走這個模組
 // （tests/unit/e2e_layout_settle.test.js 靜態守護）。
+const { drawHelpPage } = require('../helpers/help_menu');
 const { waitRectStable, waitScrollStable } = require('../helpers/layout');
 const {
   pasteText,
@@ -377,12 +378,181 @@ test.describe('文章列表好读模式（离线）', () => {
         const el = document.querySelector('.ListHint');
         if (el) el.textContent = '';
       });
+      // A soft keyboard delivers keys as text: one typed character is the key
+      // it names (`h` below, `k` and `j` at the end).
+      // Text right after an Alt combination is dropped as a dead-key product
+      // (term_view.altRemapRecently); the Alt+t above is long past for a reader.
+      await page.evaluate(() => {
+        window.__app.view._altRemapAt = 0;
+      });
       const sentBefore = await page.evaluate(() => window.__replay.sent.length);
-      await page.keyboard.press('h');
+      await imeCommit(page, 'h');
       await expect
         .poll(() => page.evaluate((k) => window.__replay.sent.slice(k).join(''), sentBefore))
         .toContain('h');
       await expect(page.locator('.ListHint')).not.toContainText(UNSUPPORTED_KEY);
+      // The list stays on screen under the help menu sheet: PTT's help screen
+      // is never painted.
+      // The caption names the screen help was asked from: the article list's,
+      // not 【我的最愛】 (a board-list title, which leaves the list).
+      await drawHelpPage(page, 1, { caption: '文章列表' });
+      await expect(page.locator('[data-help-item]').first()).toBeVisible();
+      await expect(page.locator('.listBodyView')).toHaveCount(1);
+      expect(await page.evaluate(() =>
+        document.getElementById('mainContainer').textContent.includes('操作說明 (Help)'))).toBe(false);
+
+      // Leaving the help menu: the list is back in the same frame, PTT's own
+      // list is never shown between.
+      await page.evaluate(() => {
+        window.__nativeShown = false;
+        const tick = () => {
+          const app = window.__app;
+          if (!app.helpMenu.holding && app.buf.listRenderMode === 'native') window.__nativeShown = true;
+          window.__nativeTick = requestAnimationFrame(tick);
+        };
+        tick();
+      });
+      await page.keyboard.press('Escape');
+      await expect(page.locator('[data-help-item]')).toHaveCount(0);
+      // PTT answers the leave with its list redrawn as it stood: the cassette's
+      // bytes fed so far, replayed as one frame.
+      await page.evaluate((recv) => {
+        const d = recv.slice(0, window.__replay.fed).map((r) => atob(r)).join('');
+        window.__app.onData(d);
+      }, nav.steps.map((st) => st.recv));
+      await waitState(page, (x) => x.state === 'active' && x.renderMode === 'buffer');
+      expect(await page.evaluate(() => {
+        cancelAnimationFrame(window.__nativeTick);
+        return window.__nativeShown;
+      })).toBe(false);
+      await expect(page.locator('.listBodyView')).toHaveCount(1);
+
+      // Typed navigation keys move the selection instead of being refused as text.
+      const selBefore = await page.evaluate(() => window.__app.listSession._selectedNum);
+      await imeCommit(page, 'k');
+      await expect
+        .poll(() => page.evaluate(() => window.__app.listSession._selectedNum))
+        .toBe(selBefore - 1);
+      await imeCommit(page, 'j');
+      await expect
+        .poll(() => page.evaluate(() => window.__app.listSession._selectedNum))
+        .toBe(selBefore);
+      await expect(page.locator('.ListHint')).not.toContainText('好讀模式目前不支援');
+    } catch (e) {
+      console.log('--- console tail ---');
+      for (const l of logs.slice(-25)) console.log(l);
+      throw e;
+    }
+  });
+
+  // The owner's report: right after the help menu sheet closed, the list showed
+  // another scroll position for an instant and then jumped back. The reader
+  // scrolled away from where the list landed; that view must survive the visit.
+  test('leaving the help menu keeps the list where the reader scrolled it, every frame', async ({ page }) => {
+    test.setTimeout(60000);
+    const logs = ptt.attachConsole(page);
+    try {
+      await bootOffline(page, ptt);
+      await ptt.applyPrefs(page, { enableEasyReading: false });
+      await replayListCassette(page, nav);
+      await page.waitForFunction(() => window.__app.buf.pageState === 2);
+      // A buffer taller than the viewport, so the reader has somewhere to scroll.
+      await ptt.applyPrefs(page, {
+        enableEasyReading: true,
+        easyReadingListPrefetchCount: 30
+      });
+      await waitState(page, (x) => x.state === 'active' && x.listLen > 30 && x.queueIdle, 20000);
+
+      // What the reader sees: the list's scroll offset and its first visible article.
+      await page.evaluate(() => {
+        window.__viewOf = () => {
+          const v = document.querySelector('#mainContainer .listBodyView');
+          if (!v) return { scrollTop: null, firstNum: null };
+          const top = v.getBoundingClientRect().top;
+          let firstNum = null;
+          for (const el of v.querySelectorAll('[data-type="bbsline"]')) {
+            if (el.getBoundingClientRect().bottom <= top + 1) continue;
+            const m = /^[>\s]*(\d+)/.exec(el.textContent);
+            firstNum = m ? Number(m[1]) : el.textContent.trim().slice(0, 12);
+            break;
+          }
+          return { scrollTop: Math.round(v.scrollTop), firstNum };
+        };
+      });
+      const landed = await page.evaluate(() => window.__viewOf());
+
+      // The reader scrolls the list (native scrolling: the selection stays).
+      await page.evaluate(() => {
+        const v = document.querySelector('#mainContainer .listBodyView');
+        v.scrollTop -= 7 * window.__app.view.chh + 3;
+      });
+      await nextFrames(page);
+      await waitState(page, (x) => x.queueIdle);
+      // The background fill moved PTT's cursor, and its last page-up went
+      // unanswered (the cassette ran out), so the session no longer knows where
+      // that cursor is. Select the row the terminal shows it on, and teach the
+      // session it stands there: `h` then goes out without a cursor sync first
+      // (this replay cannot answer one).
+      await page.evaluate(() => {
+        const app = window.__app;
+        const ls = app.listSession;
+        const num = Number(/^\D?\s*(\d+)/.exec(app.buf.getRowText(app.buf.cur_y, 0, app.buf.cols))[1]);
+        ls._selectedNum = num;
+        ls._serverNum = num;
+        ls._selectedPinnedKey = null;
+        ls._forceRedraw();
+      });
+      await nextFrames(page);
+      await waitState(page, (x) => x.queueIdle);
+      const before = await page.evaluate(() => window.__viewOf());
+      expect(before.firstNum).not.toBeNull();
+      expect(before.firstNum).not.toBe(landed.firstNum);
+
+      await page.locator('#t').focus();
+      await imeCommit(page, 'h');
+      await drawHelpPage(page, 1, { caption: '文章列表' });
+      await expect(page.locator('[data-help-item]').first()).toBeVisible();
+
+      // Every frame from the leave until the list is back (and a few after).
+      await page.evaluate(() => {
+        window.__helpFrames = [];
+        let after = -1;
+        const tick = () => {
+          const app = window.__app;
+          const ls = app.listSession;
+          window.__helpFrames.push(Object.assign(window.__viewOf(), {
+            state: ls.state,
+            mode: app.buf.listRenderMode,
+            holding: app.helpMenu.holding,
+            listLen: (app.buf.listLines || []).length
+          }));
+          if (after < 0 && ls.state === 'active' && app.buf.listRenderMode === 'buffer') after = 0;
+          if (after >= 0 && ++after > 8) return;
+          requestAnimationFrame(tick);
+        };
+        tick();
+      });
+      await page.keyboard.press('Escape');
+      await expect(page.locator('[data-help-item]')).toHaveCount(0);
+      // PTT answers the leave with its whole list redrawn as it stood: the
+      // cassette's bytes fed so far, then its last full page again (a jump's
+      // answer clears the bottom line, which holds the list's footer).
+      await page.evaluate((steps) => {
+        const fed = steps.slice(0, window.__replay.fed);
+        const full = fed.filter((st) => st.on === 'start' || st.on === 'pageup' || st.on === 'back');
+        const d = fed.concat(full.slice(-1)).map((st) => atob(st.recv)).join('');
+        window.__app.onData(d);
+      }, nav.steps.map((st) => ({ on: st.on, recv: st.recv })));
+      await waitState(page, (x) => x.state === 'active' && x.renderMode === 'buffer');
+      await page.waitForFunction(() => {
+        const f = window.__helpFrames;
+        return f.length > 8 && f.slice(-9).every((x) => x.state === 'active' && x.mode === 'buffer');
+      });
+      const frames = await page.evaluate(() => window.__helpFrames);
+      const moved = frames.filter(
+        (f) => f.firstNum !== before.firstNum || Math.abs(f.scrollTop - before.scrollTop) > 1
+      );
+      expect(moved, JSON.stringify({ before, frames })).toEqual([]);
     } catch (e) {
       console.log('--- console tail ---');
       for (const l of logs.slice(-25)) console.log(l);

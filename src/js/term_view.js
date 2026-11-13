@@ -123,6 +123,19 @@ const EMPTY_PINNED_MAP = new Map();
 // 六處，各自推導一次就是遲早漏一處的靜默錯畫。
 // 寫成吃 core 的模組層純函式而不是 prototype 方法：好幾支 unit 測試是用
 // `TermView.prototype.onKeyDown.call(plainCtx, …)` 呼叫的，`this` 上沒有方法。
+// One printable ASCII character: text a keyboard key produces.
+export function isTypedKey(text) {
+  return typeof text === 'string' && text.length === 1 && text >= ' ' && text <= '~';
+}
+
+// An easy-reading page (list buffer or article) answers keys itself; false
+// under a native mirror, where typed text belongs to PTT's prompt.
+function easyReadingOwnsKeys(view) {
+  if (listOwnerOf(view.bbscore)) return true;
+  return !!(view.useEasyReadingMode && view.buf && view.buf.startedEasyReading &&
+    !view.buf.easyReadingFunctionMode);
+}
+
 function listOwnerOf(core) {
   return core && core.activeListSession ? core.activeListSession() : null;
 }
@@ -1479,6 +1492,13 @@ TermView.prototype = {
         return;
       }
     }
+    // One typed ASCII character over an easy-reading page is the key it names:
+    // a soft keyboard, or an input method in its Latin mode, delivers keys as
+    // text, and the page answers them as it answers the hardware key.
+    if (!isPasting && isTypedKey(text) && easyReadingOwnsKeys(this)) {
+      this.sendKeyAsUser(text);
+      return;
+    }
     // 推文鍵的第三條入口：IME。中文輸入法開著時 keydown 的 keyCode 是 229，被
     // keyEventFilter 擋在 onKeyDown 之外，字改從 input 事件進到這裡 ⇒ 少了這道，
     // 「IME 開著按 X」會得到原生推文、關掉才是長推文，行為不一致（easy_reading.js
@@ -1514,8 +1534,8 @@ TermView.prototype = {
     var textOwner = listOwnerOf(this.bbscore);
     if (!isPasting && textOwner && textOwner.noteTextInput(text))
       return;
-    if (this.bbscore.easyReading)
-      this.bbscore.easyReading.noteTextInput();
+    if (this.bbscore.easyReading && this.bbscore.easyReading.noteTextInput(text, isPasting))
+      return;
     // Normalization lives in string_util.normalizePasteText so the list easy
     // reading paste route (ListSession.onPaste → CommandQueue) sends byte-for-
     // byte the same thing this native route does.
@@ -1999,7 +2019,8 @@ TermView.prototype = {
     var app = this.bbscore;
     return !!(app && ((app.aidNavigation && app.aidNavigation.active) ||
       (app.articleShortcutSearch && app.articleShortcutSearch.active) ||
-      (app.boardNoteSkip && app.boardNoteSkip.active)));
+      (app.boardNoteSkip && app.boardNoteSkip.active) ||
+      (app.helpMenu && app.helpMenu.holding)));
   },
 
   // The list easy-reading branch of redraw owns this frame. Article frames

@@ -916,6 +916,9 @@ export function ListSession(core, view, termBuf, queue) {
   // { topNum, topPinnedKey, scrollFrac, boardName, mode, cursorNum, matchBoardOnly, at } / null。
   // 見 _adoptPendingViewport / _tryApplyPendingViewport、docs/reading-record.md。
   this._pendingViewport = null;
+  // The list's board when help was asked for (_beginHelp): the native excursion
+  // clears _boardName, and a closed help sheet gives it back (resumeAfterHelp).
+  this._helpBoard = null;
   // 採用原生落點時那一頁的最後一列（{ num, pinnedKey }）。下一次 applyScrollAfterRender
   // 用 landingTopPos 把視口調到游標可見（手機卡片一屏放不下原生一頁）後清掉。
   this._landingFit = null;
@@ -1437,6 +1440,28 @@ ListSession.prototype = {
     this._scheduleResumeProbe();
   },
 
+  // The help menu was left without running an item (help_menu.noteScreen): the
+  // frame that settled is PTT's list again, so it is measured now instead of
+  // after the idle probe's wait. Anything else on screen stays with the probe.
+  // listKept: the help sheet over this list was closed, so PTT saw only help
+  // keys and its list is the one the reader still sees. The rows held are
+  // kept (the board name the native excursion cleared comes back, so the
+  // resume does not rebuild from PTT's single page): the reader's view is
+  // still in them, and the reading record's restore that follows applies it
+  // in the same frame. A rebuild would show PTT's page first and the view only
+  // once the rows around it were fetched again.
+  resumeAfterHelp: function(listKept) {
+    const board = this._helpBoard;
+    this._helpBoard = null;
+    if (this.state !== 'functionMode' || this._holdReason !== 'passthrough') return;
+    this._cancelResumeProbe();
+    if (listKept && board != null) this._boardName = board;
+    this._tryResumeProbe(true);
+    // Not back on the list (PTT shows something else): the native excursion
+    // rule holds again, and whatever brings the list back rebuilds it.
+    if (this.state === 'functionMode') this._boardName = null;
+  },
+
   // 閱讀紀錄（reading_record）的列表量測：使用者現在看到的視野。
   //   { kind:'list', board, mode, topNum, topPinnedKey, scrollFrac, cursorNum }
   // 視口在 DOM 上 ⇒ 從 scrollTop 現場換算（不改任何欄位；重繪前的錨可能落後於
@@ -1739,6 +1764,9 @@ ListSession.prototype = {
   _beginHelp: function() {
     // The native excursion asks PTT for the list anew (#125).
     this._spendLayer('nativePassthrough');
+    this._helpBoard = this._boardName;
+    // The list stays on screen under the sheet (help_menu.expect).
+    this._core.helpMenu?.expect();
     this._beginPassthroughBytes('h', { kind: 'help', hint: null });
   },
 
@@ -2039,7 +2067,8 @@ ListSession.prototype = {
 
   // Text committed by an input method over the list (compositionend →
   // term_view.onTextInput). It is not a key: the IME's keydown never reaches
-  // onKeyDown. true = taken over.
+  // onKeyDown. true = taken over. One typed ASCII character never comes here:
+  // term_view.onTextInput hands it to onKeyDown as the key it is.
   noteTextInput: function() {
     return this._refuseText('text');
   },
