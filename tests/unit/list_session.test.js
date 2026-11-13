@@ -1959,22 +1959,15 @@ describe("_lastReadTitle 生命週期（last-read 高亮的 currtitle 鏡像）"
   });
 });
 
-describe("passthrough 快路徑——server 游標已同步時跳過 sync-jump 腿", () => {
-  // 非白名單鍵的 passthrough（切原生＋代送）在游標已同步時不必再 jump——
-  // 一個 round-trip 都不花，直接切原生代送（保留舊 relative 快路徑語意）。
-  const pkey = (key) => ({
-    key,
-    ctrlKey: false,
-    altKey: false,
-    metaKey: false,
-    preventDefault() {},
-  });
+describe("_beginPassthroughBytes fast path — server 游標已同步時跳過 sync-jump 腿", () => {
+  // PttChrome's own serialized sequence (search, mark read, refresh) skips the
+  // jump when the real cursor is already on the selection: no round trip.
   test("seed 落點（server 游標=選取）後按 ] → 免 sync 腿、切原生＋native-key 單腿", () => {
     const { s, enqueued } = demandSession({ count: 20, numStart: 100 });
     s._view.flashListHint = () => {};
     s._seed(pageFacts(100, 115)); // server 游標=115=選取
     enqueued.length = 0;
-    s._beginNativePassthrough(pkey("]"));
+    s._beginPassthroughBytes("]");
     expect(enqueued.length).toBe(1);
     expect(enqueued[0].kind).toBe("native-key");
     expect(enqueued[0].keys).toBe("]");
@@ -1988,7 +1981,7 @@ describe("passthrough 快路徑——server 游標已同步時跳過 sync-jump �
     s._seed(pageFacts(100, 115));
     s._selectedNum = 110; // 本地移動，server 游標仍在 115
     enqueued.length = 0;
-    s._beginNativePassthrough(pkey("]"));
+    s._beginPassthroughBytes("]");
     expect(enqueued[0].kind).toBe("native-sync-jump");
     expect(enqueued[0].keys).toBe("110\r");
     expect(enqueued.length).toBe(1); // sync 完成前不得送鍵
@@ -2013,7 +2006,7 @@ describe("passthrough 快路徑——server 游標已同步時跳過 sync-jump �
     const page = enqueued[enqueued.length - 1];
     page.onDone({ moved: true, landed: 160 }); // server 游標=160
     enqueued.length = 0;
-    s._beginNativePassthrough(pkey("]"));
+    s._beginPassthroughBytes("]");
     expect(enqueued[0].kind).toBe("native-sync-jump");
   });
 });

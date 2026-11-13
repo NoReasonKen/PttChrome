@@ -63,7 +63,7 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
     |---|---|---|---|
     | 文章 pager（非信件） | 推文 X | 回文 y | 重整／到底 End／按鍵／更多（更多內：分享、`[` `]` `=` 同主題、`b` `f` 前後篇，`THREAD_NAV_KEYS`） |
     | 信件 pager | （空） | 回信 y | 同上 |
-    | 文章列表（非輸入欄） | 搜尋 | 發文 Ctrl+P（`{key:'p',altKey}` Alt remap，避開瀏覽器列印） | 同上 |
+    | 文章列表（非輸入欄） | 搜尋 | 發文 Ctrl+P（`{key:'p',altKey}` Alt remap，避開瀏覽器列印；列表好讀開著時 Alt+字母＝Ctrl+字母會被拒絕並提示，等發文有好讀入口前要先關好讀） | 同上 |
     | 看板列表／主功能表 | 搜尋 | （空） | 同上 |
     | 其他 | 搜尋（`availableSearchKinds` 非空）或空 | （空） | 同上（重整／到底反灰） |
 
@@ -77,7 +77,7 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
     搜尋**直接開搜尋彈窗**（預設第一個可用種類，無子選單；見 `docs/article-search.md`）。分享＝`deep_link_controller.shareCurrentPostLink(title)`（與複製本篇連結同一條 AID 解析；`navigator.share`，AbortError＝完成，其他拒絕／無 API 退回複製；**click 內同步呼叫**）。
     更多＝bottom sheet（見「Bottom sheet」）：外部搜尋（**選取模式開＋有選取**才列；選取模式下長按走原生選單，
     我們的長按選單出不來。選取在工具列 `pointerdown` 當下記住——tap 收尾時瀏覽器可能先清選取才發 click）／
-    跳到第一篇未讀／設為全部已讀（文章列表才有）／操作說明（底列有 `(h)說明` 才有、主功能表不給（同 `contentTools`），送 h；底列在卡片／好讀文章
+    跳到第一篇未讀／設為全部已讀（文章列表才有）／操作說明（底列有 `(h)說明` 才有、主功能表不給（同 `contentTools`），送 h（列表好讀開著時 `h` 被拒絕並提示，#159）；底列在卡片／好讀文章
     畫面被收起、點不到原生提示，見 `docs/help-menu.md`）／分享／文章導覽／選取模式／全選／
     上傳圖片＋圖片上傳紀錄（跟 `enableImageUpload`，開 sheet 時現讀；全選與這兩項主功能表不給＝`contentTools`，
     那裡沒內容可選、上傳只能退回剪貼簿，卻會把 sheet 撐到蓋住整個選單）／設定／登出（inline 二段確認，`LOGOUT_CONFIRM_MS` 無動作自動收回）。

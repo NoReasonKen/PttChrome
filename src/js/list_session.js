@@ -36,10 +36,7 @@ import { clickableColStart } from './mouse_regions';
 import {
   parseStatusRow,
   isMoviePromptRow,
-  parseListRow,
-  u2b,
-  ansiHalfColorConv,
-  normalizePasteText
+  parseListRow
 } from './string_util';
 import {
   keyEventToBytes,
@@ -441,12 +438,10 @@ export function transitionListSession(state, event) {
             // resume: MODE_SELECT exit / thread hops land back on a list).
             return { next: 'functionMode', actions: ['begin-leave'] };
           case 'passthrough':
-            // One-key native passthrough (2026-07-10, T3 airlock 退役): any
-            // non-whitelisted key switches to native in ONE press. The caller
-            // (_beginNativePassthrough) runs the optional cursor-sync leg and
-            // the actual enter-function-mode + key send — the reducer only
-            // moves the state so in-flight settles are absorbed and other keys
-            // are swallowed while the sync leg is on the wire.
+            // A serialized sequence of PttChrome's own (_beginPassthroughBytes)
+            // is starting: the caller runs the optional cursor-sync leg and the
+            // sends. The reducer only moves the state so in-flight settles are
+            // absorbed and keys are swallowed meanwhile.
             return { next: 'functionMode', actions: [] };
           case 'native-inplace':
             // A 類鍵（原地重繪，見 INPLACE_KEYS）：**全程不切原生**。借用
@@ -861,6 +856,10 @@ const INPLACE_KEYS = '=\\]+[-<,.>{}t';
 
 // 切原生時提示語的尾巴：做完就回來。每一處切原生的 hint 都用這一句，不要再各自寫死字串。
 const NATIVE_RESUME_HINT = '（操作完成後自動恢復好讀）';
+// Easy reading keeps only the keys of the features it presents (#159).
+const UNSUPPORTED_KEY_HINT = '好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）';
+const UNSUPPORTED_PASTE_HINT = '好讀模式目前不支援在列表貼上文字';
+const UNSUPPORTED_TEXT_HINT = '好讀模式目前不支援在列表輸入文字';
 const RETRY_HINT = '，下拉重新整理以重試';
 const FAILED_KEY_HINT = '列表操作失敗：下拉重新整理以重試';
 // 看板列表按 `v` ＝ b_mark_read_unread（mbbsd/bbs.c:4309）：畫面下方跳出 getdata
@@ -879,8 +878,6 @@ function markReadRejected(rowTexts) {
 // → rebuild → 往上補頁」整段；過了還沒套用就放棄，免得很久以後的某次補頁突然
 // 把畫面拉走。
 const PENDING_VIEWPORT_MAX_MS = 10000;
-// (2026-07-10) [ ] = / v / `/` 模擬交易與 T3 airlock 皆退役：非白名單鍵一律
-// 走 _beginNativePassthrough（有序號選取先 sync-jump，再切原生鏡像＋代送）。
 
 // Owner of list easy reading. Subscribes to term_buf 'screenSettled' and runs:
 //   settle → snapshot+facts → queue.onSettle (command completion first)
@@ -957,8 +954,6 @@ export function ListSession(core, view, termBuf, queue) {
   // reset only on cleanup — currtitle is per-login global on the server, so
   // seed/rebuild/board changes keep it (frames re-teach on any drift).
   this._lastReadTitle = null;
-  // (2026-07-10) T3 airlock（同鍵二連擊）與 T2 mark/search 模擬皆退役：非白名單
-  // 鍵一律走 _beginNativePassthrough（sync → 切原生 → 代送），單按即生效。
   // Sticky native excursion，兩種語意（reducer 透過 _settleEvent.holdReason 讀）：
   //   'passthrough' 非白名單鍵／自癒降級 —— 操作做完後由靜置探針自動回好讀
   //   'external'    aid_navigation／long_push 的多步序列停泊 —— **永不自動解除**
@@ -1624,16 +1619,13 @@ ListSession.prototype = {
     if (this.state !== 'active') return;
 
     if (altRemap !== null) {
-      // _classifyKey 走不到：keyEventToBytes 對 altKey 一律回 null ⇒ 會被判成
-      // 'ignore'（吞掉、零 server），所以這裡自己攔。刻意排在 state gate **之後**：
-      // opening／frozen 期間與其他鍵一樣被吞掉並給提示，別跟序列化交易搶線路。
-      // **這道攔截排在 _classifyKey 之前是承重的**：j/k/n/p 同時也是導覽白名單的
-      // 同義鍵，順序一反，Alt+J 就會變成「本地把游標往下移一格」而不是送 ^J。
-      // 另注意 _beginPassthroughBytes 的 cursor-sync 腿是**無條件**的、與是哪個
-      // byte 無關 ⇒ 26 個字母全部自動享有（docs §11.7 那張表是說明，不是白名單，
-      // 新增鍵不需要動它）。
+      // Alt+letter is this app's alias for PTT's Ctrl+letter, a PTT command key
+      // like any other: refused (#159). It is caught here because
+      // keyEventToBytes returns null for altKey, which _classifyKey would read
+      // as 'ignore', and before _classifyKey because j/k/n/p are navigation
+      // synonyms there.
       e.preventDefault();
-      this._beginPassthroughBytes(String.fromCharCode(altRemap));
+      this._refuseUnsupported('key');
       return;
     }
 
@@ -1644,10 +1636,11 @@ ListSession.prototype = {
       // sends nothing for these keys anyway.
       return;
     }
-    if (key.class === 'passthrough') {
-      // Non-whitelisted key: one-key switch to native (sync → mirror → send).
-      // preventDefault is decided inside (Ctrl/unmappable keys stay native).
-      this._beginNativePassthrough(e);
+    if (key.class === 'unsupported') {
+      // A PTT command key easy reading has no presentation for: nothing is
+      // sent and the reader is told (#159). The list never shows PTT's screen.
+      e.preventDefault();
+      this._refuseUnsupported('key');
       return;
     }
     e.preventDefault();
@@ -1690,12 +1683,9 @@ ListSession.prototype = {
   // 會不會吃真游標」。內容判準正是前四次復發的來源（每次都得有人記得把新鍵加進表）。
   // 代價只是對「不吃游標的鍵」多跑一次跳號，而那一腿本來就有 `_serverNum` 快路徑。
   //
-  // `opts.conv === true` ＝這一串是 `_convSend` 的 payload：**Unicode 文字，不是
-  // byte**。它必須走會做 `u2b`+`ansiHalfColorConv` 的那條（`_beginTextPassthrough`，
-  // 與 IME／貼上共用），直接丟進 `_beginPassthroughBytes` 送出去的是亂碼——
-  // CommandQueue 的 send 綁的是 raw `conn.send`（不轉碼），見該函式內的註解。
-  // 這條路正常情況走不到（`term_view.onTextInput` 已經先問過 `noteTextInput`），
-  // 是同一張網的文字半邊：冪等，沒接手時再問一次仍是沒接手。
+  // `opts.conv === true` ＝這一串是 `_convSend` 的 payload（Unicode 文字）：與 IME
+  // 同一條路（`noteTextInput`）。正常情況走不到（`term_view.onTextInput` 已經先問過），
+  // 冪等。
   adoptUserBytes: function(bytes, opts) {
     if (!bytes) return false;
     if (opts && opts.conv) {
@@ -1714,64 +1704,32 @@ ListSession.prototype = {
         );
       return true;
     }
-    this._beginPassthroughBytes(bytes);
+    // User bytes that reach the wire exit over the easy-reading list came from
+    // no entrance easy reading presents: refuse them like an unsupported key.
+    this._refuseUnsupported('key');
     return true;
   },
 
-  // One-key native passthrough (2026-07-10; replaces the [ ] = / v / `/`
-  // simulated transactions AND the T3 double-press airlock). Contract: any
-  // non-whitelisted key = sync the REAL cursor to the selection when needed
-  // (cursor-relative native commands act FROM it — [ ] = v; local T1 nav is
-  // zero-network so it lags), then enter-function-mode (native excursion:
-  // invariant 15 drops the cache via _boardName/_serverNum) and send the key
-  // itself. The sync leg is serialized: sending "N\r" + key in one tick trips
-  // pttbbs typeahead (protocol §2 — the old「[ 卡住但其實跳了」bug), so the
-  // key goes out raw only after the jump's park settle. While the leg is on
-  // the wire the reducer already sits in functionMode (keyClass 'passthrough')
-  // over the frozen snapshot — other keys are swallowed with a hint.
-  //
-  // **Ctrl 組合一樣代送**（2026-09-13 修「查詢作者跑去別篇」）：舊碼寫死
-  // `e.ctrlKey ? null : ...`，把所有 Ctrl 組合推進下面的 bytes == null 分支，而那條
-  // 分支不經過 _beginPassthroughBytes ⇒ **跳過 sync 腿**。read.c:904 的 Ctrl('Q') 是
-  // `my_query(headers[crs_ln - top_ln].owner)`，對**真游標那一列**動作；好讀列表的
-  // T1 導覽零網路，真游標通常停在背景 prefetch 的落點 ⇒ 查到別人，退出後選取也被
-  // re-seed 帶走（實測裸送 ^Q 後回的是別人的
-  // my_query）。同類 cursor-relative 鍵：read.c Ctrl-S/T/D。keyEventToBytes 的
-  // ctrlKey 分支本來就算得出 bytes（CtrlShiftMap），舊註解「can't serialize a key we
-  // don't own」的前提早就不成立了。
-  //
-  // Keys that map to NO bytes never get here at all — _classifyKey turns them into
-  // 'ignore' (they would take the same branch and hand over to a native path that
-  // also sends nothing).
-  _beginNativePassthrough: function(e) {
-    // Keys sent in native mode ask PTT for the list anew (#125).
-    this._spendLayer('nativePassthrough');
-    let bytes = keyEventToBytes(e);
-    // A printable non-ASCII char must go out as Big5 (raw UTF-16 = mojibake).
-    // **Ctrl 組合一律不過 u2b**：它們是控制碼（CtrlShiftMap 全 < 0x80），原生鍵盤路徑
-    // 也不轉碼。現在 `> 127` 已擋掉它們，`!e.ctrlKey` 留著表達這條合約（當年表內
-    // 還有 219/220/221 的 keyCode bug 時，它是唯一讓兩條路徑送同一個 byte 的東西）。
-    if (!e.ctrlKey && bytes && bytes.length === 1 && bytes.charCodeAt(0) > 127)
-      bytes = u2b(bytes);
-    if (bytes == null) {
-      // 現在只剩 Ctrl+Shift 組合、以及 Ctrl+數字／Ctrl+F1 這種 CtrlShiftMap 沒對應的
-      // 鍵：算不出 bytes 就沒得序列化代送，只能立刻切鏡像，事件不 preventDefault ⇒
-      // 原生鍵盤路徑緊接著處理這一次按鍵（對它們多半也是不送）。
-      const r0 = transitionListSession(this.state, { type: 'key', keyClass: 'passthrough' });
-      this.state = r0.next;
-      this._enterFunctionMode();
-      if (this._view.flashListHint)
-        this._view.flashListHint('已切至原生操作' + NATIVE_RESUME_HINT, 4000);
-      return;
-    }
-    e.preventDefault();
-    this._beginPassthroughBytes(bytes);
+  // Tells the reader that easy reading does not support what they just did
+  // (a PTT command key, pasted text, typed text). Nothing is sent: easy reading
+  // keeps only the keys of the features it presents itself (#159), and a reader
+  // who wants PTT's own keys turns easy reading off.
+  _refuseUnsupported: function(what) {
+    if (!this._view.flashListHint) return;
+    this._view.flashListHint(
+      what === 'paste'
+        ? UNSUPPORTED_PASTE_HINT
+        : what === 'text'
+          ? UNSUPPORTED_TEXT_HINT
+          : UNSUPPORTED_KEY_HINT,
+      4000,
+      // Shown even with status hints off: a refused key must never be silent.
+      HINT_ERROR
+    );
   },
 
-  // _beginNativePassthrough 的**後半段**，抽出來給滑鼠點功能鍵（onFunctionKey）、
-  // 貼上（onPaste）、IME 送字（noteTextInput）共用。純重構，鍵盤行為一字未改：
-  // 前半段的 keyEventToBytes / preventDefault / Ctrl 組合判斷留在原函式，那些只有
-  // 鍵盤事件才有。
+  // The serialized sequence behind PttChrome's own list operations (search,
+  // mark read, refresh): no user key reaches it (#159).
   //
   // opts.kind / opts.hint 只換佇列命令的診斷名稱與提示措辭；**序列本身**
   //（state transition → cursor sync 腿 → _enterFunctionMode → queue.enqueue）
@@ -1986,8 +1944,8 @@ ListSession.prototype = {
     if (!bytes) return true;
 
     const cls = this._classifyBytes(bytes);
-    if (cls.class === 'passthrough') {
-      this._beginPassthroughBytes(bytes);
+    if (cls.class === 'unsupported') {
+      this._refuseUnsupported('key');
       return true;
     }
     const r = transitionListSession(this.state, { type: 'key', keyClass: cls.class });
@@ -2028,34 +1986,18 @@ ListSession.prototype = {
       case '\r':
         return { class: this._selectedNum == null ? 'open-pinned' : 'open' };
       case LEFT_ARROW: return { class: 'leave' };
-      default: return { class: 'passthrough' };
+      default: return { class: 'unsupported' };
     }
   },
 
-  // 「使用者送了一整串文字給 PTT」的共用主體：貼上（onPaste）與 IME 送字
-  // （noteTextInput）都走這裡。回 true ＝本 session 已接手（呼叫端**不得**再送）。
-  //
-  // Shape is exactly the T3 one-key passthrough (_beginNativePassthrough), only
-  // the payload is a whole string instead of one key's bytes: sync the real
-  // cursor when it lags the selection, switch to the native mirror, then send.
-  // Two reasons it can't just go raw down view.onTextInput like it used to:
-  //   - un-serialized bytes race whatever prefetch/jump is in flight (pttbbs
-  //     typeahead swallows repaints — protocol §2);
-  //   - in buffer mode the screen shows the accumulated list, so the prompt PTT
-  //     draws in response is INVISIBLE until some later settle trips the
-  //     catch-all. Users read that as "nothing happened" (貼上會再貼一次 →
-  //     #1gIeu-3A1gIeu-3A → 找不到文章；IME 則讀成「整個畫面卡住」).
-  // What PTT then does with the text is left entirely native — no AID parsing,
-  // no synthesized Enter. `#` opens 搜尋文章代碼(AID): # and waits for Enter,
-  // and on success only MOVES the cursor (pttbbs read.c#select_by_aid); a
-  // pasted trailing newline submits it, exactly as in a real terminal.
-  //
-  // opts.normalize ＝要不要先套 normalizePasteText（**貼上專屬**的換行／折行
-  // 正規化；IME 送的是剛組完的一段字，沒有多行語意，套了會憑空多出 Enter）。
-  _beginTextPassthrough: function(text, opts) {
+  // Text aimed at the list (paste, IME): easy reading presents no place to
+  // type it into, so it is refused (#159). true = taken over, the caller must
+  // not send it.
+  _refuseText: function(what) {
+    // Not engaged (native mirror, article, menu): the ordinary send path owns
+    // the text.
+    if (this._renderMode !== 'buffer' && this._renderMode !== 'frozen') return false;
     if (this.state === 'opening') {
-      // Same rule as onKeyDown: the serialized open owns the wire. Never
-      // silent — a swallowed paste with no feedback is the original bug.
       if (this._view.flashListHint)
         this._view.flashListHint('好讀列表：開啟文章中，請稍候…');
       return true;
@@ -2065,49 +2007,22 @@ ListSession.prototype = {
         this._view.flashListHint(this._busyText());
       return true;
     }
-    // Native mirror (or not engaged at all): this hook doesn't own keys there,
-    // and a text payload is no different — the ordinary convSend path is correct.
     if (this.state !== 'active') return false;
-
-    // CommandQueue's send is bound to the RAW conn.send (pttchrome.jsx), not
-    // conn.convSend, so the Big5 conversion that convSend would have done has
-    // to happen here — same two steps, same order (telnet.js#convSend).
-    const src = opts.normalize
-      ? normalizePasteText(text, this._view.lineWrap)
-      : text;
-    const keys = ansiHalfColorConv(u2b(src));
-    if (!keys) return false; // empty/unconvertible: don't burn a native switch
-
-    this._beginPassthroughBytes(keys, opts); // ← 共用序列（sync 腿也在裡面）
+    this._refuseUnsupported(what);
     return true;
   },
 
   // Paste (Shift-Insert / context menu / middle click), routed here from
-  // App.onPasteDone — the single funnel every paste route already goes through.
-  onPaste: function(text) {
-    return this._beginTextPassthrough(text, {
-      normalize: true,
-      kind: 'native-paste',
-      hint: '已貼上並切至原生操作' + NATIVE_RESUME_HINT
-    });
+  // App.onPasteDone. true = taken over: the caller must not send the text.
+  onPaste: function() {
+    return this._refuseText('paste');
   },
 
-  // 使用者用中文輸入法在列表上打字（compositionend → term_view.onInput →
-  // onTextInput），由那條共用漏斗轉進來。
-  //
-  // **不是按鍵**：IME 的 keydown keyCode 是 229，被 term_view 的 keyEventFilter
-  // 擋在 onKeyDown 之外 ⇒ 走不到 _classifyKey 的 passthrough（一鍵切原生）。舊碼
-  // 因此讓 bytes 裸送，症狀＝「切到中文輸入法打字，整個畫面就卡住」——PTT 開了
-  // prompt，畫面卻還是累積緩衝視窗，使用者看不到自己打的字。與貼上（不變量 12b）
-  // 同源、同一條 T3 路徑，差別只有不套 normalizePasteText 與佇列命令的 kind。
-  // 回 true ＝已接手（term_view.onTextInput 不得再 _convSend）。
-  // 守護：tests/unit/list_text_input.test.js、tests/unit/term_view_text_input.test.js。
-  noteTextInput: function(text) {
-    return this._beginTextPassthrough(text, {
-      normalize: false,
-      kind: 'native-input',
-      hint: '已切至原生操作' + NATIVE_RESUME_HINT
-    });
+  // Text committed by an input method over the list (compositionend →
+  // term_view.onTextInput). It is not a key: the IME's keydown never reaches
+  // onKeyDown. true = taken over.
+  noteTextInput: function() {
+    return this._refuseText('text');
   },
 
   // A sync jump that continues with `next` however it lands.
@@ -2702,9 +2617,8 @@ ListSession.prototype = {
 
   // Key → whitelist class (the enumeration IS the contract —
   // docs/easy-reading-list.md §Operation classes). Whitelist = navigation / open /
-  // number jump / leave; anything else is 'passthrough' (one-key switch to
-  // native + resend, _beginNativePassthrough) — never a SILENT passthrough,
-  // and never a swallowed dead key (the retired noop/airlock pair).
+  // number jump / leave / in-place keys; anything else is 'unsupported': nothing
+  // is sent and the reader is told (#159) — never a silent dead key.
   _classifyKey: function(e) {
     // Keys that produce NO bytes at all (CapsLock / F1-F12 / NumLock /
     // ScrollLock / unmappable Ctrl-Shift combos): swallow, never transition.
@@ -2717,7 +2631,7 @@ ListSession.prototype = {
     // no hardcoded key list can drift out of sync with it. Article easy
     // reading has the same guard as `e.key.length === 1` (easy_reading.js).
     if (keyEventToBytes(e) == null) return { class: 'ignore' };
-    if (e.ctrlKey) return { class: 'passthrough' }; // Ctrl-P 發文 etc.
+    if (e.ctrlKey) return { class: 'unsupported' }; // Ctrl-P 發文 etc.
     // Navigation synonyms follow pttbbs read.c:858-902 (' ' / 'N' / KEY_PGDN /
     // Ctrl-F = next page, 'P' / KEY_PGUP / Ctrl-B = prev page, 'p'/'k'/KEY_UP,
     // 'n'/'j'/KEY_DOWN, '$'/KEY_END). Ctrl-F/Ctrl-B deliberately stay out:
@@ -2765,7 +2679,7 @@ ListSession.prototype = {
           this._autoResumeEnabled()
         )
           return { class: 'native-inplace', bytes: keyEventToBytes(e) };
-        return { class: 'passthrough' };
+        return { class: 'unsupported' };
     }
   },
 
