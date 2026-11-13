@@ -216,6 +216,8 @@ export class ScreenController {
     this.onListScroll = null;
     this._onListScroll = () => {
       this._listScrollAt = performance.now();
+      if (this._listReservePx !== this._listReserveTarget)
+        this._scheduleListReserveSync();
       if (this.onListScroll) this.onListScroll();
     };
     // 頂端保留區（見 absorbListShift）與它的「捲動靜止」判斷。
@@ -1464,8 +1466,17 @@ export class ScreenController {
       return;
     }
     const top = v.scrollTop;
-    this._setListReserve(this._listReserveTarget);
-    v.scrollTop = top + delta;
+    // An exposed reserve cannot be removed without asking for a negative
+    // scrollTop. The browser clamps that write, moving the card under a tap.
+    // Keep the visible portion until a later scroll makes removal possible.
+    const reserve = Math.max(
+      this._listReserveTarget,
+      this._listReservePx - Math.max(0, top),
+    );
+    if (reserve === this._listReservePx) return;
+    const appliedDelta = reserve - this._listReservePx;
+    this._setListReserve(reserve);
+    v.scrollTop = top + appliedDelta;
     if (info)
       diag(
         "listView.reserve",
@@ -1473,6 +1484,7 @@ export class ScreenController {
           action: "applied",
           before: Math.round(top),
           after: Math.round(v.scrollTop),
+          actual: Math.round(reserve),
         }),
       );
   }

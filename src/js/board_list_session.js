@@ -622,7 +622,7 @@ BoardListSession.prototype = {
   readingPosition: function() {
     if (this.state === 'idle' || this._variant == null) return null;
     let topNum = this._topNum;
-    let frac = this._scrollFrac || 0;
+    let frac = Math.max(0, this._scrollFrac || 0);
     const screen = this._screen();
     const nums = this._termBuf.brdListLineNums || [];
     if (
@@ -1963,7 +1963,7 @@ BoardListSession.prototype = {
     if (!nums.length) return;
     const p = Math.max(0, Math.min(pos, nums.length - 1));
     this._topNum = nums[p];
-    this._scrollFrac = Math.max(0, frac || 0);
+    this._scrollFrac = frac || 0;
   },
 
   _setCursorPos: function(pos) {

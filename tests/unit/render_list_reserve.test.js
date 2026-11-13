@@ -151,6 +151,25 @@ describe("列表視口頂端保留區", () => {
     expect(rowY(m, 105)).toBeCloseTo(y, 0);
   });
 
+  // real-input: tests/e2e/offline/mobile_article_list_tap.offline.spec.js
+  test("shrinking an exposed reserve keeps the visible rows in place until scrolling permits removal", async () => {
+    const m = mountScreen(props(100, 140));
+    m.controller.setListReserveTarget(3000);
+    m.controller.setListScrollTop(-89);
+    const y = rowY(m, 100);
+    expect(y).toBe(89);
+
+    m.controller.setListReserveTarget(0);
+    await vi.waitFor(() => expect(view(m).scrollTop).toBe(0));
+    expect(rowY(m, 100)).toBeCloseTo(y, 0);
+    expect(m.controller.getListScrollTop()).toBeCloseTo(-89, 0);
+
+    // Once content reaches the viewport top, removing the rest is safe.
+    m.controller.setListScrollTop(0);
+    await untilReserve(m, 0);
+    expect(rowY(m, 100)).toBeCloseTo(0, 0);
+  });
+
   test("錄製期間：寫入／吸收／保留區回補（含延後）都寫進 diag", async () => {
     const logs = [];
     setDiagSink((tag, info) => logs.push([tag, info]));

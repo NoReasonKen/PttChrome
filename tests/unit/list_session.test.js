@@ -2268,6 +2268,27 @@ describe("原生捲動：scroll 事件的處置", () => {
     return h;
   };
 
+  test("redraw preserves the exposed reserve until explicit navigation", () => {
+    const { s, screen } = setup();
+    screen.top = -89;
+    const write = vi.spyOn(screen, "setListScrollTop");
+    for (let i = 0; i < 2; i++) {
+      s.captureScrollAnchor();
+      s.applyScrollAfterRender();
+      expect(screen.top).toBe(-89);
+      expect(s._topNum).toBe(100);
+    }
+    expect(write).not.toHaveBeenCalled();
+    s._boardName = "C_Chat";
+    expect(s.readingPosition().scrollFrac).toBe(0);
+    screen.live = false;
+    expect(s.readingPosition().scrollFrac).toBe(0);
+    screen.live = true;
+    s._moveSelection("pgup", { repeat: true });
+    s.applyScrollAfterRender();
+    expect(screen.top).toBe(0);
+  });
+
   test("捲動更新視口錨，但**不重繪**（不變量 2b：本地重繪不得餵 settle）", () => {
     const { s, screen, termBuf } = setup();
     screen.top = 30 * 20; // 使用者捲到序列位置 30
@@ -3190,6 +3211,18 @@ describe("甩動中補頁（scrollTop 寫入被 compositor 蓋掉）", () => {
     h.screen.flinging = true; // 手指放開，慣性還在跑
     return h;
   };
+
+  test("an upward fill preserves the visible reserve without writing scrollTop", () => {
+    const { s, screen, termBuf } = setup();
+    screen.dom = screen.reserve - 89;
+    s.captureScrollAnchor();
+    prependPage(termBuf);
+    s.applyScrollAfterRender();
+    expect(screen.setCalls).toBe(0);
+    expect(20 * ROW - screen.getListScrollTop()).toBe(89);
+    s.captureScrollAnchor();
+    expect(s._topNum).toBe(95);
+  });
 
   test("補頁落地：看著的那一列不變（錨不被拉到新內容頂端）、不寫 scrollTop", () => {
     const { s, screen, termBuf } = setup();

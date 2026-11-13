@@ -1578,6 +1578,28 @@ describe("手機卡片：採用原生落點時游標必須在視口內（看板�
     return { brd: { variant: "fav", nums, cursorNum, topNum: 21 } };
   };
 
+  test("redraw preserves the exposed reserve until explicit navigation", () => {
+    const { s, screen } = setup(true);
+    screen.top = -89;
+    const write = vi.spyOn(screen, "setListScrollTop");
+    for (let i = 0; i < 2; i++) {
+      s.captureScrollAnchor();
+      s.applyScrollAfterRender();
+      expect(screen.top).toBe(-89);
+      expect(s._topNum).toBe(1);
+    }
+    expect(write).not.toHaveBeenCalled();
+    s._variant = "fav";
+    expect(s.readingPosition().scrollFrac).toBe(0);
+    const attached = screen.hasListViewport;
+    screen.hasListViewport = () => false;
+    expect(s.readingPosition().scrollFrac).toBe(0);
+    screen.hasListViewport = attached;
+    s._moveSelection("pgup", { repeat: true });
+    s.applyScrollAfterRender();
+    expect(screen.top).toBe(0);
+  });
+
   test("游標在頁底 ⇒ 頁底貼齊視口底", () => {
     const { s, screen } = setup(true);
     s._adoptLanding(landing(40));
