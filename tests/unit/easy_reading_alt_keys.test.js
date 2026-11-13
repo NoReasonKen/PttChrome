@@ -82,6 +82,8 @@ function makeEasyReading({ scrollTop = 500 } = {}) {
     leaveCurrentPost: () => {
       calls.left += 1;
     },
+    _leftoverKey: EasyReading.prototype._leftoverKey,
+    _refuseUnsupported: EasyReading.prototype._refuseUnsupported,
   };
   return { ctx, sent, calls, mainDisplay };
 }
@@ -179,12 +181,15 @@ describe("_onKeyDownProcessUI：Alt+F/B/H ≡ Ctrl+F/B/H（本地捲動，零送
     }
   });
 
-  test("反向：Alt+Z 不被這層吃掉", () => {
+  test("Alt+Z (PTT's Ctrl+Z) is refused with a message, nothing scrolls or goes out (#160)", () => {
     const { ctx, sent, mainDisplay } = makeEasyReading({ scrollTop: 2000 });
+    const hints = [];
+    ctx._view.flashListHint = (msg) => hints.push(msg);
     const e = keyEvent("Ω", { altKey: true, code: "KeyZ" });
     onKeyDownUI(ctx, e);
     expect(mainDisplay.scrollTop).toBe(2000);
     expect(sent).toEqual([]);
-    expect(e.defaultPrevented).toBe(false);
+    expect(e.defaultPrevented).toBe(true);
+    expect(hints).toHaveLength(1);
   });
 });

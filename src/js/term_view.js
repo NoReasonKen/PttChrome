@@ -1514,8 +1514,8 @@ TermView.prototype = {
     var textOwner = listOwnerOf(this.bbscore);
     if (!isPasting && textOwner && textOwner.noteTextInput(text))
       return;
-    if (this.bbscore.easyReading)
-      this.bbscore.easyReading.noteTextInput();
+    if (this.bbscore.easyReading && this.bbscore.easyReading.noteTextInput(text, isPasting))
+      return;
     // Normalization lives in string_util.normalizePasteText so the list easy
     // reading paste route (ListSession.onPaste → CommandQueue) sends byte-for-
     // byte the same thing this native route does.

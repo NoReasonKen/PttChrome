@@ -3,7 +3,8 @@ import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { ACT_EXIT_ARTICLE } from './mouse_regions';
 import { TRACE } from './util';
 import { pmorePrefScreenSeen, parseRawModeFromPrefRow } from './pmore_pref';
-import { altRemapCharCode, isAltRemapEvent } from './term_keyboard';
+import { altRemapCharCode, isAltRemapEvent, isBrowserClipboardEvent, keyEventToBytes } from './term_keyboard';
+import { HINT_ERROR } from './status_hint';
 import { i18n } from './i18n';
 import { findShortcutLabel } from './platform';
 import { offsetTopWithin } from './scroll_anchor';
@@ -137,7 +138,8 @@ export function nextEasyReadingExternalLanding({
 // tests/unit/easy_reading_logic.test.js.
 //
 // 只認「游標停在末列末欄」的完整幀：文章內的 prompt / 選單 / 編輯器一律由 functionMode
-// 鏡像原生畫面處理（_onKeyDownProcessUI 對任何單字元鍵都先 _enterFunctionMode，而
+// 鏡像原生畫面處理（會開 prompt 的入口——說明／回應鍵與 PttChrome 自己的操作——都先
+// _enterFunctionMode，其餘指令鍵自 #160 起被拒絕、根本不送，而
 // _onChanged 在 functionMode 下直接 return），所以這裡不需要、也不應該再去辨識
 // 推文輸入列 / 回應選單那類 prompt 幀。
 export function nextEasyReadingRowState({
@@ -471,10 +473,10 @@ export function EasyReading(core, view, termBuf) {
   // 累積事實（head/tail 行號、接合點）在 term_view._reverse。
   this._reverse = null;
   // functionMode: while the user is interacting with a native PTT prompt/menu/editor
-  // triggered from inside the article (r 回應、X/% 推文、y 收暫存檔…), we stop the
+  // triggered from inside the article (reply, help, PttChrome's own operations), we stop the
   // easy-reading accumulation/overlay illusion and mirror the native 24-row screen
-  // LIVE so whatever PTT draws appears exactly as native. Entered key-driven
-  // (_onKeyDownProcessUI default → _enterFunctionMode), exited by content judgement on
+  // LIVE so whatever PTT draws appears exactly as native. Entered by the help and
+  // reply keys (_leftoverKey → _enterFunctionMode) or by the operation itself, exited by content judgement on
   // settle (_evalFunctionModeExit). buf.pageLines is preserved throughout so the
   // accumulated long page resumes without re-paging. See docs/easy-reading.md.
   this._functionMode = false;
@@ -1554,9 +1556,55 @@ EasyReading.prototype._teardownAccumulationOffArticle = function() {
   this._forceRepaint();
 };
 
+// Keys, pasted text and typed text that article easy reading does not present
+// (#160). Easy reading keeps only the keys of the features it shows (scrolling,
+// previous/next article, same-thread jumps, the long-comment sheet, leaving);
+// every other PTT command is refused with a message instead of mirroring the
+// native prompt it would open. Two functions keep the native route: help
+// (h H ?), which the help menu sheet presents on top of the mirror, and reply
+// (y Y r R), which has no easy-reading entrance yet and still opens PTT's own
+// reply prompts.
+export const ARTICLE_NATIVE_KEYS = 'hH?yYrR';
+const UNSUPPORTED_KEY_HINT = '好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）';
+const UNSUPPORTED_PASTE_HINT = '好讀模式目前不支援在文章貼上文字';
+const UNSUPPORTED_TEXT_HINT = '好讀模式目前不支援在文章輸入文字';
+
+// What a key the reading keys did not take means: 'native' (keeps the native
+// route), 'refuse', or null (not a PTT key: the browser or the app owns it).
+export function articleLeftoverKey(e) {
+  // Copy, select all, paste and the browser's own Meta/Alt shortcuts.
+  if (isBrowserClipboardEvent(e) || e.metaKey) return null;
+  if (isAltRemapEvent(e)) return 'refuse';
+  if (e.altKey) return null;
+  // A key that sends PTT nothing (CapsLock, F-keys) is not a command.
+  if (keyEventToBytes(e) == null) return null;
+  if (!e.ctrlKey && e.key.length === 1 && ARTICLE_NATIVE_KEYS.indexOf(e.key) >= 0) return 'native';
+  return 'refuse';
+}
+
+EasyReading.prototype._refuseUnsupported = function(what) {
+  if (!this._view.flashListHint) return;
+  this._view.flashListHint(
+    what === 'paste' ? UNSUPPORTED_PASTE_HINT : what === 'text' ? UNSUPPORTED_TEXT_HINT : UNSUPPORTED_KEY_HINT,
+    4000, HINT_ERROR);
+};
+
+// Text that did not come from a key (a paste, an input method): true when the
+// article is on screen in easy reading and the text must not reach PTT. A
+// single help or reply character keeps its native route like the key does.
+EasyReading.prototype.refuseText = function(text, what) {
+  if (!this._enabled || !this.startedEasyReading || this._functionMode)
+    return false;
+  if (what !== 'paste' && typeof text === 'string' && text.length === 1 &&
+      ARTICLE_NATIVE_KEYS.indexOf(text) >= 0)
+    return false;
+  this._refuseUnsupported(what);
+  return true;
+};
+
 // Enter functionMode: stop the easy-reading illusion and mirror the native 24-row
-// screen LIVE. Called from _onKeyDownProcessUI when the user presses a key that falls
-// through to native and may open a prompt/menu (r/X/%/y…). Saves the current scroll so
+// screen LIVE. Called from _onKeyDownProcessUI for the help and reply keys, and by
+// PttChrome's own operations that drive a native prompt. Saves the current scroll so
 // _evalFunctionModeExit('resume') can restore the reading position, then forces one
 // repaint so the native screen shows immediately (before PTT's response arrives).
 EasyReading.prototype._enterFunctionMode = function() {
@@ -1599,24 +1647,25 @@ EasyReading.prototype.settleFunctionMode = function() {
     this._evalFunctionModeExit();
 };
 
-// 使用者「送了一段文字給 PTT」——不是按鍵，所以繞過了 _onKeyDown 那條進 functionMode
-// 的路。三個實例，同一個缺口：
-//   a) 中文 IME 開著時按 X 推文：keydown 的 e.key 是 'Process'（keyCode 229），
-//      `e.key.length === 1` 不成立 ⇒ 不進鏡像；字元改由 input 事件送出
-//      （term_view.onInput **不看 keyCode**，任何字元都往下走）→ onTextInput →
-//      _convSend。PTT 開了推文 prompt（只 patch 最後一列），好讀長頁卻原封不動
-//      ⇒ **看不到輸入框，字卻真的送出去了**。
-//   b) 貼上：App.onPasteDone 早就自己補過這一刀（同樣理由）。
-//   c) 列表好讀：同一個漏斗上的 ListSession.noteTextInput（2026-08-31 才補，見
-//      docs/easy-reading-list.md 不變量 12d）。它回 true 代表已接手，那條路徑不會
-//      走到本函式 —— 兩種好讀不可能同時擁有畫面。
-// 由 term_view.onTextInput 這條共用漏斗統一呼叫，keydown／IME／貼上三條入口行為一致。
-// _enterFunctionMode 本身有 _enabled 與重入 gate，這裡只多一道「文章真的開著」。
-// 守護：tests/unit/easy_reading_text_input.test.js。
-EasyReading.prototype.noteTextInput = function() {
+// Text that reaches PTT without a key event: an input method (keydown is
+// 'Process', keyCode 229, so _onKeyDown never sees the character) or a paste.
+// term_view.onTextInput is the one funnel for both and calls this before it
+// sends anything. (An input-method X or search key is taken by the long-comment
+// and search sheets earlier in that funnel; the list sessions answer first
+// through their own noteTextInput.)
+//
+// Easy reading presents nowhere to type over an article, so the text is refused
+// with a message (#160) and true is returned: the caller must not send it. A
+// single help or reply character takes the native route like its key, and once
+// a native prompt is mirrored the text belongs to PTT.
+// Guard: tests/unit/easy_reading_text_input.test.js.
+EasyReading.prototype.noteTextInput = function(text, isPasting) {
   if (!this._enabled || !this.startedEasyReading)
-    return;
+    return false;
+  if (this.refuseText(text, isPasting ? 'paste' : 'text'))
+    return true;
   this._enterFunctionMode();
+  return false;
 };
 
 // Decide (pure functionModeExitDecision) and act when functionMode settles. 'resume'
@@ -2478,28 +2527,15 @@ EasyReading.prototype._onKeyDownProcessUI = function(e) {
         stop = true;
         break;
       default:
-        if ("abf=+-[]ABF".indexOf(e.key) >= 0) {
+        if (!e.metaKey && "abf=+-[]ABF".indexOf(e.key) >= 0) {
           this.leaveCurrentPost();
           // Same-thread keys land however far their target is (#65).
           stop = !!this._core.threadJump?.start(e.key);
           break;
         }
-        // Any other key falls through to native PTT and may open an in-post prompt /
-        // menu / editor (r 回應、X/% 推文、y 收暫存檔、h 說明、o 選項、p 播放、\ 色彩、
-        // / 搜尋、; 指定頁、: 指定行、# 文章代碼、s 切換看板、數字 指定頁、左右捲 ,.<>…).
-        // Switch to functionMode so we mirror whatever PTT draws LIVE (no hardcoded
-        // overlay, no per-prompt parsing); do NOT preventDefault — the key still reaches
-        // PTT. Exit is content-judged on settle (_evalFunctionModeExit).
-        //
-        // NOTE: there used to be a `"123456789hops;,./\\H#OP:<>"` swallow list here (an
-        // upstream pre-functionMode leftover, robertabcd b346f46) that preventDefault'd
-        // all those pmore function keys to a no-op, because the old self-drawn long page
-        // had no way to show the native in-place menu they open and would cover it. With
-        // functionMode that's solved — those keys now fall through here like any other.
-        // Removed so 說明(h)/選單/搜尋/指定頁… work again. See docs/easy-reading.md.
-        if (e.key.length === 1) {
-          this._enterFunctionMode();
-        }
+        // Every other key is a PTT command easy reading does not present
+        // (#160): refused with a message. Help and reply keep the native route.
+        stop = this._leftoverKey(e);
         break;
     }
   } else if (ctrlLetterOf(e) !== null) {
@@ -2524,10 +2560,23 @@ EasyReading.prototype._onKeyDownProcessUI = function(e) {
           stop = true;
           break;
         }
+        stop = this._leftoverKey(e);
     }
+  } else {
+    stop = this._leftoverKey(e);
   }
   if (stop)
     e.preventDefault();
+};
+
+// A key none of the reading keys took. Returns true when it was refused (the
+// caller prevents it); a help or reply key opens the native mirror and still goes out.
+EasyReading.prototype._leftoverKey = function(e) {
+  const what = articleLeftoverKey(e);
+  if (what === 'native') this._enterFunctionMode();
+  if (what !== 'refuse') return false;
+  this._refuseUnsupported('key');
+  return true;
 };
 
 // 好讀長頁裡的滑鼠點擊。文章模式現在只有一種滑鼠動作：左側帶＝離開。

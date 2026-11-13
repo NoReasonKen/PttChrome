@@ -1324,14 +1324,9 @@ App.prototype.onPasteDone = function(content) {
   if (pasteOwner && pasteOwner.onPaste(content))
     return;
 
-  // Article easy reading: the same blind spot in miniature. _onKeyDown enters
-  // functionMode for any single character it doesn't handle, precisely so the
-  // prompt PTT opens (#, /, ;, :, s…) is mirrored live — but a paste isn't a
-  // keypress, so it never tripped that rule and the prompt stayed hidden behind
-  // the accumulated long page. Mirror natively before the text goes out.
-  // (_enterFunctionMode is a no-op when already in it.)
-  if (this.view.useEasyReadingMode && this.buf.startedEasyReading)
-    this.easyReading._enterFunctionMode();
+  // Article easy reading presents no place to paste into (#160): the shared
+  // funnel below refuses it with a message (easy_reading.noteTextInput). A
+  // native prompt already mirrored (reply) takes the paste.
 
   this.view.onTextInput(content, true);
 };
@@ -1380,12 +1375,17 @@ App.prototype.onFunctionKey = function(bytes, label) {
     mode:
       this.view.useEasyReadingMode && this.buf.startedEasyReading
         ? 'article-easy'
-        : 'native'
+        : 'native',
+    nativeMirror: !!this.buf.easyReadingFunctionMode
   });
   // 送 byte **之前**先進原生鏡像：PTT 會開 prompt（(y)回應 / (X)推文 / (h)說明），
   // 但好讀的累積長頁原封不動 ⇒ 使用者看不到輸入框。docs/easy-reading.md 的
   // 「貼上驅動」「IME 驅動」補過同一個洞兩次，這是第三個入口。
   // （_enterFunctionMode 已在鏡像中時是 no-op。）
+  if (plan.refuse) {
+    this.easyReading._refuseUnsupported('key');
+    return;
+  }
   if (plan.enterFunctionMode) this.easyReading._enterFunctionMode();
   // `←` 走與鍵盤 ArrowLeft 完全同一條路，離開文章時才不會閃一下原生 24 列。
   if (plan.stopEasyReading) this.easyReading.stopEasyReading();

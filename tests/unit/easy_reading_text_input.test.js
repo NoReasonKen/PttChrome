@@ -1,13 +1,8 @@
-// 好讀模式下按 X 推文，「有時」看不到推文輸入框——但字確實送出去了（切回原生就看得到）。
-//
-// 根因：讓 X 切成原生鏡像（functionMode）的唯一路徑是 keydown ——
-// easy_reading._onKeyDown 的 default 分支 `if (e.key.length === 1) _enterFunctionMode()`。
-// 中文 IME 開著時 keydown 的 e.key 是 'Process'（keyCode 229），length !== 1 → 進不去；
-// 字元改由 input 事件走 term_view.onInput → onTextInput → _convSend 送出。
-// 於是 PTT 開了推文 prompt（只 patch 最後一列），好讀長頁卻原封不動 ⇒ 看不到輸入框。
-//
-// App.onPasteDone 早就為「貼上不是 keypress」補過同一刀；這裡把共用漏斗 onTextInput
-// 也補上，keydown／IME／貼上三條入口對 functionMode 行為一致。
+// Text that reaches PTT without a key event (an input method, a paste) while
+// an article is open in easy reading. Easy reading presents nowhere to type, so
+// the text is refused with a message (#160); only a help or reply character
+// still opens the native mirror, like its key does. Once a native prompt is
+// mirrored, text passes through untouched.
 import { EasyReading } from "../../src/js/easy_reading";
 
 function harness({ enabled = true, startedEasyReading = true } = {}) {
@@ -25,10 +20,18 @@ function harness({ enabled = true, startedEasyReading = true } = {}) {
     startedEasyReading,
     sendCommandAfterUpdate: "",
     _savedScrollTop: null,
-    _view: { mainDisplay: { scrollTop: 120 } },
+    _view: {
+      mainDisplay: { scrollTop: 120 },
+      hints: [],
+      flashListHint(msg, ms, level) {
+        this.hints.push({ msg, level });
+      }
+    },
     _termBuf: buf,
     // 真實實作：noteTextInput 的重點就是「有沒有正確接上 _enterFunctionMode」。
-    _enterFunctionMode: EasyReading.prototype._enterFunctionMode
+    _enterFunctionMode: EasyReading.prototype._enterFunctionMode,
+    refuseText: EasyReading.prototype.refuseText,
+    _refuseUnsupported: EasyReading.prototype._refuseUnsupported
   };
   Object.defineProperty(ctx, "_functionMode", {
     get: () => buf.easyReadingFunctionMode,
@@ -39,35 +42,56 @@ function harness({ enabled = true, startedEasyReading = true } = {}) {
   return { ctx, buf };
 }
 
-const noteTextInput = ctx => EasyReading.prototype.noteTextInput.call(ctx);
+const noteTextInput = (ctx, text, isPasting) =>
+  EasyReading.prototype.noteTextInput.call(ctx, text, isPasting);
 
-test("REGRESSION：好讀文章中送出文字（IME 的 X）→ 切進原生鏡像", () => {
+test("a reply character opens the native mirror and is not refused", () => {
   const h = harness();
-  noteTextInput(h.ctx);
+  expect(noteTextInput(h.ctx, "y")).toBe(false);
   expect(h.buf.easyReadingFunctionMode).toBe(true);
-  expect(h.ctx._savedScrollTop).toBe(120); // 之後 'resume' 要靠它捲回原閱讀位置
+  expect(h.ctx._savedScrollTop).toBe(120); // 'resume' scrolls back with it
   expect(h.buf.notifyCalls).toBe(1);
+  expect(h.ctx._view.hints).toEqual([]);
 });
 
-test("好讀關著：no-op（旗標留下就再也清不掉，見 function_mode_gate）", () => {
-  const h = harness({ enabled: false });
-  noteTextInput(h.ctx);
-  expect(h.buf.easyReadingFunctionMode).toBe(false);
-  expect(h.buf.notifyCalls).toBe(0);
-});
-
-test("好讀開著但沒有文章開著（列表／選單）：no-op", () => {
-  const h = harness({ startedEasyReading: false });
-  noteTextInput(h.ctx);
-  expect(h.buf.easyReadingFunctionMode).toBe(false);
-  expect(h.buf.notifyCalls).toBe(0);
-});
-
-test("已在鏡像中重複送字：不覆蓋已存的捲動位置、不重複重畫", () => {
+test("typed text is refused with a message and the article stays", () => {
   const h = harness();
-  noteTextInput(h.ctx);
-  h.ctx._view.mainDisplay.scrollTop = 0; // 已被 redraw 歸零
-  noteTextInput(h.ctx);
+  expect(noteTextInput(h.ctx, "你好")).toBe(true);
+  expect(h.buf.easyReadingFunctionMode).toBe(false);
+  expect(h.buf.notifyCalls).toBe(0);
+  expect(h.ctx._view.hints).toHaveLength(1);
+  expect(h.ctx._view.hints[0].msg).toContain("輸入文字");
+  expect(h.ctx._view.hints[0].level).toBe("error");
+});
+
+test("pasted text is refused, a pasted reply character included", () => {
+  const h = harness();
+  expect(noteTextInput(h.ctx, "y", true)).toBe(true);
+  expect(h.buf.easyReadingFunctionMode).toBe(false);
+  expect(h.ctx._view.hints[0].msg).toContain("貼上");
+});
+
+test("a native prompt already mirrored takes the text", () => {
+  const h = harness();
+  noteTextInput(h.ctx, "y");
+  h.ctx._view.mainDisplay.scrollTop = 0; // the mirror's redraw reset it
+  expect(noteTextInput(h.ctx, "推文內容")).toBe(false);
+  expect(noteTextInput(h.ctx, "pasted", true)).toBe(false);
   expect(h.ctx._savedScrollTop).toBe(120);
   expect(h.buf.notifyCalls).toBe(1);
+  expect(h.ctx._view.hints).toEqual([]);
+});
+
+test("easy reading off: nothing happens and the text goes out", () => {
+  const h = harness({ enabled: false });
+  expect(noteTextInput(h.ctx, "abc")).toBe(false);
+  expect(h.buf.easyReadingFunctionMode).toBe(false);
+  expect(h.buf.notifyCalls).toBe(0);
+});
+
+test("no article open (a list, a menu): nothing happens", () => {
+  const h = harness({ startedEasyReading: false });
+  expect(noteTextInput(h.ctx, "abc")).toBe(false);
+  expect(h.buf.easyReadingFunctionMode).toBe(false);
+  expect(h.ctx._view.hints).toEqual([]);
 });

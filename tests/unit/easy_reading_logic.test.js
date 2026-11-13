@@ -458,21 +458,36 @@ describe("EasyReading._onKeyDownProcessUI End handling", () => {
     }
   });
 
-  // pmore function keys (說明/選單/搜尋/指定頁/左右捲…) used to be swallowed by an
-  // upstream pre-functionMode "123456789hops;,./\H#OP:<>" list (preventDefault → no-op,
-  // 說明(h) etc. dead in easy reading). That list is removed: they now fall through to
-  // functionMode like r/X/%/y, so PTT draws the native menu/help and we mirror it LIVE.
-  // Guard: each enters functionMode and is NOT preventDefault'd (the key must reach PTT).
-  // `/` 是瀏覽器搜尋的提示，不進 functionMode，見 easy_reading_browser_find.test.js。
-  it("pmore function keys enter functionMode and reach PTT (no preventDefault)", () => {
-    for (const key of ["h", "H", "o", "p", "\\", ";", ":", "#", "s", "1", "9", ",", ".", "<", ">"]) {
+  // PTT command keys easy reading does not present (#160) are refused with a
+  // message: no native mirror, and the key never reaches PTT.
+  // `/` is the browser-find hint, see easy_reading_browser_find.test.js.
+  it("unsupported pmore keys are refused: no functionMode, key prevented, a message", () => {
+    for (const key of ["o", "p", "\\", ";", ":", "#", "s", "1", "9", ",", ".", "<", ">"]) {
       const { er } = makeER();
+      const hints = [];
+      er._view.flashListHint = (msg, ms, level) => hints.push({ msg, level });
       er._enterFunctionMode = vi.fn();
       er.leaveCurrentPost = vi.fn();
       const e = keyEvent(key);
       er._onKeyDownProcessUI(e);
-      expect(er._enterFunctionMode).toHaveBeenCalledTimes(1);
+      expect(er._enterFunctionMode).not.toHaveBeenCalled();
       expect(er.leaveCurrentPost).not.toHaveBeenCalled();
+      expect(e.preventDefault).toHaveBeenCalledTimes(1);
+      expect(hints).toHaveLength(1);
+      expect(hints[0].msg).toContain("不支援");
+      expect(hints[0].level).toBe("error");
+    }
+  });
+
+  // Help is presented by the help menu sheet over the mirror, and reply has no
+  // easy-reading entrance yet: their keys enter the native mirror and reach PTT.
+  it("help and reply keys enter functionMode and reach PTT (no preventDefault)", () => {
+    for (const key of ["h", "H", "?", "y", "Y", "r", "R"]) {
+      const { er } = makeER();
+      er._enterFunctionMode = vi.fn();
+      const e = keyEvent(key);
+      er._onKeyDownProcessUI(e);
+      expect(er._enterFunctionMode).toHaveBeenCalledTimes(1);
       expect(e.preventDefault).not.toHaveBeenCalled();
     }
   });

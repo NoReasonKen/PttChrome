@@ -24,7 +24,7 @@
 
 ## 回覆
 
-- 每一則水球都有「回覆」鈕（廣播、新信提示沒有）。送的都是 `view.sendKeyAsUser('r', { ctrlKey: true })`，跟使用者自己按 Ctrl+R 同一條路（含序列化閘門），清單收起，之後全是 PTT 原生的回覆畫面。
+- 每一則水球都有「回覆」鈕（廣播、新信提示沒有）。送的都是 `view.sendKeyAsUser('r', { ctrlKey: true })`，跟使用者自己按 Ctrl+R 同一條路（含序列化閘門），清單收起，之後全是 PTT 原生的回覆畫面。**好讀文章開著時（#160）Ctrl+R 被拒絕**（顯示「好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）」、不送 byte），所以在好讀文章裡按回覆鈕也送不出去，要先關閉好讀模式；原生 prompt 已鏡像（functionMode）時照送。
 - **最新一位寄件人**（清單裡最新一則水球的人，廣播不算）：只按一下。pttbbs `wmsg.c` 兩種水球模式第一下 ^R 都指向他 —— 一般模式（`wmsg_handle_ctrl_r_default`，watermode −1）回 `swater[0]` 最後一則的寄件人；一對一模式（`UF_PAGER_OFO`，`ofo_my_write`）預設選 `swater[0]`。`swater_get_slot` 每收一則就把寄件人提到 `swater[0]`。
 - **其他寄件人**（`waterball_reply.js`）：按第一下後，每次畫面停下都認一次畫面，沒對上就再按一下 ^R —— 兩種模式換人都是 ^R：
   - 一對一模式：row 0 `丟<id>:`（`PROMPT_OFO`）＋row 1「↑反擊對象↓」名單（`ofo_init_screen`，最多 5 人）；^R＝`ofo_switch_user(1)`，row 0 換成下一位。

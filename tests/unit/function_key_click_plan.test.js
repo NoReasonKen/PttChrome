@@ -10,7 +10,9 @@
 import {
   functionKeyClickPlan,
   LEFT_ARROW,
+  NATIVE_KEYS
 } from "../../src/js/function_key_plan";
+import { ARTICLE_NATIVE_KEYS } from "../../src/js/easy_reading";
 
 describe("原生模式（非文章好讀）", () => {
   test("什麼都不做，直接送", () => {
@@ -37,12 +39,31 @@ describe("原生模式（非文章好讀）", () => {
 describe("文章好讀模式", () => {
   const plan = (bytes) => functionKeyClickPlan({ bytes, mode: "article-easy" });
 
-  test("REGRESSION：(y)回應 / (X)推文 / (h)說明 一律先進 functionMode 再送", () => {
-    ["y", "X", "h", "\x18"].forEach((b) => {
+  test("help and reply keys enter functionMode before the key goes out (#160)", () => {
+    expect(NATIVE_KEYS).toBe(ARTICLE_NATIVE_KEYS);
+    ["h", "y", "Y", "r", "R"].forEach((b) => {
       const p = plan(b);
       expect(p.enterFunctionMode).toBe(true);
       expect(p.send).toBe(true);
       expect(p.stopEasyReading).toBe(false);
+      expect(p.refuse).toBeFalsy();
+    });
+  });
+
+  test("every other function key is refused and not sent (#160)", () => {
+    ["X", "s", "#", "Q", "\x18"].forEach((b) => {
+      const p = plan(b);
+      expect(p.refuse).toBe(true);
+      expect(p.send).toBe(false);
+      expect(p.enterFunctionMode).toBe(false);
+    });
+  });
+
+  test("a native prompt already mirrored takes every key", () => {
+    ["s", "n", "\r"].forEach((b) => {
+      const p = functionKeyClickPlan({ bytes: b, mode: "article-easy", nativeMirror: true });
+      expect(p.refuse).toBeFalsy();
+      expect(p.send).toBe(true);
     });
   });
 
