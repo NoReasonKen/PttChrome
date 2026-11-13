@@ -4,7 +4,7 @@
 //
 // 一筆 ＝ 固定 LIST_CARD_ROWS（3）個列高＝兩行內容＋卡片間距：list_scroll.js 的
 // 位置↔scrollTop 換算是純乘除，卡片高一旦不固定整套捲動數學就失效（CSS `.listCard`
-// 鎖 height: 3em，em ＝ chh；間距是 border-box 內的 padding-block）。
+// locks height to three cells; the full-height body's padding stays inside it).
 //
 // 欄位一律**按 cell 切**（TermChar 陣列恆 80 格、DBCS 佔兩格）——不走 rowToText 的
 // 字串索引，所以舊游標 ●／置底 ★ 這類全形前綴造成的位移（comment_parse.realignListColumns

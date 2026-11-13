@@ -2621,8 +2621,8 @@ App.prototype.mouse_click = function(e) {
             rowFromClientY(e.clientY, this.gridGeometry()),
             lpos.col
           );
-          // 只有點在卡片本體才開文：卡片間距（padding）防誤點，視口以外（header／
-          // footer 已收起）什麼都不是。見 mobile_layout.isListCardBodyTarget。
+          // The body fills the card, including padding beside its separator.
+          // Space outside a card never falls through to coordinate-based opening.
           if (this.view.listCards) {
             if (isListCardBodyTarget(e.target)) {
               this._traceListTap('card', e);

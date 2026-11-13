@@ -332,8 +332,7 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
   文章列表＝推文數 [9,11)｜標題 [29,80)／（左欄留空）序號・作者 [17,29)｜標記 [7,9)・日期（靠右，照 JPTT，#60）；看板列表＝未讀 [8,10)｜板名・類別
   ｜人氣／◎敘述｜板主・序號。lead 左欄兩行同寬上下對齊（推文數加粗）。顏色全照原列（使用者定案：桌機／手機同 PTT 原色）。
 - **卡片固定高 `LIST_CARD_ROWS`=3 × chh（px，`--cell-h`；不可用 em：Android 文字縮放下字級寫成 chh ÷ textScale，em 跟著它短少，點擊與捲動整批錯位）是承重條件**：`list_scroll.js` 的位置↔scrollTop 是純乘除。
-  兩行內容（`LIST_CARD_LINES`=2，標題行 1.3em＋次行 1.1em）＋卡片間距＝border-box 固定高內的 `padding-block`；分隔線用 inset
-  box-shadow；不可 border／margin（加在固定高之外）。CSS 高度與常數一致由 `list_card_css.test.js` 守。
+  The two content lines (`LIST_CARD_LINES`=2; title 1.3em, metadata 1.1em) and their spacing live inside a full-height, border-box `.listCardBody` with `padding-block`. Separators use inset box-shadow; margins and borders must not increase the fixed height. `list_card_css.test.js` protects this geometry.
   次行（`.listCardMeta`）只縮字 0.8em、**不自帶 opacity**（會與已讀低亮疊乘，同支測試守）。兩個 session 的 `_rowHeight()` ＝
   `chh × listRowSpan(listCards)`；`_pageRows()`（PgUp/PgDn 一次翻幾筆）＝ `mobile_layout.listFillRows`；
   `_bodyRows()` 仍是 server 的 p_lines（抓頁單位），**不可**跟著換。
@@ -350,10 +349,8 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
   待還原閱讀進度 `_pendingViewport` 優先）。在 apply 才算是因為 seed 當下 `listCards` 可能還沒對帳。守護 `list_session.test.js`／`board_list_session.test.js`「手機卡片：採用原生落點」。
 - 契約保留：`span[type=bbsrow][srow]`、`data-list-author/-title`、`.listCardBody[data-type=bbsline][data-row]`
   （游標底色的 class 下在這裡 ⇒ 整張卡片上色）。
-- 點擊：`App.clientToPos` 的 body 列號除數換成卡片高（`listRowSpan`）；`App.mouse_click` 在 listCards 下
-  不做退出帶／邊緣翻頁，點卡片本體＝ `onMouseClick(row, LIST_TITLE_COL_START)`（走 session 的列點擊開文
-  合約）；**只有點在卡片本體才開**（`mobile_layout.isListCardBodyTarget`）：間距防誤點、視口外的 `.main` 留白
-  （footer 收起後）不落回列號換算；`clientToPos` 的 footer 分支在 listCards 下關閉。`term_view.listEdgeRegion`／`onListMouseMove` 同樣關掉以 col 判斷的部分。退出用按鍵面板的 ←。
+- Taps: `App.clientToPos` divides by card height (`listRowSpan`). With list cards, `App.mouse_click` skips exit strips and edge paging and calls the session's `onMouseClick(row, LIST_TITLE_COL_START)` for a card body. **The body fills the whole card, including padding beside its separators** (`mobile_layout.isListCardBodyTarget`). Space outside cards does not fall through to coordinate-based opening; the footer branch of `clientToPos` is disabled, as are column-based regions in `term_view.listEdgeRegion` and `onListMouseMove`. Leave through the key panel's left arrow.
+  The same full-height body is used on a revealed list layer, so separator-adjacent taps work during handoff too. Empty filler rows remain inert through the session's entry lookup.
 - **卡片的游標底色變動只搬 class、不准重畫**（`render/screen.js#setCursorHighlight`：listCards 下一律走快路徑，
   **含「從沒有底色到有底色」**——NO_HIGHLIGHT 的 col 是 0、卡片底色的 col 是可點起始欄，只比 col 會漏掉這一下；
   卡片本體不吃 col，`_toggleRowClass` 在卡片只掛 `.listCardBody`，與重畫的 DOM 一致）。理由：tap 的相容事件是
