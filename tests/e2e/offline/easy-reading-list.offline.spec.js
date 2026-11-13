@@ -378,8 +378,21 @@ test.describe('文章列表好读模式（离线）', () => {
         const el = document.querySelector('.ListHint');
         if (el) el.textContent = '';
       });
+      // A soft keyboard delivers keys as text: one typed character is the key
+      // it names, so `k` moves the selection instead of being refused as text.
+      const selBefore = await page.evaluate(() => window.__app.listSession._selectedNum);
+      await imeCommit(page, 'k');
+      await expect
+        .poll(() => page.evaluate(() => window.__app.listSession._selectedNum))
+        .toBe(selBefore - 1);
+      await imeCommit(page, 'j');
+      await expect
+        .poll(() => page.evaluate(() => window.__app.listSession._selectedNum))
+        .toBe(selBefore);
+      await expect(page.locator('.ListHint')).not.toContainText('好讀模式目前不支援');
+
       const sentBefore = await page.evaluate(() => window.__replay.sent.length);
-      await page.keyboard.press('h');
+      await imeCommit(page, 'h');
       await expect
         .poll(() => page.evaluate((k) => window.__replay.sent.slice(k).join(''), sentBefore))
         .toContain('h');

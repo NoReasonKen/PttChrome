@@ -72,6 +72,50 @@ describe("onTextInput 的分派", () => {
   });
 });
 
+describe("one typed ASCII character over an easy-reading page is a key", () => {
+  function keyCtx(over) {
+    const { ctx, calls } = makeCtx({ listTakes: true, ...over });
+    calls.keys = [];
+    ctx.sendKeyAsUser = (k) => calls.keys.push(k);
+    return { ctx, calls };
+  }
+
+  test("list buffer: the character goes to the key path, not to the text refusal", () => {
+    const { ctx, calls } = keyCtx();
+    for (const ch of ["h", "j", " ", "5"]) onTextInput(ctx, ch);
+    expect(calls.keys).toEqual(["h", "j", " ", "5"]);
+    expect(calls.listNote).toEqual([]);
+    expect(calls.convSend).toEqual([]);
+  });
+
+  test("article easy reading: same", () => {
+    const { ctx, calls } = keyCtx({ hasListSession: false });
+    ctx.useEasyReadingMode = true;
+    ctx.buf = { startedEasyReading: true, easyReadingFunctionMode: false };
+    onTextInput(ctx, "y");
+    expect(calls.keys).toEqual(["y"]);
+    expect(calls.convSend).toEqual([]);
+  });
+
+  test("longer text, non-ASCII text and paste stay text", () => {
+    const { ctx, calls } = keyCtx();
+    onTextInput(ctx, "hi");
+    onTextInput(ctx, "中");
+    onTextInput(ctx, "h", true);
+    expect(calls.keys).toEqual([]);
+    expect(calls.listNote).toEqual(["hi", "中"]);
+  });
+
+  test("native mirror (no page owns the keys): typed text goes to PTT's prompt", () => {
+    const { ctx, calls } = keyCtx({ hasListSession: false });
+    ctx.useEasyReadingMode = true;
+    ctx.buf = { startedEasyReading: true, easyReadingFunctionMode: true };
+    onTextInput(ctx, "h");
+    expect(calls.keys).toEqual([]);
+    expect(calls.convSend).toEqual(["h"]);
+  });
+});
+
 // onInput 的 IME 特判（easyReadingKeyDownKeyCode == 229）是**不可達的死碼**：
 // 唯一寫入點在 onKeyDown 內，而 keyEventFilter 第一條就 `if (e.keyCode == 229)
 // return false` ⇒ 該欄位永遠不可能是 229。它的語意是「IME 開著時除了 X 以外的
