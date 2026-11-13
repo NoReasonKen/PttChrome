@@ -294,6 +294,9 @@ describe("v5 closed interaction: keyClass whitelist enumeration", () => {
     ["]", "functionMode", "inplace-sync-jump"],
     ["=", "functionMode", "inplace-sync-jump"],
     ["t", "functionMode", "inplace-sync-jump"],
+    // Help: PTT's help screen is asked for through the serialized sequence and
+    // the help menu sheet presents it.
+    ["h", "functionMode", "native-sync-jump"],
   ];
   test.each(WHITELIST_BEHAVIOR)("白名單 %s → state=%s", (key, state, kind) => {
     const { s, enqueued } = makeSession();

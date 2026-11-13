@@ -1652,6 +1652,11 @@ ListSession.prototype = {
       return;
     }
 
+    if (key.class === 'help') {
+      this._beginHelp();
+      return;
+    }
+
     if (key.class === 'native-inplace') {
       // A 類鍵：凍結交易（畫面凍住 → 送真鍵 → 採用真落點 → 直接回 buffer）。
       this._beginInplaceTransaction(key.bytes);
@@ -1728,8 +1733,17 @@ ListSession.prototype = {
     );
   },
 
+  // Help (`h`, the footer's help button, the mobile toolbar's help button):
+  // PTT's help screen is asked for through the serialized sequence, and the
+  // help menu sheet presents it.
+  _beginHelp: function() {
+    // The native excursion asks PTT for the list anew (#125).
+    this._spendLayer('nativePassthrough');
+    this._beginPassthroughBytes('h', { kind: 'help', hint: null });
+  },
+
   // The serialized sequence behind PttChrome's own list operations (search,
-  // mark read, refresh): no user key reaches it (#159).
+  // mark read, refresh, help): no other user key reaches it (#159).
   //
   // opts.kind / opts.hint 只換佇列命令的診斷名稱與提示措辭；**序列本身**
   //（state transition → cursor sync 腿 → _enterFunctionMode → queue.enqueue）
@@ -1948,6 +1962,10 @@ ListSession.prototype = {
       this._refuseUnsupported('key');
       return true;
     }
+    if (cls.class === 'help') {
+      this._beginHelp();
+      return true;
+    }
     const r = transitionListSession(this.state, { type: 'key', keyClass: cls.class });
     this.state = r.next;
     for (let i = 0; i < r.actions.length; ++i) {
@@ -1986,6 +2004,7 @@ ListSession.prototype = {
       case '\r':
         return { class: this._selectedNum == null ? 'open-pinned' : 'open' };
       case LEFT_ARROW: return { class: 'leave' };
+      case 'h': return { class: 'help' };
       default: return { class: 'unsupported' };
     }
   },
@@ -2679,6 +2698,9 @@ ListSession.prototype = {
           this._autoResumeEnabled()
         )
           return { class: 'native-inplace', bytes: keyEventToBytes(e) };
+        // Help is a feature easy reading presents: the help menu sheet lists
+        // PTT's help screen (docs/help-menu.md).
+        if (e.key === 'h') return { class: 'help' };
         return { class: 'unsupported' };
     }
   },

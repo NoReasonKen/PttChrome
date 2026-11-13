@@ -370,6 +370,19 @@ test.describe('文章列表好读模式（离线）', () => {
         await expectRefused(page, before, UNSUPPORTED_KEY);
       }
       await expect(page.locator('.listBodyView')).toHaveCount(1);
+
+      // Help is a feature easy reading presents (the help menu sheet): `h` is
+      // not refused, it asks PTT for its help screen.
+      await page.evaluate(() => {
+        const el = document.querySelector('.ListHint');
+        if (el) el.textContent = '';
+      });
+      const sentBefore = await page.evaluate(() => window.__replay.sent.length);
+      await page.keyboard.press('h');
+      await expect
+        .poll(() => page.evaluate((k) => window.__replay.sent.slice(k).join(''), sentBefore))
+        .toContain('h');
+      await expect(page.locator('.ListHint')).not.toContainText(UNSUPPORTED_KEY);
     } catch (e) {
       console.log('--- console tail ---');
       for (const l of logs.slice(-25)) console.log(l);
