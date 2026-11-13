@@ -2041,8 +2041,12 @@ ListSession.prototype = {
 
   // Text committed by an input method over the list (compositionend →
   // term_view.onTextInput). It is not a key: the IME's keydown never reaches
-  // onKeyDown. true = taken over.
-  noteTextInput: function() {
+  // onKeyDown. true = taken over. One character that is a key easy reading
+  // presents (help) is that key: a soft keyboard, or an input method in its
+  // Latin mode, delivers it as text.
+  noteTextInput: function(text) {
+    if (typeof text === 'string' && text.length === 1 && this._classifyBytes(text).class === 'help')
+      return this.onFunctionKey(text);
     return this._refuseText('text');
   },
 

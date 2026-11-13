@@ -79,6 +79,25 @@ describe("ListSession.noteTextInput — refused in easy reading", () => {
     expect(hints).toEqual([[TEXT_HINT, 4000, "error"]]);
   });
 
+  test("a single `h` typed as text (soft keyboard, IME in Latin mode) asks for help like the key", () => {
+    const { s } = makeSession();
+    const hints = [];
+    s._view.flashListHint = (...a) => hints.push(a);
+    s.state = "active";
+    s._renderMode = "buffer";
+    s._selectedNum = 42;
+    const helped = [];
+    s._beginHelp = () => helped.push(true);
+
+    expect(s.noteTextInput("h")).toBe(true);
+    expect(helped).toEqual([true]);
+    expect(hints).toEqual([]);
+    // Longer text that merely starts with it is still text.
+    expect(s.noteTextInput("hi")).toBe(true);
+    expect(helped).toEqual([true]);
+    expect(hints).toEqual([[TEXT_HINT, 4000, "error"]]);
+  });
+
   test("pinned selection (no number) is refused the same way", () => {
     const { s, enqueued, sent } = makeSession();
     s.state = "active";
