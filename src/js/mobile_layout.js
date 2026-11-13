@@ -240,7 +240,7 @@ export function mobileTermGeometry({ width, height, dpr, surface, fontPx }) {
 // ---- Phase 4：列表卡片 -------------------------------------------------------
 
 // 一張卡片佔幾個列高：兩行內容（標題一行＋推文數・日期・作者一行，LIST_CARD_LINES）
-// ＋卡片間距（css `.listCard` 的 padding-block，防誤點；標題行另比次行高一點）。**固定高**是承重
+// + spacing inside the full-height `.listCardBody` padding. Fixed height is load-bearing:
 // 條件：list_scroll.js 的「序列位置 ↔ scrollTop」是純乘除（每列等高），卡片模式下
 // 列高換成 LIST_CARD_ROWS*chh，那套數學原封不動（list_session/_rowHeight）。
 // 必須與 main.css `.listCard` 的 height（em）一致，守護 tests/unit/list_card_css.test.js。
@@ -278,9 +278,9 @@ export function listFillRows({ rows, headerRows, cards }) {
   return listPageRows(listViewportGeometry({ rows, headerRows, cards }).viewportRows, cards);
 }
 
-// 點的是卡片本體嗎（App.mouse_click 卡片模式只在這時開文）。卡片間距（`.listCard` 的
-// padding）不算 ⇒ 防誤點；header／footer 收起之後（listViewportGeometry），視口以外只剩
-// `.main` 的留白，同樣不能落回列號換算去開某一筆。
+// The full-height card body includes its separator-adjacent padding. Space
+// outside cards (including the viewport's reserve and tail) is not a target;
+// blank filler rows are rejected by the list session's entry lookup.
 export function isListCardBodyTarget(target) {
   if (!target || typeof target.closest !== 'function') return false;
   return !!target.closest('.listBodyView .listCardBody');

@@ -2,6 +2,7 @@ const { test, expect } = require('@playwright/test');
 const { bootNestedShortcutSearch, tapShortcut, waitList, waitArticle } = require('../helpers/article_shortcut_search');
 const { beginArticleTouch } = require('../helpers/article_gestures');
 const { nextFrames } = require('../helpers/real_input');
+const { waitRectStable, OVERRIDING_SEL } = require('../helpers/layout');
 const { recordSearchTaps, attachSearchTapFailure } = require('../helpers/search_tap_diagnostics');
 
 test.afterEach(async ({ page }, info) => attachSearchTapFailure(page, info));
@@ -73,3 +74,66 @@ for (const releaseAt of ['before contact', 'during contact']) {
     await waitArticle(page, 'Beta');
   });
 }
+
+for (const edge of ['top', 'bottom']) {
+  test(`tapping the ${edge} padding of a result card opens that article`, async ({ page }, info) => {
+    await recordSearchTaps(page, () => bootNestedShortcutSearch(page));
+    await tapShortcut(page, 'author');
+    await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
+    const card = page.locator(TARGET).locator('..');
+    await card.scrollIntoViewIfNeeded();
+    await waitRectStable(page, TARGET);
+    const point = await card.evaluate((node, edge) => {
+      const rect = node.getBoundingClientRect();
+      const first = node.querySelector('.listCardTitle').getBoundingClientRect();
+      const last = node.querySelector('.listCardMeta').getBoundingClientRect();
+      return {
+        x: (Math.max(0, rect.left) + Math.min(innerWidth, rect.right)) / 2,
+        y: edge === 'top' ? (rect.top + first.top) / 2 : (last.bottom + rect.bottom) / 2
+      };
+    }, edge);
+    expect(await page.evaluate(({ x, y, overriding }) => {
+      const hit = document.elementFromPoint(x, y);
+      return !!hit?.closest('.listCard') && !hit.closest('.listCardLine') && !hit.closest(overriding);
+    }, { ...point, overriding: OVERRIDING_SEL })).toBe(true);
+    await info.attach(`card-${edge}-padding`, { body: await page.screenshot(), contentType: 'image/png' });
+    await page.touchscreen.tap(point.x, point.y);
+    await waitArticle(page, 'Beta');
+  });
+}
+
+test('tapping empty filler below short search results opens no article', async ({ page }) => {
+  await recordSearchTaps(page, () => bootNestedShortcutSearch(page));
+  await tapShortcut(page, 'author');
+  await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
+  const point = await page.evaluate(overriding => {
+    const app = window.__app;
+    const viewport = document.querySelector('.main:not([data-stack-layer]) .listBodyView');
+    const bounds = viewport.getBoundingClientRect();
+    const length = app.listSession._sequence().length;
+    const header = app.listSession.headerRows();
+    for (const card of viewport.querySelectorAll('.listCard')) {
+      if (Number(card.getAttribute('srow')) - header < length) continue;
+      const rect = card.getBoundingClientRect();
+      const x = (rect.left + rect.right) / 2;
+      const y = (rect.top + rect.bottom) / 2;
+      const hit = document.elementFromPoint(x, y);
+      if (y > bounds.top && y < bounds.bottom && card.contains(hit) && !hit.closest(overriding)) {
+        return { x, y };
+      }
+    }
+    return null;
+  }, OVERRIDING_SEL);
+  expect(point).not.toBeNull();
+  const before = await page.evaluate(() => ({
+    selected: window.__app.listSession._selectedNum,
+    sent: window.__gestureSent.length
+  }));
+  await page.touchscreen.tap(point.x, point.y);
+  await nextFrames(page, 2);
+  expect(await page.evaluate(() => ({
+    selected: window.__app.listSession._selectedNum,
+    sent: window.__gestureSent.length
+  }))).toEqual(before);
+  await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
+});

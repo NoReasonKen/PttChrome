@@ -33,8 +33,13 @@ describe("列表卡片 CSS", () => {
     expect(card[0].body).toMatch(/box-sizing:\s*border-box/);
   });
 
-  test("間距用 padding-block，不得用 margin／border", () => {
-    expect(card[0].body).toMatch(/padding-block:/);
+  test("the full-height body owns padding so the entire card is tappable", () => {
+    const body = rules(/\.listCard\s+\.listCardBody\s*$/);
+    expect(body).toHaveLength(1);
+    expect(body[0].body).toMatch(/box-sizing:\s*border-box/);
+    expect(body[0].body).toMatch(/height:\s*100%/);
+    expect(body[0].body).toMatch(/padding-block:/);
+    expect(card[0].body).not.toMatch(/padding/);
     expect(card[0].body).not.toMatch(/(^|[;\s])margin(-block|-top|-bottom)?:/);
     expect(card[0].body).not.toMatch(/(^|[;\s])border(-top|-bottom|-block)?:/);
   });
