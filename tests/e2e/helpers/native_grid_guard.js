@@ -13,12 +13,14 @@
 //   report: append every distinct hit, with its allowed issue, to
 //           NATIVE_GRID_REPORT (JSON lines) for an inventory over a suite.
 //   off (default elsewhere): record hits in the page only (window.__nativeGridGuard).
+// Hits reach the test through a page binding, not the console: the app's debug
+// log and the privacy specs read the console, and a hit carries screen text.
 
 const fs = require('fs');
 
-const TAG = '[native-grid] ';
+const BINDING = '__nativeGridHit';
 
-function pageGuard({ tag }) {
+function pageGuard({ binding }) {
   if (window.__nativeGridGuard) return;
   const seen = new Set();
   // reset(): forget the hits so far, for a spec that checks the guard itself.
@@ -33,7 +35,9 @@ function pageGuard({ tag }) {
     let latest;
     let onGrid = false;
     let armed = false;
-    // A closed connection logs in again: its login screens come before the main menu.
+    // A closed connection logs in again: its login screens come before the main
+    // menu. The close can land after the next login prompt, so the prompt
+    // (the auto-login's own test) also counts as logged out.
     const onClose = app.onClose;
     app.onClose = function() {
       state.loggedIn = false;
@@ -43,8 +47,9 @@ function pageGuard({ tag }) {
     view._renderScreenLines = function(lines, dropHidden, inlinePreview, hoverPreview, overrides) {
       const result = render.apply(this, arguments);
       try {
-        const row0 = app.buf.getRowText(0, 0, app.buf.cols);
-        if (row0.includes('主功能表')) state.loggedIn = true;
+        const buf = app.buf;
+        if (buf.getRowText(0, 0, buf.cols).includes('主功能表')) state.loggedIn = true;
+        else if (state.loggedIn && loginPrompt(buf)) state.loggedIn = false;
         latest = overrides;
         onGrid = this._gridRender && !(overrides && overrides.listScroll);
         if (onGrid) schedule();
@@ -96,6 +101,14 @@ function pageGuard({ tag }) {
     }
   }
 
+  function loginPrompt(buf) {
+    for (let row = 0; row < buf.rows; row++) {
+      const text = buf.getRowText(row, 0, buf.cols);
+      if (text.includes('請輸入代號') || text.includes('請輸入帳號')) return true;
+    }
+    return false;
+  }
+
   // The terminal grid is visible and on top: not hidden, and not covered by the
   // home dashboard or a page-stack layer (the same test as the #169 entry specs).
   function shown() {
@@ -120,7 +133,7 @@ function pageGuard({ tag }) {
     if (seen.has(key)) return;
     seen.add(key);
     state.hits.push(hit);
-    console.warn(tag + key);
+    if (typeof window[binding] === 'function') window[binding](hit);
   }
 
   let app;
@@ -158,6 +171,20 @@ function allowedIssue(hit, where) {
   return entry ? entry.issue : null;
 }
 
+// Judged hits per page, for a spec that waits until the guard has judged one.
+const judgedWaiters = new WeakMap();
+
+// Resolves once the guard has judged (and in fail mode, failed on) a hit that
+// matches; the page record alone can run ahead of the binding call.
+function nativeGridJudged(page, match) {
+  return new Promise((resolve) => {
+    if (!judgedWaiters.has(page)) judgedWaiters.set(page, []);
+    judgedWaiters.get(page).push({ match, resolve });
+  });
+}
+
+const guardedPages = new WeakSet();
+
 // opts.mode overrides the default and the environment (the guard's own spec records only).
 async function installNativeGridGuard(page, opts = {}) {
   const { test, expect } = require('@playwright/test');
@@ -168,17 +195,16 @@ async function installNativeGridGuard(page, opts = {}) {
   const mode = opts.mode || process.env.NATIVE_GRID_GUARD || (project === 'offline-mobile' ? 'fail' : 'off');
   const out = process.env.NATIVE_GRID_REPORT;
   if (mode === 'report' && !out) throw new Error('NATIVE_GRID_GUARD=report needs NATIVE_GRID_REPORT=<file.jsonl>');
+  if (guardedPages.has(page)) return;
+  guardedPages.add(page);
   if (mode === 'fail' || mode === 'report') {
-    page.on('console', (msg) => {
-      const text = msg.text();
-      if (!text.startsWith(TAG)) return;
+    await page.exposeFunction(BINDING, (hit) => {
       let info;
       try {
         info = test.info();
       } catch {
         return; // after the test ended
       }
-      const hit = JSON.parse(text.slice(TAG.length));
       const where = { spec: info.file.replace(/^.*\/tests\/e2e\//, ''), test: info.title };
       const issue = hit.guardError ? null : allowedIssue(hit, where);
       if (mode === 'report') {
@@ -188,9 +214,14 @@ async function installNativeGridGuard(page, opts = {}) {
           .soft(hit, 'native grid painted under easy reading (tests/e2e/helpers/native_grid_guard.js)')
           .toBeUndefined();
       }
+      const waiters = judgedWaiters.get(page) || [];
+      for (const waiter of waiters.filter((w) => w.match(hit))) {
+        waiters.splice(waiters.indexOf(waiter), 1);
+        waiter.resolve(hit);
+      }
     });
   }
-  await page.addInitScript(pageGuard, { tag: TAG });
+  await page.addInitScript(pageGuard, { binding: BINDING });
 }
 
-module.exports = { installNativeGridGuard, allowedIssue, NATIVE_GRID_TAG: TAG };
+module.exports = { installNativeGridGuard, allowedIssue, nativeGridJudged };

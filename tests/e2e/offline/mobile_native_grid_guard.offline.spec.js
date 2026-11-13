@@ -1,10 +1,11 @@
 // The native grid guard installed by installReplay (tests/e2e/helpers/native_grid_guard.js):
 // with easy reading on and past login, a frame drawn on PTT's grid is a hit;
 // before login or with easy reading off, the grid is the expected presentation.
-// These tests read the page's record, so the guard records without failing.
+// The first three read the page's record, so the guard records without failing.
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { bootOffline } = require('../helpers/replay');
+const { nativeGridJudged } = require('../helpers/native_grid_guard');
 const { drawMainMenu, drawPressAnyKey } = require('../helpers/main_menu');
 
 const hits = (page) => page.evaluate(() => window.__nativeGridGuard.hits);
@@ -50,7 +51,8 @@ test.describe('native grid guard', () => {
     await ptt.applyPrefs(page, { enableEasyReading: true });
     await drawMainMenu(page);
     await expect.poll(() => page.evaluate(() => window.__app.homeDashboard.state.visible)).toBe(true);
+    const judged = nativeGridJudged(page, (hit) => hit.title === 'some screen');
     await drawPressAnyKey(page);
-    await expect.poll(() => hits(page)).toContainEqual(expect.objectContaining({ title: 'some screen' }));
+    await judged;
   });
 });
