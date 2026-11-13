@@ -1447,7 +1447,7 @@ ListSession.prototype = {
     if (this._boardName == null) return null;
     let topNum = this._topNum;
     let topPinnedKey = this._topPinnedKey;
-    let frac = this._scrollFrac || 0;
+    let frac = Math.max(0, this._scrollFrac || 0);
     const screen = this._screen();
     if (
       this._renderMode === 'buffer' &&
@@ -4280,7 +4280,7 @@ ListSession.prototype = {
     const abs = seq[p];
     this._topNum = nums[abs];
     this._topPinnedKey = this._topNum == null ? this._pinnedKeyAt(abs) : null;
-    this._scrollFrac = Math.max(0, frac || 0);
+    this._scrollFrac = frac || 0;
   },
 
   // 游標寫回內容錨。

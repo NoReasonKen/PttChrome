@@ -44,7 +44,10 @@ export function maxScrollTopFor({ len, bodyRows, rowH, viewportPx }) {
 export function topPosFromScrollTop({ scrollTop, rowH }) {
   const h = Number(rowH);
   if (!(h > 0)) return { pos: 0, frac: 0 };
-  const st = Math.max(0, Number(scrollTop) || 0);
+  const st = Number(scrollTop) || 0;
+  // Content coordinates include the exposed top reserve. Anchor its first
+  // real row below the viewport top instead of snapping that row to the top.
+  if (st < 0) return { pos: 0, frac: st };
   const pos = Math.floor((st + SCROLL_QUANT_EPS) / h + POS_EPS);
   return { pos: pos, frac: Math.max(0, st - pos * h) };
 }
@@ -53,8 +56,8 @@ export function topPosFromScrollTop({ scrollTop, rowH }) {
 export function anchorScrollTop({ pos, frac, rowH, maxScrollTop }) {
   const h = Number(rowH) || 0;
   const p = Math.max(0, Number(pos) || 0);
-  const f = Math.max(0, Number(frac) || 0);
-  return clamp(p * h + f, maxScrollTop);
+  const f = Number(frac) || 0;
+  return clamp(p * h + f, maxScrollTop, Math.min(0, f));
 }
 
 // 頂端保留區的目標大小（screen.js#absorbListShift）：往上還有東西＝這麼多頁（一頁＝
@@ -175,10 +178,10 @@ export function revealPlan(op, opts) {
   }
 }
 
-function clamp(v, maxScrollTop) {
+function clamp(v, maxScrollTop, minScrollTop = 0) {
   const max = Number(maxScrollTop);
   let out = Number(v) || 0;
-  if (out < 0) out = 0;
+  if (out < minScrollTop) out = minScrollTop;
   if (isFinite(max) && out > max) out = Math.max(0, max);
   return out;
 }

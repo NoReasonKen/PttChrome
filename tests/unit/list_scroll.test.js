@@ -72,14 +72,23 @@ describe("topPosFromScrollTop", () => {
     }
   });
 
-  test("負值／rowH 未知時退回原點，不得回 NaN", () => {
-    expect(topPosFromScrollTop({ scrollTop: -50, rowH: ROW })).toEqual({ pos: 0, frac: 0 });
+  test("an exposed reserve anchors the first row; unknown row height returns the origin", () => {
+    expect(topPosFromScrollTop({ scrollTop: -50, rowH: ROW })).toEqual({ pos: 0, frac: -50 });
     expect(topPosFromScrollTop({ scrollTop: 100, rowH: 0 })).toEqual({ pos: 0, frac: 0 });
   });
 });
 
 describe("anchorScrollTop（不變量 6 的原生捲動版）", () => {
   const max = maxScrollTopFor({ len: 300, bodyRows: BODY, rowH: ROW });
+
+  test("a captured exposed reserve keeps the first row below the viewport top", () => {
+    const a = topPosFromScrollTop({ scrollTop: -89, rowH: ROW });
+    expect(a).toEqual({ pos: 0, frac: -89 });
+    expect(anchorScrollTop({ ...a, rowH: ROW, maxScrollTop: max })).toBe(-89);
+    expect(anchorScrollTop({ ...a, pos: 20, rowH: ROW, maxScrollTop: max })).toBe(20 * ROW - 89);
+    expect(anchorScrollTop({ pos: 20, frac: 0, rowH: ROW })).toBe(20 * ROW);
+    expect(revealScrollTop({ pos: 0, scrollTop: -89, rowH: ROW, viewportPx: VP, maxScrollTop: max, block: "start" })).toBe(0);
+  });
 
   test("往回算得到同一個 scrollTop（round-trip）", () => {
     const st = 37 * ROW + 9;
@@ -228,7 +237,7 @@ describe("shiftOnlyDelta（純位移才交給頂端保留區吸收）", () => {
   });
   test("差距不等於列位移（clamp、視口在保留區裡）→ null", () => {
     expect(shiftOnlyDelta({ capturedPos: 5, pos: 15, rowH: H, top: 12 * H, cur: 5 * H })).toBeNull();
-    // 視口停在保留區（內容座標為負）：擷取時 clamp 成 0，差距大於位移。
+    // A clamped target omits the captured reserve offset: this is not a pure shift.
     expect(shiftOnlyDelta({ capturedPos: 0, pos: 10, rowH: H, top: 10 * H, cur: -300 })).toBeNull();
   });
   test("沒位移 → null（不吸收也不寫）", () => {

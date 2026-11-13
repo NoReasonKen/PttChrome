@@ -164,6 +164,7 @@ Three principles: **A, content decides** (a settle only decides when to evaluate
   (adding the shift to `_lastScrollTop`/`_scrollAnim.px` in step); everything else (landings, restores, clamps, a reserve too small) is written as before.
   The reserve target = `listReservePx` (`LIST_RESERVE_PAGES`=4 pages before reaching the top, 0 at the top); topping it back up needs a write, so it is only done at rest
   (no scroll event within `LIST_RESERVE_IDLE_MS`; **touch is not tracked**: when the pressed row is replaced by a redraw, touchend never reaches the viewport or document, and a counter would get stuck).
+  A shrink retains the visible part of the reserve if compensating it would require a negative DOM `scrollTop`; subsequent scrolling schedules the remaining shrink. Both sessions retain this negative content position as the first row plus a signed offset through redraws; explicit navigation and reading-record bookmarks still clamp to content. This keeps cards at the same screen position while the reader taps them, including when an initial background fill first discovers the list's top.
   Guarded by `render_list_reserve.test.js` (real DOM: no write, rows stay in place, the viewport is not stretched),
   `list_session.test.js`/`board_list_session.test.js` "page fill during a fling" (a stand-in drops writes during a fling, as measured).
   Not covered by e2e: under the emulator's software rendering, sampling is too sparse to tell "fling movement" from "page-fill jump" (red and green the same before and after the fix).
