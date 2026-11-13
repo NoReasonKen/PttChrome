@@ -16,6 +16,8 @@
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { installReplay, installOfflineNetwork, feedRaw, waitScreenSettled } = require('../helpers/replay');
+const { waitRectStable } = require('../helpers/layout');
+const { pauseClockNow } = require('../helpers/clock');
 
 // window.__i18n 是 main.jsx 在 `new App()` **之後**才掛的 e2e 探針，而 page.goto
 // 只等到 load —— 機器忙的時候（整包 offline 一起跑）module script 可能還沒執行完，
@@ -111,6 +113,47 @@ test.describe('連線失敗（從未連上）', () => {
     await page.locator('.mantine-Modal-overlay').click({ position: { x: 5, y: 5 } });
     await expect(page.locator('.PrefModal')).toBeHidden();
   });
+
+  for (const key of ['Escape', 'Enter']) {
+    test(`settings receive ${key} before their deferred focus transfer while disconnected`, async ({ page }) => {
+      await installReplay(page, { neverOpen: true });
+      await installOfflineNetwork(page);
+      await page.goto('/');
+      await expect(page.locator('.PageTopAlert').filter({
+        hasText: await label(page, 'alert_connectionHeader')
+      })).toBeVisible();
+      await openContextMenu(page);
+      const item = page.locator('.DropdownMenu').first().getByText(await label(page, 'cmenu_settings'), { exact: true });
+      await item.evaluate(node => node.setAttribute('data-settings-focus-test', 'true'));
+      const rect = await waitRectStable(page, '[data-settings-focus-test]', { fullRect: true });
+      await page.evaluate(() => { window.__settingsInitialSocket = window.__stubWS; });
+      await page.clock.install();
+      await pauseClockNow(page);
+      // Freeze only the library's deferred focus transfer. The real click
+      // opens settings, while the real key still targets terminal input #t.
+      await page.mouse.click(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      for (let elapsed = 0; elapsed < 500 && !(await page.locator('.PrefModal').isVisible()); elapsed++) {
+        await page.clock.runFor(1);
+      }
+      await expect(page.locator('.PrefModal')).toBeVisible();
+      expect(await page.evaluate(() => ({
+        focused: document.activeElement?.id, modal: window.__app.modalShown
+      }))).toEqual({ focused: 't', modal: true });
+      await page.keyboard.press(key);
+      if (key === 'Enter') {
+        // Settings own this Enter; it must not activate Reconnect behind them.
+        expect(await page.evaluate(() => window.__stubWS === window.__settingsInitialSocket)).toBe(true);
+        await page.clock.runFor(20);
+        await page.keyboard.press('Escape');
+      }
+      await page.clock.runFor(500);
+      await expect(page.locator('.PrefModal')).toBeHidden();
+      expect(await page.evaluate(() => window.__stubWS === window.__settingsInitialSocket)).toBe(true);
+      await ptt.sendKey(page, 'Enter');
+      expect(await page.evaluate(() => window.__stubWS === window.__settingsInitialSocket)).toBe(false);
+      await page.clock.resume();
+    });
+  }
 });
 
 // 連線失敗診斷（src/js/connection_probe.js）：直連從未 open ⇒ 經 proxy 探測。

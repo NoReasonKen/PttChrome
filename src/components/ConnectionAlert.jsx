@@ -26,6 +26,7 @@ export const ConnectionAlert = ({
   diagnose,
   onEnableProxy,
   loggedOut,
+  shouldYieldKeyboard,
 }) => {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -48,6 +49,9 @@ export const ConnectionAlert = ({
 
   useEffect(() => {
     const handler = (e) => {
+      // A foreground dialog can own input before its deferred focus transfer.
+      // Read ownership on each key: this alert lives in a separate React root.
+      if (shouldYieldKeyboard?.()) return;
       const t = e.target;
       // 斷線期間要擋的是**終端機**的按鍵（連線已死，送出去只會石沉大海），不是整個
       // 網頁的 UI。原本這裡無條件吃掉所有 keydown，導致斷線時設定頁的欄位完全打不了
@@ -70,7 +74,7 @@ export const ConnectionAlert = ({
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [onDismiss]);
+  }, [onDismiss, shouldYieldKeyboard]);
 
   return (
     <Transition mounted={mounted} transition="fade" duration={200}>
