@@ -716,17 +716,18 @@ App.prototype.onClose = function() {
     this.enableProxyAndReconnect();
   };
   const container = document.getElementById('reactAlert');
+  const shouldYieldKeyboard = () => this.modalShown || this.contextMenuShown;
   if (loggedOut) {
     // 正常登出：不是連線失敗，不跑診斷，只給「已登出／重新連線」。
     renderInto(container, <MantineRoot><ConnectionAlert
-      onDismiss={onDismiss} loggedOut /></MantineRoot>);
+      onDismiss={onDismiss} shouldYieldKeyboard={shouldYieldKeyboard} loggedOut /></MantineRoot>);
     this.updateTabIcon('disconnect');
     return;
   }
   // Android APK 的連線永遠是原生本機 proxy：「Origin 沒設好 → 改走 proxy」這條
   // 診斷在那裡不成立，只給單純的重連提示。
   renderInto(container, <MantineRoot><ConnectionAlert
-    onDismiss={onDismiss} diagnose={isAndroidApp() ? undefined : diagnose}
+    onDismiss={onDismiss} shouldYieldKeyboard={shouldYieldKeyboard} diagnose={isAndroidApp() ? undefined : diagnose}
     onEnableProxy={onEnableProxy} /></MantineRoot>);
   this.updateTabIcon('disconnect');
 };
