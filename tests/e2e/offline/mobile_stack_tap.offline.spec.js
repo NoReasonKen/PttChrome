@@ -1,7 +1,7 @@
 // A tap on the revealed article list while it waits for PTT (#30) is
 // remembered by the article's identity and opened on the refreshed list.
 const { test, expect } = require('@playwright/test');
-const { waitRectStable } = require('../helpers/layout');
+const { waitRectStable, OVERRIDING_SEL } = require('../helpers/layout');
 const { beginArticleTouch } = require('../helpers/article_gestures');
 const ptt = require('../helpers/ptt');
 const { loadCassette, bootScenario, waitFed } = require('../helpers/replay');
@@ -66,6 +66,31 @@ test('a tap during the handoff opens the same article after the swap', async ({ 
   await articleRead(page);
   await waitFed(page, reopen.steps.length - 1);
 });
+
+for (const edge of ['top', 'bottom']) {
+  test(`a tap on ${edge} card padding during the handoff opens the same article`, async ({ page }) => {
+    const card = await openRecordedArticle(page);
+    const reply = await leaveWithHeldReply(page);
+    const point = await layerCard(page, card).evaluate((body, edge) => {
+      const rect = body.closest('.listCard').getBoundingClientRect();
+      const first = body.querySelector('.listCardTitle').getBoundingClientRect();
+      const last = body.querySelector('.listCardMeta').getBoundingClientRect();
+      return { x: (rect.left + rect.right) / 2,
+        y: edge === 'top' ? (rect.top + first.top) / 2 : (last.bottom + rect.bottom) / 2 };
+    }, edge);
+    expect(await page.evaluate(({ x, y, overriding }) => {
+      const hit = document.elementFromPoint(x, y);
+      return !!hit?.closest('[data-stack-layer] .listCard') && !hit.closest('.listCardLine') && !hit.closest(overriding);
+    }, { ...point, overriding: OVERRIDING_SEL })).toBe(true);
+    const sentBefore = await page.evaluate(() => window.__replay.sent.length);
+    await page.touchscreen.tap(point.x, point.y);
+    expect(await page.evaluate(n => window.__replay.sent.slice(n), sentBefore)).toEqual([]);
+    await reply();
+    await expect(page.locator(UNDERLAY)).toHaveCount(0, { timeout: 10000 });
+    await articleRead(page);
+    await waitFed(page, reopen.steps.length - 1);
+  });
+}
 
 test('a tapped article that moved on the refreshed list is found by identity and opened', async ({ page }) => {
   const card = await openRecordedArticle(page);

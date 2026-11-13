@@ -49,8 +49,15 @@ async function waitState(page, pred, timeout = 20000) {
   return last;
 }
 
-async function engage(page) {
+async function engage(page, prefs = {}) {
   await bootOffline(page, ptt);
+  if (prefs.mobileFontSize) {
+    // Keep the recorded 24-row terminal while exercising the requested font.
+    await ptt.applyPrefs(page, { mobileFontSize: prefs.mobileFontSize });
+    await page.setViewportSize({ width: 412, height: 112 + 24 * prefs.mobileFontSize + 10 });
+    await page.waitForFunction(height => window.__app.buf.rows === 24 &&
+      window.__app.view.mobileRowsPx === height - 112, 112 + 24 * prefs.mobileFontSize + 10);
+  }
   const before = await page.evaluate(() => ({ chh: window.__app.view.chh, rows: window.__app.buf.rows }));
   await replayListCassette(page, nav);
   await page.waitForFunction(() => window.__app.buf.pageState === 2);
@@ -59,6 +66,7 @@ async function engage(page) {
     easyReadingListPrefetchCount: 200,
     useMouseBrowsing: true,
     mouseLeftClick: true,
+    ...prefs,
   });
   await waitState(page, (x) => x.state === 'active' && x.listLen > 50 && x.queueIdle && x.listCards);
   return before;
@@ -275,84 +283,61 @@ test.describe('手機 Phase 4：列表卡片（離線重放）', () => {
     expect(sent).not.toContain('\x1b[D');
   });
 
-  // 防誤點：卡片間距（.listCard 的 padding-block，本體之外）點了不開文；同一張卡片
-  // 點本體照開 ⇒ 證明是間距被吞，不是 handler 整個失效。
-  test('tap 卡片間距不開文；tap 同一張卡片本體才開', async ({ page }) => {
-    test.setTimeout(90000);
-    await engage(page);
-    const target = await page.evaluate(() => {
-      const v = document.querySelector('#mainContainer .listBodyView');
-      const vr = v.getBoundingClientRect();
-      const cards = Array.from(v.querySelectorAll(':scope > .listCard'));
-      const seq = window.__app.listSession._sequence();
-      const header = window.__app.listSession.headerRows();
-      for (const c of cards) {
-        const r = c.getBoundingClientRect();
-        if (r.top < vr.top + 2 || r.bottom > vr.bottom - 2) continue;
-        const idx = Number(c.getAttribute('srow')) - header;
-        const num = window.__app.buf.listLineNums[seq[idx]];
-        if (num == null || num === window.__app.listSession._selectedNum) continue;
-        c.setAttribute('data-e2e-gap-card', '1');
-        return { num };
-      }
-      return null;
+  for (const mobileFontSize of [12, 24]) {
+    test(`tapping card padding opens that entry at font size ${mobileFontSize}`, async ({ page }, info) => {
+      test.setTimeout(90000);
+      await engage(page, { mobileFontSize });
+      await expect.poll(async () => (await state(page)).chh).toBeGreaterThan(mobileFontSize - 1);
+      const target = await page.evaluate(() => {
+        const v = document.querySelector('#mainContainer .listBodyView');
+        const vr = v.getBoundingClientRect();
+        const cards = Array.from(v.querySelectorAll(':scope > .listCard'));
+        const seq = window.__app.listSession._sequence();
+        const header = window.__app.listSession.headerRows();
+        for (const c of cards) {
+          const r = c.getBoundingClientRect();
+          if (r.top < vr.top + 2 || r.bottom > vr.bottom - 2) continue;
+          const idx = Number(c.getAttribute('srow')) - header;
+          const num = window.__app.buf.listLineNums[seq[idx]];
+          if (num == null || num === window.__app.listSession._selectedNum) continue;
+          c.setAttribute('data-e2e-gap-card', '1');
+          return { num };
+        }
+        return null;
+      });
+      expect(target).not.toBeNull();
+      await waitRectStable(page, '[data-e2e-gap-card]');
+      Object.assign(
+        target,
+        await page.evaluate(() => {
+          const c = document.querySelector('[data-e2e-gap-card]');
+          const r = c.getBoundingClientRect();
+          const b = c.querySelector('.listCardTitle').getBoundingClientRect();
+          return {
+            x: r.left + r.width / 2,
+            gapY: (r.top + b.top) / 2,
+            gapPx: b.top - r.top,
+          };
+        })
+      );
+      expect(target.gapPx).toBeGreaterThan(1);
+      const sentBefore = await page.evaluate(() => window.__replay.sent.length);
+      // The tap lands outside both text lines and does not hit another control.
+      const hit = await page.evaluate(
+        ({ x, y, sel }) => {
+          const el = document.elementFromPoint(x, y);
+          return !!el && !!el.closest('.listCard') && !el.closest('.listCardLine') && !el.closest(sel);
+        },
+        { x: target.x, y: target.gapY, sel: OVERRIDING_SEL }
+      );
+      expect(hit).toBe(true);
+      await info.attach(`card-padding-font-${mobileFontSize}`, { body: await page.screenshot(), contentType: 'image/png' });
+      await page.touchscreen.tap(target.x, target.gapY);
+      await expect.poll(async () => (await state(page)).selectedNum).toBe(target.num);
+      await expect.poll(() => page.evaluate(n => window.__replay.sent.slice(n).join(''), sentBefore))
+        .toContain(String(target.num) + '\r');
     });
-    expect(target).not.toBeNull();
-    await waitRectStable(page, '[data-e2e-gap-card]');
-    Object.assign(
-      target,
-      await page.evaluate(() => {
-        const c = document.querySelector('[data-e2e-gap-card]');
-        const r = c.getBoundingClientRect();
-        const b = c.querySelector('.listCardBody').getBoundingClientRect();
-        return {
-          x: r.left + r.width / 2,
-          gapY: (r.top + b.top) / 2,
-          bodyY: (b.top + b.bottom) / 2,
-          gapPx: b.top - r.top,
-        };
-      })
-    );
-    expect(target.gapPx).toBeGreaterThan(1);
-    const before = await state(page);
-    const sentBefore = await page.evaluate(() => window.__replay.sent.length);
-    // 間距點下去的那一刻確實是卡片外框、不是本體，也不是會搶點擊的連結類元素
-    const hit = await page.evaluate(
-      ({ x, y, sel }) => {
-        const el = document.elementFromPoint(x, y);
-        return !!el && !!el.closest('.listCard') && !el.closest('.listCardBody') && !el.closest(sel);
-      },
-      { x: target.x, y: target.gapY, sel: OVERRIDING_SEL }
-    );
-    expect(hit).toBe(true);
-    // 兩下 tap 只隔幾十 ms、相距 ~17px ⇒ Chromium 把第二下算成**雙擊**（mousedown
-    // detail=2，實測 Windows 40ms）。雙擊的預設動作是選字，App.mouse_click 在選取非空時
-    // 不處理點擊 ⇒ 第二下被吞、游標不動（CI Linux 必現：落點換到頁底後，量到的卡片
-    // 本體中央剛好壓在字上）。真實使用者不會 40ms 內連點兩張卡片 ⇒ 等雙擊判定窗過期，
-    // 讓第二下是一次獨立的單擊。等的是輸入語意，不是版面。
-    await page.evaluate(() => {
-      window.__e2eTapDetail = [];
-      document.addEventListener('mousedown', (e) => window.__e2eTapDetail.push(e.detail), true);
-    });
-    await page.touchscreen.tap(target.x, target.gapY);
-    const firstTapAt = await page.evaluate(() => performance.now());
-    // click handler 是同步的；等兩個 rAF 讓任何後續排程有機會發生
-    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-    expect((await state(page)).selectedNum).toBe(before.selectedNum);
-    expect(await page.evaluate(() => window.__replay.sent.length)).toBe(sentBefore);
-    // Chromium aura 的 double_tap_timeout 400ms，留餘裕。
-    await page.waitForFunction((t0) => performance.now() - t0 > 600, firstTapAt);
-    await page.touchscreen.tap(target.x, target.bodyY);
-    const tap = await page.evaluate(() => ({
-      detail: window.__e2eTapDetail[window.__e2eTapDetail.length - 1],
-      selection: String(document.getSelection()),
-    }));
-    expect(tap, '第二下必須是單擊、且沒有選到字（否則 mouse_click 不處理）').toEqual({
-      detail: 1,
-      selection: '',
-    });
-    await expect.poll(async () => (await state(page)).selectedNum).toBe(target.num);
-  });
+  }
 
   // 回歸：tap 卡片偶爾不開文、但游標底色已經移到那一張，再點一次才開。
   // 成因：觸控 tap 的相容事件是 mousemove → mousedown → mouseup → click，Chromium 的

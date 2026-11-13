@@ -415,8 +415,8 @@ describe("listViewportGeometry（term_view／clientToPos／_pageRows 同源）",
     });
   });
 
-  // 防誤點：點到卡片間距（.listCard 的 padding）或視口外的留白不開文，點卡片本體才開。
-  test("isListCardBodyTarget：只有卡片本體（視口外的留白、間距都不開文）", () => {
+  // real-input: tests/e2e/offline/mobile_article_list_tap.offline.spec.js
+  test("isListCardBodyTarget accepts the full-height body and rejects space outside it", () => {
     document.body.innerHTML =
       '<div class="main"><div class="listBodyView"><span class="listCard" id="card">' +
       '<span class="listCardBody"><span class="listCardLine" id="line">x</span></span>' +
