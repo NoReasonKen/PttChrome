@@ -109,22 +109,26 @@ test.describe('手機：看板搜尋留住原畫面 (#190)', () => {
     expect(frames.slice(0, firstList).filter((f) => !f.dashboard)).toEqual([]);
   });
 
-  test('typed search from home lands on the board with no native list frame', async ({ page }) => {
-    await bootHome(page);
-    await watchFrames(page);
-    await ptt.sendKey(page, 's');
-    await expect(sheet(page)).toBeVisible();
-    await submitBoard(page, 'Test');
-    await waitList(page, { has: ['Alpha topic'] });
-    await listActive(page);
-    const frames = await stopFrames(page);
-    // The key dismisses the dashboard first (#191): the native main menu under
-    // the sheet is that issue's. What the search adds must not be native.
-    expect(frames.some((f) => f.holding)).toBe(true);
-    expect(frames.filter((f) => f.shown && (f.prompt || f.surface === 'grid'))).toEqual([]);
-    expect(frames.filter((f) => f.state === 2 && f.shown && f.surface === 'list' && !f.cards)).toEqual([]);
-    expect(frames.some((f) => f.cards && f.shown)).toBe(true);
-  });
+  for (const key of ['s', 'S']) {
+    test(`typed search key ${key} at home keeps the dashboard until the board, every frame`, async ({ page }) => {
+      await bootHome(page);
+      await watchFrames(page);
+      await ptt.sendKey(page, key);
+      await expect(sheet(page)).toBeVisible();
+      await expect(sheet(page).locator('[data-board-suggest="ready"]')).toHaveCount(1);
+      await submitBoard(page, 'Test');
+      await waitList(page, { has: ['Alpha topic'] });
+      await listActive(page);
+      const frames = await stopFrames(page);
+      expect(frames.some((f) => f.holding)).toBe(true);
+      expect(nativeFrames(frames)).toEqual([]);
+      expect(frames.some((f) => f.cards && f.shown)).toBe(true);
+      // Either search key opens the sheet over the dashboard (#191), and the
+      // dashboard covers the main menu until the board is shown.
+      const firstList = frames.findIndex((f) => f.cards && f.shown);
+      expect(frames.slice(0, firstList).filter((f) => !f.dashboard)).toEqual([]);
+    });
+  }
 
   test('closing the sheet at home keeps the dashboard, every frame', async ({ page }) => {
     await bootOffline(page, ptt);
