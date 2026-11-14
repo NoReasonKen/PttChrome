@@ -2,7 +2,7 @@
 
 守**我們對 Android 的假設**（桌機 offline e2e 只能用替身測的那層）。涵蓋：
 - `select_mode`：選取模式的長按／拖把手（`docs/mobile.md`「長按選單與選取模式」）；
-- `mobile_input`：真 tap 工具列不彈鍵盤、⌨ 叫出軟鍵盤後工具列／終端機底列在鍵盤上方、鍵盤開著按返回只收鍵盤、
+- `mobile_input`: real taps do not open the keyboard; the keyboard covers stationary toolbar/content; Back dismisses only the keyboard.
   系統返回鍵 → sentinel 接住並交給送鍵出口、補回 sentinel（連按三次、每次隔開超過 `DOUBLE_BACK_MS`
   以免觸發「送不出 ← 時連按兩次離站」的逃生門，不離站）。
 - `list_card_blacklist`：真長按文章列表卡片的序號・日期／作者／標題三段，都要同時給作者與標題黑名單
@@ -14,7 +14,7 @@
 - 試過但沒收：「下拉不觸發 Chrome 重新整理」——拿掉 overscroll-behavior 的對照組在模擬器上也拉不出重整
   （body `overflow:hidden`），否定斷言證明不了什麼。
 - `apk`：debug APK（WebView 殼）——沒有 sentinel 時返回鍵問網頁 `pttHostBack`（擋下先提示、800ms 內連兩下才丟背景，不斷線）、疊了 sentinel 交給網頁 guard；文章網址交給
-  外部瀏覽器、BBS 畫面留著；軟鍵盤疊在 WebView 上不縮、原生 `pttandroid:ime` 回報高度、工具列浮在鍵盤上、
+  外部瀏覽器、BBS 畫面留著；the keyboard covers the unchanged WebView and toolbar; native `pttandroid:ime` reports overlap;
   返回只收鍵盤。APK 以 dev server 模式載 host 的 dev server（fixture 用 `run-as` 寫 `shared_prefs`），
   PTT 連線一樣離線重放（stub 也攔 APK 本機 proxy 的 `/bbs/<token>`）。執行器每輪開機前先
   `gradlew assembleDebug assembleDebugAndroidTest`（增量，沒改動幾秒；編不過＝exit 2）⇒ 不會拿 build 目錄裡的舊 APK 測新 code。

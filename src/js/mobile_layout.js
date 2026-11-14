@@ -84,18 +84,14 @@ export function mobileRowsHeight(innerHeight, safe) {
   );
 }
 
-// 終端機的上／下 inset（px）與底部 safe-area 的實際值。
-//   top    ＝ App Bar ＋ 上緣 safe-area
-//   bottom ＝ 軟鍵盤 ＋ 工具列 ＋ 展開中的按鍵面板 ＋ 下緣 safe-area
-//   safeBottom：軟鍵盤升起時手勢列被鍵盤蓋住 ⇒ 0（不然工具列下面多一截空白）。
-// 呼叫端：App._onVisualViewport（寫 view 的 inset 與 CSS 變數 --safe-top/--safe-bottom）。
-export function mobileChromeInsets({ kb, keysPanel, safeTop, safeBottom }) {
-  const k = kb > 0 ? kb : 0;
-  const sb = k > 0 ? 0 : Math.max(0, Number(safeBottom) || 0);
+// Reserve persistent chrome only. The terminal keyboard covers the toolbar and
+// reading content without changing their geometry, including either safe area.
+export function mobileChromeInsets({ keysPanel, safeTop, safeBottom }) {
+  const sb = Math.max(0, Number(safeBottom) || 0);
   const st = Math.max(0, Number(safeTop) || 0);
   return {
     top: MOBILE_APPBAR_PX + st,
-    bottom: k + MOBILE_TOOLBAR_PX + (keysPanel > 0 ? keysPanel : 0) + sb,
+    bottom: MOBILE_TOOLBAR_PX + (keysPanel > 0 ? keysPanel : 0) + sb,
     safeTop: st,
     safeBottom: sb
   };

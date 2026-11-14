@@ -1013,12 +1013,10 @@ App.prototype.toggleSoftKeyboard = function() {
   return this.softKeyboard;
 };
 
-// visualViewport resize/scroll（建構子掛）。兩件事：
-//   1. 鍵盤蓋住的高度 → term_view.setKeyboardInset（終端機排進可視區）＋ CSS 變數
-//      --kb-inset（按鍵列是 position:fixed，錨在 layout viewport，不推就被鍵盤蓋住）。
-//   2. 鍵盤被**別的方式**收起（Android 返回鍵、點網址列）：看過鍵盤出現、之後又
-//      不見了 ⇒ softKeyboard 歸零，否則下次按鍵盤鈕會是「收起」、要按兩下才叫得出來。
-//      「看過出現」是必要條件：剛按下鍵盤鈕的那幾幀鍵盤還沒升起，inset 也是 0。
+// Observe keyboard overlap for forms and dismissal tracking, independently of
+// terminal geometry. The key-panel keyboard covers the reading page and toolbar.
+// Wait until an overlap has been seen before treating zero as dismissal: the IME
+// has not appeared yet in the first frames after the keyboard button is pressed.
 App.prototype._onVisualViewport = function() {
   var vv = window.visualViewport;
   var vvFacts = vv ? {
@@ -1044,13 +1042,10 @@ App.prototype._onVisualViewport = function() {
     this._applyInputMode();
     this._emitMobileState();
   }
-  // --kb-inset 只算軟鍵盤（工具列靠它浮在鍵盤上）。終端機的上／下 inset 另加常駐的
-  // App Bar、底部工具列、展開中的按鍵面板與 safe-area：終端機只排在它們中間
-  // （mobile_layout.mobileChromeInsets → term_size.termLayoutOffsets）。
-  document.documentElement.style.setProperty('--kb-inset', inset + 'px');
+  // Only persistent controls reserve reading space; keyboard overlap must not
+  // move content or the toolbar. Forms keep their separate --vv-kb-inset above.
   var safe = this.mobile ? this._readSafeInsets() : { top: 0, bottom: 0 };
   var chrome = mobileChromeInsets({
-    kb: inset,
     keysPanel: this._keysPanelInset || 0,
     safeTop: safe.top,
     safeBottom: safe.bottom
@@ -1059,8 +1054,8 @@ App.prototype._onVisualViewport = function() {
   document.documentElement.style.setProperty('--safe-bottom', chrome.safeBottom + 'px');
   if (this.view && this.view.setTopInset)
     this.view.setTopInset(this.mobile ? chrome.top : 0);
-  var bottomInset = this.mobile ? chrome.bottom : inset;
-  // 底部浮動提示（term_view 的 flashListHint／讀取中／T2 輸入框）靠它讓開工具列與鍵盤。
+  var bottomInset = this.mobile ? chrome.bottom : 0;
+  // Bottom terminal prompts keep their position above the toolbar/key panel.
   document.documentElement.style.setProperty('--term-bottom-inset', bottomInset + 'px');
   if (this.view && this.view.setKeyboardInset)
     this.view.setKeyboardInset(bottomInset);

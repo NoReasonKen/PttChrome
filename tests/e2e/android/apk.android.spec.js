@@ -5,7 +5,7 @@
 //      pttHostBack()，網頁放行才把 App 丟到背景、不結束（結束＝斷線）；
 //   2. 文章裡的網址（target=_blank）走 onCreateWindow 交給外部瀏覽器，BBS 畫面不被換掉；
 //   3. 軟鍵盤疊在 WebView 上、不縮 WebView（縮了＝改列數、重送 NAWS），高度由原生
-//      'pttandroid:ime' 告訴網頁 ⇒ 工具列與終端機底列浮在鍵盤上；鍵盤開著按返回只收鍵盤。
+//      'pttandroid:ime' reports overlap for forms and dismissal; terminal chrome stays put.
 // 網頁是 host 的 dev server（APK 的 dev server 模式，fixtures.js#apk），PTT 連線是離線重放
 // （stub 攔 APK 本機 proxy 那條 ws://127.0.0.1:<port>/bbs/<token>）。
 // 密碼管理員／Google 登入 bridge 沒有測：模擬器上沒有 Google 帳號與已存密碼。
@@ -36,9 +36,9 @@ const resumedActivity = (device) => device.shell('dumpsys activity activities').
 // 同一份文件、同一條連線：Activity／WebView 被重建的話，舊的 page 會關掉（evaluate 丟錯）或旗標不見。
 const sameDocument = (page) =>
   page.evaluate(() => !!window.__sameDocument && window.__app.isConnected()).catch(() => false);
-// 原生回報、網頁套上的鍵盤高度（CSS px）。
+// Keyboard overlap reported by the host, also available to form overlays.
 const kbInset = (page) =>
-  page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--kb-inset')) || 0);
+  page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--vv-kb-inset')) || 0);
 
 async function bringBack(apk) {
   // singleTask ⇒ 叫回既有的那個 Activity（不新建、不重載）。
@@ -163,7 +163,7 @@ test.describe('Android APK：返回鍵、外部連結、軟鍵盤（真觸控／
     expect(page.url()).toBe(before);
   });
 
-  test('⌨ 軟鍵盤：WebView 不縮、原生回報高度、工具列與底列在鍵盤上；返回只收鍵盤', async ({ apk }) => {
+  test('the keyboard covers a stationary WebView and toolbar; native overlap and Back still work', async ({ apk }) => {
     test.setTimeout(150000);
     const { device, page } = apk;
     await openScreen(page, PREFS, { reload: true });
@@ -172,26 +172,29 @@ test.describe('Android APK：返回鍵、外部連結、軟鍵盤（真觸控／
 
     await tap(page, device, byKey('__keys'));
     await expect(page.locator('#mobileKeypad')).toBeVisible();
+    const layout = async () => ({
+      bar: await rectOf(page, '.mobileToolbarBar'),
+      panel: await rectOf(page, '#mobileKeypad'),
+      lastRow: await lastRowBottom(page),
+    });
+    await expect.poll(async () => (await lastRowBottom(page)) - (await rectOf(page, '#mobileKeypad')).top)
+      .toBeLessThanOrEqual(0.5);
+    const before = await layout();
     await tap(page, device, byKey('__keyboard'));
     await expect.poll(() => kbInset(page), { timeout: 10000 }).toBeGreaterThan(100);
     expect(await page.evaluate(() => window.__app.softKeyboard)).toBe(true);
 
     // 鍵盤疊在上面、WebView 沒被縮（縮了就是 layout resize ⇒ 改列數）。
     expect(await page.evaluate(() => ({ h: innerHeight, rows: window.__app.buf.rows }))).toEqual(size0);
-    // 工具列下緣貼齊鍵盤上緣、面板在工具列上、終端機底列在面板上。
-    await expect
-      .poll(async () => Math.abs((await rectOf(page, '.mobileToolbarBar')).bottom - (size0.h - (await kbInset(page)))))
-      .toBeLessThanOrEqual(1);
-    const bar = await rectOf(page, '.mobileToolbarBar');
-    const panel = await rectOf(page, '#mobileKeypad');
-    expect(panel.bottom).toBeLessThanOrEqual(bar.top + 0.5);
-    await expect.poll(() => lastRowBottom(page)).toBeLessThanOrEqual(panel.top + 0.5);
+    await expect.poll(layout).toEqual(before);
+    expect(before.bar.bottom).toBeGreaterThan(size0.h - (await kbInset(page)));
 
     // 返回鍵：IME 吃掉、只收鍵盤（原生回報 0 ⇒ softKeyboard 歸零），不送 ←、App 留在前景。
     await collectSent(page);
     await keyevent(device, 'KEYCODE_BACK');
     await expect.poll(() => kbInset(page), { timeout: 10000 }).toBe(0);
     await expect.poll(() => page.evaluate(() => window.__app.softKeyboard)).toBe(false);
+    await expect.poll(layout).toEqual(before);
     expect(await resumedPackage(device)).toBe(apk.pkg);
     // 柵欄：送出的 bytes 依序，返回鍵若被當成 ← 送了會排在 Escape 前面。
     await tap(page, device, byKey('Escape'));

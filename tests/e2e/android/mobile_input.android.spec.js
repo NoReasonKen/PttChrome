@@ -3,7 +3,7 @@
 // 或根本測不到的那層（docs/mobile.md「規則」、docs/android-e2e.md）：
 //   1. `#t` 的 inputmode="none"：真觸控 tap 終端機／工具列，Android 真的不彈軟鍵盤；
 //   2. ⌨ 在 click handler 內同步 blur→focus（user activation）⇒ 軟鍵盤真的升起，而且
-//      工具列（--kb-inset）與終端機底列（setKeyboardInset）都被推到鍵盤上方；
+//      the toolbar, key panel and terminal content retain their positions underneath it;
 //   3. 鍵盤開著時按系統返回鍵：IME 吃掉返回、只收鍵盤，不可以走到 history sentinel 送 ←；
 //      收起後 softKeyboard 歸零（`_onVisualViewport`）⇒ 再按 ⌨ 一次就叫得出來；
 //   4. 系統返回鍵 → history sentinel → 送鍵出口，連按都接得住（返回鍵不是 user activation，
@@ -64,28 +64,30 @@ test.describe('Android Chrome：工具列、軟鍵盤、返回鍵（真觸控／
     expect(await page.evaluate(() => window.__app.softKeyboard)).toBe(false);
   });
 
-  test('⌨ 叫出軟鍵盤 ⇒ 工具列與終端機底列在鍵盤上方；返回鍵只收鍵盤、不送 ←；再按一次 ⌨ 就叫得出來', async ({ page, android }) => {
+  test('the keyboard covers stationary chrome and content; Back dismisses it and the button opens it again', async ({ page, android }) => {
     test.setTimeout(120000);
     const { device } = android;
     await openScreen(page, PREFS);
     await recordTouches(page);
     await tap(page, device, byKey('__keys'));
     await expect(page.locator('#mobileKeypad')).toBeVisible();
+    const layout = async () => ({
+      bar: await rectOf(page, '.mobileToolbarBar'),
+      panel: await rectOf(page, '#mobileKeypad'),
+      lastRow: await lastRowBottom(page),
+    });
+    await expect.poll(async () => (await lastRowBottom(page)) - (await rectOf(page, '#mobileKeypad')).top)
+      .toBeLessThanOrEqual(0.5);
+    const before = await layout();
 
     await tap(page, device, byKey('__keyboard'));
     expect(await inputMode(page)).toBe('text');
     await expect.poll(() => keyboardCover(page), { timeout: 10000 }).toBeGreaterThan(100);
     expect(await page.evaluate(() => window.__app.softKeyboard)).toBe(true);
 
-    // 版面：工具列浮在鍵盤上、面板在工具列上、終端機底列在面板上（PTT 的輸入列不可被蓋）。
-    // 鍵盤升起是動畫 ⇒ 等到工具列下緣貼齊可視區底再量。
-    await expect
-      .poll(async () => Math.abs((await rectOf(page, '.mobileToolbarBar')).bottom - (await visibleBottom(page))))
-      .toBeLessThanOrEqual(1);
-    const bar = await rectOf(page, '.mobileToolbarBar');
-    const panel = await rectOf(page, '#mobileKeypad');
-    expect(panel.bottom).toBeLessThanOrEqual(bar.top + 0.5);
-    await expect.poll(() => lastRowBottom(page)).toBeLessThanOrEqual(panel.top + 0.5);
+    // The actual IME reduces the visible area but leaves page geometry intact.
+    await expect.poll(layout).toEqual(before);
+    expect(before.bar.bottom).toBeGreaterThan(await visibleBottom(page));
 
     // 系統返回鍵：鍵盤開著 ⇒ IME 吃掉，只收鍵盤。
     await collectSent(page);
@@ -93,6 +95,7 @@ test.describe('Android Chrome：工具列、軟鍵盤、返回鍵（真觸控／
     await expect.poll(() => keyboardCover(page), { timeout: 10000 }).toBe(0);
     await expect.poll(() => page.evaluate(() => window.__app.softKeyboard)).toBe(false);
     expect(await inputMode(page)).toBe('none');
+    await expect.poll(layout).toEqual(before);
     // 柵欄：再送一個必定會送的鍵；送出的 bytes 依序，所以若返回鍵被當成 ← 送了，會排在它前面。
     await tap(page, device, byKey('Escape'));
     await expect.poll(() => sentText(page)).toContain('\x1b');

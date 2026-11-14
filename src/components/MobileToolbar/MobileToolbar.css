@@ -5,10 +5,9 @@
   position: fixed;
   left: 0;
   right: 0;
-  /* --kb-inset：軟鍵盤蓋住的高度（App._onVisualViewport 寫）。position:fixed 錨在
-     layout viewport，而 Android 預設叫鍵盤只縮 visual viewport ⇒ 不加就被鍵盤蓋住。 */
-  bottom: var(--kb-inset, 0px);
-  /* 下緣 safe-area（手勢列，viewport-fit=cover 時才不是 0；鍵盤升起時 App 寫成 0）。 */
+  /* The phone keyboard covers the toolbar instead of moving it upward. */
+  bottom: 0;
+  /* Preserve the system navigation safe area even while covered by the IME. */
   padding-bottom: var(--safe-bottom, 0px);
   background: var(--mobile-chrome-bar-background);
   z-index: 2500;

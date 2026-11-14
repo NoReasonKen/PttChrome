@@ -210,20 +210,18 @@ describe("pref mobileFontSize（C2：手機字級可調，列數跟著算）", (
 
 // 兩條常駐 bar＋safe-area（viewport-fit=cover 的瀏海／手勢列）。
 describe("mobileChromeInsets／mobileRowsHeight", () => {
-  test("沒有 safe-area：上＝App Bar、下＝工具列＋按鍵面板＋鍵盤", () => {
-    expect(mobileChromeInsets({ kb: 0, keysPanel: 0 })).toEqual({
+  test("chrome reserves the App Bar, toolbar and key panel", () => {
+    expect(mobileChromeInsets({ keysPanel: 0 })).toEqual({
       top: MOBILE_APPBAR_PX,
       bottom: MOBILE_TOOLBAR_PX,
       safeTop: 0,
       safeBottom: 0,
     });
-    expect(mobileChromeInsets({ kb: 300, keysPanel: 150 }).bottom).toBe(300 + MOBILE_TOOLBAR_PX + 150);
+    expect(mobileChromeInsets({ keysPanel: 150 }).bottom).toBe(MOBILE_TOOLBAR_PX + 150);
   });
-  test("safe-area 併進上下；鍵盤升起時手勢列被蓋住 ⇒ 下緣 safe 歸 0", () => {
-    const a = mobileChromeInsets({ kb: 0, keysPanel: 0, safeTop: 24, safeBottom: 16 });
+  test("chrome preserves both safe areas independently of keyboard overlap", () => {
+    const a = mobileChromeInsets({ keysPanel: 0, safeTop: 24, safeBottom: 16 });
     expect(a).toMatchObject({ top: MOBILE_APPBAR_PX + 24, bottom: MOBILE_TOOLBAR_PX + 16, safeBottom: 16 });
-    const b = mobileChromeInsets({ kb: 300, keysPanel: 0, safeTop: 24, safeBottom: 16 });
-    expect(b).toMatchObject({ bottom: 300 + MOBILE_TOOLBAR_PX, safeBottom: 0 });
   });
   test("列數高度扣兩條 bar 與兩邊 safe-area", () => {
     expect(mobileRowsHeight(800)).toBe(800 - MOBILE_APPBAR_PX - MOBILE_TOOLBAR_PX);
