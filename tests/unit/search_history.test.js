@@ -60,6 +60,12 @@ describe("最近", () => {
     addSearchEntry(h, "title", "z");
     expect(searchHistoryOrder(h, "title")).toEqual(["x"]);
   });
+  test.each(["constructor", "toString", "bogus"])("unknown kind %s changes no search category", (kind) => {
+    const history = addSearchEntry(null, "title", "keep");
+    expect(addSearchEntry(history, kind, "other")).toEqual(history);
+    expect(pinSearchEntries(history, kind, ["keep"])).toEqual(history);
+    expect(searchHistoryKind(history, kind)).toEqual({ pinned: [], recent: [] });
+  });
 });
 
 describe("釘選", () => {

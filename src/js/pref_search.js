@@ -439,6 +439,12 @@ export const PREF_SEARCH_ITEMS = [
       titleKey: "searchHistoryManager_title",
       tooltipKey: "tooltip_searchHistoryManager",
     },
+    {
+      kind: "ui",
+      key: "ui:recentBoardsManager",
+      titleKey: "recentBoardsManager_title",
+      tooltipKey: "tooltip_recentBoardsManager",
+    },
   ]),
 
   // ── 備份／同步 ──────────────────────────────────────────────────

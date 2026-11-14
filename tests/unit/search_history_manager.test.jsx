@@ -85,6 +85,15 @@ test("切換種類只顯示那一類，勾選清掉", () => {
   expect(action("delete").disabled).toBe(true);
 });
 
+test("changing kind keeps the kind controls mounted", () => {
+  seed("title", ["title"]);
+  seed("author", ["author"]);
+  renderManager();
+  const control = document.querySelector(".mantine-SegmentedControl-root");
+  fireEvent.click(screen.getByText(i18n("searchModal_kindAuthor")));
+  expect(document.querySelector(".mantine-SegmentedControl-root")).toBe(control);
+});
+
 test("兩段各自全選；刪除鈕寫出筆數，刪了立刻寫回、勾選清掉，其他種類不動", () => {
   seed("title", ["p1", "p2", "r1", "r2"], ["p1", "p2"]);
   seed("author", ["someone"]);

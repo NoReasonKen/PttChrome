@@ -38,15 +38,29 @@ import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { recordFor } from './reading_record';
 import { HINT_ERROR } from './status_hint';
 import { PAGE } from './page_stack';
+import {
+  HISTORY_RECENT_LIMIT,
+  historyOrder,
+  normalizeHistory,
+  rememberHistoryEntry,
+  removeHistoryEntries,
+} from './history_entries';
+import {
+  RECENT_BOARD_HISTORY_KEY,
+  LEGACY_RECENT_BOARD_HISTORY_KEY,
+  readRecentBoardHistory,
+  writeRecentBoardHistory,
+} from './recent_board_history';
 
 export const HOME_FAV_FETCH_FLAG = 'homeFavFetchInFlight';
 export const HOME_FAV_CACHE_KEY = 'pttchrome.homeFavorites.v1';
-export const HOME_RECENT_KEY = 'pttchrome.homeRecentBoards.v1';
+export const HOME_RECENT_KEY = RECENT_BOARD_HISTORY_KEY;
+export const LEGACY_HOME_RECENT_KEY = LEGACY_RECENT_BOARD_HISTORY_KEY;
 // 快取多久算新鮮（面板打開時超過就自動重抓一次）。
 export const FAV_TTL_MS = 5 * 60 * 1000;
 // 最多讀幾頁（一頁 20 個）：抓太多頁＝面板開著要等很久，我的最愛通常一兩頁。
 export const FAV_MAX_PAGES = 5;
-export const RECENT_LIMIT = 8;
+export const RECENT_LIMIT = HISTORY_RECENT_LIMIT;
 // 主功能表落地後等多久才自動抓：登入後的 deep link／斷線回到原處會在同一個 settle
 // 出發，讓它們先走；使用者一進主功能表就按鍵的話，計時到了也不會抓（面板已收起）。
 export const AUTO_FETCH_DELAY_MS = 600;
@@ -62,6 +76,7 @@ const FETCH_WATCHDOG_MS = 60000;
 // 中文敘述欄寬（board.c brdlist_coldefs 的「中   文   敘   述」34 欄）。
 const DESC_CELLS = 34;
 const BOARD_SYMBOLS = '◎Σ☆';
+const BOARD_HISTORY_OPTIONS = { caseInsensitive: true };
 
 // ---------------------------------------------------------------------------
 // 純判讀（tests/unit/home_dashboard.test.js）
@@ -351,13 +366,14 @@ export function HomeDashboard(core) {
   this._core = core;
   this._listeners = new Set();
   this._atHome = false;
+  this._recentVisitBoard = null;
   this._dismissed = false;
   this._autoTimer = null;
   this._transitTimer = null;
   // 閱讀紀錄交回的待還原錨（面板下一次畫出來時套用，見 applyPendingViewport）。
   this._pendingViewport = null;
   const fav = readJson(HOME_FAV_CACHE_KEY);
-  const recent = readJson(HOME_RECENT_KEY);
+  const recentHistory = readRecentBoardHistory();
   this._state = {
     visible: false,
     fetching: false,
@@ -367,7 +383,8 @@ export function HomeDashboard(core) {
     // 已讀標記只對當下這次登入有意義，所以 fetchedAt 只記這一頁）。
     savedAt: fav && fav.at ? fav.at : null,
     failedAt: null,
-    recents: Array.isArray(recent) ? recent : [],
+    recentHistory,
+    recents: historyOrder(recentHistory, BOARD_HISTORY_OPTIONS),
     newMail: false
   };
   const self = this;
@@ -450,17 +467,30 @@ HomeDashboard.prototype = {
     ends[rows - 1] = buf.getRowText(rows - 1, 0, buf.cols);
     const board = articleListBoard(ends, rows);
     if (board) {
-      this._noteRecent(board);
+      // A redraw or background fill belongs to the current visit, even if its
+      // history entry was deleted meanwhile. Reading an article keeps it too.
+      const key = board.toLowerCase();
+      if (this._recentVisitBoard !== key) {
+        this._recentVisitBoard = key;
+        this._noteRecent(board);
+      }
       this._noteBoardUnread(board);
     }
     // 抓最愛的途中畫面會離開主功能表：面板留著顯示「更新中」，判定交給那條序列。
     if (this._state.fetching) return;
     if (this._state.boards && rowHasTitle(row0, BOARD_LIST)) this._noteFavPage();
-    const facts = enabled() && rowHasTitle(row0, MAIN_MENU) ? this._facts() : null;
-    const home = !!facts && isHomeScreen(facts);
+    const facts = rowHasTitle(row0, MAIN_MENU) ? this._facts() : null;
+    const mainMenu = !!facts && isHomeScreen(facts);
+    const listFacts = rowHasTitle(row0, BOARD_LIST) ? this._facts() : null;
+    const boardList = !!listFacts && !listFacts.inputField && !!classifyBoardListScreen(listFacts);
+    const navigating = (mainMenu || boardList) && this._inTransit();
+    // Only a verified departure ends the visit. Prompts, unknown frames and
+    // menus passed by an automatic operation do not count as leaving the board.
+    if ((mainMenu || boardList) && !navigating) this._recentVisitBoard = null;
+    const home = enabled() && mainMenu;
     clearTimeout(this._transitTimer);
     this._transitTimer = null;
-    const transit = home && this._inTransit();
+    const transit = home && navigating;
     if (!home || transit) {
       this._atHome = false;
       this._dismissed = false;
@@ -487,11 +517,27 @@ HomeDashboard.prototype = {
     };
   },
 
+  // Feature data changes immediately, independently of saving preferences.
+  updateRecentHistory: function(change) {
+    if (typeof change !== 'function') return false;
+    const current = this._state.recentHistory;
+    const next = normalizeHistory(change(current), BOARD_HISTORY_OPTIONS);
+    if (JSON.stringify(next) === JSON.stringify(current)) return false;
+    const recentHistory = writeRecentBoardHistory(next);
+    this._set({
+      recentHistory,
+      recents: historyOrder(recentHistory, BOARD_HISTORY_OPTIONS),
+    });
+    return true;
+  },
+
+  removeRecentBoards: function(names) {
+    if (!Array.isArray(names) || !names.length) return false;
+    return this.updateRecentHistory(history => removeHistoryEntries(history, names, BOARD_HISTORY_OPTIONS));
+  },
+
   _noteRecent: function(name) {
-    if (this._state.recents[0] === name) return;
-    const next = pushRecentBoard(this._state.recents, name);
-    writeJson(HOME_RECENT_KEY, next);
-    this._set({ recents: next });
+    this.updateRecentHistory(history => rememberHistoryEntry(history, name, BOARD_HISTORY_OPTIONS));
   },
 
   // 進了看板：看得到最新一篇的已讀標記就更新那個板的「有新文章」（newestArticleUnread）。

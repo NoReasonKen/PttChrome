@@ -15,7 +15,7 @@ beforeEach(() => {
   localStorage.clear();
 });
 
-const modal = (show, registerBack) => (
+const modal = (show, registerBack, props = {}) => (
   <MantineProvider>
     <PrefModal
       show={show}
@@ -24,6 +24,7 @@ const modal = (show, registerBack) => (
       debugMode={false}
       onDebugModeChange={() => {}}
       registerBack={registerBack}
+      {...props}
     />
   </MantineProvider>
 );
@@ -79,4 +80,39 @@ test("設定搜尋找得到它，跳到本機分頁", () => {
   );
   expect(hit).toBeTruthy();
   expect(hit.tab).toBe("local");
+});
+
+test("recent boards uses a separate Local sub-page and system Back returns to Local", async () => {
+  let back;
+  render(modal(true, (handler) => { back = handler; return () => {}; }));
+  fireEvent.click(screen.getByRole("tab", { name: i18n("options_local") }));
+  fireEvent.click(document.querySelector('[data-pref-subpage="recentBoards"]'));
+  await waitFor(() => expect(document.querySelector("[data-recent-boards-manager]")).not.toBeNull());
+  expect(manager()).toBeNull();
+  expect(localContent()).toBeNull();
+  expect(screen.queryByRole("button", { name: i18n("options_reset") })).toBeNull();
+  back();
+  await waitFor(() => expect(document.querySelector("[data-recent-boards-manager]")).toBeNull());
+  expect(localContent()).not.toBeNull();
+  await openManager();
+  expect(document.querySelector("[data-recent-boards-manager]")).toBeNull();
+});
+
+test("changing settings category or closing exits the recent-board manager", async () => {
+  const { rerender } = render(modal(true));
+  fireEvent.click(screen.getByRole("tab", { name: i18n("options_local") }));
+  fireEvent.click(document.querySelector('[data-pref-subpage="recentBoards"]'));
+  fireEvent.click(screen.getByRole("tab", { name: i18n("options_general") }));
+  fireEvent.click(screen.getByRole("tab", { name: i18n("options_local") }));
+  expect(document.querySelector("[data-recent-boards-manager]")).toBeNull();
+  fireEvent.click(document.querySelector('[data-pref-subpage="recentBoards"]'));
+  rerender(modal(false));
+  rerender(modal(true));
+  await waitFor(() => expect(document.querySelector("[data-recent-boards-manager]")).toBeNull());
+});
+
+test("settings search indexes recent-board management under Local", () => {
+  const hit = searchPrefSettings(i18n("recentBoardsManager_title"))
+    .find((item) => item.key === "ui:recentBoardsManager");
+  expect(hit?.tab).toBe("local");
 });

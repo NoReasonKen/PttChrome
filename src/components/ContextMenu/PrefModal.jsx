@@ -86,6 +86,7 @@ import {
 } from "../../js/mobile_layout";
 import { PrefSearchBox } from "./PrefSearchBox";
 import SearchHistoryManager from "./SearchHistoryManager";
+import RecentBoardsManager from "./RecentBoardsManager";
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import "./PrefModal.css";
 import {
@@ -336,6 +337,7 @@ export const PrefModal = ({
   onDebugModeChange,
   jumpTarget,
   registerBack,
+  homeDashboard,
 }) => {
   const [updateOfferOpen, setUpdateOfferOpen] = useState(false);
   const [navActiveKey, setNavActiveKey] = useState("general");
@@ -355,8 +357,13 @@ export const PrefModal = ({
   // Restore defaults wipes every preference, auto-login data included: confirm first, cancel by default.
   const [confirmReset, setConfirmReset] = useState(false);
   const credentialExitAction = useRef(null);
-  // 搜尋紀錄管理頁：「本機」底下的一頁（同分類，一層層蓋上去），返回回到本機設定。
-  const [searchHistoryOpen, setSearchHistoryOpen] = useState(false);
+  // Local-data managers share the same settings sub-page and Back behavior.
+  const [localSubpage, setLocalSubpage] = useState(null);
+  const localSubpageTitle = i18n(
+    localSubpage === "recentBoards"
+      ? "recentBoardsManager_title"
+      : "searchHistoryManager_title",
+  );
   // 管理頁的工具列畫在右欄最底的這一格（portal），不在可捲動的內容裡。
   const [subpageFooter, setSubpageFooter] = useState(null);
   const localScrollTop = useRef(0);
@@ -415,16 +422,16 @@ export const PrefModal = ({
     return () => cancelAnimationFrame(raf);
   }, [show, narrow, categoryList, navActiveKey]);
 
-  const openSearchHistory = useCallback(() => {
+  const openLocalSubpage = useCallback((name) => {
     if (rightColRef.current) {
       localScrollTop.current = rightColRef.current.scrollTop;
       rightColRef.current.scrollTop = 0;
     }
-    setSearchHistoryOpen(true);
+    setLocalSubpage(name);
   }, []);
   // 回到本機設定時停在原來捲到的地方（入口那一列）。
-  const closeSearchHistory = useCallback(() => {
-    setSearchHistoryOpen(false);
+  const closeLocalSubpage = useCallback(() => {
+    setLocalSubpage(null);
     requestAnimationFrame(() => {
       if (rightColRef.current)
         rightColRef.current.scrollTop = localScrollTop.current;
@@ -432,7 +439,7 @@ export const PrefModal = ({
   }, []);
   // 換分類、回分類清單、設定搜尋跳轉：都離開管理頁。
   useEffect(() => {
-    setSearchHistoryOpen(false);
+    setLocalSubpage(null);
   }, [navActiveKey, categoryList, pendingJump]);
 
   // 系統返回（history_back_guard → App.dismissTopSheet）：窄版在分類裡＝回分類清單，
@@ -503,7 +510,7 @@ export const PrefModal = ({
     if (!show) {
       setPendingJump(null);
       setFlashKey(null);
-      setSearchHistoryOpen(false);
+      setLocalSubpage(null);
     }
   }, [show]);
 
@@ -605,7 +612,7 @@ export const PrefModal = ({
     if (confirmReset) setConfirmReset(false);
     else if (credentialEditor.confirmDelete) credentialEditor.cancelDelete();
     else if (confirmCredentialClose) continueCredentialEditing();
-    else if (searchHistoryOpen) closeSearchHistory();
+    else if (localSubpage) closeLocalSubpage();
     else if (inCategory) setCategoryList(true);
     else onCloseClick();
   };
@@ -948,18 +955,16 @@ export const PrefModal = ({
                 type="button"
                 className="PrefModal__CategoryBack"
                 data-pref-category-back=""
-                data-pref-subpage-back={searchHistoryOpen ? "" : undefined}
+                data-pref-subpage-back={localSubpage ? "" : undefined}
                 aria-label={i18n("options_categoryBack")}
                 onClick={() =>
-                  searchHistoryOpen
-                    ? closeSearchHistory()
-                    : setCategoryList(true)
+                  localSubpage ? closeLocalSubpage() : setCategoryList(true)
                 }
               >
                 <IconChevronLeft size={20} aria-hidden />
                 <span>
-                  {searchHistoryOpen
-                    ? i18n("searchHistoryManager_title")
+                  {localSubpage
+                    ? localSubpageTitle
                     : i18n(
                         (
                           PREF_CATEGORIES.find(
@@ -970,7 +975,7 @@ export const PrefModal = ({
                 </span>
               </button>
             )}
-            {!narrow && (
+            {!narrow && !localSubpage && (
               <Button
                 color="red"
                 className="PrefModal__Grid__Col--left__Reset"
@@ -983,9 +988,7 @@ export const PrefModal = ({
           <div
             className={
               "PrefModal__Grid__Col--right" +
-              (searchHistoryOpen
-                ? " PrefModal__Grid__Col--right--withFooter"
-                : "")
+              (localSubpage ? " PrefModal__Grid__Col--right--withFooter" : "")
             }
             ref={rightColRef}
           >
@@ -2293,7 +2296,7 @@ export const PrefModal = ({
               例外：自動登入的帳號／密碼／2FA 密鑰同樣 local-only，但整條登入
               流程要一起看才讀得懂，故集中在「自動登入」分頁。 */}
             <Tabs.Panel value="local">
-              {searchHistoryOpen ? (
+              {localSubpage ? (
                 <>
                   {/* 窄版的返回在左欄頂端（分類那一顆）；寬版放在這一頁的頂端。 */}
                   {!narrow && (
@@ -2301,7 +2304,7 @@ export const PrefModal = ({
                       type="button"
                       className="PrefModal__CategoryBack"
                       data-pref-subpage-back=""
-                      onClick={closeSearchHistory}
+                      onClick={closeLocalSubpage}
                     >
                       <IconChevronLeft size={20} aria-hidden />
                       <span>{i18n("options_local")}</span>
@@ -2309,8 +2312,15 @@ export const PrefModal = ({
                   )}
                   {/* 不走 PrefSection：設定搜尋停在本機設定裡的入口那一列，不跳進這一頁。 */}
                   <fieldset className="PrefModal__Grid__Col--right__Fieldset">
-                    <legend>{i18n("searchHistoryManager_title")}</legend>
-                    <SearchHistoryManager toolbarTarget={subpageFooter} />
+                    <legend>{localSubpageTitle}</legend>
+                    {localSubpage === "searchHistory" ? (
+                      <SearchHistoryManager toolbarTarget={subpageFooter} />
+                    ) : (
+                      <RecentBoardsManager
+                        homeDashboard={homeDashboard}
+                        toolbarTarget={subpageFooter}
+                      />
+                    )}
                   </fieldset>
                 </>
               ) : (
@@ -2347,7 +2357,7 @@ export const PrefModal = ({
                       type="button"
                       className="PrefModal__Category"
                       data-pref-subpage="searchHistory"
-                      onClick={openSearchHistory}
+                      onClick={() => openLocalSubpage("searchHistory")}
                     >
                       <span className="PrefModal__Category__Text">
                         <span className="PrefModal__Category__Title">
@@ -2355,6 +2365,28 @@ export const PrefModal = ({
                         </span>
                         <span className="PrefModal__Category__Desc">
                           {i18n("tooltip_searchHistoryManager")}
+                        </span>
+                      </span>
+                      <IconChevronRight
+                        className="PrefModal__Category__Chevron"
+                        size={18}
+                        aria-hidden
+                      />
+                    </button>
+                  </PrefAnchor>
+                  <PrefAnchor anchorKey="ui:recentBoardsManager">
+                    <button
+                      type="button"
+                      className="PrefModal__Category"
+                      data-pref-subpage="recentBoards"
+                      onClick={() => openLocalSubpage("recentBoards")}
+                    >
+                      <span className="PrefModal__Category__Text">
+                        <span className="PrefModal__Category__Title">
+                          {i18n("recentBoardsManager_title")}
+                        </span>
+                        <span className="PrefModal__Category__Desc">
+                          {i18n("tooltip_recentBoardsManager")}
                         </span>
                       </span>
                       <IconChevronRight
@@ -2513,7 +2545,7 @@ export const PrefModal = ({
                 </Button>
               )}
             </Tabs.Panel>
-            {searchHistoryOpen && (
+            {localSubpage && (
               <div
                 ref={setSubpageFooter}
                 className="PrefModal__SubpageFooter"

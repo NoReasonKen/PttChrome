@@ -21,9 +21,12 @@ import {
   AUTO_FETCH_DELAY_MS,
   HOME_TRANSIT_RECHECK_MS,
   HOME_FAV_FETCH_FLAG,
+  HOME_FAV_CACHE_KEY,
+  HOME_RECENT_KEY,
 } from "../../src/js/home_dashboard";
 import { serializedOpHint } from "../../src/js/serialized_op_gate";
 import { HINT_ERROR } from "../../src/js/status_hint";
+import { pinHistoryEntries, unpinHistoryEntries, moveHistoryEntries } from "../../src/js/history_entries";
 
 const ROWS = 24;
 const ZA_FAV = "\x1af";
@@ -78,9 +81,9 @@ const boards = (from, to, unreadOf = () => false) => {
   return out;
 };
 
-const ARTICLE_LIST = () => {
+const ARTICLE_LIST = (board = "C_Chat") => {
   const rowTexts = Array.from({ length: ROWS }, () => "");
-  rowTexts[0] = "【板主:someone】                  看板《C_Chat》";
+  rowTexts[0] = "【板主:someone】                  看板《" + board + "》";
   rowTexts[ROWS - 1] = " 文章選讀  (y)回應(X)推文(^X)轉錄 (=[]<>)相關主題(/?a)找標題/作者 (b)進板畫面 ";
   return { rowTexts, rows: ROWS, curX: 0, curY: 3 };
 };
@@ -349,6 +352,243 @@ function makeCore(start = mainMenu()) {
   const key = (k) => inputListeners.keydown({ key: k });
   return { core, home, enqueued, hints, show, land, key };
 }
+
+describe("HomeDashboard recent-board management", () => {
+  let stored;
+  let storage;
+
+  beforeEach(() => {
+    stored = new Map();
+    storage = {
+      getItem: vi.fn((key) => stored.get(key) ?? null),
+      setItem: vi.fn((key, value) => stored.set(key, String(value))),
+    };
+    vi.stubGlobal("window", { localStorage: storage });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  const historyOf = (names) => ({
+    pinned: [],
+    recent: names.map(text => ({ text, uses: 0 })),
+  });
+  const seed = (names) => stored.set(HOME_RECENT_KEY, JSON.stringify(historyOf(names)));
+
+  test("deletes selected names case-insensitively, persists before notifying, and preserves favorites and prefs", () => {
+    const recents = ["Stock", "C_Chat", "Gossiping", "Test"];
+    const favorites = { at: 123, boards: [{ name: "Stock", desc: "Favorite", unread: true }] };
+    const prefs = JSON.stringify({ values: { enableEasyReading: true } });
+    seed(recents);
+    stored.set(HOME_FAV_CACHE_KEY, JSON.stringify(favorites));
+    stored.set("pttchrome.pref.v1", prefs);
+    const { home, enqueued } = makeCore();
+    const favoriteBoards = home.state.boards;
+    const listener = vi.fn((state) => {
+      expect(JSON.parse(stored.get(HOME_RECENT_KEY))).toEqual(state.recentHistory);
+    });
+    home.onChange(listener);
+    listener.mockClear();
+
+    expect(home.removeRecentBoards(["sToCk", "GOSSIPING", "missing", "STOCK"])).toBe(true);
+
+    expect(home.state.recents).toEqual(["C_Chat", "Test"]);
+    expect(home.quickBoards().recent).toEqual(["C_Chat", "Test"]);
+    expect(storage.setItem).toHaveBeenCalledExactlyOnceWith(HOME_RECENT_KEY, JSON.stringify(historyOf(["C_Chat", "Test"])));
+    expect(listener).toHaveBeenCalledExactlyOnceWith(home.state);
+    expect(home.state.boards).toBe(favoriteBoards);
+    expect(stored.get(HOME_FAV_CACHE_KEY)).toBe(JSON.stringify(favorites));
+    expect(stored.get("pttchrome.pref.v1")).toBe(prefs);
+    expect(enqueued).toHaveLength(0);
+  });
+
+  test.each([
+    ["empty", []],
+    ["unknown", ["missing"]],
+    ["absent", undefined],
+  ])("%s selection changes no state, storage or subscriptions", (_label, names) => {
+    seed(["C_Chat", "Stock"]);
+    const { home, enqueued } = makeCore();
+    const before = home.state;
+    const listener = vi.fn();
+    home.onChange(listener);
+    listener.mockClear();
+
+    expect(home.removeRecentBoards(names)).toBe(false);
+
+    expect(home.state).toBe(before);
+    expect(storage.setItem).not.toHaveBeenCalled();
+    expect(listener).not.toHaveBeenCalled();
+    expect(enqueued).toHaveLength(0);
+  });
+
+  test("deleting an older selection preserves visits added since selection and survives controller recreation", () => {
+    seed(["C_Chat", "Stock"]);
+    const { home } = makeCore();
+    const selected = [home.state.recents[0]];
+    home._noteRecent("Gossiping");
+
+    home.removeRecentBoards(selected);
+
+    expect(home.state.recents).toEqual(["Gossiping", "Stock"]);
+    expect(makeCore().home.state.recents).toEqual(["Gossiping", "Stock"]);
+  });
+
+  test("removing all recents sends nothing and does not prevent a subsequent visit from being recorded", () => {
+    seed(["C_Chat", "Stock"]);
+    const { core, home, enqueued, show } = makeCore();
+    core.sendMachineBytes = vi.fn();
+    core.conn.send = vi.fn();
+
+    home.removeRecentBoards(home.state.recents);
+
+    expect(home.state.recents).toEqual([]);
+    expect(JSON.parse(stored.get(HOME_RECENT_KEY))).toEqual(historyOf([]));
+    expect(enqueued).toHaveLength(0);
+    expect(core.sendMachineBytes).not.toHaveBeenCalled();
+    expect(core.conn.send).not.toHaveBeenCalled();
+
+    show(ARTICLE_LIST());
+    expect(home.state.recents).toEqual(["C_Chat"]);
+    expect(JSON.parse(stored.get(HOME_RECENT_KEY))).toEqual({ pinned: [], recent: [{ text: "C_Chat", uses: 1 }] });
+    expect(enqueued).toHaveLength(0);
+  });
+
+  test("same-board background settles do not restore a deleted current visit", () => {
+    const { home, show } = makeCore();
+    show(ARTICLE_LIST());
+    home.removeRecentBoards(["C_Chat"]);
+    storage.setItem.mockClear();
+
+    show(ARTICLE_LIST());
+    show(ARTICLE_LIST("c_chat"));
+
+    expect(home.state.recents).toEqual([]);
+    expect(storage.setItem).not.toHaveBeenCalled();
+  });
+
+  test("article and unknown intermediate screens preserve the deleted current visit", () => {
+    const { home, show } = makeCore();
+    show(ARTICLE_LIST());
+    home.removeRecentBoards(["C_Chat"]);
+    const article = ARTICLE_LIST();
+    article.rowTexts[0] = " 作者  alice (Alice)                                  看板 C_Chat";
+    article.rowTexts[ROWS - 1] = " 瀏覽 第 1/1 頁 (100%)";
+    show(article);
+    show({ rowTexts: Array(ROWS).fill(""), rows: ROWS, curX: 0, curY: 0 });
+    show(ARTICLE_LIST());
+
+    expect(home.state.recents).toEqual([]);
+  });
+
+  test.each([
+    ["main menu", () => mainMenu()],
+    ["board list", () => favScreen([{ num: 1, name: "Stock" }])],
+    ["another board", () => ARTICLE_LIST("Stock")],
+  ])("returning after leaving for %s records a new visit", (_name, departure) => {
+    const { home, show } = makeCore();
+    show(ARTICLE_LIST());
+    home.removeRecentBoards(["C_Chat"]);
+    show(departure());
+    show(ARTICLE_LIST());
+
+    expect(home.state.recents[0]).toBe("C_Chat");
+    expect(JSON.parse(stored.get(HOME_RECENT_KEY)).recent[0].text).toBe("C_Chat");
+  });
+
+  test("native reading still records a new visit after a verified departure", () => {
+    stored.set("pttchrome.pref.v1", JSON.stringify({ values: { enableEasyReading: false } }));
+    const { home, show } = makeCore();
+    show(ARTICLE_LIST());
+    home.removeRecentBoards(["C_Chat"]);
+    show(ARTICLE_LIST());
+    expect(home.state.recents).toEqual([]);
+    show(mainMenu());
+    show(ARTICLE_LIST());
+
+    expect(home.state.recents).toEqual(["C_Chat"]);
+  });
+
+  test("input prompts and automatic navigation do not end the current visit", () => {
+    const { core, home, show } = makeCore();
+    show(ARTICLE_LIST());
+    home.removeRecentBoards(["C_Chat"]);
+    show(mainMenu({ inputField: true }));
+    show(ARTICLE_LIST());
+    expect(home.state.recents).toEqual([]);
+
+    core.aidNavigation = { active: true };
+    show(mainMenu());
+    show(favScreen([{ num: 1, name: "Stock" }]));
+    core.aidNavigation.active = false;
+    show(ARTICLE_LIST());
+
+    expect(home.state.recents).toEqual([]);
+  });
+
+  test("blocked storage retains the existing in-memory update and notification behavior", () => {
+    seed(["C_Chat", "Stock"]);
+    const { home } = makeCore();
+    const listener = vi.fn();
+    home.onChange(listener);
+    listener.mockClear();
+    storage.setItem.mockImplementation(() => { throw new Error("Storage blocked"); });
+
+    expect(home.removeRecentBoards(["C_Chat"])).toBe(true);
+
+    expect(home.state.recents).toEqual(["Stock"]);
+    expect(listener).toHaveBeenCalledExactlyOnceWith(home.state);
+    expect(JSON.parse(stored.get(HOME_RECENT_KEY))).toEqual(historyOf(["C_Chat", "Stock"]));
+  });
+
+  test("ten genuine visits auto-pin once while background updates count nothing", () => {
+    const { home, show } = makeCore();
+    for (let visit = 1; visit <= 10; visit++) {
+      show(ARTICLE_LIST());
+      for (let redraw = 0; redraw < 4; redraw++) show(ARTICLE_LIST());
+      if (visit < 10) {
+        expect(home.state.recentHistory.recent[0]).toEqual({ text: "C_Chat", uses: visit });
+      }
+      show(mainMenu());
+    }
+    expect(home.state.recentHistory).toEqual({ pinned: [{ text: "C_Chat", auto: true }], recent: [] });
+    const before = stored.get(HOME_RECENT_KEY);
+    show(ARTICLE_LIST());
+    expect(stored.get(HOME_RECENT_KEY)).toBe(before);
+    expect(home.state.recents).toEqual(["C_Chat"]);
+  });
+
+  test("manual history changes update home ordering without visits or PTT commands", () => {
+    seed(["Stock", "C_Chat", "Gossiping"]);
+    const { home, enqueued } = makeCore();
+    const listener = vi.fn();
+    home.onChange(listener);
+    listener.mockClear();
+    const options = { caseInsensitive: true };
+    home.updateRecentHistory(history => pinHistoryEntries(history, ["stock", "c_chat"], options));
+    home.updateRecentHistory(history => moveHistoryEntries(history, ["C_Chat"], -1, options));
+    expect(home.state.recents).toEqual(["C_Chat", "Stock", "Gossiping"]);
+    expect(home.quickBoards().recent).toEqual(home.state.recents);
+    expect(home.state.recentHistory.pinned).toEqual([
+      { text: "C_Chat", auto: false }, { text: "Stock", auto: false },
+    ]);
+    expect(makeCore().home.state.recentHistory).toEqual(home.state.recentHistory);
+    home.updateRecentHistory(history => unpinHistoryEntries(history, ["Stock"], options));
+    expect(home.state.recentHistory.recent[0]).toEqual({ text: "Stock", uses: 0 });
+    expect(listener).toHaveBeenCalledTimes(3);
+    expect(enqueued).toHaveLength(0);
+  });
+
+  test("deleting a pinned current board stays deleted through background replies", () => {
+    const { home, show } = makeCore();
+    show(ARTICLE_LIST());
+    home.updateRecentHistory(history => pinHistoryEntries(history, ["C_Chat"], { caseInsensitive: true }));
+    expect(home.removeRecentBoards(["c_chat"])).toBe(true);
+    show(ARTICLE_LIST());
+    expect(home.state.recentHistory).toEqual(historyOf([]));
+    show(mainMenu());
+    show(ARTICLE_LIST());
+    expect(home.state.recentHistory).toEqual({ pinned: [], recent: [{ text: "C_Chat", uses: 1 }] });
+  });
+});
 
 describe("HomeDashboard：何時出現", () => {
   beforeEach(() => vi.useFakeTimers());
