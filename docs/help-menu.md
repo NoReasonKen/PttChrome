@@ -37,12 +37,13 @@ bottom sheet（手機）一次列出**全部頁**的指令，點一下＝執行�
 - **認不出 ⇒ 原生**：指紋任一要素失配、任一非空白項目列解析不了 ⇒ 整張不認。守護
   `tests/unit/parse_failure_degrade.test.js`「說明選單好讀」。
 
-- **好讀頁留在彈窗底下（#160）**：從好讀文章或好讀文章列表按 `h`（或說明按鈕）時，文章好讀／`ListSession._beginHelp` 先呼叫
+- **好讀頁留在彈窗底下（#160、#191）**：從好讀文章、好讀文章列表或首頁儀表板按 `h`（或說明按鈕）時，文章好讀／`ListSession._beginHelp`／`HomeDashboard.takeKey` 先呼叫
   `helpMenu.expect()` 再切原生鏡像。`holding` 為真期間 `term_view._navigationHeld()` 成立 ⇒ redraw 走 held 分支，PTT 的說明幀一張都不畫，
   好讀長頁與閱讀位置原封不動。結束條件：說明選單結束回 idle、這一次交給原生（`_toNative`：
   認不出起點、頁數變了、離開逾時）、或 `HOLD_TIMEOUT_MS` 內沒等到說明選單；結束時 `view.navigationEnded()` 補畫被擋下的那一幀。
-  不是從好讀頁要求的說明選單（主功能表、看板列表…）不 hold。守護：`tests/unit/help_menu.test.js`「hold of the page under the sheet」、
-  offline `er_function_mode.offline.spec.js`、`easy-reading-list.offline.spec.js`。
+  首頁儀表板在 hold 期間不因說明畫面收起，hold 解除後照常判定（見 `docs/home-dashboard.md`）。
+  不是從好讀頁要求的說明選單（好讀關著的原生主功能表、看板列表…）不 hold。守護：`tests/unit/help_menu.test.js`「hold of the page under the sheet」、
+  offline `er_function_mode.offline.spec.js`、`easy-reading-list.offline.spec.js`、`mobile_home_dashboard.offline.spec.js`（首頁，逐幀）。
 - **離開後列表原地接回**：彈窗離開（cancel）時，hold 解除的同一幀文章列表就接回去，不等靜置探針（`ListSession.resumeAfterHelp`）。
   從 hold 住的列表關掉彈窗（`q`／Esc）＝PTT 只收到說明選單的鍵，重畫的就是彈窗底下那份列表 ⇒ 列表**保留緩衝**（還回 `_beginHelp`
   記下的板名，不從 PTT 的單一頁 rebuild），而且先接回、再交回閱讀紀錄的書籤，還原在同一幀套用，視野一格都不動。

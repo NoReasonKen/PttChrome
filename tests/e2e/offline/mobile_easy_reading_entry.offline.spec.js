@@ -4,7 +4,7 @@ const { loadCassette, bootOffline, replayListCassette } = require('../helpers/re
 const { drawMainMenu } = require('../helpers/main_menu');
 const { bootNestedShortcutSearch, waitArticle, waitList, tapCard } = require('../helpers/article_shortcut_search');
 const { installPaintedFrameProbe, waitRectStable } = require('../helpers/layout');
-const { MAIN, bootDashboard, bootBoardList, boardOpened, boardListEngaged, listActive, articleRead } = require('../helpers/stack_routes');
+const { MAIN, bootDashboard, bootBoardList, boardOpened, listActive, articleRead } = require('../helpers/stack_routes');
 
 // Inspect the renderer that actually reaches paint. A terminal buffer already
 // classified as an article can still be drawn on the native grid before settle.
@@ -48,8 +48,8 @@ async function entryFrames(page) {
   return page.evaluate(() => { window.__stopEntryWatch(); return window.__entryFrames; });
 }
 
-// The board is entered from home by its card, or by typing the board-search key
-// at home: the dashboard stays while the key goes to PTT (#191).
+// The board is entered from home by its card, or by the board-search key at
+// home, which opens PttChrome's board search sheet (#191).
 const ENTRIES = ['a home card', 'the search key at home'];
 
 for (const from of ENTRIES) {
@@ -92,20 +92,6 @@ test('opening a board from home hides the skipped board entry screen', async ({ 
   const frames = await entryFrames(page);
   expect(frames.some(frame => frame.surface === 'list' && frame.shown)).toBe(true);
   expect(frames.filter(frame => ['grid', 'menu'].includes(frame.surface) && frame.shown)).toEqual([]);
-});
-
-test('entering favorites by typing f at home paints no native board-list frame', async ({ page }) => {
-  await bootOffline(page, ptt);
-  await page.evaluate(() => { window.__app.homeDashboard._state.fetchedAt = Date.now(); });
-  await drawMainMenu(page);
-  await expect.poll(() => page.evaluate(() => window.__app.homeDashboard.state.visible)).toBe(true);
-  await watchEntry(page);
-  await ptt.sendKey(page, 'f');
-  await replayListCassette(page, loadCassette('scn-stack-boardlist-board'));
-  await boardListEngaged(page);
-  const frames = await entryFrames(page);
-  expect(frames.some(frame => frame.boardList && frame.surface === 'list' && frame.shown)).toBe(true);
-  expect(frames.filter(frame => frame.boardList && frame.surface === 'grid' && frame.shown)).toEqual([]);
 });
 
 for (const from of ENTRIES) {

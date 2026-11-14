@@ -3,9 +3,11 @@
 // docs/home-dashboard.md —— 改這支之前先讀它。
 //
 // 三條規則：
-//   1. **不是 modal**：鍵盤照常進 #t 送給 PTT，面板留著（#191：好讀開著時沒有切回原生
-//      主選單的入口）。鍵帶到哪個畫面，就由那個畫面的好讀呈現或已記錄的好讀缺口接手（#161）；
-//      面板只在畫面離開主功能表時收起。
+//   1. **不讓使用者盲操作背後的原生主選單**（#191）：好讀開著、面板在主功能表上時，
+//      只放行好讀有呈現的入口——`h` 開說明選單（面板留在彈窗底下，help_menu.expect）、
+//      `s` 開看板搜尋（term_view 先攔）、app 自己的快捷鍵與瀏覽器組合鍵、面板上的按鈕；
+//      其餘按鍵、輸入法／軟鍵盤上字、貼上一律擋下並給「好讀模式目前不支援」錯誤提示
+//      （homeKeyAction／takeKey／refuseText）。回原生主選單唯一的方法是好讀開關。
 //   2. **認不出 ⇒ 原生**：只在「標題列是主功能表＋畫面上有 (F)avorite 選單項＋游標不在
 //      輸入欄」時出現；抓我的最愛的任何一步落地不符就停手，人留在 PTT 給的畫面上。
 //   3. **每個動作都是原生鍵**：抓最愛＝Ctrl+Z f（menu.c#ZA_Select 的「我的最愛」）→ 讀頁
@@ -34,7 +36,8 @@ import {
 import { charCells } from './string_util';
 import { submitSerializedSteps, beginInFlight, endInFlight, searchGateFacts, submitSearch } from './article_search';
 import { serializedOpHint } from './serialized_op_gate';
-import { isRefreshKeyEvent } from './screen_refresh';
+import { isAltRemapEvent, isBrowserClipboardEvent, keyEventToBytes } from './term_keyboard';
+import { UNSUPPORTED_KEY_HINT, unsupportedPasteHint, unsupportedTextHint } from './unsupported_hint';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { recordFor } from './reading_record';
 import { HINT_ERROR } from './status_hint';
@@ -327,14 +330,28 @@ export function applyHomeAnchor(container, record) {
   return true;
 }
 
-// 使用者按的這個鍵會不會送到 PTT（會的話，等著的自動抓我的最愛這次先不送，免得和它搶線）。
-// 純修飾鍵、F 鍵（我們自己的快捷鍵）、重新整理鍵（⌘R，由 screen_refresh 接成首頁的重抓）不算。
-export function keyGoesToPtt(e) {
-  if (!e || !e.key) return false;
-  if (isRefreshKeyEvent(e)) return false;
-  if (/^(Shift|Control|Alt|Meta|CapsLock|Dead|Process|Unidentified)$/.test(e.key)) return false;
-  if (/^F\d{1,2}$/.test(e.key)) return false;
-  return true;
+// What a key typed at home does (#191). Easy reading presents the dashboard,
+// the board search sheet and the help menu; the reader never drives PTT's
+// hidden main menu blind.
+//   'help'   the main menu's own help key (its footer `(h)說明`): it goes to
+//            PTT, and the help menu sheet opens over the held dashboard;
+//   'refuse' every other key PTT would receive (letters that move the menu
+//            cursor, arrows, Enter, digits, Ctrl and Alt-remapped keys);
+//   null     not a command: the browser's clipboard keys, Meta and Alt
+//            shortcuts, and keys that send PTT nothing (F-keys, modifiers).
+// The search key `s` opens the board search sheet earlier in term_view.onKeyDown
+// (article_search.tryOpenSearchModal), as do the app's F-key shortcuts and the
+// refresh key, so none of them reach this table. Same shape as
+// easy_reading.articleLeftoverKey.
+const HOME_HELP_KEY = 'h';
+export function homeKeyAction(e) {
+  if (!e || !e.key) return null;
+  if (isBrowserClipboardEvent(e) || e.metaKey) return null;
+  if (isAltRemapEvent(e)) return 'refuse';
+  if (e.altKey) return null;
+  if (keyEventToBytes(e) == null) return null;
+  if (!e.ctrlKey && e.key === HOME_HELP_KEY) return 'help';
+  return 'refuse';
 }
 
 function readJson(key) {
@@ -390,17 +407,6 @@ export function HomeDashboard(core) {
     core.buf.addEventListener('screenSettled', function() {
       self._onSettled();
     });
-  const input = core.inputArea;
-  if (input && input.addEventListener) {
-    // capture：在 term_view 的處理之前看到，但**不吞**——鍵照常送給 PTT，面板留著。
-    // 使用者的鍵在線上 ⇒ 等著的自動抓先不送；PTT 回應落地（settle）時重新排程。
-    input.addEventListener('keydown', function(e) {
-      if (keyGoesToPtt(e)) self._clearAutoTimer();
-    }, true);
-    input.addEventListener('input', function() {
-      self._clearAutoTimer();
-    }, true);
-  }
 }
 
 HomeDashboard.prototype = {
@@ -490,14 +496,59 @@ HomeDashboard.prototype = {
     clearTimeout(this._transitTimer);
     this._transitTimer = null;
     const transit = home && navigating;
+    // Help asked from home: the dashboard is the page under the help menu sheet
+    // for the whole visit, and stays up until the hold ends (#191).
+    const held = !home && this._state.visible && this._helpHeld();
     if (!home || transit) {
       this._clearAutoTimer();
-      this._set({ visible: false });
-      if (transit) this._transitTimer = setTimeout(() => this._onSettled(), HOME_TRANSIT_RECHECK_MS);
+      if (!held) this._set({ visible: false });
+      if (transit || held) this._transitTimer = setTimeout(() => this._onSettled(), HOME_TRANSIT_RECHECK_MS);
       return;
     }
     this._set({ visible: true, newMail: hasNewMail(facts.rowTexts[0]) });
     this._scheduleAutoFetch();
+  },
+
+  _helpHeld: function() {
+    const hm = this._core.helpMenu;
+    return !!(hm && hm.holding);
+  },
+
+  // Whether keys and text at home are the dashboard's to judge: it is on
+  // screen over the main menu in easy reading, and no help menu is up.
+  ownsInput: function() {
+    const hm = this._core.helpMenu;
+    if (hm && (hm.phase !== 'idle' || hm.holding)) return false;
+    return this._state.visible && enabled();
+  },
+
+  // term_view.onKeyDown asks about each key no earlier handler took. True ＝
+  // refused: the caller prevents it and PTT receives nothing.
+  takeKey: function(e) {
+    if (!this.ownsInput()) return false;
+    const action = homeKeyAction(e);
+    if (!action) return false;
+    if (action === 'help' && !this._state.fetching) {
+      // The key is on the wire: Ctrl+Z f must not race it.
+      this._clearAutoTimer();
+      this._core.helpMenu?.expect?.();
+      return false;
+    }
+    this._refuse(UNSUPPORTED_KEY_HINT);
+    return true;
+  },
+
+  // Text that is not one typed key (an input method, a paste): true when it
+  // must not reach PTT. A single typed character comes as its key instead
+  // (term_view.onTextInput).
+  refuseText: function(text, what) {
+    if (!this.ownsInput()) return false;
+    this._refuse(what === 'paste' ? unsupportedPasteHint('首頁') : unsupportedTextHint('首頁'));
+    return true;
+  },
+
+  _refuse: function(msg) {
+    this._hint(msg, 4000, HINT_ERROR);
   },
 
   // The easy-reading switch changed: judge the screen now, since no settle comes
@@ -624,6 +675,8 @@ HomeDashboard.prototype = {
     this._autoTimer = setTimeout(function() {
       self._autoTimer = null;
       if (!self._state.visible || self._wireBusy()) return;
+      // A sheet over home (the board search) or a help visit owns the wire.
+      if (self._core.modalShown || self._helpHeld()) return;
       if (!isHomeScreen(self._facts())) return;
       if (shouldFetchFavorites(self._state, Date.now())) self.fetchFavorites();
     }, AUTO_FETCH_DELAY_MS);

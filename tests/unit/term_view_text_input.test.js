@@ -116,6 +116,42 @@ describe("one typed ASCII character over an easy-reading page is a key", () => {
   });
 });
 
+// Home with easy reading (#191): a typed character is the key it names (the
+// dashboard judges it on the key path); other text and pastes are refused.
+describe("text at home", () => {
+  function homeCtx(owns) {
+    const { ctx, calls } = makeCtx({ hasListSession: false });
+    calls.keys = [];
+    calls.refused = [];
+    ctx.sendKeyAsUser = (k) => calls.keys.push(k);
+    ctx.bbscore.homeDashboard = {
+      ownsInput: () => owns,
+      refuseText: (text, what) => (owns ? (calls.refused.push([text, what]), true) : false),
+    };
+    return { ctx, calls };
+  }
+
+  test("one typed character goes to the key path; words and pastes are refused, nothing sent", () => {
+    const { ctx, calls } = homeCtx(true);
+    onTextInput(ctx, "h");
+    onTextInput(ctx, "S");
+    onTextInput(ctx, "你好");
+    onTextInput(ctx, "h", true);
+    expect(calls.keys).toEqual(["h", "S"]);
+    expect(calls.refused).toEqual([["你好", "text"], ["h", "paste"]]);
+    expect(calls.convSend).toEqual([]);
+    expect(calls.easyNote).toBe(0);
+  });
+
+  test("dashboard not in charge (easy reading off, not at home) ⇒ text goes to PTT as before", () => {
+    const { ctx, calls } = homeCtx(false);
+    onTextInput(ctx, "h");
+    onTextInput(ctx, "你好");
+    expect(calls.keys).toEqual([]);
+    expect(calls.convSend).toEqual(["h", "你好"]);
+  });
+});
+
 // onInput 的 IME 特判（easyReadingKeyDownKeyCode == 229）是**不可達的死碼**：
 // 唯一寫入點在 onKeyDown 內，而 keyEventFilter 第一條就 `if (e.keyCode == 229)
 // return false` ⇒ 該欄位永遠不可能是 229。它的語意是「IME 開著時除了 X 以外的

@@ -1155,7 +1155,7 @@
     "message": "有新文章"
   },
   "home_hint": {
-    "message": "直接打字照常操作主功能表"
+    "message": "按 s 搜尋看板、按 h 看操作說明；其他按鍵在首頁不作用"
   },
   "split_collapse": {
     "message": "收起"

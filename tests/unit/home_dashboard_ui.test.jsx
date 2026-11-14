@@ -105,14 +105,17 @@ test("按鈕接到控制器：更新、新信、最近看板", () => {
 });
 
 // Easy reading is one switch (#191): no control on the dashboard shows PTT's
-// main menu, and its hint no longer says a key switches to the native screen.
-test("桌機：沒有「原生主選單」鈕；提示不說打字會切回原生畫面", () => {
+// main menu. Keys at home do only what easy reading presents (s, h), so the
+// hint names those and never says typing operates the main menu.
+test("桌機：沒有「原生主選單」鈕；提示只講 s／h，不說打字會操作主功能表", () => {
   render(<HomeDashboard pttchrome={{ homeDashboard: fakeHome({ newMail: true }) }} />);
   expect(q(".homeHeader")).not.toBeNull();
   expect(q("[data-home-native]")).toBeNull();
   const hint = q(".homeHint").textContent;
   expect(hint).toBe(i18n("home_hint"));
-  expect(hint).not.toMatch(/原生|native/i);
+  expect(hint).not.toMatch(/原生|native|主功能表|main menu/i);
+  expect(hint).toMatch(/\bs\b/);
+  expect(hint).toMatch(/\bh\b/);
 });
 
 test("mousedown 不搶焦點、滑鼠事件不外洩到 window", () => {

@@ -96,6 +96,16 @@ describe("分派去向", () => {
     expect(view._keyboard.onKeyDown).toHaveBeenCalled();
   });
 
+  // A toolbar or keypad key at home is judged like the hardware key (#191).
+  test("首頁：面板擋下的鍵不落到 TermKeyboard；放行的照送", () => {
+    const view = makeView();
+    view.bbscore.homeDashboard = { takeKey: vi.fn((e) => e.key !== "ArrowUp") };
+    view.sendKeyAsUser("ArrowDown");
+    expect(view._keyboard.onKeyDown).not.toHaveBeenCalled();
+    view.sendKeyAsUser("ArrowUp");
+    expect(view._keyboard.onKeyDown).toHaveBeenCalledTimes(1);
+  });
+
   test("序列化操作（AID 跳文）在途時吞掉並提示，不送鍵", () => {
     const view = makeView();
     view.bbscore.aidNavigation.active = true;

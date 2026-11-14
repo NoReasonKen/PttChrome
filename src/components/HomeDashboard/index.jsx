@@ -8,7 +8,7 @@ import "./HomeDashboard.css";
 // 狀態只從 pttchrome.homeDashboard.onChange 來，這裡照畫。
 //
 // 事件規則同 AidBackButton／MobileToolbar：mousedown preventDefault（不搶 #t 焦點 ⇒
-// 打字照常送 PTT）、mousedown／mouseup／click stopPropagation（App 的滑鼠入口在 window）。
+// 鍵盤留在 #t，由 home_dashboard.takeKey 判定）、mousedown／mouseup／click stopPropagation（App 的滑鼠入口在 window）。
 // 滾輪由 App._onUploadLayer 放過（它認 #homeDashboard），面板自己捲。
 // 捲動位置屬於閱讀紀錄（home 紀錄）：每次畫完交給 applyPendingViewport 套用待還原錨。
 const keepFocus = (e) => {

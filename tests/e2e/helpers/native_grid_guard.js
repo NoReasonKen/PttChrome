@@ -175,8 +175,9 @@ const ALLOWED = [
   { issue: 189, why: 'unexpected pause screen after Back, and the list after it',
     match: (hit) => hit.listState === 'suspended' },
   { issue: 190, why: 'board search: the board-select prompt, and the list a typed search lands on before easy reading takes it',
+    // The second alternative is the same caption read before the row is decoded from Big5.
     match: (hit, { test }) => hit.title.includes('選擇看板') ||
-      (/ from the search key at home /.test(test) && hit.listState === 'idle' && hit.title.includes('看板《')) },
+      (/ from the search key at home /.test(test) && hit.listState === 'idle' && /看板《|¬ÝªO¡m/.test(hit.title)) },
   { issue: 187, why: 'main menu painted before the home dashboard covers it',
     match: (hit) => hit.title.includes('主功能表') },
 ];

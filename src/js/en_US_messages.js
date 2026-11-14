@@ -1140,7 +1140,7 @@ export const en_US = {
     "message": "New posts"
   },
   "home_hint": {
-    "message": "Typing works on the main menu as usual."
+    "message": "Press s to search boards or h for help; other keys do nothing at home."
   },
   "split_collapse": {
     "message": "Hide"
