@@ -5,6 +5,7 @@ const ptt = require('../helpers/ptt');
 const { bootOffline } = require('../helpers/replay');
 const { waitPreviewsSettled, waitRectStable } = require('../helpers/layout');
 const { DRAWER, PANEL, beginArticleTouch, revealArticleDrawer } = require('../helpers/article_gestures');
+const { watchHold, expectArticleHeld } = require('../helpers/article_hold');
 
 const SIM_SOURCE = fs.readFileSync(path.join(__dirname, '../helpers/pmore_sim.js'), 'utf8');
 const PORTRAIT = { width: 412, height: 896 };
@@ -147,6 +148,32 @@ for (const imageProfile of ['cache', 'slow']) {
     await expect.poll(() => page.evaluate(saved => Math.abs(window.__app.view.currentLineIndex() - saved), anchor)).toBeLessThan(1);
   });
 }
+
+// #193: PTT leaves the article but never reopens it. Easy reading stays on with
+// the article at the reading position, a message and a bug event, and the
+// toolbar's refresh presents the list PTT shows.
+test('a resize whose reopen PTT never answers holds the article until a refresh', async ({ page }) => {
+  await openArticle(page);
+  await waitPreviewsSettled(page);
+  await scrollIntoArticle(page);
+  await watchHold(page);
+  await page.evaluate(() => {
+    const reply = window.__stubWSSent;
+    window.__stubWSSent = data => (data.replace(/\f$/, '') === '\r' ? window.__keys.push(data) : reply(data));
+  });
+  await page.setViewportSize(PORTRAIT);
+  await expectArticleHeld(page, { message: ['文章未能適應新的畫面尺寸，下拉重新整理以重試。', 'The article could not adapt to the new screen size. Pull down to refresh and retry.'], source: 'articleResize', text: 'article line' });
+  expect(await page.locator('.main[data-stack-layer]').evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+
+  await ptt.applyPrefs(page, { refreshMinIntervalSec: 0 });
+  await page.locator('[data-key="__refresh"]').tap();
+  await expect.poll(() => page.evaluate(() => {
+    const app = window.__app;
+    return !app.articleHold.held && app.buf.pageState === 2 && app.listSession.state === 'active' && app.commandQueue.idle;
+  })).toBe(true);
+  expect(await page.evaluate(() => window.__app.buf.listRenderMode)).not.toBe('native');
+  expect(await page.evaluate(() => window.__wentNative)).toBe(false);
+});
 
 test('a viewport change with unchanged terminal rows restores locally without reopening PTT', async ({ page }) => {
   await openArticle(page);

@@ -130,7 +130,9 @@ export function mobileToolbarContext(core) {
   // A far thread jump keeps its source article on screen until it lands, so
   // does the reopen that reads a headerless article's list row, and so does a
   // shortcut search until its results show.
-  const covered = core && ((core.threadJump && core.threadJump.toolbarContext()) ||
+  // A failed one holds that article, with refresh to retry (#193).
+  const covered = core && ((core.articleHold && core.articleHold.toolbarContext()) ||
+    (core.threadJump && core.threadJump.toolbarContext()) ||
     (core.headerlessReopen && core.headerlessReopen.toolbarContext()) ||
     (core.articleShortcutSearch && core.articleShortcutSearch.toolbarContext()));
   if (covered) return covered;

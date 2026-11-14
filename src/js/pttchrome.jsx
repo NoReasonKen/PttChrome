@@ -15,6 +15,7 @@ import { AidNavigation } from './aid_navigation';
 import { ArticleShortcutSearch } from './article_shortcut_search';
 import { ThreadJump } from './thread_jump';
 import { HeaderlessReopen } from './headerless_reopen';
+import { ArticleHold } from './article_hold';
 import { needsAidBoardChoice } from './aid_board_choice';
 import { ScreenRefresh } from './screen_refresh';
 import { ReadingRecord } from './reading_record';
@@ -213,6 +214,8 @@ export const App = function() {
   // the current article's board (tracked by term_view alongside articleAuthor).
   this.aidNavigation = new AidNavigation(this, this.view, this.buf, this.commandQueue);
   this.articleShortcutSearch = new ArticleShortcutSearch(this);
+  // A failed article operation holds the article until pull-to-refresh (#193).
+  this.articleHold = new ArticleHold(this);
   this.threadJump = new ThreadJump(this);
   // After the thread jump: its landing settles first.
   this.headerlessReopen = new HeaderlessReopen(this);
@@ -674,6 +677,7 @@ App.prototype.onClose = function() {
   this.articleShortcutSearch.reset();
   this.threadJump.reset();
   this.headerlessReopen.reset();
+  this.articleHold.reset();
   this.boardNoteSkip.reset();
   this.helpMenu.reset();
   // 長推文的探路成果同理：錨點是這條連線的列表游標（pttbbs getkeep），斷線就失效。
@@ -2385,6 +2389,9 @@ App.prototype.onPrefChange = function(name, value) {
       // The article page reacts on its own (easy_reading.js reads the switch on
       // every view update); the rest is applied here.
       this.articleGestures?.update();
+      // OFF is the reader's way out of a held article (#193): the copy over
+      // the reading area goes, and keys reach PTT again.
+      if (!value) this.articleHold?.reset();
       // ON while already sitting on a settled list: no settle will come, so
       // evaluate the current screen immediately (e2e applyPrefs relies on this).
       // OFF: single-exit cleanup back to native.

@@ -8,6 +8,7 @@ const ptt = require('../helpers/ptt');
 const { beginArticleTouch, revealArticleDrawer } = require('../helpers/article_gestures');
 const { waitRectStable } = require('../helpers/layout');
 const { THREAD, FAR_BOARD, bootThreadBoard, listActive, watchScreen, stopWatching, sent, server } = require('../helpers/thread_jump');
+const { watchHold, keyCount, sentSince, expectArticleHeld, pullDown } = require('../helpers/article_hold');
 
 const HEADERLESS = FAR_BOARD.map(article => article.num === 600 ? { ...article, headerless: true } : article);
 const MAIN = '.main:not([data-stack-layer])';
@@ -112,6 +113,34 @@ test('an article without a header reached by a key PTT answers directly takes it
     expect(entry.cards, JSON.stringify(seen)).toBe(false);
   }
   expect(await sent(page)).toEqual([']\f', 'Q', ' \f', '\r\f']);
+});
+
+// #193: PTT never shows the post info box. The article stays shown with a
+// message and a bug event, nothing more is sent, and pull-to-refresh presents
+// the article PTT shows, which reads its identity again.
+test('an article without a header whose post info never shows stays held until pull-to-refresh', async ({ page }) => {
+  await bootThreadBoard(page, { open: 600, thread: withDan(FAR_BOARD) });
+  await watchHold(page);
+  await page.evaluate(() => {
+    const reply = window.__stubWSSent;
+    window.__stubWSSent = data => (data === 'Q' && !window.__answerInfo ? window.__keys.push(data) : reply(data));
+  });
+  await nextInThread(page);
+  await expectArticleHeld(page, { message: ['無法讀取文章資訊，下拉重新整理以重試。', "Could not read the article's details. Pull down to refresh and retry."], source: 'headerlessReopen', text: /Body of article 6[01]0 by/ });
+  const before = await keyCount(page);
+  await ptt.sendKey(page, 'ArrowDown');
+  // The key is answered with the hold's own message, and nothing is sent.
+  await expect(page.locator('.ListHint')).toHaveText(/文章操作失敗|The article operation failed/);
+  expect(await sentSince(page, before)).toEqual([]);
+
+  await page.evaluate(() => { window.__answerInfo = true; });
+  await pullDown(page);
+  await expect.poll(() => page.evaluate(() => !window.__app.articleHold.held && window.__app.commandQueue.idle)).toBe(true);
+  await expect(page.locator(MAIN)).toContainText('Body of article 610 by');
+  await expect.poll(() => page.evaluate(() => window.__app.buf.pageState)).toBe(3);
+  // Presented again, the article reads its identity again.
+  await expect.poll(() => bar(page)).toEqual(DAN);
+  expect(await page.evaluate(() => window.__wentNative)).toBe(false);
 });
 
 // Easy reading already runs when the article opens again, and on a link that

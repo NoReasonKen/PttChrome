@@ -61,6 +61,11 @@ so its budget is `aid_navigation.SLOW_STEP_BUDGET` (as the board entry of an AID
   When the handoff times out, the action is dropped with the notice 「PTT 尚未就緒，操作未執行」 ("PTT is not ready; the action was not run").
 - A list held after a failed check ([#158](https://github.com/NoReasonKen/PttChrome/issues/158), `docs/easy-reading-list.md` N8): `target()` returns `{ kind: 'list-retry' }` before
   reading the screen, and the session's `retry()` repaints PTT's screen (`\f`) and presents the list again from it; a retry that times out fails again with 「重新整理逾時」.
+- An article held after a failed far same-thread jump, headerless reopen or article resize ([#193](https://github.com/NoReasonKen/PttChrome/issues/193), `src/js/article_hold.js`):
+  `target()` returns `{ kind: 'article-retry' }`, which the busy check does not drop (keys wait during the hold, the refresh does not). `ArticleHold.retry()` reads PTT's screen
+  as `refreshTargetOf` does: an article is reopened by the article refresh (reading position restored), a list or the home dashboard is presented in easy reading (an article list
+  engages the list session when the hold could not park it, as after a resize), an article the refresh cannot name (one without a header) is presented as shown and repainted (`\f`), whose settle reads its
+  identity again (a repaint that times out holds again with 「重新整理逾時，下拉重新整理以重試。」), and a screen neither can read keeps the hold with 「無法辨識 PTT 目前的畫面，未重試。」 and a bug event, sending nothing.
 - Once a list refresh (article list or board list) is sent, it spends that list's live layer (`NavigationStack.spend('refresh', list)`,
   [#125](https://github.com/NoReasonKen/PttChrome/issues/125)): actions remembered during the handoff are void, the rows kept for that list (#120, #122) are released,
   and every row afterwards is PTT's current data. A refresh during a handoff takes the pending-action path above, and only the `refresh()` after the real screen takes over spends the layer.
@@ -108,9 +113,10 @@ above, and has no rate protection (1 second minimum). This feature leaves it unc
 ## Guards
 
 - Unit: `screen_refresh.test.js` (criteria, keys, cooldown, sent sequences, busy), `aid_navigation.test.js` "refresh"
-  (sequence, free path, mail not taken over, position restore, no-AID fallback, failure messages), `mobile_toolbar.test.js(x)`, `pull_refresh.test.js`.
+  (sequence, free path, mail not taken over, position restore, no-AID fallback, failure messages), `mobile_toolbar.test.js(x)`, `pull_refresh.test.js`, `article_hold.test.js` (`article-retry`).
 - Offline e2e: `screen_refresh.offline.spec.js` (real F5: default action blocked, cooldown notice, handed back with the pref off),
   `mobile_refresh.offline.spec.js` (toolbar button, CDP touch pull-down), `mobile_toolbar.offline.spec.js` (Share inside More),
   `home_dashboard.offline.spec.js` "F5", `mobile_home_dashboard.offline.spec.js` (pull-down and toolbar refresh on the home dashboard),
   `mobile_stack_layer_actions.offline.spec.js` (toolbar, F5 and pull-to-refresh on a revealed list before PTT catches up),
-  `mobile_list_failures.offline.spec.js` (toolbar and pull-to-refresh retrying a failed article list or board list).
+  `mobile_list_failures.offline.spec.js` (toolbar and pull-to-refresh retrying a failed article list or board list),
+  the #193 tests in `mobile_thread_jump`, `mobile_headerless_article` and `mobile_article_rotation.offline.spec.js` (retrying a held article).
