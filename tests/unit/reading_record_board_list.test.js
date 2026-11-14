@@ -228,7 +228,7 @@ describe("看板列表重新整理：回平滑捲動時視野回到原處", () =
       shiftKey: false,
       preventDefault() {},
     });
-    step(h, "native-key").onDone(true);
+    step(h, "help").onDone(true);
     expect(h.s._renderMode).toBe("native");
     const sent = [];
     const hm = new HelpMenuController(h.core, null, {
@@ -248,6 +248,37 @@ describe("看板列表重新整理：回平滑捲動時視野回到原處", () =
     expect(h.s._topNum).toBe(10);
     expect(h.s._pendingViewport).toBe(null);
     expect(h.scrollWrites[h.scrollWrites.length - 1]).toBe((10 - 1) * ROW_H);
+  });
+
+  // #192: the sheet over the board list holds it on screen (help_menu.expect),
+  // and a closed sheet gives the same list back in the frame PTT redraws it:
+  // no idle-probe wait, no rebuild from PTT's page, no scroll jump.
+  test("說明選單（h）關掉彈窗：同一幀接回原清單，視野不動、不重建", () => {
+    const h = makeSession();
+    const hm = new HelpMenuController(h.core, null, { send() {}, enabled: () => true });
+    h.core.helpMenu = hm;
+    h.s.onKeyDown({
+      key: "h",
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false,
+      shiftKey: false,
+      preventDefault() {},
+    });
+    expect(hm.holding).toBe(true);
+    step(h, "help").onDone(true);
+    expect(h.s._renderMode).toBe("native");
+    hm.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    hm.close();
+    const writes = h.scrollWrites.length;
+    hm.noteScreen(null); // q ⇒ PTT redraws its board list (cursor still on 25)
+    expect(h.s.state).toBe("active");
+    expect(h.s._renderMode).toBe("buffer");
+    expect(h.termBuf.brdListLineNums.length).toBe(60); // the held rows, not PTT's page
+    expect(h.s._topNum).toBe(10);
+    expect(h.s._selectedNum).toBe(25);
+    expect(h.s._pendingViewport).toBe(null);
+    for (const px of h.scrollWrites.slice(writes)) expect(px).toBe((10 - 1) * ROW_H);
   });
 
   test("說明選單：執行某一項 ⇒ 不還原（採用 PTT 的落點）", () => {

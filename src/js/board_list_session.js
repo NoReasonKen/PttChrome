@@ -65,7 +65,8 @@ import {
   isBrowserClipboardEvent
 } from './term_keyboard';
 import { decideUserBytes, PASS, SWALLOW } from './list_user_bytes';
-import { u2b, ansiHalfColorConv, normalizePasteText } from './string_util';
+import { refuseUnsupported } from './list_refusal';
+import { tryOpenSearchModal } from './article_search';
 import { clickableColStart } from './mouse_regions';
 import { LEFT_ARROW } from './function_key_plan';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
@@ -104,7 +105,8 @@ const RESUME_GRACE_MS = 400;
 //   t     fav_tag/admtag → head=9999 全重畫，並 fall through 到 KEY_DOWN（游標下移一列）
 //   v V   brc_toggle_all_read → show_brdlist(head,0,newflag) 原地重畫
 // **`*`（tag all）刻意不在這一組**：它一次翻掉整份清單的 tag 標記，緩衝裡其他頁
-// 會殘留舊標記 ⇒ 走 B 類（切原生，回來整份重建）。同理 `/` `S` `s` `y` `a` `m` `D`…
+// 會殘留舊標記。它與 `/` `S` `y` `a` `m` `D`… 一樣是好讀沒有呈現的功能 ⇒ 拒絕
+// （#192；清單見 docs/board-list-smooth-scroll.md §4.6）。
 const INPLACE_KEYS = 'tvV';
 
 // 切原生時提示語的尾巴：做完就回來。每一處切原生的 hint 都用這一句。
@@ -283,6 +285,9 @@ export function BoardListSession(core, view, termBuf, queue) {
   this._queue = queue;
 
   this.state = 'idle';
+  // The rows' variant and the reader's anchor kept over a help visit
+  // (_beginHelp → resumeAfterHelp); null otherwise.
+  this._helpList = null;
   this._variant = null; // 'fav' | 'class'（編號空間的別名守門）
   this._selectedNum = null; // 游標選的看板編號
   this._serverNum = null; // server 真游標所在的編號（null＝不確定）
@@ -513,8 +518,10 @@ BoardListSession.prototype = {
   },
 
   // 只讀不寫（不變量 N2）：量當下畫面，唯一的輸出是一個合成事件。
-  // now：一段被握住的離開（看板搜尋，#190）剛結束，settle 的這一幀當下就量，不等
-  // 安靜期；畫面從頭到尾沒換過，所以也不提示。
+  // now: the frame that settled is known to be the end of the operation (a
+  // held board search landed, #190, resumeNow; or the help menu is over,
+  // resumeAfterHelp), so there is no quiet time to wait for, and the reader is
+  // told nothing: the screen never changed under them.
   _tryResumeProbe: function(now) {
     if (this._holdReason !== 'passthrough' || !this._autoResumeEnabled()) return;
     const quietSince = Math.max(this._lastServerActivityAt, this._lastUserByteAt);
@@ -523,13 +530,18 @@ BoardListSession.prototype = {
     // 「PTT 完全忽略這個鍵」是零 byte 零 settle ⇒ 命令只能等 timeout，這裡補排一次。
     if (this._queue.inFlightKind) return this._scheduleResumeProbe();
     const facts = this._collectFacts(null);
-    if (facts.ctx !== 'brdlist') return; // 等下一個 settle 重新排
+    // 等下一個 settle 重新排（now：照一般收尾交給靜置探針）。
+    if (facts.ctx !== 'brdlist') return now ? this._scheduleResumeProbe() : undefined;
     const event = this._settleEvent(facts, null);
     event.type = 'resume-probe';
     const before = this.state;
     this._dispatch(event, facts);
+    if (now) {
+      if (this.state !== 'active') this._scheduleResumeProbe();
+      return;
+    }
     // 換畫面永不靜默（不變量 N7）：使用者沒按任何鍵，畫面卻換回來了。
-    if (!now && before !== this.state && this.state === 'active' && this._view.flashListHint)
+    if (before !== this.state && this.state === 'active' && this._view.flashListHint)
       this._view.flashListHint('操作完成，已回到平滑捲動', 2000);
   },
 
@@ -659,22 +671,31 @@ BoardListSession.prototype = {
   },
 
   // 閱讀紀錄要求還原：等下一次 seed（靜置探針自動回平滑捲動）驗證後套用。
+  // Already back on the same list (a closed help sheet, resumeAfterHelp): it
+  // counts as verified and applies in this frame, as in
+  // ListSession.requestViewportRestore, instead of waiting for a seed.
   requestViewportRestore: function(record) {
     if (!record || record.topNum == null) return;
+    const shown =
+      this.state === 'active' &&
+      this._renderMode === 'buffer' &&
+      record.variant != null &&
+      record.variant === this._variant;
     this._pendingViewport = {
       topNum: record.topNum,
       scrollFrac: record.scrollFrac || 0,
       variant: record.variant,
       cursorNum: record.cursorNum,
       at: Date.now(),
-      adopted: false,
+      adopted: shown,
       fills: 0
     };
     this._core.debugRecorder?.log('boardList.viewportRestore', {
-      action: 'saved',
+      action: shown ? 'adopted' : 'saved',
       topNum: record.topNum,
       cursorNum: record.cursorNum
     });
+    if (shown) this._forceRedraw();
   },
 
   _dropPendingViewport: function(reason) {
@@ -740,8 +761,8 @@ BoardListSession.prototype = {
     // 該述詞裡的 **`!e.altKey` 是合約的一部分，別拿掉**：Alt+C/A/V 要送 ^C/^A/^V 給 PTT。
     const clipboard = isBrowserClipboardEvent(e);
     // Alt remap（Alt＝PTT 的 Ctrl，全 26 字母）是**本 app 自己造的送鍵入口**，不是
-    // 瀏覽器快捷鍵 ⇒ 與 Ctrl 組合同級，必須走 passthrough 的 sync 腿（Alt+W ＝
-    // board.c:1731 Ctrl('W')）。非字母的 Alt 組合才是瀏覽器的，維持放行。
+    // 瀏覽器快捷鍵 ⇒ 與 Ctrl 組合同級：好讀沒有呈現的功能，拒絕（#192）。非字母的
+    // Alt 組合才是瀏覽器的，維持放行。
     // 判定一律走 term_keyboard.isAltRemapEvent，理由同 list_session.onKeyDown。
     const altRemap = isAltRemapEvent(e) ? altRemapCharCode(e) : null;
     if (clipboard || (e.altKey && altRemap === null) || e.metaKey) return;
@@ -758,19 +779,23 @@ BoardListSession.prototype = {
       // _classifyKey 走不到：keyEventToBytes 對 altKey 一律回 null ⇒ 判成 'ignore'。
       // 排在 state gate 之後：交易在飛時與其他鍵一樣被吞掉並給提示。
       // **排在 _classifyKey 之前是承重的**：看板列表的 b 是 PgUp 同義鍵
-      //（board.c:1763），j/k/n/p 是上下移動，順序一反 Alt+B 就變成本地翻頁而不是 ^B。
+      //（board.c:1763），j/k/n/p 是上下移動，順序一反 Alt+B 就變成本地翻頁。
       e.preventDefault();
-      this._beginPassthroughBytes(String.fromCharCode(altRemap));
+      this._refuseUnsupported();
       return;
     }
 
     const key = this._classifyKey(e);
     if (key.class === 'ignore') return; // 不 preventDefault：F12／CapsLock 歸瀏覽器
-    if (key.class === 'passthrough') {
-      this._beginNativePassthrough(e);
+    e.preventDefault();
+    if (key.class === 'unsupported') {
+      this._refuseUnsupported();
       return;
     }
-    e.preventDefault();
+    if (key.class === 'help') {
+      this._beginHelp();
+      return;
+    }
     if (key.class === 'jump-digit') {
       this._beginJumpCollect(key.digit);
       return;
@@ -805,11 +830,14 @@ BoardListSession.prototype = {
   //   開: KEY_RIGHT / KEY_ENTER / 'r' / 'l'
   //   離開: KEY_LEFT / 'q' / 'e'（舊 choose_board `case 'e'` fall through 到 'q'；newui `board_cmd_quit`）
   // Ctrl-F/Ctrl-B 刻意不納入，維持 Ctrl 組合與瀏覽器快捷鍵的分界（同 list_session）。
+  // Easy reading keeps only the keys of the features it presents (#192): `h`
+  // is help (the help menu sheet), and every other key is 'unsupported'.
   _classifyKey: function(e) {
     // 送不出任何 byte 的鍵（CapsLock / F1-F12 / NumLock…）：吞掉、不轉態。
     // 判準就是送出路徑本身（term_keyboard），不硬列鍵清單。
     if (keyEventToBytes(e) == null) return { class: 'ignore' };
-    if (e.ctrlKey) return { class: 'passthrough' };
+    if (e.ctrlKey) return { class: 'unsupported' }; // Ctrl-S 搜尋本列表等
+    if (e.key === 'h') return { class: 'help' };
     switch (e.key) {
       case 'ArrowUp':
       case 'k':
@@ -852,21 +880,28 @@ BoardListSession.prototype = {
           this._autoResumeEnabled()
         )
           return { class: 'native-inplace', bytes: keyEventToBytes(e) };
-        return { class: 'passthrough' };
+        return { class: 'unsupported' };
     }
   },
 
   // 畫面上的功能鍵按鈕（`[←][q]回上層` / `[→][r]閱讀` / `[c]新文章`…）點下去。
-  // 與 list_session.onFunctionKey 同形：byte 層只認明確的方向／翻頁序列，其餘
-  // 一律 passthrough（切原生＋送出），方向安全。
+  // 與 list_session.onFunctionKey 同形：byte 層只認明確的方向／翻頁序列與說明，
+  // 其餘一律拒絕（#192）。
   onFunctionKey: function(bytes) {
     if (this._renderMode === 'native') return false;
     if (this._busyHint()) return true;
     if (this.state !== 'active') return false;
     if (!bytes) return true;
     const cls = this._classifyBytes(bytes);
-    if (cls.class === 'passthrough') {
-      this._beginPassthroughBytes(bytes);
+    if (cls.class === 'unsupported') {
+      // The footer's `s` button is board search, which PttChrome's search
+      // sheet presents: the same gate as the `s` key (term_view.onKeyDown).
+      if (tryOpenSearchModal(this._core, bytes, null)) return true;
+      this._refuseUnsupported();
+      return true;
+    }
+    if (cls.class === 'help') {
+      this._beginHelp();
       return true;
     }
     this._runKeyClass(cls, null);
@@ -896,8 +931,10 @@ BoardListSession.prototype = {
         return { class: 'open' };
       case LEFT_ARROW:
         return { class: 'leave' };
+      case 'h':
+        return { class: 'help' };
       default:
-        return { class: 'passthrough' };
+        return { class: 'unsupported' };
     }
   },
 
@@ -915,8 +952,7 @@ BoardListSession.prototype = {
   // 合約與同一個決策函式，推導見 `list_user_bytes.js` 檔頭。
   adoptUserBytes: function(bytes, opts) {
     if (!bytes) return false;
-    // conv ＝ Unicode 文字，必須走會轉 Big5 的 _beginTextPassthrough（理由同
-    // list_session.adoptUserBytes）。
+    // conv ＝ Unicode 文字 ⇒ 文字的拒絕提示（同 list_session.adoptUserBytes）。
     if (opts && opts.conv) {
       if (this._renderMode !== 'buffer' && this._renderMode !== 'frozen') return false;
       return this.noteTextInput(bytes);
@@ -927,40 +963,80 @@ BoardListSession.prototype = {
       this._busyHint(); // 不變量 N7：吞鍵永不靜默（條件與 decideUserBytes 同源）
       return true;
     }
-    this._beginPassthroughBytes(bytes);
+    // Bytes over the buffer that came through no entrance easy reading
+    // presents: refused like a key (#192).
+    this._refuseUnsupported();
     return true;
   },
 
-  // ---- passthrough（非白名單鍵＝一鍵切原生＋代送）------------------------------
+  // ---- 拒絕與說明 ------------------------------------------------------------
 
-  // **Ctrl 組合一樣代送**（2026-09-13）：舊碼寫死 `e.ctrlKey ? null : ...`，把 Ctrl
-  // 組合推進下面的 bytes == null 分支，而那條分支不經過 _beginPassthroughBytes ⇒
-  // **跳過 sync 腿**。board.c 有一整組對真游標那列動作的 Ctrl 鍵（:1890 Ctrl('S')、
-  // :2044 Ctrl('T')），本地導覽零網路 ⇒ server 對錯的那列動作。理由與實證同
-  // list_session._beginNativePassthrough 的標頭。
-  _beginNativePassthrough: function(e) {
-    // Keys sent in native mode ask PTT for the list anew (#125).
+  // Easy reading keeps only the keys of the features it presents (#192, the
+  // board-list counterpart of #159): nothing is sent, state and render mode
+  // stay, and the reader is told at error level (list_refusal.js).
+  _refuseUnsupported: function(what) {
+    refuseUnsupported(this._view, what || 'key');
+  },
+
+  // Help (`h`, the footer's help button): PTT's help screen is asked for
+  // through the serialized sequence, and the help menu sheet presents it over
+  // the board list, which help_menu holds on screen (expect). The rows the
+  // reader sees are kept, so a closed sheet gives the list back as it was
+  // (resumeAfterHelp).
+  _beginHelp: function() {
+    // The native excursion asks PTT for the list anew (#125).
     this._core.navigationStack?.spend('nativePassthrough', 'board');
-    let bytes = keyEventToBytes(e);
-    // **Ctrl 組合一律不過 u2b**：控制碼（CtrlShiftMap 全 < 0x80），與原生鍵盤路徑
-    // 同樣不轉碼；`!e.ctrlKey` 是合約表達，見 list_session 同處。
-    if (!e.ctrlKey && bytes && bytes.length === 1 && bytes.charCodeAt(0) > 127)
-      bytes = u2b(bytes);
-    if (bytes == null) {
-      // 只剩 Ctrl+Shift、以及 CtrlShiftMap 沒對應的 Ctrl 組合：算不出 bytes 就沒得
-      // 序列化代送。立刻切鏡像，事件不 preventDefault ⇒ 原生鍵盤路徑緊接著處理。
-      const r = transitionBoardListSession(this.state, {
-        type: 'key',
-        keyClass: 'passthrough'
-      });
-      this.state = r.next;
-      this._enterNative();
-      if (this._view.flashListHint)
-        this._view.flashListHint('已切至原生操作' + NATIVE_RESUME_HINT, 4000);
-      return;
+    this._core.helpMenu?.expect(this);
+    // _topNum is only refreshed at render time: take the anchor the reader
+    // sees now (the live scrollTop), before the sync leg freezes the list,
+    // so the kept list comes back where the reader scrolled it.
+    const pos = this.readingPosition();
+    if (pos) {
+      this._topNum = pos.topNum;
+      this._scrollFrac = pos.scrollFrac;
     }
-    e.preventDefault();
-    this._beginPassthroughBytes(bytes);
+    this._beginPassthroughBytes('h', { kind: 'help', hint: null, keepList: true });
+  },
+
+  // The help menu is over (help_menu.noteScreen). listKept: the sheet over
+  // this list was closed, so PTT saw only help keys and redrew the list the
+  // reader still sees under the sheet. That list comes back with its rows,
+  // selection and scroll position, in this frame. Otherwise (an item was run
+  // from the native screen, or PTT's page is another list) it is rebuilt from
+  // PTT's page at once instead of after the idle probe's wait.
+  resumeAfterHelp: function(listKept) {
+    const kept = this._helpList;
+    this._helpList = null;
+    if (this.state !== 'functionMode' || this._holdReason !== 'passthrough') return;
+    this._cancelResumeProbe();
+    if (listKept && kept && this._resumeHeldList(kept)) return;
+    this._tryResumeProbe(true);
+  },
+
+  // The board list PTT shows is the one held (same variant, no row naming
+  // another board, the cursor on a numbered row): back to the buffer with the
+  // reader's anchor. Like _resumeInPlace, the anchor never moves (N6).
+  _resumeHeldList: function(kept) {
+    if (this._queue.inFlightKind || !this._engageEligible()) return false;
+    const facts = this._collectFacts(null);
+    const brd = facts.brd;
+    if (facts.ctx !== 'brdlist' || !brd || brd.variant !== kept.variant) return false;
+    if (brd.cursorNum == null || this._listContradicts(facts)) return false;
+    this.state = 'active';
+    this._holdReason = null;
+    this._resumedAt = performance.now(); // N4: PTT's leftover frames
+    this._variant = kept.variant;
+    this._selectedNum = kept.selectedNum;
+    this._serverNum = brd.cursorNum;
+    this._topNum = kept.topNum;
+    this._scrollFrac = kept.scrollFrac;
+    this._renderMode = 'buffer';
+    this._view.hideCursor();
+    // This frame's anchor is the held one, not whatever the viewport reads.
+    this._anchorOverride = true;
+    this._forceRedraw();
+    this._maybeFill();
+    return true;
   },
 
   // passthrough 的共用序列：真游標落後就先跳號同步（`v`/`m`/`t`/`D` 這些鍵都是
@@ -986,8 +1062,9 @@ BoardListSession.prototype = {
     });
     this.state = r.next;
     const self = this;
+    const keepList = !!(opts && opts.keepList);
     const finish = function() {
-      self._enterNative();
+      self._enterNative(null, { keepList: keepList });
       self._enqueuePassthroughStep(steps, 0);
       if (hint && self._view.flashListHint) self._view.flashListHint(hint, 4000);
     };
@@ -1231,33 +1308,26 @@ BoardListSession.prototype = {
     return false;
   },
 
-  // 貼上（App.onPasteDone）與 IME 送字（term_view.onTextInput）。回 true ＝接手了。
-  // 理由同 list_session：緩衝畫面下 PTT 開的 prompt 是**看不見的**，裸送 bytes
-  // 會讓使用者以為畫面卡住；而且會與在飛的交易競態。
-  onPaste: function(text) {
-    return this._beginTextPassthrough(text, {
-      normalize: true,
-      kind: 'native-paste',
-      hint: '已貼上並切至原生操作' + NATIVE_RESUME_HINT
-    });
+  // Text aimed at the board list: paste (App.onPasteDone) and IME text
+  // (term_view.onTextInput; one typed printable character arrives as a key
+  // through sendKeyAsUser instead). Easy reading presents no place to type it
+  // into, so it is refused (#192, as ListSession._refuseText). true = taken
+  // over: the caller must not send it.
+  onPaste: function() {
+    return this._refuseText('paste');
   },
 
-  noteTextInput: function(text) {
-    return this._beginTextPassthrough(text, {
-      normalize: false,
-      kind: 'native-input',
-      hint: '已切至原生操作' + NATIVE_RESUME_HINT
-    });
+  noteTextInput: function() {
+    return this._refuseText('text');
   },
 
-  _beginTextPassthrough: function(text, opts) {
+  _refuseText: function(what) {
+    // Not engaged (native mirror, suspended, idle): the ordinary send path
+    // owns the text.
+    if (this._renderMode !== 'buffer' && this._renderMode !== 'frozen') return false;
     if (this._busyHint()) return true;
     if (this.state !== 'active') return false;
-    const src = opts.normalize ? normalizePasteText(text, this._view.lineWrap) : text;
-    // CommandQueue 的 send 綁的是 RAW conn.send，convSend 會做的 Big5 轉換要在這裡做。
-    const keys = ansiHalfColorConv(u2b(src));
-    if (!keys) return false;
-    this._beginPassthroughBytes(keys, opts);
+    this._refuseUnsupported(what);
     return true;
   },
 
@@ -1376,6 +1446,7 @@ BoardListSession.prototype = {
   // ---- actions ---------------------------------------------------------------
 
   _seed: function(facts) {
+    this._helpList = null;
     this._holdReason = null;
     this._cancelResumeProbe();
     this._resumedAt = performance.now(); // 不變量 N4：殘餘幀不得打到 active 的 catch-all
@@ -1757,6 +1828,10 @@ BoardListSession.prototype = {
   // 增看板／`t` 標記／`D` 刪除／`m` 移入移出／`S` 排序）每一個都會改寫清單內容
   // 或整個編號空間（handoff I5）。回來時一律重建才安全。
   // opts.hold: 'passthrough'（預設，靜置後自動回平滑捲動）| 'external'（永不解除）。
+  // opts.keepList: help only (_beginHelp). PTT is asked for its help screen and
+  // nothing else, so the rows are kept with the reader's anchor in _helpList
+  // for resumeAfterHelp. Every way out of functionMode other than that one
+  // re-seeds or resets, which drops them.
   _enterNative: function(facts, opts) {
     // 閱讀紀錄凍結：下面整份緩衝都會丟掉 ⇒ 先把使用者的視野交出去。
     const pos = this.readingPosition();
@@ -1764,7 +1839,17 @@ BoardListSession.prototype = {
     this._breakScroll();
     this._holdReason = (opts && opts.hold) || 'passthrough';
     this._setLoading(false);
-    this._resetBuffer();
+    if (opts && opts.keepList && this._variant != null) {
+      this._helpList = {
+        variant: this._variant,
+        selectedNum: this._selectedNum,
+        topNum: this._topNum,
+        scrollFrac: this._scrollFrac
+      };
+    } else {
+      this._helpList = null;
+      this._resetBuffer();
+    }
     this._variant = null;
     this._serverNum = null;
     this._selectedNum = null;
@@ -1861,6 +1946,7 @@ BoardListSession.prototype = {
   _reset: function() {
     this._breakScroll();
     this._dropPendingViewport('reset');
+    this._helpList = null;
     this._holdReason = null;
     this._cancelResumeProbe();
     if (this._frozenWatchdog) {

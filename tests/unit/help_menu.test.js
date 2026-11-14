@@ -349,12 +349,53 @@ describe("hold of the page under the sheet", () => {
         readingPosition: () => ({ kind: "list", board: "C_Chat", topNum: 10, scrollFrac: 0, cursorNum: 26 }),
         requestViewportRestore: () => log.push("restore"),
       };
-      h.ctrl.expect();
+      h.ctrl.expect(h.core.listSession);
       h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
       act(h.ctrl);
       h.ctrl.noteScreen(null);
       expect(log).toEqual(calls);
     }
+  });
+
+  test("the list that asked (the board list, #192) is the one given the frame back", () => {
+    // Closed sheet ⇒ resume with the list kept, before the restore. Left some
+    // other way while open ⇒ restore first, then resume without the list.
+    for (const [act, calls] of [
+      [(c) => c.close(), ["board:true", "restore"]],
+      [() => {}, ["restore", "board:false"]],
+    ]) {
+      const h = held();
+      const log = [];
+      h.core.listSession = {
+        resumeAfterHelp: (kept) => log.push("list:" + kept),
+        readingPosition: () => null,
+        requestViewportRestore: () => log.push("list-restore"),
+      };
+      const board = {
+        state: "functionMode",
+        resumeAfterHelp: (kept) => log.push("board:" + kept),
+        readingPosition: () => ({ kind: "boardList", variant: "fav", topNum: 5, scrollFrac: 0, cursorNum: 7 }),
+        requestViewportRestore: () => log.push("restore"),
+      };
+      h.core.boardListSession = board;
+      h.ctrl.expect(board);
+      h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+      act(h.ctrl);
+      h.ctrl.noteScreen(null);
+      expect(log).toEqual(calls);
+    }
+  });
+
+  test("a request whose help menu never shows up is forgotten with the hold", () => {
+    const h = held();
+    const log = [];
+    const board = { resumeAfterHelp: (kept) => log.push("board:" + kept) };
+    h.ctrl.expect(board);
+    h.fire(HOLD_TIMEOUT_MS);
+    // A later help menu begun on PTT's own screen is nobody's request.
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    h.ctrl.noteScreen(null);
+    expect(log).toEqual([]);
   });
 
   test("no help menu in time ⇒ the hold ends and the held frame is drawn", () => {

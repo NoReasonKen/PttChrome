@@ -245,7 +245,8 @@ So `_maybeFill` is "down first, then up once the bottom edge is reached", and **
 | Cursor sync `brd-*-sync-jump` | `<sel>\r` + `\f` | `cursorNum === sel ∧ same variant ∧ no board name on the page contradicts the buffer` (`_listContradicts`; in a different list the same number is another board, and Enter or ← follows right after) |
 | Enter board `brd-open-board` | `\r` | **Any settle**; onDone → `_reset()` only when the landing is another list or menu (`brdlist`/`brdlist-other`/`menu`), otherwise (board entry screen / article list / unknown) `_suspend()` (buffer kept) |
 | Back up a level `brd-leave` | `\x1b[D` | Same as above |
-| passthrough `brd-native-key/paste/input` | The original key / Big5 bytes + `\f` | Same as above (the screen is already the native mirror) |
+| Help `brd-help` (#192) | `h` + `\f` (with `brd-native-sync-jump` first when needed); the help-menu hold keeps the native help screen off the page | Same as above; when the sheet is closed, `HelpMenuController` calls `resumeAfterHelp(true)` and the kept list comes back in the same frame (`_resumeHeldList`, viewport unchanged); any other ending → the idle probe re-seeds |
+| PttChrome's own sequences (`_beginPassthroughBytes`) | Bytes PttChrome itself decides to send + `\f` (with the sync leg first) | Same as above (the screen is already the native mirror); `resumeOnLanding` re-engages on the landing. **No reader key, paste or typed text goes this way any more** (#192) |
 | A-class keys `brd-native-inplace` | `t`/`v`/`V` + `\f` (with `brd-inplace-sync-jump` first when needed) | `brd.parked ∧ cursorNum≠null ∧ same variant` → `_resumeInPlace` (adopts the landing, **anchor unchanged**); landing not in the buffer → `rebuild` |
 
 "Entering a board and backing up a level always use `expect: () => true` plus teardown in onDone" on purpose: there are three kinds of landing
@@ -269,13 +270,59 @@ leaving is `←`/`q`/`e` (`e` leaves in both old and new board.c; before 2026-09
 (board.c:1802/1871). None of the three opens a prompt or changes the number space, so they go through a **frozen transaction** (`native-inplace`),
 with native never visible. **`*` (tag all) is deliberately not in this group**: it flips the tag marks of the whole list at once, and other pages in the buffer would keep
 stale marks, so it is passthrough (switching to native and rebuilding fully on return).
-Ctrl combinations, Alt-remapped keys (Alt+R/T/W/V = `^R/^T/^W/^V`) and everything else → passthrough (**with a numbered selection and the real cursor
-lagging behind, `native-sync-jump` first**, then switching to the native mirror and sending the key on the reader's behalf). Before 2026-09-13 these Ctrl/Alt classes were kept out of the sequence and so skipped
-the sync leg, while board.c has a whole set of keys that act on the real cursor (`:1890 Ctrl-S`, `:2044 Ctrl-T`, `:1731 Ctrl-W`); the root cause and the rule are in
-`docs/easy-reading-list.md` invariant 12. Once the operation completes and the screen has been quiet for 250ms, the **idle probe**
-re-engages automatically (always, while easy reading is on).
-The probe's three conditions and clock sources are exactly the same as the article list's; see the "Idle probe" section of `docs/easy-reading-list.md`.
+**Everything else is refused (#192)**, following the rule of `docs/easy-reading-list.md` invariant 12: easy reading keeps only the
+keys of the features it presents itself. Ctrl combinations, Alt-remapped keys (Alt+R/T/W/V = `^R/^T/^W/^V`), every other letter or symbol,
+the footer buttons for those keys, paste and typed text show the error hint 「好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）」
+(or the paste / text variant) and **send nothing**; the shared hints and `refuseUnsupported(view, what)` live in `src/js/list_refusal.js`.
+Two keys are not refused because easy reading presents them:
+- `s` opens the board-search sheet (`article_search.tryOpenSearchModal`), from the keyboard and from the footer button alike.
+- `h` opens the help-menu sheet over the **kept** board list: `_beginHelp` asks `HelpMenuController.expect(this)` to hold the native help screen,
+  syncs the cursor if needed, and sends `h` with `keepList` (`_enterNative` stashes the list in `_helpList` instead of dropping the buffer).
+  Closing the sheet calls `resumeAfterHelp(true)`; if the landing is the same board-list variant, `_resumeHeldList` puts the list back with the
+  same rows, selection and viewport (no scroll jump, no native frame). Leaving the sheet any other way, or landing elsewhere, falls back to the idle probe.
+  `H`/`?` (PTT's help aliases) and `Q` (a quit alias) are refused, the same as on the article list.
+Browser shortcuts that do not map to a PTT byte (Ctrl+C/V/A, Alt+digit, Alt+arrow, F-keys) are left to the browser.
+The full inventory of what PTT offers on this screen and what easy reading does with it is §4.6.
 Keys that cannot send a byte (F1/CapsLock…) → `ignore`, the criterion being `keyEventToBytes(e) == null` itself.
+
+### 4.6 Inventory of board-list keys (#192)
+
+Source: the newui `pttbbs` `board.c` command tables (`boardlist_cmds`, `board_fav_cmds`, `myfav_cmds`, `board_admin_cmds`),
+`psb.c` (`psb_base_cmds`) and `bbs.c` (`bbs_global_cmds`). "Kept" means easy reading presents the feature itself; "refused" means
+the error hint and nothing sent. Before #192 every refused row was passed through to the native screen.
+
+| Keys | PTT function | Easy reading |
+|---|---|---|
+| `↑`/`↓`, `k`/`p`, `j`/`n` | Move the cursor | Kept (local selection) |
+| `PgUp`/`P`/`b`, `PgDn`/space/`N` | Page | Kept (local scroll) |
+| `Home`/`0`, `End`/`$` | First / last row | Kept (`brd-jump-home` / `brd-jump-end`) |
+| `1`-`9` | Number jump | Kept (local overlay, `brd-jump-number`) |
+| `Enter`/`→`/`r`/`l` | Enter the board or folder | Kept (`brd-open-board`) |
+| `←`/`q`/`e` | Back up a level | Kept (`brd-leave`) |
+| `t` | Tag the row | Kept (frozen in-place transaction) |
+| `v`/`V` | Mark the board read / unread | Kept (frozen in-place transaction) |
+| `s` | Search for a board by name | Kept (board-search sheet) |
+| `h` | Help screen | Kept (help-menu sheet over the kept list) |
+| `H`/`?` | Help (aliases) | Refused |
+| `Q` | Back up (alias) | Refused |
+| `Ctrl-B`/`Ctrl-F`, `Ctrl-P`/`Ctrl-N` | Page / move (aliases) | Refused (all Ctrl combinations are) |
+| `/` | Filter the list by keyword | Refused |
+| `Ctrl-S` | Search the list locally | Refused |
+| `c`/`C` | Toggle the newflag view | Refused |
+| `S` | Change the sort order | Refused |
+| `y`/`Y` | Show all boards / only subscribed (yank) | Refused |
+| `w` | Save the read records | Refused |
+| `Ctrl-W`/`Ctrl-Y` | Where am I | Refused |
+| `*`, `Ctrl-A`/`Ctrl-D`/`Ctrl-E`/`Ctrl-T`/`Ctrl-P` | Tag all, act on tagged boards | Refused |
+| `a`/`A`/`i` (favorites) | Add a board | Refused |
+| `d`/`m`/`z`/`Z` (favorites), `m`/`M`/`z`/`Z` (other lists) | Remove from / add to favorites | Refused |
+| `g`/`G`, `M`, `L`, `T`, `K` (favorites) | Add a folder, move, separator line, edit title, back up favorites | Refused |
+| `L` (other lists) | Add a link (board or group managers) | Refused |
+| `F`/`f`, `D`, `E`, `R`, `B`, `W` | Administration (sort reset, delete link, edit board, new group or board, edit the note) | Refused |
+| `Ctrl-Z`, `Ctrl-U`, `Ctrl-R` | Quick menu, online users, reply to a message | Refused |
+| Paste, typed text (IME) | Sent as Big5 bytes | Refused (paste / text hint) |
+
+Features without an easy-reading entrance are collected for a follow-up issue rather than passed to native.
 
 ---
 
@@ -287,12 +334,13 @@ Keys that cannot send a byte (F1/CapsLock…) → `ignore`, the criterion being 
 - **I3 wrap-aware**: a clamped local cursor ≠ wrap can be ignored. **If pages are ever fetched with PgUp/PgDn again**,
   edge detection must be rewritten (§2.1): a landing that moves far in the opposite direction means edge, and **that landing is discarded**.
 - **I4 newflag**: both lines of defence are required: the fingerprint layer checks whether row 2 is 「編號」 or 「總數」;
-  the `c` key is already on the passthrough list (the buffer is void after switching to native).
+  the `c` key is refused in easy reading (#192), so the newflag view only appears when the reader switches easy reading off and back on.
 - **I5 Zero-response Enter**: on separator lines (`NBRD_LINE`) and forbidden or hidden board rows, PTT replies with zero bytes,
   so **they must be blocked locally** (`isBoardListSeparatorRow` / `isBoardListBlockedRow`);
   sending would only freeze the screen until the timeout.
 - **I5b Two kinds of hold** (as in `docs/easy-reading-list.md` N1): `beginExternalNavigation()` (AID jumps /
-  long comments) writes `'external'`, **never released automatically**; non-whitelisted keys and self-healing degradation write `'passthrough'`, the only one the idle probe acts on.
+  long comments) writes `'external'`, **never released automatically**; PttChrome's own sequences (`_beginPassthroughBytes`, including `h`) and self-healing degradation write `'passthrough'`, the only one the idle probe acts on.
+  Reader keys outside the whitelist no longer write it: they are refused (#192).
 - **I5c A-class frozen transactions must not move the scroll anchor** (as N6): `_resumeInPlace` only adopts the landing plus reveal,
   and does not go through `_adoptLanding` (which would reset `_topNum` to the native screen's top row, so the view would jump away instantly).
 - **I6 Out of scope means back to native**: every settle reruns the fingerprint, and once it is no longer `fav`/`class`,
@@ -310,11 +358,12 @@ Keys that cannot send a byte (F1/CapsLock…) → `ignore`, the criterion being 
 | Layer | File | Covers |
 |---|---|---|
 | Unit (pure functions) | `tests/unit/board_list_parse.test.js` | Fingerprints of the three variants / CLASSROOT, article list and main menu must not match / newflag does not engage / per-row numbers (including `X` right after a forbidden row's number) / fetch targets and edge decisions |
+| Unit (keys, #192) | `tests/unit/board_list_keys.test.js` | Refusal of every non-whitelisted key, footer byte, paste and text; browser shortcuts left alone; `s` search sheet; `h` help route and `resumeAfterHelp` |
 | Unit (session) | `tests/unit/board_list_session.test.js` | Reducer transition table, keyboard whitelist, cursor clamping (three wrap regressions), fetching and edge probing, Enter's local guard, leaving, queue ownership |
 | Unit (accumulation) | `tests/unit/board_list_accumulate.test.js` | Number keys / whole-row overwrite / `>` overwritten back by `%7d` / zero overlap between pages / header and footer cache not polluted by prompts / window assembly and padding rows |
 | Unit (rendering) | `tests/unit/board_list_render.test.js` | `bodyStart:3`, header and footer outside the viewport, **pageState must be pinned to 1** (with a control case) |
 | Unit (ownership) | `tests/unit/list_render_owner.test.js`, `command_queue.test.js` | Same result whichever listener runs first; `flushKind` only clears its own |
-| Offline e2e | `tests/e2e/offline/board_list.offline.spec.js` (cassette `scn-boardlist-class`: a category board sub-list, recordable as guest, no personal favorites) | A round trip recorded from a real browser and real PTT: taking control, the viewport being built, scrolling moving only the body, End/Home really moving the selection, `/` switching to the native mirror and coming back automatically. Teardown on `←` is not replayed (the number of re-seeds during automatic resume varies with timing, so the bytes do not match); unit tests guard it |
+| Offline e2e | `tests/e2e/offline/board_list.offline.spec.js` (cassette `scn-boardlist-class`: a category board sub-list, recordable as guest, no personal favorites) | A round trip recorded from a real browser and real PTT: taking control, the viewport being built, scrolling moving only the body, End/Home really moving the selection, `/` refused with the error hint while the list stays drawn, `h` opening the help-menu sheet over the kept list and closing it with no scroll jump. Teardown on `←` is not replayed (the number of re-seeds during automatic resume varies with timing, so the bytes do not match); unit tests guard it |
 
 Two hard rules when recording scenario cassettes (`record:scenarios`):
 1. Letter keys on the main menu only **move the cursor**; entering takes `F` followed by `Enter` (menu.c's hotkey semantics).
@@ -331,7 +380,7 @@ Details in `docs/offline-replay-testing.md`.
 ## 7. Not done (explicitly out of scope)
 
 - All boards: tens of thousands of rows; how evict with `MAX_LIST_ROWS=300` feels is unverified. Popular boards do not engage in the old version, and in the new version they engage because they cannot be told apart from a category subcategory (§1).
-- Cross-list resume: only "enter board → leave board" goes through `suspended` and reuses the buffer; `y`/`c`/`/` and entering or leaving categories all replace the whole number space and re-seed.
+- Cross-list resume: only "enter board → leave board" goes through `suspended` and reuses the buffer; entering or leaving categories replaces the whole number space and re-seeds.
   Doing it would need a fingerprint that can tell "the same list" (footer variant + row 1 + an estimate of brdnum).
 - Background prefetch is currently capped at a hard-coded 3 pages (`FILL_MAX_PAGES`), and shares
   `easyReadingListPrefetchCount` with the article list as the target row count.

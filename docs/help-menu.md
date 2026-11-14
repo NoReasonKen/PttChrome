@@ -42,13 +42,18 @@ bottom sheet（手機）一次列出**全部頁**的指令，點一下＝執行�
   好讀長頁與閱讀位置原封不動。結束條件：說明選單結束回 idle、這一次交給原生（`_toNative`：
   認不出起點、頁數變了、離開逾時）、或 `HOLD_TIMEOUT_MS` 內沒等到說明選單；結束時 `view.navigationEnded()` 補畫被擋下的那一幀。
   首頁儀表板在 hold 期間不因說明畫面收起，hold 解除後照常判定（見 `docs/home-dashboard.md`）。
-  不是從好讀頁要求的說明選單（好讀關著的原生主功能表、看板列表…）不 hold。守護：`tests/unit/help_menu.test.js`「hold of the page under the sheet」、
+  看板列表平滑捲動按 `h` 也一樣（#192）：`BoardListSession._beginHelp` 呼叫 `helpMenu.expect(this)`，原生說明幀不畫、看板列表留在彈窗底下。
+  不是從好讀頁要求的說明選單（好讀關著的原生主功能表…）不 hold。守護：`tests/unit/help_menu.test.js`「hold of the page under the sheet」、
   offline `er_function_mode.offline.spec.js`、`easy-reading-list.offline.spec.js`、`mobile_home_dashboard.offline.spec.js`（首頁，逐幀）。
 - **離開後列表原地接回**：彈窗離開（cancel）時，hold 解除的同一幀文章列表就接回去，不等靜置探針（`ListSession.resumeAfterHelp`）。
   從 hold 住的列表關掉彈窗（`q`／Esc）＝PTT 只收到說明選單的鍵，重畫的就是彈窗底下那份列表 ⇒ 列表**保留緩衝**（還回 `_beginHelp`
   記下的板名，不從 PTT 的單一頁 rebuild），而且先接回、再交回閱讀紀錄的書籤，還原在同一幀套用，視野一格都不動。
   交給原生之後才離開的（使用者可能在原生畫面執行了項目）照舊 rebuild、書籤先交回；執行某一項不還原。
-  守護：`tests/unit/reading_record_list.test.js`「the sheet over the easy-reading list closed」、offline
+  看板列表同理（#192）：`expect(this)` 記下要求的那個列表，結束時把同一幀交給它的 `resumeAfterHelp`；`h` 以 `keepList` 送出，
+  `_enterNative` 把列表收進 `_helpList` 而不丟緩衝，關掉彈窗且落地仍是同一種看板列表 ⇒ `_resumeHeldList` 原樣接回（列、選取、視野都不動），
+  其他結束方式交給靜置探針重建。
+  守護：`tests/unit/reading_record_list.test.js`「the sheet over the easy-reading list closed」、
+  `reading_record_board_list.test.js`「說明選單（h）關掉彈窗」、`board_list_keys.test.js`、offline
   `easy-reading-list.offline.spec.js`「leaving the help menu keeps the list where the reader scrolled it, every frame」（逐幀量視口）。
 
 ## UI
@@ -71,7 +76,7 @@ bottom sheet（手機）一次列出**全部頁**的指令，點一下＝執行�
 
 ## 閱讀紀錄
 
-從文章列表／看板列表按 `h` 時，列表好讀與看板列表平滑捲動會切原生、丟掉緩衝。說明選單認出來就向閱讀紀錄領書籤
+從文章列表／看板列表按 `h` 時，列表好讀與看板列表平滑捲動會切原生鏡像（從 hold 住的列表要求時保留緩衝，見上）。說明選單認出來就向閱讀紀錄領書籤
 （決策表 `help-menu`），畫面離開說明選單時交回：離開＝回到列表的原處，執行某一項＝不還原。規則見
 `docs/reading-record.md`，守護 `reading_record_list.test.js`／`reading_record_board_list.test.js`「說明選單」。
 
