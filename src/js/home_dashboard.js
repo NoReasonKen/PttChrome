@@ -478,6 +478,11 @@ HomeDashboard.prototype = {
     return false;
   },
 
+  // A board search's hold ended (#190): look at the screen it left.
+  recheck: function() {
+    this._onSettled();
+  },
+
   _onSettled: function() {
     const buf = this._core.buf;
     if (!buf || typeof buf.getRowText !== 'function') return;
@@ -501,6 +506,9 @@ HomeDashboard.prototype = {
     // 抓最愛的途中畫面會離開主功能表：面板留著顯示「更新中」，判定交給那條序列。
     if (this._state.fetching) return;
     if (this._state.boards && rowHasTitle(row0, BOARD_LIST)) this._noteFavPage();
+    // A board search holds the page under its sheet (#190): the dashboard
+    // keeps covering the main menu until the hold ends (recheck).
+    if (this._core.boardSearchHold && this._core.boardSearchHold.holding) return;
     const facts = rowHasTitle(row0, MAIN_MENU) ? this._facts() : null;
     const mainMenu = !!facts && isHomeScreen(facts);
     const listFacts = rowHasTitle(row0, BOARD_LIST) ? this._facts() : null;

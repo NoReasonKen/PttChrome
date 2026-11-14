@@ -513,11 +513,13 @@ BoardListSession.prototype = {
   },
 
   // 只讀不寫（不變量 N2）：量當下畫面，唯一的輸出是一個合成事件。
-  _tryResumeProbe: function() {
+  // now：一段被握住的離開（看板搜尋，#190）剛結束，settle 的這一幀當下就量，不等
+  // 安靜期；畫面從頭到尾沒換過，所以也不提示。
+  _tryResumeProbe: function(now) {
     if (this._holdReason !== 'passthrough' || !this._autoResumeEnabled()) return;
     const quietSince = Math.max(this._lastServerActivityAt, this._lastUserByteAt);
     const waited = performance.now() - quietSince;
-    if (waited < RESUME_QUIET_MS) return this._scheduleResumeProbe(RESUME_QUIET_MS - waited);
+    if (!now && waited < RESUME_QUIET_MS) return this._scheduleResumeProbe(RESUME_QUIET_MS - waited);
     // 「PTT 完全忽略這個鍵」是零 byte 零 settle ⇒ 命令只能等 timeout，這裡補排一次。
     if (this._queue.inFlightKind) return this._scheduleResumeProbe();
     const facts = this._collectFacts(null);
@@ -527,8 +529,15 @@ BoardListSession.prototype = {
     const before = this.state;
     this._dispatch(event, facts);
     // 換畫面永不靜默（不變量 N7）：使用者沒按任何鍵，畫面卻換回來了。
-    if (before !== this.state && this.state === 'active' && this._view.flashListHint)
+    if (!now && before !== this.state && this.state === 'active' && this._view.flashListHint)
       this._view.flashListHint('操作完成，已回到平滑捲動', 2000);
+  },
+
+  // The board search held the page (#190) and PTT's board list is back.
+  resumeNow: function() {
+    if (this.state !== 'functionMode') return;
+    this._cancelResumeProbe();
+    this._tryResumeProbe(true);
   },
 
   _dispatch: function(event, facts) {

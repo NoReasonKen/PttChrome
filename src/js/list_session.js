@@ -1453,9 +1453,17 @@ ListSession.prototype = {
   resumeAfterHelp: function(listKept) {
     const board = this._helpBoard;
     this._helpBoard = null;
+    this.resumeNow(listKept ? board : null);
+  },
+
+  // A held excursion over the list ended (the help menu, a board search from
+  // the search sheet): the frame that settled is measured now. keptBoard: PTT
+  // gave back the list the reader still sees, so its rows are kept (see
+  // resumeAfterHelp); null rebuilds from PTT's page.
+  resumeNow: function(keptBoard) {
     if (this.state !== 'functionMode' || this._holdReason !== 'passthrough') return;
     this._cancelResumeProbe();
-    if (listKept && board != null) this._boardName = board;
+    if (keptBoard != null) this._boardName = keptBoard;
     this._tryResumeProbe(true);
     // Not back on the list (PTT shows something else): the native excursion
     // rule holds again, and whatever brings the list back rebuilds it.

@@ -224,6 +224,136 @@ export function endInFlight(core, flag) {
   core['_' + f + 'Timer'] = null;
 }
 
+// ---- The page under a board search (#190) ----
+// PTT's board-select prompt (【 選擇看板 】) is data. While a board search owns
+// it (the search sheet's bridge, a typed board submitted through submitSearch),
+// the page the reader was on stays on screen under the sheet: term_view's held
+// branch draws none of PTT's frames while core.boardSearchHold.holding, and the
+// home dashboard keeps covering the main menu. The hold ends when the
+// destination is presented by easy reading (or the page is back as it was), or
+// when the search is lost; each end lets the view draw the frame it held back.
+
+// How long the page is held for a prompt that has not opened yet.
+export const BOARD_SEARCH_HOLD_MS = 5000;
+// How long the page is held after the prompt closed, for easy reading to
+// present where it led (a board entry screen may come first).
+export const BOARD_SEARCH_LANDING_MS = 6000;
+
+export function beginBoardSearchHold(core) {
+  return new BoardSearchHold(core);
+}
+
+function BoardSearchHold(core) {
+  this._core = core;
+  this.holding = true;
+  this._landing = null;
+  this._onSettled = null;
+  // The easy-reading article list under the sheet: a cancel gives PTT's list
+  // back unchanged, so the list keeps the rows it holds (resumeNow).
+  const ls = core.listSession;
+  const owner = typeof core.activeListSession === 'function' ? core.activeListSession() : null;
+  const shown = owner && owner === ls && ls.state === 'active' && ls.readingPosition ? ls.readingPosition() : null;
+  this._keptBoard = shown && shown.board != null ? shown.board : null;
+  const previous = core.boardSearchHold;
+  core.boardSearchHold = this;
+  if (previous && previous !== this) previous.release();
+  this._timer = setTimeout(() => this.release(), BOARD_SEARCH_HOLD_MS);
+}
+
+BoardSearchHold.prototype = {
+  // The prompt is up: the page stays for as long as the sheet is open.
+  opened: function() {
+    clearTimeout(this._timer);
+    this._timer = null;
+  },
+
+  // The prompt is gone. The page stays until the destination is presented.
+  // opts.keepList: PTT gave back the list under the sheet unchanged (a cancel).
+  // opts.before: run once the list owners took the frame, before the hold ends
+  // (a reading-record restore then lands on a list already shown).
+  land: function(opts) {
+    const o = opts || {};
+    if (!this.holding) {
+      if (o.before) o.before();
+      return;
+    }
+    // With no list owner parked in the native mirror there is nothing to take
+    // the frame back first: the caller's work runs now, in the settle that
+    // ended the prompt, as before the hold (the AID pick's reopen must start
+    // before the list session sees that settle).
+    const core = this._core;
+    const parked = (core.listSession && core.listSession.state === 'functionMode') ||
+      (core.boardListSession && core.boardListSession.state === 'functionMode');
+    if (o.before && !parked) {
+      o.before();
+      if (!this.holding) return;
+    }
+    this._landing = { kept: o.keepList ? this._keptBoard : null, before: parked ? o.before || null : null };
+    clearTimeout(this._timer);
+    this._timer = setTimeout(() => this._endLanding(), BOARD_SEARCH_LANDING_MS);
+    const buf = core.buf;
+    if (buf && buf.addEventListener) {
+      // Measured after every owner has seen the settle (the list engages there).
+      this._onSettled = () => queueMicrotask(() => this._present());
+      buf.addEventListener('screenSettled', this._onSettled);
+    }
+    queueMicrotask(() => this._present());
+  },
+
+  _present: function() {
+    const landing = this._landing;
+    if (!this.holding || !landing) return;
+    const core = this._core;
+    // A list owner parked in the native mirror for the search takes PTT's list
+    // back now, without the idle probe's wait (the frame would show natively).
+    const ls = core.listSession;
+    if (ls && ls.state === 'functionMode' && typeof ls.resumeNow === 'function') ls.resumeNow(landing.kept);
+    const bl = core.boardListSession;
+    if (bl && bl.state === 'functionMode' && typeof bl.resumeNow === 'function') bl.resumeNow();
+    const before = landing.before;
+    landing.before = null;
+    if (before) before();
+    if (this._presented()) this._endLanding();
+  },
+
+  // Easy reading shows where the search led, or another held run took over.
+  _presented: function() {
+    const core = this._core;
+    if (core.aidNavigation && core.aidNavigation.active) return true;
+    if (core.buf && core.buf.listRenderMode === 'buffer') return true;
+    // Back at the main menu: the home dashboard covers it again.
+    const facts = searchGateFacts(core);
+    return !!facts && rowHasTitle(facts.rowTexts[0] || '', MAIN_MENU) && !isSearchPromptFrame('board', facts);
+  },
+
+  _endLanding: function() {
+    const landing = this._landing;
+    if (landing && landing.before) {
+      const before = landing.before;
+      landing.before = null;
+      before();
+    }
+    this.release();
+  },
+
+  release: function() {
+    clearTimeout(this._timer);
+    this._timer = null;
+    const core = this._core;
+    if (this._onSettled && core.buf && core.buf.removeEventListener)
+      core.buf.removeEventListener('screenSettled', this._onSettled);
+    this._onSettled = null;
+    if (!this.holding) return;
+    this.holding = false;
+    this._landing = null;
+    if (core.boardSearchHold === this) core.boardSearchHold = null;
+    // The dashboard kept covering the main menu while held: it looks again.
+    if (core.homeDashboard && core.homeDashboard.recheck) core.homeDashboard.recheck();
+    // The frame held back is drawn now, even when PTT sends nothing more.
+    if (core.view && core.view.navigationEnded) core.view.navigationEnded();
+  }
+};
+
 // 把旗標的解除接進每一步的終局 callback（保留呼叫端原本的 callback）。
 function trackInFlight(core, steps, flag) {
   const end = function() {
@@ -299,7 +429,27 @@ export function submitSearch(core, kind, text, cb) {
   if (!built || !core) return false;
   // The native prompt distinguishes a new search from an added condition even
   // on legacy captions. A generic select-mode list may instead be a digest.
+  // A typed board (not the batched known-board entry) shows PTT's prompt and
+  // then the board: the page under the sheet is held until easy reading
+  // presents the board (#190).
+  const hold = kind === 'board' && !batch ? beginBoardSearchHold(core) : null;
+  if (hold) {
+    const releaseOn = (fn) => function(a, b) {
+      hold.release();
+      if (fn) fn(a, b);
+    };
+    built.forEach((step) => {
+      step.onFail = releaseOn(step.onFail);
+      step.onFlushed = releaseOn(step.onFlushed);
+    });
+    const done = built[built.length - 1].onDone;
+    built[built.length - 1].onDone = function(a, b) {
+      hold.land({});
+      if (done) done(a, b);
+    };
+  }
   if (!batch) built[0].onDone = () => {
+    if (hold) hold.opened();
     const prompt = searchGateFacts(core);
     const append = /^增加條件 /.test(prompt?.rowTexts[prompt.rows - 1] || '');
     candidate = candidateSearchResults(core, board, { kind, value: normalizeSearchText(kind, text) }, append);
@@ -324,6 +474,7 @@ export function submitSearch(core, kind, text, cb) {
     if (core.articleShortcutSearch) core.articleShortcutSearch.noteOtherSearch();
     return true;
   }
+  if (hold) hold.release();
   bm = null;
   return false;
 }
