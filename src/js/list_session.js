@@ -62,7 +62,7 @@ import {
 import { LEFT_ARROW } from './function_key_plan';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { HINT_ERROR } from './status_hint';
-import { UNSUPPORTED_KEY_HINT, unsupportedPasteHint, unsupportedTextHint } from './unsupported_hint';
+import { refuseUnsupported } from './list_refusal';
 import {
   BOARD_LIST,
   FAVOURITE,
@@ -857,9 +857,6 @@ const INPLACE_KEYS = '=\\]+[-<,.>{}t';
 
 // 切原生時提示語的尾巴：做完就回來。每一處切原生的 hint 都用這一句，不要再各自寫死字串。
 const NATIVE_RESUME_HINT = '（操作完成後自動恢復好讀）';
-// Easy reading keeps only the keys of the features it presents (#159).
-const UNSUPPORTED_PASTE_HINT = unsupportedPasteHint('列表');
-const UNSUPPORTED_TEXT_HINT = unsupportedTextHint('列表');
 const RETRY_HINT = '，下拉重新整理以重試';
 const FAILED_KEY_HINT = '列表操作失敗：下拉重新整理以重試';
 // 看板列表按 `v` ＝ b_mark_read_unread（mbbsd/bbs.c:4309）：畫面下方跳出 getdata
@@ -1752,18 +1749,10 @@ ListSession.prototype = {
   // (a PTT command key, pasted text, typed text). Nothing is sent: easy reading
   // keeps only the keys of the features it presents itself (#159), and a reader
   // who wants PTT's own keys turns easy reading off.
+  // Easy reading keeps only the keys of the features it presents (#159);
+  // shared with the board list (list_refusal.js).
   _refuseUnsupported: function(what) {
-    if (!this._view.flashListHint) return;
-    this._view.flashListHint(
-      what === 'paste'
-        ? UNSUPPORTED_PASTE_HINT
-        : what === 'text'
-          ? UNSUPPORTED_TEXT_HINT
-          : UNSUPPORTED_KEY_HINT,
-      4000,
-      // Shown even with status hints off: a refused key must never be silent.
-      HINT_ERROR
-    );
+    refuseUnsupported(this._view, what);
   },
 
   // Help (`h`, the footer's help button, the mobile toolbar's help button):
@@ -1773,8 +1762,9 @@ ListSession.prototype = {
     // The native excursion asks PTT for the list anew (#125).
     this._spendLayer('nativePassthrough');
     this._helpBoard = this._boardName;
-    // The list stays on screen under the sheet (help_menu.expect).
-    this._core.helpMenu?.expect();
+    // The list stays on screen under the sheet (help_menu.expect), and is
+    // given the frame back when the sheet is over (resumeAfterHelp).
+    this._core.helpMenu?.expect(this);
     this._beginPassthroughBytes('h', { kind: 'help', hint: null });
   },
 

@@ -209,22 +209,30 @@ HelpMenuController.prototype = {
     this._leavingAt = 0;
     this._bookmark = null;
     this._outcome = 'cancel';
+    this._requester = null;
     this._clearTimers();
     this._releaseHold();
   },
 
   // The reader asked for help from an easy-reading page (an article, the
-  // article list). That page stays on screen under the sheet: while `holding`,
+  // article list, the board list). That page stays on screen under the sheet: while `holding`,
   // term_view draws none of PTT's help screens (its held branch). The hold ends
   // when the help menu is over, when this visit is handed to the native screen,
   // or when no help menu shows up in time.
-  expect: function() {
+  // requester: the list that asked (ListSession or BoardListSession). It is
+  // given the frame back when this visit ends (resumeAfterHelp); an article
+  // passes none.
+  expect: function(requester) {
     if (!this._enabled() || this.phase !== 'idle') return;
     this._clearHoldTimer();
     this.holding = true;
+    this._requester = requester || null;
     this._holdTimer = this._setTimeout(() => {
       this._holdTimer = null;
-      if (this.phase === 'idle') this._releaseHold();
+      if (this.phase === 'idle') {
+        this._requester = null;
+        this._releaseHold();
+      }
     }, HOLD_TIMEOUT_MS);
   },
 
@@ -312,15 +320,18 @@ HelpMenuController.prototype = {
         // The sheet over a held page was closed: PTT saw only help keys, so
         // the list it redrew is the one still shown under the sheet.
         const closed = this.phase === 'leaving' && outcome === 'cancel' && this.holding;
+        // The list that asked for help (the article list or the board list);
+        // a visit begun on PTT's own screen gives the article list the frame,
+        // as before.
+        const ls = this._requester || this._core?.listSession;
         this._log('end', { phase: this.phase, outcome: outcome });
         this._reset();
         if (wasOpen) this._emit();
-        // Left without running an item: the article list under the sheet takes
-        // this frame back at once, so PTT's own list is never shown between.
+        // Left without running an item: the list under the sheet takes this
+        // frame back at once, so PTT's own list is never shown between.
         // After a closed sheet it keeps the rows it holds, and takes the frame
         // back before the reading record's restore: that restore then lands on
         // a list already shown and puts the reader's view back in this frame.
-        const ls = this._core?.listSession;
         if (closed) ls?.resumeAfterHelp?.(true);
         recordFor(this._core).end(bm, outcome);
         if (outcome === 'cancel' && !closed) ls?.resumeAfterHelp?.(false);

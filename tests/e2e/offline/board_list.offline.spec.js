@@ -1,7 +1,8 @@
 // 看板列表（choose_board）—— 重放真 PTT 錄的往返（分類看板子清單，guest 也錄得到）。
 //
 //   1. 平滑捲動（好讀開著時的看板列表）：engage → body 住進捲動視口、header 不跟著捲
-//      → End／Home 交易 → B 類鍵 `/` 切原生鏡像、取消後自動回來（← 離開見測試內註解）。
+//      → End／Home 交易 → 不支援的鍵 `/` 被拒絕（提示、不送、列表不動；#192）
+//      → `h` 的說明選單疊在保留的列表上，關掉之後同一份列表原地接回、視野不動（#192）。
 //      unit 蓋掉純邏輯（docs/board-list-smooth-scroll.md §6）；這裡驗真瀏覽器＋完整 boot 鏈下
 //      捲動視口真的建得起來、交易真的收得回去。
 //   2. 按 s 的「搜尋看板」prompt：不破字、整頁不上底色、殘留列表不可點。修法的判準是
@@ -14,6 +15,7 @@ const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { loadCassette, bootScenario, waitFed } = require('../helpers/replay');
 const { waitRectStable } = require('../helpers/layout');
+const { drawHelpPage } = require('../helpers/help_menu');
 
 const smooth = loadCassette('scn-boardlist-class');
 const prompt = loadCassette('scn-board-search-prompt');
@@ -57,7 +59,7 @@ const settledActive = (page) =>
   });
 
 test.describe('看板列表平滑捲動（scenario 重放）', () => {
-  test('engage → 捲動 → End/Home → `/` 原生鏡像來回', async ({ page }) => {
+  test('engage → 捲動 → End/Home → `/` 拒絕 → `h` 說明選單疊在列表上、關掉原地接回', async ({ page }) => {
     test.skip(!smooth, '缺 scn-boardlist-class（yarn record:scenarios）');
     await bootScenario(page, ptt, smooth, { prefs: { enableEasyReading: true } });
     await settledActive(page);
@@ -109,23 +111,109 @@ test.describe('看板列表平滑捲動（scenario 重放）', () => {
     await settledActive(page);
     await expect.poll(async () => (await viewportState(page)).selected).toBe(1);
 
-    // B 類鍵 `/`：一鍵切原生鏡像（沒有捲動視口），取消後自動回平滑捲動。
+    // `/`（關鍵字篩選）好讀沒有提供 ⇒ 拒絕（#192）：錯誤提示、什麼都不送、列表原封不動。
+    await page.evaluate(() => {
+      window.__hints = [];
+      const v = window.__app.view;
+      const flash = v.flashListHint.bind(v);
+      v.flashListHint = (text, ...rest) => {
+        window.__hints.push(text);
+        return flash(text, ...rest);
+      };
+    });
+    const sentBefore = await page.evaluate(() => window.__replay.sent.length);
     await ptt.sendKey(page, '/');
-    await page.waitForFunction(
-      () =>
-        window.__app.buf.listRenderOwner === null &&
-        window.__app.boardListSession.state === 'functionMode' &&
-        window.__app.buf.isCursorOnInputField()
-    );
-    expect((await viewportState(page)).hasView).toBe(false);
-    await ptt.sendKey(page, 'Enter');
-    await page.waitForFunction(
-      () =>
-        window.__app.boardListSession.state === 'active' &&
-        !!document.querySelector('#mainContainer .listBodyView')
-    );
+    await expect.poll(() => page.evaluate(() => window.__hints.slice())).toEqual([
+      '好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）'
+    ]);
+    expect(await page.evaluate((n) => window.__replay.sent.slice(n), sentBefore)).toEqual([]);
+    const refused = await viewportState(page);
+    expect(refused.state).toBe('active');
+    expect(refused.owner).toBe('board-list');
+    expect(refused.hasView).toBe(true);
 
-    // 到此為止。素材之後的「自動回復重新 seed（21→22→1）→ ← 離開」**不重放**：重新 seed
+    // `h`：說明選單 sheet 疊在**保留**的看板列表上（不畫 PTT 的說明幀），關掉之後
+    // 同一份列表在同一幀接回，視野一格都不動（#192）。先把視野捲離選取列，視野不動才有意義。
+    await page.evaluate(() => {
+      // Relative: above board 1 sits the scroll reserve, so an absolute offset could land in it.
+      document.querySelector('#mainContainer .listBodyView').scrollTop += 4 * window.__app.view.chh + 3;
+    });
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    await settledActive(page);
+    // 素材已用完，回不了游標同步跳號 ⇒ 確認 PTT 的游標就在選取列（Home 剛落地），`h` 直接送出。
+    expect(await page.evaluate(() => {
+      const s = window.__app.boardListSession;
+      return s._selectedNum === s._serverNum;
+    })).toBe(true);
+    await page.evaluate(() => {
+      // What the reader sees: the first board row in the viewport and how far
+      // it sits from the viewport's top (scrollTop alone also moves when the
+      // scroll reserve above board 1 is resized, without anything moving).
+      window.__viewOf = () => {
+        const app = window.__app;
+        const v = document.querySelector('#mainContainer .listBodyView');
+        let first = null;
+        let off = null;
+        if (v) {
+          const top = v.getBoundingClientRect().top;
+          for (const el of v.querySelectorAll('[data-type="bbsline"]')) {
+            const r = el.getBoundingClientRect();
+            if (r.bottom <= top + 1) continue;
+            const m = /^[>\s]*(\d+)/.exec(el.textContent);
+            first = m ? Number(m[1]) : el.textContent.trim().slice(0, 12);
+            off = Math.round(r.top - top);
+            break;
+          }
+        }
+        return {
+          first,
+          off,
+          buffered: (app.buf.brdListLineNums || []).length,
+          state: app.boardListSession.state,
+          mode: app.buf.listRenderMode,
+          holding: app.helpMenu.holding,
+        };
+      };
+      window.__helpFrames = [];
+      let after = -1;
+      const tick = () => {
+        const f = window.__viewOf();
+        window.__helpFrames.push(f);
+        if (after < 0 && window.__helpClosed && f.state === 'active' && f.mode === 'buffer') after = 0;
+        if (after >= 0 && ++after > 8) return;
+        requestAnimationFrame(tick);
+      };
+      tick();
+    });
+    const before = await page.evaluate(() => window.__viewOf());
+    expect(before.first).not.toBe(1); // scrolled off Home's landing
+    const sentBeforeHelp = await page.evaluate(() => window.__replay.sent.length);
+    await ptt.sendKey(page, 'h');
+    await expect
+      .poll(() => page.evaluate((n) => window.__replay.sent.slice(n), sentBeforeHelp))
+      .toEqual(['h\f']);
+    expect(await page.evaluate(() => window.__app.helpMenu.holding)).toBe(true);
+    await drawHelpPage(page, 1);
+    await expect(page.locator('[data-help-item]').first()).toBeVisible();
+    await page.evaluate(() => { window.__helpClosed = true; });
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-help-item]')).toHaveCount(0);
+    // PTT 回應離開：把說明選單底下那份列表原樣重畫（素材已餵過的 bytes 重來一次，終局就是那一頁）。
+    await page.evaluate((recvs) => {
+      window.__app.onData(recvs.slice(0, window.__replay.fed).map((r) => atob(r)).join(''));
+    }, smooth.steps.map((st) => st.recv));
+    await page.waitForFunction(() => {
+      const f = window.__helpFrames;
+      return f.length > 8 && f.slice(-9).every((x) => x.state === 'active' && x.mode === 'buffer');
+    });
+    const frames = await page.evaluate(() => window.__helpFrames);
+    // 每一幀：看到的第一列與它的位置不動、緩衝沒被丟掉重建。
+    const moved = frames.filter(
+      (f) => f.first !== before.first || Math.abs(f.off - before.off) > 1 || f.buffered !== before.buffered
+    );
+    expect(moved, JSON.stringify({ before, frames })).toEqual([]);
+
+    // 到此為止。素材之後錄的 `/` 原生來回與「自動回復重新 seed（21→22→1）→ ← 離開」**不重放**：重新 seed
     // 要探幾次邊界取決於靜置探針的計時（live 在 21 的回應之後還探了 22，offline 回應瞬間到、
     // 21 之後就判定 seed 完成），送出序列在 bytes 層級對不上。← 離開的交易收攤由
     // tests/unit/board_list_session.test.js 守。
