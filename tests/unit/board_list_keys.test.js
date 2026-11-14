@@ -210,6 +210,12 @@ describe("BoardListSession refuses keys easy reading does not present (#192)", (
     ["u", { ctrlKey: true }], // Ctrl-U online users
     ["r", { ctrlKey: true }], // Ctrl-R waterball reply
     ["x", { ctrlKey: true }], // not a clipboard key
+    ["p", { ctrlKey: true }], // Ctrl-P paste tagged boards (board.c beats psb.c's up alias)
+    ["d", { ctrlKey: true }], // Ctrl-D tagged boards
+    ["e", { ctrlKey: true }], // Ctrl-E untag all
+    ["t", { ctrlKey: true }], // Ctrl-T untag all
+    ["y", { ctrlKey: true }], // Ctrl-Y whereami
+    ["j", { ctrlKey: true }], // not a PTT alias of anything kept
     ["]", { ctrlKey: true }],
     ["Tab", {}],
     ["Backspace", {}],
@@ -269,6 +275,62 @@ describe("Alt remap (Alt = PTT's Ctrl) is refused on the board list", () => {
     const e = keyEvent(key, { altKey: true, code });
     h.s.onKeyDown(e);
     expectRefused(h, e);
+  });
+});
+
+// PTT's help screen lists aliases (psb.c): a kept function does the same thing
+// for every key PTT lists for it.
+describe("aliases of kept functions behave exactly like their base key", () => {
+  const ALIASES = [
+    ["Ctrl-N", ["n", { ctrlKey: true }], ["ArrowDown", {}]],
+    ["Ctrl-B", ["b", { ctrlKey: true }], ["PageUp", {}]],
+    ["Ctrl-F", ["f", { ctrlKey: true }], ["PageDown", {}]],
+    ["Q", ["Q", { shiftKey: true }], ["q", {}]],
+    ["H", ["H", { shiftKey: true }], ["h", {}]],
+    ["?", ["?", { shiftKey: true }], ["h", {}]],
+  ];
+  const BYTE_ALIASES = [
+    ["\x0e", "\x1b[B"],
+    ["\x02", "\x1b[5~"],
+    ["\x06", "\x1b[6~"],
+    ["Q", "\x1b[D"],
+    ["H", "h"],
+    ["?", "h"],
+  ];
+  const observe = (h) => ({
+    sent: h.sent,
+    enqueued: h.enqueued.map((q) => [q.kind, q.keys]),
+    hints: h.hints,
+    state: h.s.state,
+    mode: h.s._renderMode,
+    selected: h.s._selectedNum,
+    helpCalls: h.helpCalls.length,
+  });
+
+  test.each(ALIASES)("%s key = base key", (_name, alias, base) => {
+    const a = engaged();
+    const e = keyEvent(alias[0], alias[1]);
+    a.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(a.hints).toEqual([]);
+    const b = engaged();
+    b.s.onKeyDown(keyEvent(base[0], base[1]));
+    expect(observe(a)).toEqual(observe(b));
+  });
+
+  test.each(BYTE_ALIASES)("footer byte %j = base byte", (alias, base) => {
+    const a = engaged();
+    expect(a.s.onFunctionKey(alias)).toBe(true);
+    expect(a.hints).toEqual([]);
+    const b = engaged();
+    expect(b.s.onFunctionKey(base)).toBe(true);
+    expect(observe(a)).toEqual(observe(b));
+  });
+
+  test("`E` is not an alias of leave: it is board_cmd_edit_board and stays refused", () => {
+    const h = engaged();
+    h.s.onKeyDown(keyEvent("E", { shiftKey: true }));
+    expectRefused(h, null);
   });
 });
 

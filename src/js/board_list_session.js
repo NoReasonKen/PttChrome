@@ -829,15 +829,28 @@ BoardListSession.prototype = {
   //   End: KEY_END / '$'      Home: KEY_HOME / '0'（'0' 在 board.c 就是 Home）
   //   開: KEY_RIGHT / KEY_ENTER / 'r' / 'l'
   //   離開: KEY_LEFT / 'q' / 'e'（舊 choose_board `case 'e'` fall through 到 'q'；newui `board_cmd_quit`）
-  // Ctrl-F/Ctrl-B 刻意不納入，維持 Ctrl 組合與瀏覽器快捷鍵的分界（同 list_session）。
+  // Aliases follow the help screen of PTT (psb.c): Ctrl-N moves down, Ctrl-B/Ctrl-F
+  // page, `H`/`?` are help, `Q` leaves. Every other Ctrl combination stays refused.
+  // Ctrl-P is NOT the up alias here: the page table (board.c) binds it to pasting
+  // the tagged boards, and a page table takes precedence over psb.c.
   // Easy reading keeps only the keys of the features it presents (#192): `h`
   // is help (the help menu sheet), and every other key is 'unsupported'.
   _classifyKey: function(e) {
     // 送不出任何 byte 的鍵（CapsLock / F1-F12 / NumLock…）：吞掉、不轉態。
     // 判準就是送出路徑本身（term_keyboard），不硬列鍵清單。
     if (keyEventToBytes(e) == null) return { class: 'ignore' };
-    if (e.ctrlKey) return { class: 'unsupported' }; // Ctrl-S 搜尋本列表等
-    if (e.key === 'h') return { class: 'help' };
+    if (e.ctrlKey) {
+      // Ctrl aliases of kept functions (psb.c); the rest (Ctrl-S search…) is refused.
+      if (!e.altKey && !e.metaKey && !e.shiftKey) {
+        switch (e.key) {
+          case 'n': return { class: 'nav', op: 'down' };
+          case 'b': return { class: 'nav', op: 'pgup' };
+          case 'f': return { class: 'nav', op: 'pgdn' };
+        }
+      }
+      return { class: 'unsupported' };
+    }
+    if (e.key === 'h' || e.key === 'H' || e.key === '?') return { class: 'help' };
     switch (e.key) {
       case 'ArrowUp':
       case 'k':
@@ -868,6 +881,7 @@ BoardListSession.prototype = {
         return { class: 'open' };
       case 'ArrowLeft':
       case 'q':
+      case 'Q':
       case 'e':
         return { class: 'leave' };
       default:
@@ -926,13 +940,23 @@ BoardListSession.prototype = {
         return { class: 'nav', op: 'home' };
       case '\x1b[4~':
         return { class: 'nav', op: 'end' };
+      case '\x0e':
+        return { class: 'nav', op: 'down' };
+      case '\x02':
+        return { class: 'nav', op: 'pgup' };
+      case '\x06':
+        return { class: 'nav', op: 'pgdn' };
       case '\x1b[C':
       case '\r':
         return { class: 'open' };
       case LEFT_ARROW:
         return { class: 'leave' };
       case 'h':
+      case 'H':
+      case '?':
         return { class: 'help' };
+      case 'Q':
+        return { class: 'leave' };
       default:
         return { class: 'unsupported' };
     }

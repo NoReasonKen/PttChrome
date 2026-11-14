@@ -280,7 +280,7 @@ Two keys are not refused because easy reading presents them:
   syncs the cursor if needed, and sends `h` with `keepList` (`_enterNative` stashes the list in `_helpList` instead of dropping the buffer).
   Closing the sheet calls `resumeAfterHelp(true)`; if the landing is the same board-list variant, `_resumeHeldList` puts the list back with the
   same rows, selection and viewport (no scroll jump, no native frame). Leaving the sheet any other way, or landing elsewhere, falls back to the idle probe.
-  `H`/`?` (PTT's help aliases) and `Q` (a quit alias) are refused, the same as on the article list.
+  `H`/`?` (PTT's help aliases) do the same as `h`.
 Browser shortcuts that do not map to a PTT byte (Ctrl+C/V/A, Alt+digit, Alt+arrow, F-keys) are left to the browser.
 The full inventory of what PTT offers on this screen and what easy reading does with it is §4.6.
 Keys that cannot send a byte (F1/CapsLock…) → `ignore`, the criterion being `keyEventToBytes(e) == null` itself.
@@ -290,22 +290,21 @@ Keys that cannot send a byte (F1/CapsLock…) → `ignore`, the criterion being 
 Source: the newui `pttbbs` `board.c` command tables (`boardlist_cmds`, `board_fav_cmds`, `myfav_cmds`, `board_admin_cmds`),
 `psb.c` (`psb_base_cmds`) and `bbs.c` (`bbs_global_cmds`). "Kept" means easy reading presents the feature itself; "refused" means
 the error hint and nothing sent. Before #192 every refused row was passed through to the native screen.
+Alias rule: the table follows the commands PTT lists on its help screen, aliases included, so every key PTT lists for a kept function does the same thing
+(`Ctrl-N`/`Ctrl-B`/`Ctrl-F`, `H`/`?`, `Q`); every other Ctrl combination stays refused. `Ctrl-P` is not the up alias: the page table (`board.c`) binds it to pasting tagged boards and takes precedence over `psb.c`. `E` is the board-edit command (`board_cmd_edit_board`), not a quit alias.
 
 | Keys | PTT function | Easy reading |
 |---|---|---|
-| `↑`/`↓`, `k`/`p`, `j`/`n` | Move the cursor | Kept (local selection) |
-| `PgUp`/`P`/`b`, `PgDn`/space/`N` | Page | Kept (local scroll) |
+| `↑`/`↓`, `k`/`p`, `j`/`n`/`Ctrl-N` | Move the cursor | Kept (local selection) |
+| `PgUp`/`P`/`b`/`Ctrl-B`, `PgDn`/space/`N`/`Ctrl-F` | Page | Kept (local scroll) |
 | `Home`/`0`, `End`/`$` | First / last row | Kept (`brd-jump-home` / `brd-jump-end`) |
 | `1`-`9` | Number jump | Kept (local overlay, `brd-jump-number`) |
 | `Enter`/`→`/`r`/`l` | Enter the board or folder | Kept (`brd-open-board`) |
-| `←`/`q`/`e` | Back up a level | Kept (`brd-leave`) |
+| `←`/`q`/`Q`/`e` | Back up a level | Kept (`brd-leave`) |
 | `t` | Tag the row | Kept (frozen in-place transaction) |
 | `v`/`V` | Mark the board read / unread | Kept (frozen in-place transaction) |
 | `s` | Search for a board by name | Kept (board-search sheet) |
-| `h` | Help screen | Kept (help-menu sheet over the kept list) |
-| `H`/`?` | Help (aliases) | Refused |
-| `Q` | Back up (alias) | Refused |
-| `Ctrl-B`/`Ctrl-F`, `Ctrl-P`/`Ctrl-N` | Page / move (aliases) | Refused (all Ctrl combinations are) |
+| `h`/`H`/`?` | Help screen | Kept (help-menu sheet over the kept list) |
 | `/` | Filter the list by keyword | Refused |
 | `Ctrl-S` | Search the list locally | Refused |
 | `c`/`C` | Toggle the newflag view | Refused |

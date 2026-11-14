@@ -468,9 +468,12 @@ describe("鍵盤白名單（board.c:1751-1840 的同義鍵）", () => {
   test("1-9 收集跳號；h 是說明；好讀沒有呈現的功能鍵一律 unsupported（#192）", () => {
     expect(cls("5")).toEqual({ class: "jump-digit", digit: "5" });
     expect(cls("h")).toEqual({ class: "help" });
+    expect(cls("H")).toEqual({ class: "help" });
+    expect(cls("?")).toEqual({ class: "help" });
+    expect(cls("Q").class).toBe("leave");
     // `*`（tag all）不是 A 類：它一次翻掉整份清單的 tag 標記。`s` 由 term_view 先開
     // 搜尋彈窗（article_search.tryOpenSearchModal），走不到這裡。
-    for (const k of ["y", "c", "/", "a", "D", "m", "S", "s", "*", "H", "?"])
+    for (const k of ["y", "c", "/", "a", "D", "m", "S", "s", "*"])
       expect(cls(k).class).toBe("unsupported");
   });
 
