@@ -65,7 +65,7 @@ test.describe('首頁儀表板', () => {
     await bootHome(page);
     await fetchFlow(page);
     await expect(page.locator('[data-home-native]')).toHaveCount(0);
-    for (const k of ['ArrowDown', 'Shift+S', 'Enter', '1', 'Control+z']) await page.keyboard.press(k);
+    for (const k of ['ArrowDown', 'r', 'Enter', '1', 'Control+z']) await page.keyboard.press(k);
     await expect(page.locator('.ListHint')).toContainText('好讀模式目前不支援這個按鍵');
     await imeCommit(page, '你好');
     await expect(page.locator('.ListHint')).toContainText('好讀模式目前不支援在首頁輸入文字');
@@ -86,6 +86,19 @@ test.describe('首頁儀表板', () => {
     await page.keyboard.press('s');
     await expect(page.locator('input[name="searchKeyword"]')).toBeVisible();
     await expect(page.locator('.ListHint', { hasText: '好讀模式目前不支援' })).toHaveCount(0);
+  });
+
+  test('首頁按 Shift+S ⇒ 同樣開看板搜尋，不提示，PTT 收到的是 s 不是 S', async ({ page }) => {
+    await bootHome(page);
+    await fetchFlow(page);
+    await takeCapture(page);
+    await page.keyboard.press('Shift+S');
+    await expect(page.locator('input[name="searchKeyword"]')).toBeVisible();
+    await expect(page.locator('.ListHint', { hasText: '好讀模式目前不支援' })).toHaveCount(0);
+    // The sheet sends PTT's own `s` (board_search_bridge, plus a redraw); the raw `S` never goes out.
+    const sent = await takeCapture(page);
+    expect(sent).toMatch(/^s/);
+    expect(sent).not.toContain('S');
   });
 
   test('進了看板、最新一篇讀過 ⇒ 回首頁時不再標有新文章，一個 byte 都不送', async ({ page }) => {

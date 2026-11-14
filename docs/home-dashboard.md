@@ -9,11 +9,11 @@
 ## 規則
 
 - **不讓使用者盲操作背後的原生主功能表（#191）**：焦點留在 `#t`，但好讀開著、面板畫在主功能表上時，鍵與字只放行好讀有呈現的入口：
-  - `h`（主功能表底列的 `(h)說明`）：照送 PTT，同時 `helpMenu.expect()`；說明選單整趟（hold 期間）面板留在 sheet 底下，`_onSettled` 看到說明畫面也不收（每 `HOME_TRANSIT_RECHECK_MS` 重看一次，hold 一解除——關掉回主功能表、交給原生、等不到說明選單——就照常判定）。抓我的最愛途中的 `h` 擋下。
-  - `s`：開看板搜尋 sheet（`term_view.onKeyDown` 的 `tryOpenSearchModal` 在面板判定之前就接走）。
+  - `h`、`H`、`?`（主功能表的說明鍵，底列只寫 `(h)說明`）：照送 PTT，同時 `helpMenu.expect()`；說明選單整趟（hold 期間）面板留在 sheet 底下，`_onSettled` 看到說明畫面也不收（每 `HOME_TRANSIT_RECHECK_MS` 重看一次，hold 一解除——關掉回主功能表、交給原生、等不到說明選單——就照常判定）。抓我的最愛途中的 `h` 擋下。
+  - `s`、`S`（PTT 的「選擇看板」）：開看板搜尋 sheet，鍵被吞掉、不提示（PTT 收到的是搜尋自己送的 `s`，不是 `S`）（`s` 由 `term_view.onKeyDown` 的 `tryOpenSearchModal` 在面板判定之前接走；`S` 由 `takeKey` 以同一個入口開）。sheet 開不了或正在抓我的最愛時擋下。
   - app 自己的快捷鍵（F 鍵：返回原文、複製連結、跳未讀、指令面板；F5／⌘R 重新整理）、瀏覽器組合鍵（Ctrl+C／A／V、⌘ 組合、Alt 組合）、送不出 byte 的鍵（修飾鍵、CapsLock）：不是指令，照舊。
   - 面板上的按鈕（卡片、更新、新信）：直接呼叫入口，不經鍵盤。
-  - 其餘一律擋下、什麼都不送，給與文章／列表相同的「好讀模式目前不支援…」錯誤提示（`unsupported_hint.js`）：`S`、移動選單游標的字母、方向鍵、Enter、數字、Ctrl 組合、Alt remap、手機工具列／鍵盤列的鍵（`sendKeyAsUser` 走同一條分派）。輸入法或軟鍵盤上的單一 ASCII 字元當成它代表的鍵（`term_view.onTextInput`），其餘上字與貼上擋下（「…在首頁輸入文字／貼上文字」）。
+  - 其餘一律擋下、什麼都不送，給與文章／列表相同的「好讀模式目前不支援…」錯誤提示（`unsupported_hint.js`）：PTT 說明畫面列的其他指令（進入看板 `r`／`R`、未讀文章 Ctrl-Y／Ctrl-N、Ctrl-Z／Ctrl-U／Ctrl-R）、移動選單游標的鍵（方向鍵、Enter、`e`／`E`／`q`／`Q`、Home／End／PgUp／PgDn、選單項目字母）、數字、其他 Ctrl 組合、Alt remap、手機工具列／鍵盤列的鍵（`sendKeyAsUser` 走同一條分派）。輸入法或軟鍵盤上的單一 ASCII 字元當成它代表的鍵（`term_view.onTextInput`），其餘上字與貼上擋下（「…在首頁輸入文字／貼上文字」）。
   - 分類是純函式 `homeKeyAction`（同 `easy_reading.articleLeftoverKey` 的形狀），`takeKey`／`refuseText` 由 `term_view` 呼叫。說明選單開著（phase 不是 idle 或 hold 中）時鍵歸說明選單。好讀關著＝原生主功能表，所有鍵照送。
 - **認不出 ⇒ 原生**：只在「標題列是主功能表＋畫面上有 `(F)avorite` 選單項＋游標不在輸入欄」時出現（`isHomeScreen`）。
 - **抓我的最愛＝原生鍵**（`fetchFavorites`）：`Ctrl+Z f`（menu.c#ZA_Select 的「我的最愛」，任何畫面都能進根目錄、不動主功能表的游標）→ 讀頁 →（進來不在第 1 頁就跳 `1⏎`）→ 一頁滿 20 個就跳 `<最後一號+1>⏎`，被夾回同一頁＝沒有下一頁（stuff.c#search_num）→ 跳回進來時的游標 → `q`。最多 `FAV_MAX_PAGES` 頁。每一步落地不符就停手（`fail`），人留在 PTT 給的畫面上。

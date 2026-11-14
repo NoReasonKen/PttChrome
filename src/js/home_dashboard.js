@@ -34,7 +34,14 @@ import {
   parseBoardListNum
 } from './board_list_parse';
 import { charCells } from './string_util';
-import { submitSerializedSteps, beginInFlight, endInFlight, searchGateFacts, submitSearch } from './article_search';
+import {
+  submitSerializedSteps,
+  beginInFlight,
+  endInFlight,
+  searchGateFacts,
+  submitSearch,
+  tryOpenSearchModal
+} from './article_search';
 import { serializedOpHint } from './serialized_op_gate';
 import { isAltRemapEvent, isBrowserClipboardEvent, keyEventToBytes } from './term_keyboard';
 import { UNSUPPORTED_KEY_HINT, unsupportedPasteHint, unsupportedTextHint } from './unsupported_hint';
@@ -332,25 +339,35 @@ export function applyHomeAnchor(container, record) {
 
 // What a key typed at home does (#191). Easy reading presents the dashboard,
 // the board search sheet and the help menu; the reader never drives PTT's
-// hidden main menu blind.
-//   'help'   the main menu's own help key (its footer `(h)說明`): it goes to
-//            PTT, and the help menu sheet opens over the held dashboard;
-//   'refuse' every other key PTT would receive (letters that move the menu
-//            cursor, arrows, Enter, digits, Ctrl and Alt-remapped keys);
+// hidden main menu blind. The table follows the commands PTT lists on the main
+// menu's help screen (pttbbs menu.c menu_nav_cmds, menu_board_shortcut_cmds and
+// psb.c bbs_global_cmds), aliases included:
+//   說明 h H ?            presented: the help menu sheet
+//   選擇看板 s S          presented: the board search sheet
+//   進入看板 r R, 未讀文章 Ctrl-Y Ctrl-N, the menu cursor keys (arrows, Enter,
+//   e E q Q, Home, End, PgUp, PgDn, item letters), Ctrl-Z, Ctrl-U, Ctrl-R
+//                         not presented: refused
+// Return values:
+//   'help'   the key goes to PTT and the help menu sheet opens over the held
+//            dashboard;
+//   'search' the board search sheet opens and the key is swallowed (lower-case
+//            `s` is normally taken earlier, in term_view.onKeyDown);
+//   'refuse' every other key PTT would receive (menu cursor letters, arrows,
+//            Enter, digits, Ctrl and Alt-remapped keys);
 //   null     not a command: the browser's clipboard keys, Meta and Alt
 //            shortcuts, and keys that send PTT nothing (F-keys, modifiers).
-// The search key `s` opens the board search sheet earlier in term_view.onKeyDown
-// (article_search.tryOpenSearchModal), as do the app's F-key shortcuts and the
-// refresh key, so none of them reach this table. Same shape as
-// easy_reading.articleLeftoverKey.
-const HOME_HELP_KEY = 'h';
+// The app's own F-key shortcuts and the refresh key are taken before this
+// table. Same shape as easy_reading.articleLeftoverKey.
+const HOME_HELP_KEYS = new Set(['h', 'H', '?']);
+const HOME_SEARCH_KEYS = new Set(['s', 'S']);
 export function homeKeyAction(e) {
   if (!e || !e.key) return null;
   if (isBrowserClipboardEvent(e) || e.metaKey) return null;
   if (isAltRemapEvent(e)) return 'refuse';
   if (e.altKey) return null;
   if (keyEventToBytes(e) == null) return null;
-  if (!e.ctrlKey && e.key === HOME_HELP_KEY) return 'help';
+  if (!e.ctrlKey && HOME_HELP_KEYS.has(e.key)) return 'help';
+  if (!e.ctrlKey && HOME_SEARCH_KEYS.has(e.key)) return 'search';
   return 'refuse';
 }
 
@@ -534,6 +551,8 @@ HomeDashboard.prototype = {
       this._core.helpMenu?.expect?.();
       return false;
     }
+    // Either search key opens the same sheet; it sends PTT's own key itself.
+    if (action === 'search' && !this._state.fetching && tryOpenSearchModal(this._core, 's', null)) return true;
     this._refuse(UNSUPPORTED_KEY_HINT);
     return true;
   },

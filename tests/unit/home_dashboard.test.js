@@ -316,10 +316,15 @@ test("withBoardUnread／withFavPageUnread：只改清單裡已有的板；沒變
 describe("homeKeyAction：首頁的每一個鍵", () => {
   test.each([
     [{ key: "h" }, "help"],
-    [{ key: "H", shiftKey: true }, "refuse"],
-    [{ key: "?" }, "refuse"],
-    [{ key: "S", shiftKey: true }, "refuse"],
-    [{ key: "s" }, "refuse"],
+    [{ key: "H", shiftKey: true }, "help"],
+    [{ key: "?" }, "help"],
+    [{ key: "?", ctrlKey: true }, "refuse"],
+    [{ key: "S", shiftKey: true }, "search"],
+    [{ key: "s" }, "search"],
+    [{ key: "s", ctrlKey: true }, "refuse"],
+    [{ key: "r" }, "refuse"],
+    [{ key: "R", shiftKey: true }, "refuse"],
+    [{ key: "y", ctrlKey: true }, "refuse"],
     [{ key: "f" }, "refuse"],
     [{ key: "G", shiftKey: true }, "refuse"],
     [{ key: "1" }, "refuse"],
@@ -659,7 +664,7 @@ describe("HomeDashboard：何時出現", () => {
     const { home, show, key, hints, enqueued } = makeCore();
     show(mainMenu());
     expect(key("ArrowDown")).toBe(true);
-    expect(key("S", { shiftKey: true })).toBe(true);
+    expect(key("r")).toBe(true);
     expect(key("z", { ctrlKey: true })).toBe(true);
     expect(home.refuseText("你好", "text")).toBe(true);
     expect(home.refuseText("q", "paste")).toBe(true);
@@ -724,6 +729,41 @@ describe("HomeDashboard：何時出現", () => {
     expect(home.state.visible).toBe(true);
     vi.advanceTimersByTime(AUTO_FETCH_DELAY_MS);
     expect(enqueued.map((c) => c.keys)).toEqual([ZA_FAV]);
+  });
+
+  // PTT's 選擇看板 is `s` and `S`; both open the board search sheet.
+  test("首頁按 s／S ⇒ 開看板搜尋、吞掉鍵、不送、不提示；開不了就擋下", () => {
+    const { core, show, key, enqueued, hints } = makeCore();
+    const opened = [];
+    core.openSearchModal = (kind) => (opened.push(kind), true);
+    show(mainMenu());
+    expect(key("S", { shiftKey: true })).toBe(true);
+    expect(key("s")).toBe(true);
+    expect(opened).toEqual(["board", "board"]);
+    expect(hints).toEqual([]);
+    expect(enqueued).toHaveLength(0);
+
+    const b = makeCore();
+    b.show(mainMenu());
+    b.core.openSearchModal = () => false;
+    expect(b.key("S", { shiftKey: true })).toBe(true);
+    expect(b.hints).toEqual([{ m: UNSUPPORTED_KEY_HINT, level: HINT_ERROR }]);
+
+    const c = makeCore();
+    c.show(mainMenu());
+    expect(c.key("s")).toBe(true);
+    expect(c.hints).toEqual([{ m: UNSUPPORTED_KEY_HINT, level: HINT_ERROR }]);
+  });
+
+  test("首頁按 H／? ⇒ 與 h 一樣：送出、hold 住、面板留著", () => {
+    for (const [k, mods] of [["H", { shiftKey: true }], ["?", undefined]]) {
+      const { core, home, show, key, hints } = makeCore();
+      show(mainMenu());
+      expect(key(k, mods)).toBe(false);
+      expect(core.helpMenu.holding).toBe(true);
+      expect(hints).toEqual([]);
+      expect(home.state.visible).toBe(true);
+    }
   });
 
   test("說明選單交給原生（hold 解除時還在說明畫面）⇒ 面板收起，原生畫面照舊", () => {
