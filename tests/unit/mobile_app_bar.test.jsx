@@ -93,14 +93,14 @@ test("文章三行：標題／作者帶暱稱／看板與時間同一行（時�
   expect(byline.nextElementSibling).toBe(sub.parentElement);
 });
 
-test("沒有返回鍵（返回交給系統手勢）：首頁以外沒有任何按鈕", () => {
+test("沒有返回鍵（返回交給系統手勢）：沒有任何按鈕", () => {
   render(<MobileAppBar pttchrome={makeCore()} />);
   expect(bar().querySelectorAll("button")).toHaveLength(0);
 });
 
-// 首頁儀表板開著：標題換成「首頁」（不是 row 0 的「主功能表」）、右邊一顆「原生主選單」，
-// 點下去收起面板；面板收起 ⇒ 標題與按鈕都回到原本的樣子。
-test("首頁儀表板開著 ⇒ 標題＝首頁、右邊有「原生主選單」，點了收起面板", () => {
+// 首頁儀表板開著：標題換成「首頁」（不是 row 0 的「主功能表」）；沒有切回原生主選單的按鈕
+// （#191：好讀開著時沒有任何控制項會顯示原生畫面）。面板收起 ⇒ 標題回到原本的樣子。
+test("首頁儀表板開著 ⇒ 標題＝首頁、沒有「原生主選單」鈕", () => {
   const core = makeCore();
   const homeListeners = new Set();
   core.homeDashboard = {
@@ -109,15 +109,12 @@ test("首頁儀表板開著 ⇒ 標題＝首頁、右邊有「原生主選單」
       fn({ visible: true });
       return () => homeListeners.delete(fn);
     },
-    dismiss: vi.fn(),
   };
   render(<MobileAppBar pttchrome={core} />);
   expect(bar().querySelector('[data-key="__title"]').textContent).toBe(i18n("home_title"));
   expect(bar().getAttribute("data-kind")).toBe("home");
-  const native = bar().querySelector('[data-key="__homeNative"]');
-  expect(native.textContent).toBe(i18n("home_native"));
-  fireEvent.click(native);
-  expect(core.homeDashboard.dismiss).toHaveBeenCalledTimes(1);
+  expect(bar().querySelector('[data-key="__homeNative"]')).toBeNull();
+  expect(bar().querySelectorAll("button")).toHaveLength(0);
   act(() => homeListeners.forEach((fn) => fn({ visible: false })));
   expect(bar().querySelector('[data-key="__title"]').textContent).toBe("主功能表");
   expect(bar().querySelectorAll("button")).toHaveLength(0);

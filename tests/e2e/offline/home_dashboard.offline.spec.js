@@ -1,14 +1,15 @@
 // 首頁儀表板（src/js/home_dashboard.js、docs/home-dashboard.md）：主功能表上蓋面板 → 自動送
-// Ctrl+Z f 抓我的最愛 → q 回主功能表 → 畫出卡片；點卡片走 s<板>；真鍵盤打字收起面板、鍵照送。
+// Ctrl+Z f 抓我的最愛 → q 回主功能表 → 畫出卡片；點卡片走 s<板>；首頁不支援的鍵／字／貼上擋下（#191）。
 // 進看板讀完最新一篇回來 ⇒ 該板不再標有新文章（不重抓）；F5 ＝重抓我的最愛。
 // server 的回應由測試照 pttbbs 版面畫（主功能表＝helpers/main_menu，我的最愛／文章列表＝helpers/home_screens）。
-// 焦點留在 #t、點面板不變成點終端機、面板開著打字照常送 PTT，只有真瀏覽器驗得出來。
+// 焦點留在 #t、點面板不變成點終端機、首頁的鍵在送出前被擋下，只有真瀏覽器驗得出來。
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { bootOffline } = require('../helpers/replay');
 const { drawMainMenu } = require('../helpers/main_menu');
 const { drawFavorites, drawArticleList } = require('../helpers/home_screens');
 const { startCapture, peekCapture, takeCapture, expectOnlyFence } = require('../helpers/capture');
+const { imeCommit, pasteText } = require('../helpers/real_input');
 
 const ZA_FAV = '\x1af';
 
@@ -57,21 +58,47 @@ test.describe('首頁儀表板', () => {
     await expect(page.locator('#t')).toBeFocused();
   });
 
-  test('面板開著用真鍵盤打字 ⇒ 面板收起、鍵照常送給 PTT', async ({ page }) => {
+  // At home easy reading presents the dashboard, the board search and the help
+  // menu; it never lets the reader drive PTT's hidden main menu blind (#191).
+  test('首頁打不支援的鍵、輸入法上字、貼上 ⇒ 擋下並提示，什麼都不送；h 照送', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await bootHome(page);
     await fetchFlow(page);
-    await page.keyboard.press('ArrowDown');
-    await expect(dashboard(page)).toHaveCount(0);
-    await expect.poll(() => peekCapture(page)).toContain('\x1b[B');
-    expect(await takeCapture(page)).toBe('\x1b[B');
+    await expect(page.locator('[data-home-native]')).toHaveCount(0);
+    for (const k of ['ArrowDown', 'r', 'Enter', '1', 'Control+z']) await page.keyboard.press(k);
+    await expect(page.locator('.ListHint')).toContainText('好讀模式目前不支援這個按鍵');
+    await imeCommit(page, '你好');
+    await expect(page.locator('.ListHint')).toContainText('好讀模式目前不支援在首頁輸入文字');
+    await pasteText(page, 'hello');
+    await expect(page.locator('.ListHint')).toContainText('好讀模式目前不支援在首頁貼上文字');
+    await expect(dashboard(page)).toBeVisible();
+    // The help key goes out through the same keyboard path, so anything the
+    // refused keys sent would show up before it.
+    await expectOnlyFence(page, () => page.keyboard.press('h'), 'h');
+    await expect(dashboard(page)).toBeVisible();
   });
 
-  test('「原生主選單」⇒ 收起，主功能表留在原地', async ({ page }) => {
+  // The bytes behind the sheet belong to its board completion
+  // (board_search_bridge), not to this key route.
+  test('首頁按 s ⇒ 開看板搜尋（不被首頁擋下）', async ({ page }) => {
     await bootHome(page);
     await fetchFlow(page);
-    await page.locator('[data-home-native]').click();
-    await expect(dashboard(page)).toHaveCount(0);
-    expect(await page.evaluate(() => window.__app.buf.getRowText(0, 0, 80))).toContain('主功能表');
+    await page.keyboard.press('s');
+    await expect(page.locator('input[name="searchKeyword"]')).toBeVisible();
+    await expect(page.locator('.ListHint', { hasText: '好讀模式目前不支援' })).toHaveCount(0);
+  });
+
+  test('首頁按 Shift+S ⇒ 同樣開看板搜尋，不提示，PTT 收到的是 s 不是 S', async ({ page }) => {
+    await bootHome(page);
+    await fetchFlow(page);
+    await takeCapture(page);
+    await page.keyboard.press('Shift+S');
+    await expect(page.locator('input[name="searchKeyword"]')).toBeVisible();
+    await expect(page.locator('.ListHint', { hasText: '好讀模式目前不支援' })).toHaveCount(0);
+    // The sheet sends PTT's own `s` (board_search_bridge, plus a redraw); the raw `S` never goes out.
+    const sent = await takeCapture(page);
+    expect(sent).toMatch(/^s/);
+    expect(sent).not.toContain('S');
   });
 
   test('進了看板、最新一篇讀過 ⇒ 回首頁時不再標有新文章，一個 byte 都不送', async ({ page }) => {
@@ -93,7 +120,7 @@ test.describe('首頁儀表板', () => {
     // with its own jumps; the dashboard fetched nothing, and sends nothing after.
     expect(await takeCapture(page)).not.toContain(ZA_FAV);
     expect(await page.evaluate(() => window.__app.homeDashboard._autoTimer)).toBeNull();
-    await expectOnlyFence(page, () => page.keyboard.press('ArrowDown'), '\x1b[B');
+    await expectOnlyFence(page, () => page.keyboard.press('h'), 'h');
   });
 
   test('F5 ＝ 重抓我的最愛（與文章列表同一個重新整理入口），不重載網頁', async ({ page }) => {

@@ -62,6 +62,7 @@ import {
 import { LEFT_ARROW } from './function_key_plan';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { HINT_ERROR } from './status_hint';
+import { UNSUPPORTED_KEY_HINT, unsupportedPasteHint, unsupportedTextHint } from './unsupported_hint';
 import {
   BOARD_LIST,
   FAVOURITE,
@@ -857,9 +858,8 @@ const INPLACE_KEYS = '=\\]+[-<,.>{}t';
 // 切原生時提示語的尾巴：做完就回來。每一處切原生的 hint 都用這一句，不要再各自寫死字串。
 const NATIVE_RESUME_HINT = '（操作完成後自動恢復好讀）';
 // Easy reading keeps only the keys of the features it presents (#159).
-const UNSUPPORTED_KEY_HINT = '好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）';
-const UNSUPPORTED_PASTE_HINT = '好讀模式目前不支援在列表貼上文字';
-const UNSUPPORTED_TEXT_HINT = '好讀模式目前不支援在列表輸入文字';
+const UNSUPPORTED_PASTE_HINT = unsupportedPasteHint('列表');
+const UNSUPPORTED_TEXT_HINT = unsupportedTextHint('列表');
 const RETRY_HINT = '，下拉重新整理以重試';
 const FAILED_KEY_HINT = '列表操作失敗：下拉重新整理以重試';
 // 看板列表按 `v` ＝ b_mark_read_unread（mbbsd/bbs.c:4309）：畫面下方跳出 getdata

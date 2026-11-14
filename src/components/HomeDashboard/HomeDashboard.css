@@ -50,10 +50,6 @@ body.stackHoldHome #homeDashboard {
   color: #fff;
 }
 
-.homeSpacer {
-  flex: 1 1 auto;
-}
-
 .homeButton {
   border: 1px solid #3a3a44;
   border-radius: 6px;

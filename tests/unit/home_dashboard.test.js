@@ -1,6 +1,11 @@
 // 首頁儀表板（src/js/home_dashboard.js、docs/home-dashboard.md）：主功能表怎麼認、我的最愛
-// 每一列怎麼讀、Ctrl+Z f → 讀頁 → 跳號 → 回游標 → q 的送鍵序列、收起與自動抓的時機。
+// 每一列怎麼讀、Ctrl+Z f → 讀頁 → 跳號 → 回游標 → q 的送鍵序列、出現與自動抓的時機。
 // 畫面照 pttbbs 版面手寫：主功能表＝menu.c#menu_renderer，我的最愛＝board.c#brdlist_renderer。
+const prefOverride = vi.hoisted(() => ({}));
+vi.mock("../../src/js/pref_storage", async (importOriginal) => {
+  const real = await importOriginal();
+  return { ...real, readValuesWithDefault: () => ({ ...real.readValuesWithDefault(), ...prefOverride }) };
+});
 import {
   isHomeScreen,
   hasNewMail,
@@ -10,7 +15,7 @@ import {
   shouldFetchFavorites,
   pushRecentBoard,
   articleListBoard,
-  keyDismissesHome,
+  homeKeyAction,
   newestArticleUnread,
   withBoardUnread,
   withFavPageUnread,
@@ -27,6 +32,7 @@ import {
 import { serializedOpHint } from "../../src/js/serialized_op_gate";
 import { HINT_ERROR } from "../../src/js/status_hint";
 import { pinHistoryEntries, unpinHistoryEntries, moveHistoryEntries } from "../../src/js/history_entries";
+import { UNSUPPORTED_KEY_HINT, unsupportedPasteHint, unsupportedTextHint } from "../../src/js/unsupported_hint";
 
 const ROWS = 24;
 const ZA_FAV = "\x1af";
@@ -107,6 +113,15 @@ function listFrame(board, entries, { foot = LIST_FOOT, cursorAt } = {}) {
   rowTexts[ROWS - 1] = foot;
   return { rowTexts, rows: ROWS, curX: 0, curY: 3 + (cursorAt == null ? 0 : cursorAt) };
 }
+// PTT's help menu asked from the main menu (psb.c#cmd_show_help_layers_inner).
+const HELP_SCREEN = () => {
+  const rowTexts = Array.from({ length: ROWS }, () => "");
+  rowTexts[0] = "【主功能表】                    操作說明 (Help)";
+  rowTexts[1] = "  按鍵 / 標籤                   功能說明";
+  rowTexts[2] = ">  (h) 說明                    顯示操作說明";
+  rowTexts[ROWS - 1] = " 操作說明  (Enter)執行                                          (q/←)離開 ";
+  return { rowTexts, rows: ROWS, curX: 0, curY: 2 };
+};
 const fullPage = (board, mark) => {
   const out = [];
   for (let n = 101; n <= 120; ++n) out.push([n, n === 120 ? mark : " "]);
@@ -290,19 +305,49 @@ test("withBoardUnread／withFavPageUnread：只改清單裡已有的板；沒變
   ]);
 });
 
-test("keyDismissesHome：純修飾鍵與 F 鍵不收起面板", () => {
-  expect(keyDismissesHome({ key: "a" })).toBe(true);
-  expect(keyDismissesHome({ key: "ArrowDown" })).toBe(true);
-  expect(keyDismissesHome({ key: "Shift" })).toBe(false);
-  expect(keyDismissesHome({ key: "F4" })).toBe(false);
-  expect(keyDismissesHome(null)).toBe(false);
-});
+// What a key typed at home does (#191): easy reading presents the help menu
+// (h, the main menu's own `(h)說明`); every other key that would reach PTT is
+// refused. Keys PTT never receives (browser combos, F-keys, modifiers) are not
+// commands. The search key `s` opens the board search sheet before this
+// (article_search.tryOpenSearchModal), so it never reaches the table.
+describe("homeKeyAction：首頁的每一個鍵", () => {
+  test.each([
+    [{ key: "h" }, "help"],
+    [{ key: "H", shiftKey: true }, "help"],
+    [{ key: "?" }, "help"],
+    [{ key: "?", ctrlKey: true }, "refuse"],
+    [{ key: "S", shiftKey: true }, "search"],
+    [{ key: "s" }, "search"],
+    [{ key: "s", ctrlKey: true }, "refuse"],
+    [{ key: "r" }, "refuse"],
+    [{ key: "R", shiftKey: true }, "refuse"],
+    [{ key: "y", ctrlKey: true }, "refuse"],
+    [{ key: "f" }, "refuse"],
+    [{ key: "G", shiftKey: true }, "refuse"],
+    [{ key: "1" }, "refuse"],
+    [{ key: "ArrowDown" }, "refuse"],
+    [{ key: "ArrowLeft" }, "refuse"],
+    [{ key: "Enter" }, "refuse"],
+    [{ key: "Escape" }, "refuse"],
+    [{ key: " " }, "refuse"],
+    [{ key: "z", ctrlKey: true }, "refuse"],
+    [{ key: "h", ctrlKey: true }, "refuse"],
+    [{ key: "e", altKey: true, code: "KeyE" }, "refuse"],
+    [{ key: "c", ctrlKey: true }, null],
+    [{ key: "v", ctrlKey: true }, null],
+    [{ key: "a", ctrlKey: true }, null],
+    [{ key: "r", metaKey: true }, null],
+    [{ key: "F5" }, null],
+    [{ key: "F4" }, null],
+    [{ key: "Shift", shiftKey: true }, null],
+    [{ key: "CapsLock" }, null],
+  ])("%o ⇒ %s", (e, want) => {
+    expect(homeKeyAction(e)).toBe(want);
+  });
 
-test("重新整理鍵（⌘R）不收起面板：面板先收起的話 screen_refresh 認不出首頁，⌘R 會變成整頁重載＝斷線", () => {
-  expect(keyDismissesHome({ key: "r", metaKey: true })).toBe(false);
-  expect(keyDismissesHome({ key: "R", metaKey: true })).toBe(false);
-  // 強制重新載入（⌘⇧R）本來就交給瀏覽器；一般的 r 照樣收起。
-  expect(keyDismissesHome({ key: "r" })).toBe(true);
+  test("沒有事件 ⇒ 不是指令", () => {
+    expect(homeKeyAction(null)).toBe(null);
+  });
 });
 
 // ── 控制器：假 App（buf 讀目前的 frame，CommandQueue 只收集命令）──────────────────
@@ -311,7 +356,6 @@ function makeCore(start = mainMenu()) {
   const hints = [];
   let frame = start;
   const listeners = {};
-  const inputListeners = {};
   const core = {
     conn: { isConnected: true },
     buf: {
@@ -328,7 +372,14 @@ function makeCore(start = mainMenu()) {
       isCursorOnInputField: () => !!frame.inputField,
       addEventListener: (name, fn) => (listeners[name] = fn),
     },
-    inputArea: { addEventListener: (name, fn) => (inputListeners[name] = fn) },
+    // help_menu.HelpMenuController's hold (expect → holding until the visit ends).
+    helpMenu: {
+      phase: "idle",
+      holding: false,
+      expect() {
+        this.holding = true;
+      },
+    },
     view: { flashListHint: (m, ms, level) => hints.push({ m, level }) },
     commandQueue: {
       enqueue: (cmd) => enqueued.push(cmd),
@@ -349,7 +400,9 @@ function makeCore(start = mainMenu()) {
     cmd.onDone(true);
     listeners.screenSettled();
   };
-  const key = (k) => inputListeners.keydown({ key: k });
+  // term_view.onKeyDown asks the dashboard about each key; true ＝ refused
+  // (the caller prevents it and nothing reaches PTT).
+  const key = (k, mods) => home.takeKey(Object.assign({ key: k }, mods));
   return { core, home, enqueued, hints, show, land, key };
 }
 
@@ -602,16 +655,151 @@ describe("HomeDashboard：何時出現", () => {
     expect(home.state.visible).toBe(false);
   });
 
-  test("面板開著時打字 ⇒ 收起（鍵不吞）；這一趟留在主功能表都不再出現，離開再回來才出現", () => {
-    const { home, show, key } = makeCore();
+  // At home easy reading presents what the dashboard and its sheets offer; it
+  // never lets the reader drive PTT's hidden main menu blind (#191).
+  test("首頁打不支援的鍵／字／貼上 ⇒ 擋下、錯誤提示，一個 byte 都不送；面板留著", () => {
+    const { home, show, key, hints, enqueued } = makeCore();
     show(mainMenu());
-    key("ArrowDown");
-    expect(home.state.visible).toBe(false);
+    expect(key("ArrowDown")).toBe(true);
+    expect(key("r")).toBe(true);
+    expect(key("z", { ctrlKey: true })).toBe(true);
+    expect(home.refuseText("你好", "text")).toBe(true);
+    expect(home.refuseText("q", "paste")).toBe(true);
+    expect(hints).toEqual([
+      { m: UNSUPPORTED_KEY_HINT, level: HINT_ERROR },
+      { m: UNSUPPORTED_KEY_HINT, level: HINT_ERROR },
+      { m: UNSUPPORTED_KEY_HINT, level: HINT_ERROR },
+      { m: unsupportedTextHint("首頁"), level: HINT_ERROR },
+      { m: unsupportedPasteHint("首頁"), level: HINT_ERROR },
+    ]);
+    expect(home.state.visible).toBe(true);
+    // Not commands: the browser's clipboard keys and our own F-key shortcuts.
+    expect(key("c", { ctrlKey: true })).toBe(false);
+    expect(key("F4")).toBe(false);
+    expect(hints).toHaveLength(5);
+    vi.advanceTimersByTime(AUTO_FETCH_DELAY_MS);
+    expect(enqueued.map((c) => c.keys)).toEqual([ZA_FAV]);
+  });
+
+  test("面板沒畫著、好讀關著、說明選單開著 ⇒ 鍵與字照舊（不歸首頁管）", () => {
+    const a = makeCore();
+    a.show(ARTICLE_LIST());
+    expect(a.key("ArrowDown")).toBe(false);
+    expect(a.home.refuseText("q", "paste")).toBe(false);
+
+    const b = makeCore();
+    b.show(mainMenu());
+    try {
+      prefOverride.enableEasyReading = false;
+      b.home.evaluateNow();
+      expect(b.key("ArrowDown")).toBe(false);
+      expect(b.home.refuseText("q", "text")).toBe(false);
+    } finally {
+      delete prefOverride.enableEasyReading;
+    }
+
+    // The help menu owns the keys while it is up (its sheet, PTT's help screen).
+    const c = makeCore();
+    c.show(mainMenu());
+    c.core.helpMenu.phase = "open";
+    expect(c.key("q")).toBe(false);
+    expect(a.hints.concat(b.hints, c.hints)).toEqual([]);
+  });
+
+  // The help menu over home: PTT shows its help screen, the dashboard stays the
+  // page under the sheet for the whole visit (help_menu.expect / holding).
+  test("首頁按 h ⇒ 送出、hold 住；說明選單期間面板一直在；離開回主功能表照常", () => {
+    const { core, home, show, key, enqueued, hints } = makeCore();
     show(mainMenu());
-    expect(home.state.visible).toBe(false);
-    show(ARTICLE_LIST());
+    expect(key("h")).toBe(false);
+    expect(core.helpMenu.holding).toBe(true);
+    expect(hints).toEqual([]);
+    show(HELP_SCREEN());
+    expect(home.state.visible).toBe(true);
+    // The help visit owns the wire: no Ctrl+Z f under it.
+    vi.advanceTimersByTime(AUTO_FETCH_DELAY_MS * 4);
+    expect(enqueued).toHaveLength(0);
+    expect(home.state.visible).toBe(true);
+    // The sheet closed: the hold ends as PTT's main menu comes back.
+    core.helpMenu.holding = false;
     show(mainMenu());
     expect(home.state.visible).toBe(true);
+    vi.advanceTimersByTime(AUTO_FETCH_DELAY_MS);
+    expect(enqueued.map((c) => c.keys)).toEqual([ZA_FAV]);
+  });
+
+  // PTT's 選擇看板 is `s` and `S`; both open the board search sheet.
+  test("首頁按 s／S ⇒ 開看板搜尋、吞掉鍵、不送、不提示；開不了就擋下", () => {
+    const { core, show, key, enqueued, hints } = makeCore();
+    const opened = [];
+    core.openSearchModal = (kind) => (opened.push(kind), true);
+    show(mainMenu());
+    expect(key("S", { shiftKey: true })).toBe(true);
+    expect(key("s")).toBe(true);
+    expect(opened).toEqual(["board", "board"]);
+    expect(hints).toEqual([]);
+    expect(enqueued).toHaveLength(0);
+
+    const b = makeCore();
+    b.show(mainMenu());
+    b.core.openSearchModal = () => false;
+    expect(b.key("S", { shiftKey: true })).toBe(true);
+    expect(b.hints).toEqual([{ m: UNSUPPORTED_KEY_HINT, level: HINT_ERROR }]);
+
+    const c = makeCore();
+    c.show(mainMenu());
+    expect(c.key("s")).toBe(true);
+    expect(c.hints).toEqual([{ m: UNSUPPORTED_KEY_HINT, level: HINT_ERROR }]);
+  });
+
+  test("首頁按 H／? ⇒ 與 h 一樣：送出、hold 住、面板留著", () => {
+    for (const [k, mods] of [["H", { shiftKey: true }], ["?", undefined]]) {
+      const { core, home, show, key, hints } = makeCore();
+      show(mainMenu());
+      expect(key(k, mods)).toBe(false);
+      expect(core.helpMenu.holding).toBe(true);
+      expect(hints).toEqual([]);
+      expect(home.state.visible).toBe(true);
+    }
+  });
+
+  test("說明選單交給原生（hold 解除時還在說明畫面）⇒ 面板收起，原生畫面照舊", () => {
+    const { core, home, show, key } = makeCore();
+    show(mainMenu());
+    key("h");
+    show(HELP_SCREEN());
+    expect(home.state.visible).toBe(true);
+    // _toNative or the hold timeout: no new frame comes, the dashboard still goes.
+    core.helpMenu.holding = false;
+    vi.advanceTimersByTime(HOME_TRANSIT_RECHECK_MS);
+    expect(home.state.visible).toBe(false);
+  });
+
+  test("抓我的最愛途中按 h ⇒ 擋下（說明選單會落在我的最愛上）", () => {
+    const { core, home, show, key, hints } = makeCore();
+    show(mainMenu());
+    home.fetchFavorites();
+    expect(key("h")).toBe(true);
+    expect(core.helpMenu.holding).toBe(false);
+    expect(hints).toEqual([{ m: UNSUPPORTED_KEY_HINT, level: HINT_ERROR }]);
+  });
+
+  // The easy-reading switch is the one way to PTT's own main menu (#191): the
+  // switch at home takes the dashboard away at once, without waiting for a key.
+  test("在首頁切好讀開關 ⇒ 面板立刻跟著收起／出現（evaluateNow），不必等下一個畫面", () => {
+    const { home, show } = makeCore();
+    show(mainMenu());
+    expect(home.state.visible).toBe(true);
+    try {
+      prefOverride.enableEasyReading = false;
+      home.evaluateNow();
+      expect(home.state.visible).toBe(false);
+      prefOverride.enableEasyReading = true;
+      home.evaluateNow();
+      expect(home.state.visible).toBe(true);
+    } finally {
+      delete prefOverride.enableEasyReading;
+    }
   });
 
   // An AID run or search backtracking escapes to the main menu and jumps on to a
@@ -631,20 +819,6 @@ describe("HomeDashboard：何時出現", () => {
     core.aidNavigation.active = false;
     vi.advanceTimersByTime(HOME_TRANSIT_RECHECK_MS);
     expect(home.state.visible).toBe(true);
-  });
-
-  test("F 鍵（指令面板之類的快捷鍵）不收起", () => {
-    const { home, show, key } = makeCore();
-    show(mainMenu());
-    key("F4");
-    expect(home.state.visible).toBe(true);
-  });
-
-  test("「原生主選單」＝ dismiss", () => {
-    const { home, show } = makeCore();
-    show(mainMenu());
-    home.dismiss();
-    expect(home.state.visible).toBe(false);
   });
 
   test("新信提示跟著標題列", () => {
@@ -713,18 +887,33 @@ describe("HomeDashboard：自動抓我的最愛", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  test("面板出現後等 AUTO_FETCH_DELAY_MS 才送 Ctrl+Z f；中間打字收起 ⇒ 不送", () => {
+  test("面板出現後等 AUTO_FETCH_DELAY_MS 才送 Ctrl+Z f；擋下的鍵不在線上，不耽誤它", () => {
     const a = makeCore();
     a.show(mainMenu());
     expect(a.enqueued).toHaveLength(0);
     vi.advanceTimersByTime(AUTO_FETCH_DELAY_MS);
     expect(a.enqueued.map((c) => c.keys)).toEqual([ZA_FAV]);
 
+    // A refused key sends nothing: Ctrl+Z f goes out on time.
     const b = makeCore();
     b.show(mainMenu());
-    b.key("s");
+    b.key("ArrowDown");
     vi.advanceTimersByTime(AUTO_FETCH_DELAY_MS);
-    expect(b.enqueued).toHaveLength(0);
+    expect(b.enqueued.map((c) => c.keys)).toEqual([ZA_FAV]);
+
+    // The help key is on the wire: Ctrl+Z f must not race it.
+    const c = makeCore();
+    c.show(mainMenu());
+    c.key("h");
+    vi.advanceTimersByTime(AUTO_FETCH_DELAY_MS);
+    expect(c.enqueued).toHaveLength(0);
+
+    // A sheet over home (the board search) holds it as well.
+    const d = makeCore();
+    d.show(mainMenu());
+    d.core.modalShown = true;
+    vi.advanceTimersByTime(AUTO_FETCH_DELAY_MS);
+    expect(d.enqueued).toHaveLength(0);
   });
 
   test("線路上有別人的事（deep link 還在排程）⇒ 不抓", () => {
@@ -868,14 +1057,10 @@ describe("HomeDashboard：動作都接到原生鍵", () => {
     expect(enqueued[0].keys).toBe(ZA_FAV);
   });
 
-  test("閱讀紀錄：待還原錨收起（原生主選單）就作廢；面板沒畫著量不到", () => {
+  test("閱讀紀錄：面板沒畫著量不到", () => {
     const { home, show } = makeCore();
     show(ARTICLE_LIST());
     expect(home.readingPosition()).toBeNull();
-    show(mainMenu());
-    home.requestViewportRestore({ kind: "home", key: "board:C_Chat", offset: 0, scrollTop: 100 });
-    home.dismiss();
-    expect(home._pendingViewport).toBeNull();
   });
 
   test("開信箱 ＝ Ctrl+Z m，落地離開主功能表才算完成", () => {

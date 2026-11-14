@@ -132,6 +132,7 @@ export function isTypedKey(text) {
 // under a native mirror, where typed text belongs to PTT's prompt.
 function easyReadingOwnsKeys(view) {
   if (listOwnerOf(view.bbscore)) return true;
+  if (view.bbscore?.homeDashboard?.ownsInput()) return true;
   return !!(view.useEasyReadingMode && view.buf && view.buf.startedEasyReading &&
     !view.buf.easyReadingFunctionMode);
 }
@@ -1499,6 +1500,9 @@ TermView.prototype = {
       this.sendKeyAsUser(text);
       return;
     }
+    // Other text at home (an input method's words, a paste) is refused (#191).
+    if (this.bbscore.homeDashboard?.refuseText(text, isPasting ? 'paste' : 'text'))
+      return;
     // 推文鍵的第三條入口：IME。中文輸入法開著時 keydown 的 keyCode 是 229，被
     // keyEventFilter 擋在 onKeyDown 之外，字改從 input 事件進到這裡 ⇒ 少了這道，
     // 「IME 開著按 X」會得到原生推文、關掉才是長推文，行為不一致（easy_reading.js
@@ -1729,6 +1733,14 @@ TermView.prototype = {
     // docs/article-search.md）。排在列表好讀 keyOwner 之前：那邊會把它當 passthrough
     // 直接送出去。同樣「先開成功、再吞」。
     if (tryOpenSearchModal(this.bbscore, e.key, e)) {
+      e.preventDefault();
+      return;
+    }
+    // Home with easy reading (#191): the help key goes on to PTT under the held
+    // dashboard; every other key PTT would receive is refused here. The board
+    // search key and the app's own shortcuts were taken above.
+    if (this.bbscore.homeDashboard?.takeKey(e)) {
+      this._keyOutcome = 'refusedAtHome';
       e.preventDefault();
       return;
     }

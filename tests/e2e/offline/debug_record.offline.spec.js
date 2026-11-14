@@ -21,6 +21,7 @@ const { bootDashboard } = require('../helpers/stack_routes');
 
 const article = findCassette('article');
 
+// The native main menu shows only with easy reading off (#191).
 test('desktop home and native main menu share the recording control', async ({ page }, testInfo) => {
   await bootDashboard(page);
   await page.evaluate(() => window.__app.setDebugMode(true));
@@ -29,7 +30,7 @@ test('desktop home and native main menu share the recording control', async ({ p
   await page.locator('#debugRecordBtn').click({ timeout: 3000 });
   await expect(tools).toHaveAttribute('data-recording', '');
   await testInfo.attach('desktop-home-recording', { body: await page.screenshot(), contentType: 'image/png' });
-  await page.locator('#homeDashboard [data-home-native]').click();
+  await ptt.applyPrefs(page, { enableEasyReading: false });
   await expect(page.locator('#homeDashboard')).toHaveCount(0);
   await expect(tools).toHaveCount(1);
   await hoverFloatTools(page);
