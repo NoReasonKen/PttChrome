@@ -26,26 +26,28 @@ bottom sheet（手機）一次列出**全部頁**的指令，點一下＝執行�
 ## 流程（`HelpMenuController`，phase：idle／open／leaving／native）
 
 - 每個 `screenSettled`（跳過純本地重繪）解析畫面。認得出且 idle：好讀關著或起點不是第 1 頁 ⇒ `native`
-  （這一次交給原生，直到畫面離開說明選單）；否則 `open`。
+  （這一次交給原生，直到畫面離開說明選單）；否則 `open`。`native` 只由這些自動判定（與下面的頁數變了、離開逾時）進入；
+  彈窗沒有改看原生畫面的按鈕——好讀開著時唯一回到原生的方法是好讀開關。
 - **補頁**：還缺頁就送一個 PgDn，等到下一頁的幀才送下一個（一次一個在途，pttbbs typeahead 會吞中間幀）。
   佇列有命令在途（例：看板列表 session 送 `h\f` 的那筆）就延後重試。`FETCH_TIMEOUT_MS` 沒回應 ⇒ 只列已拿到的頁、不重送。
 - **執行第 t 項**：`Home → PgDn×⌊t/每頁⌋ → ↓×餘數 → Enter`，與當下游標在哪無關（補頁後游標在最後一頁）。
-- **離開**＝`q`、**小天使**＝`h`、**原生畫面**＝收起彈窗（補過頁就送 Home 回第 1 頁），三者都等畫面離開說明選單才回 idle；
+- **離開**＝`q`、**小天使**＝`h`，兩者都等畫面離開說明選單才回 idle；
   送出之後 server 畫的說明幀（Home／PgDn 的回應）一律不理，不會再彈。
 - 合併各頁以身分（鍵＋名稱）去重；中間缺頁就只列到缺頁前（之後的索引不可信）。
 - **認不出 ⇒ 原生**：指紋任一要素失配、任一非空白項目列解析不了 ⇒ 整張不認。守護
   `tests/unit/parse_failure_degrade.test.js`「說明選單好讀」。
 
-- **好讀頁留在彈窗底下（#160）**：從好讀文章或好讀文章列表按 `h`（或說明按鈕）時，文章好讀／`ListSession._beginHelp` 先呼叫
+- **好讀頁留在彈窗底下（#160、#191）**：從好讀文章、好讀文章列表或首頁儀表板按 `h`（或說明按鈕）時，文章好讀／`ListSession._beginHelp`／`HomeDashboard.takeKey` 先呼叫
   `helpMenu.expect()` 再切原生鏡像。`holding` 為真期間 `term_view._navigationHeld()` 成立 ⇒ redraw 走 held 分支，PTT 的說明幀一張都不畫，
-  好讀長頁與閱讀位置原封不動。結束條件：說明選單結束回 idle、這一次交給原生（`_toNative`：使用者選「原生畫面」、
+  好讀長頁與閱讀位置原封不動。結束條件：說明選單結束回 idle、這一次交給原生（`_toNative`：
   認不出起點、頁數變了、離開逾時）、或 `HOLD_TIMEOUT_MS` 內沒等到說明選單；結束時 `view.navigationEnded()` 補畫被擋下的那一幀。
-  不是從好讀頁要求的說明選單（主功能表、看板列表…）不 hold。守護：`tests/unit/help_menu.test.js`「hold of the page under the sheet」、
-  offline `er_function_mode.offline.spec.js`、`easy-reading-list.offline.spec.js`。
+  首頁儀表板在 hold 期間不因說明畫面收起，hold 解除後照常判定（見 `docs/home-dashboard.md`）。
+  不是從好讀頁要求的說明選單（好讀關著的原生主功能表、看板列表…）不 hold。守護：`tests/unit/help_menu.test.js`「hold of the page under the sheet」、
+  offline `er_function_mode.offline.spec.js`、`easy-reading-list.offline.spec.js`、`mobile_home_dashboard.offline.spec.js`（首頁，逐幀）。
 - **離開後列表原地接回**：彈窗離開（cancel）時，hold 解除的同一幀文章列表就接回去，不等靜置探針（`ListSession.resumeAfterHelp`）。
   從 hold 住的列表關掉彈窗（`q`／Esc）＝PTT 只收到說明選單的鍵，重畫的就是彈窗底下那份列表 ⇒ 列表**保留緩衝**（還回 `_beginHelp`
   記下的板名，不從 PTT 的單一頁 rebuild），而且先接回、再交回閱讀紀錄的書籤，還原在同一幀套用，視野一格都不動。
-  改看原生畫面之後才離開的（使用者可能在原生畫面執行了項目）照舊 rebuild、書籤先交回；執行某一項不還原。
+  交給原生之後才離開的（使用者可能在原生畫面執行了項目）照舊 rebuild、書籤先交回；執行某一項不還原。
   守護：`tests/unit/reading_record_list.test.js`「the sheet over the easy-reading list closed」、offline
   `easy-reading-list.offline.spec.js`「leaving the help menu keeps the list where the reader scrolled it, every frame」（逐幀量視口）。
 
@@ -76,6 +78,6 @@ bottom sheet（手機）一次列出**全部頁**的指令，點一下＝執行�
 ## 守護
 
 - `tests/unit/help_menu.test.js`：實錄兩頁（`fixtures/help_menu_rows.js`）解析、突變、送鍵、控制器流程、誤 arm。
-- `tests/unit/help_menu_modal.test.jsx`：元件（桌機／手機）合併列出、點擊、鍵盤、原生畫面、小天使。
+- `tests/unit/help_menu_modal.test.jsx`：元件（桌機／手機）合併列出、點擊、鍵盤、沒有原生畫面鈕、小天使。
 - `tests/e2e/offline/help_menu.offline.spec.js`／`mobile_help_menu.offline.spec.js`：合成畫面
   （`helpers/help_menu.js`）走真 boot 鏈、真滑鼠／鍵盤／觸控送出的 bytes。

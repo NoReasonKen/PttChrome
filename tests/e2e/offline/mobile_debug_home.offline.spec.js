@@ -93,9 +93,10 @@ test('record from home through board and article navigation, then export on home
   await expect(page.locator('#debugRecordNotice')).toBeVisible();
 });
 
+// The native main menu shows only with easy reading off (#191).
 test('native main menu can start and export; disabling debug hides the controls', async ({ page }, testInfo) => {
   await bootDashboard(page);
-  await page.locator('#mobileAppBar [data-key="__homeNative"]').tap();
+  await ptt.applyPrefs(page, { enableEasyReading: false });
   await expect(page.locator('#homeDashboard')).toHaveCount(0);
   await expect(tools(page)).toHaveCount(0);
   await debugMode(page, true);

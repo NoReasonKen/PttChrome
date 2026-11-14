@@ -299,10 +299,11 @@ describe("說明選單（h）：離開後回好讀時視野回到原處", () => 
     expect(h.s._boardName).toBe(null);
   });
 
-  test("改看原生畫面、在原生說明選單裡自己離開 ⇒ 一樣回原處", () => {
+  test("說明選單交還原生（頁數變了）、在原生說明選單裡自己離開 ⇒ 一樣回原處", () => {
     const h = makeSession();
     const { hm } = openHelp(h);
-    hm.showNative();
+    // The terminal's rows changed: PTT paginated the help menu anew.
+    hm.noteScreen({ ...parseHelpMenuScreen(HELP_FAV_PAGE1), totalPages: 3 });
     hm.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1)); // 原生期間的說明幀不理
     hm.noteScreen(null);
     expectRestoredAfterFill(h, 350010);

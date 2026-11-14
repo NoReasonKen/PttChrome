@@ -5,6 +5,7 @@ import { TRACE } from './util';
 import { pmorePrefScreenSeen, parseRawModeFromPrefRow } from './pmore_pref';
 import { altRemapCharCode, isAltRemapEvent, isBrowserClipboardEvent, keyEventToBytes } from './term_keyboard';
 import { HINT_ERROR } from './status_hint';
+import { UNSUPPORTED_KEY_HINT, unsupportedPasteHint, unsupportedTextHint } from './unsupported_hint';
 import { i18n } from './i18n';
 import { findShortcutLabel } from './platform';
 import { offsetTopWithin } from './scroll_anchor';
@@ -1566,9 +1567,8 @@ EasyReading.prototype._teardownAccumulationOffArticle = function() {
 // reply prompts.
 const ARTICLE_HELP_KEYS = 'hH?';
 export const ARTICLE_NATIVE_KEYS = ARTICLE_HELP_KEYS + 'yYrR';
-const UNSUPPORTED_KEY_HINT = '好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）';
-const UNSUPPORTED_PASTE_HINT = '好讀模式目前不支援在文章貼上文字';
-const UNSUPPORTED_TEXT_HINT = '好讀模式目前不支援在文章輸入文字';
+const UNSUPPORTED_PASTE_HINT = unsupportedPasteHint('文章');
+const UNSUPPORTED_TEXT_HINT = unsupportedTextHint('文章');
 
 // What a key the reading keys did not take means: 'native' (keeps the native
 // route), 'refuse', or null (not a PTT key: the browser or the app owns it).

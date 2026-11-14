@@ -3,8 +3,11 @@
 // docs/home-dashboard.md —— 改這支之前先讀它。
 //
 // 三條規則：
-//   1. **不是 modal**：鍵盤照常進 #t 送給 PTT。使用者在面板開著時打任何字 ⇒ 面板收起、
-//      那個鍵照原生走（主功能表的快捷鍵、↑↓ 都還在）。
+//   1. **不讓使用者盲操作背後的原生主選單**（#191）：好讀開著、面板在主功能表上時，
+//      只放行好讀有呈現的入口——`h` 開說明選單（面板留在彈窗底下，help_menu.expect）、
+//      `s` 開看板搜尋（term_view 先攔）、app 自己的快捷鍵與瀏覽器組合鍵、面板上的按鈕；
+//      其餘按鍵、輸入法／軟鍵盤上字、貼上一律擋下並給「好讀模式目前不支援」錯誤提示
+//      （homeKeyAction／takeKey／refuseText）。回原生主選單唯一的方法是好讀開關。
 //   2. **認不出 ⇒ 原生**：只在「標題列是主功能表＋畫面上有 (F)avorite 選單項＋游標不在
 //      輸入欄」時出現；抓我的最愛的任何一步落地不符就停手，人留在 PTT 給的畫面上。
 //   3. **每個動作都是原生鍵**：抓最愛＝Ctrl+Z f（menu.c#ZA_Select 的「我的最愛」）→ 讀頁
@@ -31,9 +34,17 @@ import {
   parseBoardListNum
 } from './board_list_parse';
 import { charCells } from './string_util';
-import { submitSerializedSteps, beginInFlight, endInFlight, searchGateFacts, submitSearch } from './article_search';
+import {
+  submitSerializedSteps,
+  beginInFlight,
+  endInFlight,
+  searchGateFacts,
+  submitSearch,
+  tryOpenSearchModal
+} from './article_search';
 import { serializedOpHint } from './serialized_op_gate';
-import { isRefreshKeyEvent } from './screen_refresh';
+import { isAltRemapEvent, isBrowserClipboardEvent, keyEventToBytes } from './term_keyboard';
+import { UNSUPPORTED_KEY_HINT, unsupportedPasteHint, unsupportedTextHint } from './unsupported_hint';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { recordFor } from './reading_record';
 import { HINT_ERROR } from './status_hint';
@@ -326,15 +337,38 @@ export function applyHomeAnchor(container, record) {
   return true;
 }
 
-// 使用者按的這個鍵要不要收起面板。純修飾鍵、F 鍵（我們自己的快捷鍵，送不到 PTT）不算；
-// 重新整理鍵（⌘R）也不算——它要由 screen_refresh 認成首頁（重抓我的最愛），面板先收起
-// 的話就認不出來、交還瀏覽器整頁重載（＝斷線）。
-export function keyDismissesHome(e) {
-  if (!e || !e.key) return false;
-  if (isRefreshKeyEvent(e)) return false;
-  if (/^(Shift|Control|Alt|Meta|CapsLock|Dead|Process|Unidentified)$/.test(e.key)) return false;
-  if (/^F\d{1,2}$/.test(e.key)) return false;
-  return true;
+// What a key typed at home does (#191). Easy reading presents the dashboard,
+// the board search sheet and the help menu; the reader never drives PTT's
+// hidden main menu blind. The table follows the commands PTT lists on the main
+// menu's help screen (pttbbs menu.c menu_nav_cmds, menu_board_shortcut_cmds and
+// psb.c bbs_global_cmds), aliases included:
+//   說明 h H ?            presented: the help menu sheet
+//   選擇看板 s S          presented: the board search sheet
+//   進入看板 r R, 未讀文章 Ctrl-Y Ctrl-N, the menu cursor keys (arrows, Enter,
+//   e E q Q, Home, End, PgUp, PgDn, item letters), Ctrl-Z, Ctrl-U, Ctrl-R
+//                         not presented: refused
+// Return values:
+//   'help'   the key goes to PTT and the help menu sheet opens over the held
+//            dashboard;
+//   'search' the board search sheet opens and the key is swallowed (lower-case
+//            `s` is normally taken earlier, in term_view.onKeyDown);
+//   'refuse' every other key PTT would receive (menu cursor letters, arrows,
+//            Enter, digits, Ctrl and Alt-remapped keys);
+//   null     not a command: the browser's clipboard keys, Meta and Alt
+//            shortcuts, and keys that send PTT nothing (F-keys, modifiers).
+// The app's own F-key shortcuts and the refresh key are taken before this
+// table. Same shape as easy_reading.articleLeftoverKey.
+const HOME_HELP_KEYS = new Set(['h', 'H', '?']);
+const HOME_SEARCH_KEYS = new Set(['s', 'S']);
+export function homeKeyAction(e) {
+  if (!e || !e.key) return null;
+  if (isBrowserClipboardEvent(e) || e.metaKey) return null;
+  if (isAltRemapEvent(e)) return 'refuse';
+  if (e.altKey) return null;
+  if (keyEventToBytes(e) == null) return null;
+  if (!e.ctrlKey && HOME_HELP_KEYS.has(e.key)) return 'help';
+  if (!e.ctrlKey && HOME_SEARCH_KEYS.has(e.key)) return 'search';
+  return 'refuse';
 }
 
 function readJson(key) {
@@ -365,9 +399,7 @@ function enabled() {
 export function HomeDashboard(core) {
   this._core = core;
   this._listeners = new Set();
-  this._atHome = false;
   this._recentVisitBoard = null;
-  this._dismissed = false;
   this._autoTimer = null;
   this._transitTimer = null;
   // 閱讀紀錄交回的待還原錨（面板下一次畫出來時套用，見 applyPendingViewport）。
@@ -392,16 +424,6 @@ export function HomeDashboard(core) {
     core.buf.addEventListener('screenSettled', function() {
       self._onSettled();
     });
-  const input = core.inputArea;
-  if (input && input.addEventListener) {
-    // capture：在 term_view 的處理之前看到，但**不吞**——鍵照常送給 PTT。
-    input.addEventListener('keydown', function(e) {
-      if (keyDismissesHome(e)) self.dismiss();
-    }, true);
-    input.addEventListener('input', function() {
-      self.dismiss();
-    }, true);
-  }
 }
 
 HomeDashboard.prototype = {
@@ -491,20 +513,68 @@ HomeDashboard.prototype = {
     clearTimeout(this._transitTimer);
     this._transitTimer = null;
     const transit = home && navigating;
+    // Help asked from home: the dashboard is the page under the help menu sheet
+    // for the whole visit, and stays up until the hold ends (#191).
+    const held = !home && this._state.visible && this._helpHeld();
     if (!home || transit) {
-      this._atHome = false;
-      this._dismissed = false;
       this._clearAutoTimer();
-      this._set({ visible: false });
-      if (transit) this._transitTimer = setTimeout(() => this._onSettled(), HOME_TRANSIT_RECHECK_MS);
+      if (!held) this._set({ visible: false });
+      if (transit || held) this._transitTimer = setTimeout(() => this._onSettled(), HOME_TRANSIT_RECHECK_MS);
       return;
     }
-    if (!this._atHome) {
-      this._atHome = true;
-      this._dismissed = false;
+    this._set({ visible: true, newMail: hasNewMail(facts.rowTexts[0]) });
+    this._scheduleAutoFetch();
+  },
+
+  _helpHeld: function() {
+    const hm = this._core.helpMenu;
+    return !!(hm && hm.holding);
+  },
+
+  // Whether keys and text at home are the dashboard's to judge: it is on
+  // screen over the main menu in easy reading, and no help menu is up.
+  ownsInput: function() {
+    const hm = this._core.helpMenu;
+    if (hm && (hm.phase !== 'idle' || hm.holding)) return false;
+    return this._state.visible && enabled();
+  },
+
+  // term_view.onKeyDown asks about each key no earlier handler took. True ＝
+  // refused: the caller prevents it and PTT receives nothing.
+  takeKey: function(e) {
+    if (!this.ownsInput()) return false;
+    const action = homeKeyAction(e);
+    if (!action) return false;
+    if (action === 'help' && !this._state.fetching) {
+      // The key is on the wire: Ctrl+Z f must not race it.
+      this._clearAutoTimer();
+      this._core.helpMenu?.expect?.();
+      return false;
     }
-    this._set({ visible: !this._dismissed, newMail: hasNewMail(facts.rowTexts[0]) });
-    if (this._state.visible) this._scheduleAutoFetch();
+    // Either search key opens the same sheet; it sends PTT's own key itself.
+    if (action === 'search' && !this._state.fetching && tryOpenSearchModal(this._core, 's', null)) return true;
+    this._refuse(UNSUPPORTED_KEY_HINT);
+    return true;
+  },
+
+  // Text that is not one typed key (an input method, a paste): true when it
+  // must not reach PTT. A single typed character comes as its key instead
+  // (term_view.onTextInput).
+  refuseText: function(text, what) {
+    if (!this.ownsInput()) return false;
+    this._refuse(what === 'paste' ? unsupportedPasteHint('首頁') : unsupportedTextHint('首頁'));
+    return true;
+  },
+
+  _refuse: function(msg) {
+    this._hint(msg, 4000, HINT_ERROR);
+  },
+
+  // The easy-reading switch changed: judge the screen now, since no settle comes
+  // while the reader sits on the main menu. The switch is the one way to PTT's
+  // own main menu (#191).
+  evaluateNow: function() {
+    this._onSettled();
   },
 
   // 指令面板的「最近去過／我的最愛」（command_palette.quickBoardItems）：只讀現成資料。
@@ -624,19 +694,11 @@ HomeDashboard.prototype = {
     this._autoTimer = setTimeout(function() {
       self._autoTimer = null;
       if (!self._state.visible || self._wireBusy()) return;
+      // A sheet over home (the board search) or a help visit owns the wire.
+      if (self._core.modalShown || self._helpHeld()) return;
       if (!isHomeScreen(self._facts())) return;
       if (shouldFetchFavorites(self._state, Date.now())) self.fetchFavorites();
     }, AUTO_FETCH_DELAY_MS);
-  },
-
-  // 使用者要原生主功能表（按鈕、或直接打字）。這一趟留在主功能表期間不再出現；
-  // 離開再回來（或重新整理頁面）才會再出現。
-  dismiss: function() {
-    if (!this._state.visible || this._state.fetching) return;
-    this._dismissed = true;
-    this._pendingViewport = null;
-    this._clearAutoTimer();
-    this._set({ visible: false });
   },
 
   // 面板的「更新」鈕：與 F5／手機工具列／下拉同一個入口（screen_refresh 的 'home'

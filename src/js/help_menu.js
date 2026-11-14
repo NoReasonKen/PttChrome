@@ -205,7 +205,6 @@ HelpMenuController.prototype = {
     this._pages = new Map();
     this._angel = false;
     this._fetchPage = 0;
-    this._lastPage = 0;
     this._incomplete = false;
     this._leavingAt = 0;
     this._bookmark = null;
@@ -364,7 +363,6 @@ HelpMenuController.prototype = {
       this._emit();
       return;
     }
-    this._lastPage = parsed.page;
     if (!this._pages.has(parsed.page)) this._pages.set(parsed.page, parsed.items);
     if (this._fetchPage && parsed.page >= this._fetchPage) {
       this._fetchPage = 0;
@@ -436,20 +434,6 @@ HelpMenuController.prototype = {
   callAngel: function() {
     if (!this._angel) return false;
     return this._leave(KEY_ANGEL, 'angel');
-  },
-
-  // 這一次改看原生畫面：彈窗收起、畫面留在 PTT 的說明選單。補頁把游標移到後面幾頁了
-  // ⇒ 送 Home 回第 1 頁（使用者按 h 看到的本來就是第 1 頁）。
-  showNative: function() {
-    if (this.phase !== 'open') return false;
-    const moved = this._fetchPage > 0 || this._lastPage > 1;
-    this._clearTimers();
-    this._fetchPage = 0;
-    this._toNative();
-    this._log('native', { reason: 'user' });
-    if (moved) this._send(KEY_HOME);
-    this._emit();
-    return true;
   },
 
   // 斷線：什麼都不留。

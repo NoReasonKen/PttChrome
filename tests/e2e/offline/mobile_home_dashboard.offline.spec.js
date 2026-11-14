@@ -10,8 +10,9 @@ const { bootOffline } = require('../helpers/replay');
 const { drawMainMenu } = require('../helpers/main_menu');
 const { drawFavorites, drawArticleList } = require('../helpers/home_screens');
 const { startCapture, peekCapture, takeCapture } = require('../helpers/capture');
-const { touchDrag } = require('../helpers/real_input');
-const { waitRectStable, waitScrollStable } = require('../helpers/layout');
+const { touchDrag, imeCommit } = require('../helpers/real_input');
+const { ITEMS, drawHelpPage } = require('../helpers/help_menu');
+const { waitRectStable, waitScrollStable, installPaintedFrameProbe } = require('../helpers/layout');
 
 const ZA_FAV = '\x1af';
 // 18 個：一頁不滿（不走跳號翻頁），兩欄排起來比面板高、捲得動。
@@ -92,8 +93,9 @@ test.describe('手機首頁儀表板（離線重放）', () => {
     await answerFetch(page);
   });
 
-  // 手機的標題只有一行：App Bar 寫「首頁」、「原生主選單」在 App Bar 右邊，面板不再畫大標題。
-  test('App Bar 標題＝首頁；「原生主選單」在 App Bar，tap 收起面板、不送鍵', async ({ page }) => {
+  // 手機的標題只有一行：App Bar 寫「首頁」，面板不再畫大標題。好讀開著時沒有切回原生主選單的
+  // 控制項（#191）。
+  test('App Bar 標題＝首頁；沒有「原生主選單」鈕', async ({ page }) => {
     await bootHome(page);
     await drawMainMenu(page);
     await answerFetch(page);
@@ -108,12 +110,8 @@ test.describe('手機首頁儀表板（離線重放）', () => {
       return card.top - bar.bottom;
     });
     expect(gap).toBeLessThan(80);
-    const native = page.locator('#mobileAppBar [data-key="__homeNative"]');
-    await expect(native).toHaveText(await label('home_native'));
-    await native.tap();
-    await expect(dashboard(page)).toHaveCount(0);
     await expect(page.locator('#mobileAppBar [data-key="__homeNative"]')).toHaveCount(0);
-    await expect(page.locator('#mobileAppBar [data-key="__title"]')).toHaveText('主功能表');
+    await expect(page.locator('#mobileAppBar button')).toHaveCount(0);
     expect(await takeCapture(page)).toBe('');
   });
 
@@ -164,5 +162,63 @@ test.describe('手機首頁儀表板（離線重放）', () => {
     await expect(dashboard(page)).toBeVisible();
     await expect.poll(() => offsetOf(page, before.name)).toBeCloseTo(before.offset, 0);
     expect((await topCard(page)).name).toBe(before.name);
+  });
+  // The owner's phone test (#191): `h` at home opened the help sheet, but the
+  // page behind it switched to PTT's own help screen. The dashboard is the page
+  // under the sheet for the whole visit, and no native help frame is ever drawn.
+  test('首頁用軟鍵盤打 h ⇒ 說明選單 sheet；從打字到關掉，每一幀面板都在、原生說明畫面一幀都沒畫', async ({ page }) => {
+    await bootHome(page);
+    await drawMainMenu(page);
+    await answerFetch(page);
+    // Sample after layout of every painted frame (helpers/layout.installPaintedFrameProbe).
+    await installPaintedFrameProbe(page);
+    await page.evaluate(() => {
+      window.__homeFrames = [];
+      const sample = () => {
+        const dash = document.getElementById('homeDashboard');
+        const r = dash && dash.getBoundingClientRect();
+        const lines = [...document.querySelectorAll('[data-type="bbsline"]')];
+        window.__homeFrames.push({
+          dashboard: !!r && r.height > 0 && getComputedStyle(dash).visibility !== 'hidden',
+          helpDrawn: lines.some((el) => el.textContent.includes('操作說明 (Help)')),
+          sheet: !!document.querySelector('[data-sheet="help"]'),
+          holding: window.__app.helpMenu.holding,
+        });
+      };
+      window.__stopHomeFrames = () => window.__paintedFrame.remove(sample);
+      window.__paintedFrame.add(sample);
+    });
+    await page.locator('#t').focus();
+    await imeCommit(page, 'h');
+    await expect.poll(() => peekCapture(page)).toBe('h');
+    expect(await takeCapture(page)).toBe('h');
+    // The help menu asked from the main menu; its caption is the main menu's
+    // own title, which no list fingerprint takes.
+    const { perPage } = await drawHelpPage(page, 1, { caption: '主功能表' });
+    await expect(page.locator('[data-sheet="help"] [data-help-item]')).toHaveCount(perPage);
+    await expect.poll(() => peekCapture(page)).toBe('\x1b[6~');
+    await takeCapture(page);
+    await drawHelpPage(page, 2, { caption: '主功能表' });
+    await expect(page.locator('[data-sheet="help"] [data-help-item]')).toHaveCount(ITEMS.length);
+    const b = await waitRectStable(page, '[data-sheet="help"] [data-help-close]');
+    await page.touchscreen.tap(b.left + b.width / 2, b.top + b.height / 2);
+    await expect.poll(() => peekCapture(page)).toBe('q');
+    expect(await takeCapture(page)).toBe('q');
+    await drawMainMenu(page);
+    await expect(page.locator('[data-sheet="help"]')).toHaveCount(0);
+    await page.waitForFunction(() => !window.__app.helpMenu.holding);
+    await page.waitForFunction(() => window.__homeFrames.length > 8);
+    const before = await page.evaluate(() => window.__homeFrames.length);
+    await page.waitForFunction((n) => window.__homeFrames.length > n + 8, before);
+    const frames = await page.evaluate(() => {
+      window.__stopHomeFrames();
+      return window.__homeFrames;
+    });
+    expect(frames.some((f) => f.sheet)).toBe(true);
+    expect(frames.some((f) => f.holding)).toBe(true);
+    expect(frames.filter((f) => !f.dashboard)).toEqual([]);
+    expect(frames.filter((f) => f.helpDrawn)).toEqual([]);
+    await expect(dashboard(page)).toBeVisible();
+    expect(await takeCapture(page)).toBe('');
   });
 });

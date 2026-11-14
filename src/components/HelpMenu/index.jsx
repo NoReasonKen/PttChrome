@@ -45,7 +45,6 @@ export const HelpMenu = ({ pttchrome, mobile }) => {
   }, [snap.open]);
 
   const onClose = useCallback(() => ctrl && ctrl.close(), [ctrl]);
-  const onNative = useCallback(() => ctrl && ctrl.showNative(), [ctrl]);
   const onAngel = useCallback(() => ctrl && ctrl.callAngel(), [ctrl]);
   const onSelect = useCallback((i) => ctrl && ctrl.select(i), [ctrl]);
 
@@ -162,14 +161,6 @@ export const HelpMenu = ({ pttchrome, mobile }) => {
 
   const footer = (
     <Group gap="xs" justify="flex-end" className="helpMenuFooter">
-      <Button
-        variant="subtle"
-        size={mobile ? "sm" : "xs"}
-        onClick={onNative}
-        data-help-native
-      >
-        {i18n("helpMenu_native")}
-      </Button>
       {snap.angel ? (
         <Button
           variant="default"

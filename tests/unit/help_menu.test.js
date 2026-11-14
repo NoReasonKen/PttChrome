@@ -3,7 +3,7 @@
 //     不是說明選單（認不出 ⇒ 原生）；項目列任一解析不了 ⇒ 整張不認；
 //   - 好讀開著且起點是第 1 頁 ⇒ 開彈窗並自動 PgDn 補頁（一次一個在途），合併成一份清單；
 //   - 點第 t 項 ⇒ Home → PgDn×⌊t/每頁⌋ → ↓×餘數 → Enter（與游標在哪無關）；
-//   - 離開＝q、小天使＝h、原生畫面＝收彈窗（補過頁就 Home 回第 1 頁）；送出之後的說明幀不再彈；
+//   - 離開＝q、小天使＝h；送出之後的說明幀不再彈；頁數變了 ⇒ 這一次交還原生；
 //   - 好讀關著 ⇒ 一個鍵都不送。
 // 實錄：使用者錄製檔 2026-10-18（我的最愛按 h，80×28，兩頁）——好讀模式沒接手。
 import {
@@ -23,6 +23,10 @@ import {
 import { boardEntryArms } from "../../src/js/board_note_skip";
 import { DEFAULT_PREFS } from "../../src/js/pref_storage";
 import { HELP_FAV_PAGE1, HELP_FAV_PAGE2 } from "./fixtures/help_menu_rows";
+
+// The same help menu after the terminal's row count changed: PTT paginates it
+// anew, so the pages gathered no longer line up (help_menu.js, "resized").
+const resized = () => ({ ...parseHelpMenuScreen(HELP_FAV_PAGE1), totalPages: 3 });
 
 const BOARD_LIST = [
   "【看板列表】                     批踢踢實業坊                    看板《EZsoft》",
@@ -204,17 +208,20 @@ describe("HelpMenuController", () => {
     expect(b.sent).toEqual(["h"]);
   });
 
-  test("原生畫面：收彈窗；補過頁 ⇒ Home 回第 1 頁；直到離開都不再彈", () => {
+  test("頁數變了 ⇒ 這一次交還原生：收彈窗、不送鍵；直到離開都不再彈", () => {
     const { ctrl, sent, changes } = makeController();
     ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
     ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE2));
     sent.length = 0;
-    ctrl.showNative();
-    expect(sent).toEqual([KEY_HOME]);
+    ctrl.noteScreen(resized());
+    expect(ctrl.phase).toBe("native");
+    expect(sent).toEqual([]);
     expect(changes.at(-1).open).toBe(false);
     ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
     expect(ctrl.phase).toBe("native");
-    expect(sent).toEqual([KEY_HOME]);
+    expect(sent).toEqual([]);
+    ctrl.noteScreen(null);
+    expect(ctrl.phase).toBe("idle");
   });
 
   test("好讀關著 ⇒ 不接管、一個鍵都不送", () => {
@@ -332,7 +339,7 @@ describe("hold of the page under the sheet", () => {
     // read anew, after the restore was asked for.
     for (const [act, calls] of [
       [(c) => c.close(), ["resume:true", "restore"]],
-      [(c) => c.showNative(), ["restore", "resume:false"]],
+      [(c) => c.noteScreen(resized()), ["restore", "resume:false"]],
       [(c) => c.select(0), []],
     ]) {
       const h = held();
@@ -362,7 +369,7 @@ describe("hold of the page under the sheet", () => {
     const h = held();
     h.ctrl.expect();
     h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
-    h.ctrl.showNative();
+    h.ctrl.noteScreen(resized());
     expect(h.ctrl.phase).toBe("native");
     expect(h.ctrl.holding).toBe(false);
     expect(h.ended).toBe(1);
