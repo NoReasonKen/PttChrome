@@ -7,12 +7,13 @@
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { bootOffline } = require('../helpers/replay');
-const { drawMainMenu } = require('../helpers/main_menu');
+const { drawMainMenu, drawPressAnyKey, drawUserMenu } = require('../helpers/main_menu');
 const { drawFavorites, drawArticleList } = require('../helpers/home_screens');
 const { startCapture, peekCapture, takeCapture } = require('../helpers/capture');
 const { touchDrag, imeCommit } = require('../helpers/real_input');
 const { ITEMS, drawHelpPage } = require('../helpers/help_menu');
 const { waitRectStable, waitScrollStable, installPaintedFrameProbe } = require('../helpers/layout');
+const { bootDashboard, boardOpened, dashboardVisible } = require('../helpers/stack_routes');
 
 const ZA_FAV = '\x1af';
 // 18 個：一頁不滿（不走跳號翻頁），兩欄排起來比面板高、捲得動。
@@ -24,8 +25,8 @@ const FAVS = Array.from({ length: 18 }, (_, i) => ({
 
 const dashboard = (page) => page.locator('#homeDashboard');
 
-async function bootHome(page) {
-  await bootOffline(page, ptt);
+async function bootHome(page, opts) {
+  await bootOffline(page, ptt, opts);
   await ptt.applyPrefs(page, { refreshMinIntervalSec: 0 });
   await startCapture(page);
 }
@@ -58,7 +59,103 @@ const offsetOf = (page, name) =>
     return el.getBoundingClientRect().top - root.getBoundingClientRect().top;
   }, name);
 
+// Every painted frame from now on (helpers/layout.installPaintedFrameProbe):
+// whether PTT's main menu is drawn on the real screen, and whether it
+// shows there uncovered by the dashboard or a stacked-page layer (the native
+// grid guard's own test of what is shown).
+async function recordMainMenuFrames(page) {
+  await installPaintedFrameProbe(page);
+  await page.evaluate(() => {
+    window.__menuFrames = [];
+    const uncovered = (main) => {
+      const rect = main.getBoundingClientRect();
+      const bar = document.getElementById('mobileAppBar');
+      const toolbar = document.querySelector('.mobileToolbarBar');
+      const top = Math.max(0, rect.top, bar ? bar.getBoundingClientRect().bottom : 0);
+      const bottom = Math.min(innerHeight, rect.bottom, toolbar ? toolbar.getBoundingClientRect().top : innerHeight);
+      const x = (Math.max(0, rect.left) + Math.min(innerWidth, rect.right)) / 2;
+      return [0.25, 0.5, 0.75].some((f) => {
+        const hit = document.elementFromPoint(x, top + (bottom - top) * f);
+        return !!hit && main.contains(hit) && !hit.closest('#homeDashboard, [data-stack-layer]');
+      });
+    };
+    const sample = () => {
+      const main = document.querySelector('.main:not([data-stack-layer])');
+      // The mobile menu surface leaves the title row to the App Bar: the
+      // main menu is told by its (F)avorite item.
+      const content = main && main.querySelector('#mainContainer');
+      const menu = !!content && content.textContent.replace(/\s/g, '').includes('(F)avorite');
+      window.__menuFrames.push({
+        menu,
+        uncovered: menu && uncovered(main),
+        dashboard: window.__app.homeDashboard.state.visible,
+      });
+    };
+    window.__stopMenuFrames = () => window.__paintedFrame.remove(sample);
+    window.__paintedFrame.add(sample);
+  });
+}
+
+// The frames recorded until the dashboard has shown for a while.
+async function mainMenuFrames(page) {
+  await expect(dashboard(page)).toBeVisible();
+  const before = await page.evaluate(() => window.__menuFrames.length);
+  await page.waitForFunction((n) => window.__menuFrames.length > n + 8, before);
+  return page.evaluate(() => {
+    window.__stopMenuFrames();
+    return window.__menuFrames;
+  });
+}
+
 test.describe('手機首頁儀表板（離線重放）', () => {
+  // #187: the dashboard decides on the screen's settle, after PTT's main menu
+  // has arrived. Until then the main menu's frames are held: the page before
+  // stays, and the dashboard covers the main menu from its first painted frame.
+  test('arriving at the main menu after login paints no uncovered main-menu frame', async ({ page }) => {
+    await bootHome(page);
+    // The login's last screen, then PTT's main menu.
+    await drawPressAnyKey(page);
+    await recordMainMenuFrames(page);
+    await drawMainMenu(page);
+    const frames = await mainMenuFrames(page);
+    expect(frames.some((f) => f.menu && f.dashboard)).toBe(true);
+    expect(frames.filter((f) => f.uncovered)).toEqual([]);
+  });
+
+  // Another page left back to the main menu: here a submenu PTT shows natively
+  // (個人設定區, an easy-reading gap, #200). This synthetic submenu's title is
+  // not the one the guard's #200 entry knows, so the guard only records here;
+  // the main menu's frames are judged below.
+  test('returning from a native submenu to the main menu paints no uncovered main-menu frame', async ({ page }) => {
+    await bootHome(page, { nativeGridGuard: 'off' });
+    await drawMainMenu(page);
+    await answerFetch(page);
+    await drawUserMenu(page);
+    await expect(dashboard(page)).toHaveCount(0);
+    await recordMainMenuFrames(page);
+    await drawMainMenu(page);
+    const frames = await mainMenuFrames(page);
+    expect(frames.some((f) => f.menu && f.dashboard)).toBe(true);
+    expect(frames.filter((f) => f.uncovered)).toEqual([]);
+  });
+
+  // A board reached by the search sheet has no dashboard copy under it
+  // (mobile_stack_board_reveal), so Back shows PTT's main menu as it arrives.
+  test('returning from a board to the main menu paints no uncovered main-menu frame', async ({ page }) => {
+    await bootDashboard(page);
+    await page.locator('[data-key="__search"]').tap();
+    const input = page.locator('input[name="searchKeyword"]');
+    await input.fill('C_Chat');
+    await input.press('Enter');
+    await boardOpened(page);
+    await recordMainMenuFrames(page);
+    await ptt.sendKey(page, 'ArrowLeft');
+    await dashboardVisible(page);
+    const frames = await mainMenuFrames(page);
+    expect(frames.some((f) => f.menu && f.dashboard)).toBe(true);
+    expect(frames.filter((f) => f.uncovered)).toEqual([]);
+  });
+
   test('下拉重整：在卡片上往下拉過門檻放手 ⇒ 重抓我的最愛，不會點進看板', async ({ page }) => {
     await bootHome(page);
     await drawMainMenu(page);

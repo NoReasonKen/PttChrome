@@ -25,6 +25,7 @@ import {
   RECENT_LIMIT,
   AUTO_FETCH_DELAY_MS,
   HOME_TRANSIT_RECHECK_MS,
+  ARRIVAL_HOLD_MS,
   HOME_FAV_FETCH_FLAG,
   HOME_FAV_CACHE_KEY,
   HOME_RECENT_KEY,
@@ -380,7 +381,10 @@ function makeCore(start = mainMenu()) {
         this.holding = true;
       },
     },
-    view: { flashListHint: (m, ms, level) => hints.push({ m, level }) },
+    view: {
+      flashListHint: (m, ms, level) => hints.push({ m, level }),
+      navigationEnded: vi.fn(),
+    },
     commandQueue: {
       enqueue: (cmd) => enqueued.push(cmd),
       get idle() {
@@ -393,6 +397,11 @@ function makeCore(start = mainMenu()) {
     frame = f;
     listeners.screenSettled();
   };
+  // A frame arrives, before the screen settles (term_buf.notify's 'change').
+  const arrive = (f) => {
+    frame = f;
+    listeners.change();
+  };
   // 第 i 個命令落地在 f 上：expect 必須認得它，然後 onDone（佇列的 settle 先於 screenSettled）。
   const land = (cmd, f) => {
     frame = f;
@@ -403,7 +412,7 @@ function makeCore(start = mainMenu()) {
   // term_view.onKeyDown asks the dashboard about each key; true ＝ refused
   // (the caller prevents it and nothing reaches PTT).
   const key = (k, mods) => home.takeKey(Object.assign({ key: k }, mods));
-  return { core, home, enqueued, hints, show, land, key };
+  return { core, home, enqueued, hints, show, arrive, land, key };
 }
 
 describe("HomeDashboard recent-board management", () => {
@@ -1070,5 +1079,69 @@ describe("HomeDashboard：動作都接到原生鍵", () => {
     expect(enqueued[0].keys).toBe(ZA_MAIL);
     expect(enqueued[0].expect(null, mainMenu())).toBe(false);
     expect(enqueued[0].expect(null, ARTICLE_LIST())).toBe(true);
+  });
+});
+
+// #187: PTT's main menu is held back from its first frame until the settle's
+// judgement, so the dashboard covers it before it is ever drawn.
+describe("HomeDashboard: arrival hold", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  test("a main-menu frame takes the hold; a settle at home shows the dashboard, then ends the hold", () => {
+    const { core, home, show, arrive } = makeCore(ARTICLE_LIST());
+    show(ARTICLE_LIST());
+    arrive(mainMenu());
+    expect(home.holding).toBe(true);
+    expect(core.view.navigationEnded).not.toHaveBeenCalled();
+    let visibleAtRelease = null;
+    core.view.navigationEnded.mockImplementation(() => (visibleAtRelease = home.state.visible));
+    show(mainMenu());
+    expect(home.holding).toBe(false);
+    expect(visibleAtRelease).toBe(true);
+    expect(core.view.navigationEnded).toHaveBeenCalledTimes(1);
+  });
+
+  test("a settle that is not home ends the hold and the frame is drawn", () => {
+    const { core, home, show, arrive } = makeCore(ARTICLE_LIST());
+    show(ARTICLE_LIST());
+    arrive(mainMenu());
+    // The main menu's title with a prompt on it.
+    show(mainMenu({ inputField: true }));
+    expect(home.state.visible).toBe(false);
+    expect(home.holding).toBe(false);
+    expect(core.view.navigationEnded).toHaveBeenCalledTimes(1);
+  });
+
+  test("the hold ends by itself when no settle comes", () => {
+    const { core, home, show, arrive } = makeCore(ARTICLE_LIST());
+    show(ARTICLE_LIST());
+    arrive(mainMenu());
+    vi.advanceTimersByTime(ARRIVAL_HOLD_MS - 1);
+    expect(home.holding).toBe(true);
+    vi.advanceTimersByTime(1);
+    expect(home.holding).toBe(false);
+    expect(core.view.navigationEnded).toHaveBeenCalledTimes(1);
+  });
+
+  test("never taken with easy reading off, off the main menu, or with the dashboard already up", () => {
+    const off = makeCore(ARTICLE_LIST());
+    try {
+      prefOverride.enableEasyReading = false;
+      off.arrive(mainMenu());
+      expect(off.home.holding).toBe(false);
+    } finally {
+      delete prefOverride.enableEasyReading;
+    }
+
+    const other = makeCore(ARTICLE_LIST());
+    other.arrive(ARTICLE_LIST());
+    expect(other.home.holding).toBe(false);
+
+    const shown = makeCore();
+    shown.show(mainMenu());
+    shown.arrive(mainMenu({ mail: true }));
+    expect(shown.home.holding).toBe(false);
+    expect(shown.core.view.navigationEnded).not.toHaveBeenCalled();
   });
 });

@@ -174,8 +174,6 @@ const ALLOWED = [
     match: (hit) => hit.listState === 'functionMode' },
   { issue: 189, why: 'unexpected pause screen after Back, and the list after it',
     match: (hit) => hit.listState === 'suspended' },
-  { issue: 187, why: 'main menu painted before the home dashboard covers it',
-    match: (hit) => hit.title.includes('主功能表') },
 ];
 
 function allowedIssue(hit, where) {
