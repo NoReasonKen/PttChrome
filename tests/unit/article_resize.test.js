@@ -45,6 +45,7 @@ function makeReader() {
       buf.rows = rows;
     }),
     _applyMobileGeometry: vi.fn(() => events.push('geometry')),
+    articleHold: { hold: vi.fn(() => events.push('held')) },
   };
   const reader = core.easyReading = Object.assign(Object.create(EasyReading.prototype), {
     _core: core, _termBuf: buf, _view: view,
@@ -414,7 +415,8 @@ describe('Article resize ownership', () => {
     h.open({ headers });
     expect(h.sent).toEqual([LEAVE, '\r\f']);
     expect(h.resize.active).toBe(false);
-    expect(h.reader.exitEasyReading).toHaveBeenCalledTimes(1);
+    expect(h.reader.exitEasyReading).not.toHaveBeenCalled();
+    expect(h.core.articleHold.hold).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ source: 'articleResize', reason: 'fail' }));
     expect(h.reader._forceRepaint).not.toHaveBeenCalled();
     expect(h.reader._advanceScrollRestore).not.toHaveBeenCalled();
     expect(h.record.end).toHaveBeenCalledExactlyOnceWith(h.record.begin.mock.results[0].value, 'fail');
@@ -430,17 +432,15 @@ describe('Article resize ownership', () => {
     expect(h.sent).toEqual([LEAVE, '\r\f', ':23\r\f']);
   });
 
-  test('failure ends ownership once when returning to native PTT view recursively cancels resizing', () => {
+  test('failure ends ownership once when holding the article recursively cancels resizing', () => {
     const h = makeReader();
-    h.reader.exitEasyReading.mockImplementation(() => {
-      h.reader._enabled = false;
-      h.resize.cancel();
-    });
+    h.core.articleHold.hold.mockImplementation(() => h.resize.cancel());
     h.resize.request(80, 40);
     h.leave();
     h.open({ headers: [HEADER[0], 'Title: A different article', HEADER[2]] });
     expect(h.record.end).toHaveBeenCalledExactlyOnceWith(h.record.begin.mock.results[0].value, 'fail');
-    expect(h.reader.exitEasyReading).toHaveBeenCalledTimes(1);
+    expect(h.reader.exitEasyReading).not.toHaveBeenCalled();
+    expect(h.core.articleHold.hold).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ source: 'articleResize', reason: 'fail' }));
     expect(h.reader.onWireIdle).toHaveBeenCalledExactlyOnceWith({ force: true });
     expect(h.resize.active).toBe(false);
     expect(h.buf.easyReadingResizeInFlight).toBe(false);
@@ -544,10 +544,12 @@ describe('Article resize ownership', () => {
     expect(h.queue.idle).toBe(true);
     expect(h.sent).toEqual([LEAVE, '\r\f', ':23\r\f']);
     expect(h.record.end).toHaveBeenCalledExactlyOnceWith(h.record.begin.mock.results[0].value, 'fail');
-    expect(h.reader.exitEasyReading).toHaveBeenCalledTimes(1);
+    expect(h.reader.exitEasyReading).not.toHaveBeenCalled();
+    expect(h.core.articleHold.hold).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ source: 'articleResize', reason: 'fail' }));
     expect(h.reader._forceRepaint).not.toHaveBeenCalled();
     expect(h.reader._advanceScrollRestore).not.toHaveBeenCalled();
-    expect(h.view.flashListHint).toHaveBeenCalledTimes(1);
+    // The hold names the failure (article_hold.test.js).
+    expect(h.view.flashListHint).not.toHaveBeenCalled();
     h.resize.pump();
     expect(h.sent).toHaveLength(3);
   });
@@ -602,7 +604,8 @@ describe('Article resize ownership', () => {
     expect(h.buf.easyReadingResizeInFlight).toBe(false);
     expect(h.resize.articleRecord).toBeNull();
     expect(h.record.end).toHaveBeenCalledExactlyOnceWith(h.record.begin.mock.results[0].value, 'cancel');
-    expect(h.reader.exitEasyReading).toHaveBeenCalledTimes(1);
+    expect(h.reader.exitEasyReading).not.toHaveBeenCalled();
+    expect(h.core.articleHold.hold).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ source: 'articleResize', reason: 'cancel' }));
     expect(h.reader._forceRepaint).not.toHaveBeenCalled();
     expect(h.reader.onWireIdle).toHaveBeenCalledWith({ force: true });
     h.resize.cancel();

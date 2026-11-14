@@ -76,8 +76,8 @@ export class HeaderlessReopen extends HiddenArticleRoute {
     this._hold();
     core.aidNavigation.queryPostAid({
       kind: 'headerless-reopen-info',
-      onFlushed: () => this._fail(),
-      onFail: () => this._fail(),
+      onFlushed: () => this._fail('headerless-reopen-info: flushed'),
+      onFail: reason => this._fail(`headerless-reopen-info: ${reason || 'timeout'}`),
       onDone: info => this._enqueue({
         keys: DISMISS,
         kind: 'headerless-reopen-list',
@@ -98,10 +98,13 @@ export class HeaderlessReopen extends HiddenArticleRoute {
     this.bookmark = null;
   }
 
-  _fail() {
+  _fail(reason) {
     const bookmark = this.active ? this.bookmark : null;
-    super._fail();
+    super._fail(reason);
     if (bookmark) recordFor(this.core).end(bookmark, 'fail', { only: 'article' });
     this.bookmark = null;
+    // The article is held (#193); presented again by pull-to-refresh, it is
+    // tried again.
+    this.state = { ...this.state, tried: null };
   }
 }

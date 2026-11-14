@@ -179,7 +179,7 @@ export class ThreadJump extends HiddenArticleRoute {
   // Nothing to land on: PTT's own answer, the same article again for `[` and
   // `=`, the list for `]`. `inResults`: the source is selected again first.
   _native(inResults) {
-    if (inResults && this.sourceNum == null) return this._fail();
+    if (inResults && this.sourceNum == null) return this._fail('source row number unknown');
     const select = inResults ? LIST_BACK + this.sourceNum + '\r' : '';
     if (this.key !== ']') return this._open(select + '\r');
     if (!select) return this._finishAtList();

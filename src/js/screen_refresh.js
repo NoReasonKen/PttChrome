@@ -229,6 +229,8 @@ ScreenRefresh.prototype = {
     if (core.navigationStack?.refreshesRevealed?.()) return { kind: 'revealed' };
     // A list held after a failed check retries (#158).
     if (failedList(core)) return { kind: 'list-retry' };
+    // So does an article held after a failed operation (#193).
+    if (core.articleHold?.held) return { kind: 'article-retry' };
     return refreshTargetOf(core);
   },
 
@@ -272,7 +274,8 @@ ScreenRefresh.prototype = {
       }) ? 'remembered' : 'dropped');
       return true;
     }
-    const busy = serializedOpHint(core);
+    // The held article's keys wait with a message; its retry is the way out.
+    const busy = target.kind !== 'article-retry' && serializedOpHint(core);
     if (busy) {
       diag('droppedBusy');
       this._hint(busy);
@@ -305,6 +308,7 @@ ScreenRefresh.prototype = {
     const core = this._core;
     const self = this;
     if (target.kind === 'list-retry') return failedList(core).retry();
+    if (target.kind === 'article-retry') return core.articleHold.retry();
     if (target.kind === 'article') {
       if (core.aidNavigation && core.aidNavigation.refresh()) return true;
       this._hint('這篇文章無法重新整理');

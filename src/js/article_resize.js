@@ -3,7 +3,6 @@ import { rowToText } from './comment_parse';
 import { sameBoard } from './screen_titles';
 import { ArticleResizeAnchor } from './article_resize_anchor';
 import { coalesceResize, resizeDeadline, resizePhase } from './resize_transaction';
-import { i18n } from './i18n';
 
 const KIND = 'article-resize';
 const header = lines => lines.slice(0, 3).map(row => rowToText(row).trimEnd()).join('\n');
@@ -141,7 +140,6 @@ export class ArticleResize {
     core.easyReading.finishResize(outcome);
     this.anchor.finish(command.position, outcome);
     this.finishing = false;
-    if (outcome === 'fail') core.view.flashListHint(i18n('articleResize_failed'));
     if (!this.pump()) core.easyReading.onWireIdle({ force: true });
   }
 

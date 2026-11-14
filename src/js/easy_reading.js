@@ -1931,6 +1931,8 @@ EasyReading.prototype._wireBusy = function() {
   // 會讓自動翻頁插進線路 —— 而且探路收尾按 ⏎ 回文章那一幀正好會讓 functionMode
   // 退出，等於把翻頁重新打開。所以這裡問的是 busy 不是 active。
   if (core.longPush && core.longPush.busy) return true;
+  // A failed article operation holds the article: nothing is sent (#193).
+  if (core.articleHold && core.articleHold.held) return true;
   return false;
 };
 
@@ -1961,11 +1963,13 @@ EasyReading.prototype.yieldForResize = function() {
   this.sendCommandAfterUpdate = '';
 };
 
+// A resize that did not finish holds the article as it was shown, and
+// pull-to-refresh retries (#193): easy reading stays on.
 EasyReading.prototype.finishResize = function(outcome) {
   if (outcome === 'done') {
     this._termBuf.prevPageState = 3;
     this._forceRepaint();
-  } else this.exitEasyReading();
+  } else this._core.articleHold?.hold({ source: 'articleResize', reason: outcome, message: 'articleResize_failed' });
 };
 
 // 線路空出來了（CommandQueue.onIdle → pttchrome 接線）。把被閘門延後的那個自動翻頁

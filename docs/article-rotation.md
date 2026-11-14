@@ -43,8 +43,14 @@ buffer/NAWS write. Other surfaces keep their existing behavior.
   differential updates and only forces a clear for NAWS or an explicit repaint.
 - A sent operation uses the existing input guard and a six-second total deadline
   measured with a monotonic clock. Failure or cancellation releases its protection and bookmark. There
-  is no polling or unbounded retry loop. Timeout exposes the current terminal
-  screen with a visible explanation.
+  is no polling or unbounded retry loop. A timeout, an unexpected article or a
+  cancelled step holds the article ([#193](https://github.com/NoReasonKen/PttChrome/issues/193),
+  `src/js/article_hold.js`): easy reading stays on, a copy of the article covers
+  the reading area at the reading position, a message names the failure, a bug
+  event is logged, keys wait and nothing more is sent. Pull-to-refresh (or the
+  toolbar's refresh, F5) retries from what PTT shows: an article is reopened by
+  the article refresh, which restores the reading position; a list is presented
+  in easy reading. The native screen never shows.
 
 ## Position and controls
 
@@ -72,7 +78,8 @@ remove the article's controls or dismiss an open drawer.
 the article identity, frontier, and readiness without exposing paging fields;
 an eligible but unready reader can retain a pending size. `yieldForResize()`
 releases automatic paging state, and `finishResize()` applies the outcome to
-the reader. These methods preserve the existing cancellation behavior.
+the reader: anything but `done` hands the article to `ArticleHold`. A
+disconnection cancels without an outcome.
 
 `resize_transaction.js` shares only size coalescing, the six-second monotonic
 deadline, and each phase's full-repaint/row-coverage options with `ListResize`.
@@ -105,9 +112,11 @@ viewport and sends corrected dimensions. Regression coverage in
 - `article_resize.test.js`: ownership, response recognition, coalescing, split
   output, deadlines, article identity and cancellation.
 - `article_resize_anchor.test.js`: pre-layout snapshots and restoration ownership.
+- `article_hold.test.js`: the hold and its retry (#193).
 - `mobile_article_rotation.offline.spec.js`: actual NAWS/goto writes answered
   with stored-screen and article-level repaints, using the complete renderer,
-  reading anchors, images, and shortcut drawer.
+  reading anchors, images, and shortcut drawer; a reopen PTT never answers holds
+  the article until the toolbar's refresh.
 
 Automated checks do not establish installed-Android rotation acceptance. Verify
 portrait/landscape transitions, an open drawer and an interrupted drawer drag on
