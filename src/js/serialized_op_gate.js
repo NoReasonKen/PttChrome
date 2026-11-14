@@ -19,6 +19,8 @@ import { i18n } from './i18n';
 
 export function serializedOpHint(core) {
   if (!core) return null;
+  // A failed article operation holds the article until pull-to-refresh (#193).
+  if (core.articleHold?.held) return i18n('articleHold_keys');
   if (core.articleResize?.active) return i18n('articleResize_busy');
   if (core.listResize?.active) return i18n('articleResize_busy');
   if (core.articleShortcutSearch?.active) return i18n('articleShortcutSearch_busy');

@@ -5,6 +5,7 @@ const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { revealArticleDrawer } = require('../helpers/article_gestures');
 const { THREAD, NEAR_REPLY_BOARD, bootThreadBoard, listActive, watchScreen, stopWatching, sent, server } = require('../helpers/thread_jump');
+const { watchHold, keyCount, sentSince, expectArticleHeld, pullDown } = require('../helpers/article_hold');
 
 const body = num => `Body of article ${num} by`;
 
@@ -160,4 +161,32 @@ test('a next-in-thread jump past the last article after a jump in range slides b
   for (const entry of route) {
     expect(entry.layer === 'articleList' || entry.screen.includes(body(1150)), JSON.stringify(seen)).toBe(true);
   }
+});
+
+// #193: PTT leaves the article but never answers the thread search. The source
+// article stays shown with a message and a bug event, nothing more is sent, and
+// pull-to-refresh presents the list PTT shows.
+test('a far jump PTT never answers keeps the source article; pull-to-refresh presents the list', async ({ page }) => {
+  await bootThreadBoard(page, { open: 600 });
+  await watchHold(page);
+  await page.evaluate(() => {
+    const reply = window.__stubWSSent;
+    window.__stubWSSent = data => (data.includes('S') && !window.__answerSearch ? window.__keys.push(data) : reply(data));
+  });
+  await jump(page, ']');
+  await expectArticleHeld(page, { message: ['無法前往同主題文章，下拉重新整理以重試。', 'Could not go to the same-thread article. Pull down to refresh and retry.'], source: 'threadJump', text: body(600) });
+  await expect(page.locator('#mobileAppBar .mobileAppBarTitle')).toHaveText('Re: ' + THREAD);
+  const before = await keyCount(page);
+  await ptt.sendKey(page, 'ArrowDown');
+  // The key is answered with the hold's own message, and nothing is sent.
+  await expect(page.locator('.ListHint')).toHaveText(/文章操作失敗|The article operation failed/);
+  expect(await sentSince(page, before)).toEqual([]);
+
+  await page.evaluate(() => { window.__answerSearch = true; });
+  await pullDown(page);
+  await listActive(page);
+  expect(await page.evaluate(() => window.__app.articleHold.held)).toBe(false);
+  await expect(page.locator('[data-stack-layer]', { hasText: body(600) })).toHaveCount(0);
+  await expect(page.locator('.main').first().locator('.listCard').first()).toBeVisible();
+  expect(await page.evaluate(() => window.__wentNative)).toBe(false);
 });

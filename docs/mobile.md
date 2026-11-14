@@ -423,7 +423,12 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
     info box gives the AID; leaving it redraws the list with the cursor on the article), reads the cursor row and
     opens the article again at the reader's row (reading record `headerless-reopen`): three round trips, each article
     once (`reopenStep`). With no board before it (a notice after login) the App Bar keeps its default title.
-  - Guarded by `tests/e2e/offline/mobile_headerless_article.offline.spec.js` and `tests/unit/headerless_reopen.test.js`.
+  - A step that fails its check holds the article (#193, `article_hold.js`, as for a far same-thread jump in
+    `docs/thread-jump.md`): the message 「無法讀取文章資訊，下拉重新整理以重試。」, a bug event, keys wait, and pull-to-refresh
+    retries from what PTT shows. On the article itself, it is presented and repainted, and the failed article is tried again
+    on that settle. The native screen never shows.
+  - Guarded by `tests/e2e/offline/mobile_headerless_article.offline.spec.js`, `tests/unit/headerless_reopen.test.js` and
+    `tests/unit/article_hold.test.js`.
 - **無返回鍵**（使用者定案）。AID 跳文的「返回原文」不屬 App Bar：是浮在 App Bar 正下方置中的 `components/AidBackButton`（桌機共用，見 `docs/easy-reading.md`「返回原文」UI）；**不可放底部**（會被工具列蓋掉，回歸守 `mobile_app_bar.offline.spec.js`）。事件規則同工具列（mousedown preventDefault＋stopPropagation）。z-index 150（低於 Mantine overlay 200）。
 - **點標題捲回頂端**（pref `mobileAppBarScrollTop`，預設開）：`app_bar_scroll_top.scrollContentToTop`，只綁在標題塊
   （新信徽章、收件匣不算）。捲動對象：首頁儀表板開著 ⇒ 它的容器；卡片列表視口在 DOM 上 ⇒ `screen.scrollListTo(0)`

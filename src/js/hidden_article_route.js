@@ -8,7 +8,6 @@ import { StackArticleLayer } from './stack_article_layer';
 import { EMPTY_TOOLBAR_CONTEXT } from './mobile_toolbar';
 import { parseStatusRow } from './string_util';
 import { recordFor } from './reading_record';
-import { i18n } from './i18n';
 
 const articleShown = facts => facts.kind === 'article' || !!parseStatusRow(facts.rowTexts[facts.rows - 1] || '');
 
@@ -65,8 +64,8 @@ export class HiddenArticleRoute {
       ...SLOW_STEP_BUDGET,
       fullRepaint: true,
       ...step,
-      onFail: () => this._fail(),
-      onFlushed: () => this._fail()
+      onFail: reason => this._fail(`${step.kind}: ${reason || 'timeout'}`),
+      onFlushed: () => this._fail(`${step.kind}: flushed`)
     });
   }
 
@@ -106,12 +105,17 @@ export class HiddenArticleRoute {
   // The article has opened again; easy reading has it.
   _landed() {}
 
-  _fail() {
+  // A step's check failed (#193): the article stays shown under its cover,
+  // handed to the article hold, and pull-to-refresh retries.
+  _fail(reason = 'failed') {
     if (!this.active) return;
-    const held = this.held;
+    const cover = this.cover;
+    const parked = this.held;
+    this.cover = null;
     this._end();
-    if (held) recordFor(this.core).releaseExternal({ listNotice: i18n(this.failed) });
-    this.core.view.flashListHint?.(i18n(this.failed), 4000);
+    const hold = this.core.articleHold;
+    if (hold) hold.hold({ source: this.name, reason, message: this.failed, cover, appBar: this.appBar, parked });
+    else cover?.destroy();
   }
 
   _cover() {

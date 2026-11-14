@@ -14,6 +14,8 @@
 3. One write moves to the source, sends the same key within the results and leaves them with `←`, which keeps the cursor on the target in the full list. `Enter` opens it.
 4. When the target really does not exist, PTT's own answer stands: the same article again for `[` and `=`, the list for `]`. Under article-list easy reading, the source then slides away as on Back, over the live layer of the list it was opened from, selected where the reader left it ([#123](https://github.com/NoReasonKen/PttChrome/issues/123)), even when its layer lacks the source's row (after a far jump, [#127](https://github.com/NoReasonKen/PttChrome/issues/127)), or the dark fallback when that list keeps none (an article opened by AID). The page stack hands over to the list once its session presents it again (`_slideToList`), so the native list never shows. When PTT answered with the list itself, no screen follows the hold, so the article's easy reading leaves its native mirror on the list already shown (`settleFunctionMode`).
 
+5. A step that fails its check (a timeout, a flushed step, a source row it cannot place) holds the article ([#193](https://github.com/NoReasonKen/PttChrome/issues/193), `src/js/article_hold.js`): the cover stays, with the source's App Bar, the message 「無法前往同主題文章，下拉重新整理以重試。」 and a bug event; the sessions stay parked, keys wait and nothing more is sent. Pull-to-refresh (or the toolbar's refresh, F5) retries from what PTT shows: an article is reopened by the article refresh at the reading position, a list or the home dashboard is presented in easy reading, and a screen the refresh cannot read keeps the hold with a message. The native screen never shows.
+
 The landing is the state of a jump in range: the full article list underneath with the cursor on the target, so Back returns to the full list and the page stack treats it as another article in place of the current one.
 
 ## What the reader sees
@@ -22,5 +24,5 @@ A copy of the source article (`StackArticleLayer`) covers the screen from the ke
 
 ## Tests
 
-- Unit: `tests/unit/thread_jump.test.js` (answers, source row), `tests/unit/mobile_busy.test.js` (hold).
-- Offline: `tests/e2e/offline/mobile_thread_jump.offline.spec.js` and, for the list below the article (#123), `tests/e2e/offline/mobile_stack_in_place.offline.spec.js`, against a controlled PTT that models `thread()` with its 500-record range (`tests/e2e/helpers/thread_jump.js`).
+- Unit: `tests/unit/thread_jump.test.js` (answers, source row), `tests/unit/mobile_busy.test.js` (hold), `tests/unit/article_hold.test.js` (a failure held on the article and its retry, #193).
+- Offline: `tests/e2e/offline/mobile_thread_jump.offline.spec.js` and, for the list below the article (#123), `tests/e2e/offline/mobile_stack_in_place.offline.spec.js`, against a controlled PTT that models `thread()` with its 500-record range (`tests/e2e/helpers/thread_jump.js`); its last test holds a jump PTT never answers until pull-to-refresh.
