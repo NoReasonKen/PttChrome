@@ -200,15 +200,26 @@ describe("列表上的原生交易：做完回好讀時視野回到原處", () =
     expectRestoredAfterFill(h, 350010);
   });
 
-  test("`s` 看板搜尋：取消 ⇒ 回原處", () => {
+  test("`s` 看板搜尋：取消 ⇒ 回原處，留著手上的列（#190）", async () => {
     const h = makeSession();
     const bridge = new BoardSearchBridge(h.core, () => {});
     step(h, "search-board-open").onDone({ field: "", candidates: null, more: false });
     bridge.cancel();
     const fin = step(h, "search-board-cancel");
     if (fin.onSend) fin.onSend();
+    const commands = h.enqueued.length;
     fin.onDone(true);
-    expectRestoredAfterFill(h, 350010);
+    // The board-search hold hands the bookmark back once every owner has seen
+    // the settle: PTT gave back the same list, so it is back at once on the
+    // rows it held (as a closed help sheet), at the reader's view.
+    for (let i = 0; i < 3; i++) await Promise.resolve();
+    expect(h.s.state).toBe("active");
+    expect(h.s._renderMode).toBe("buffer");
+    expect(h.termBuf.listLineNums.length).toBe(60);
+    expect(h.s._topNum).toBe(350010);
+    expect(h.s._pendingViewport).toBe(null);
+    expect(h.scrollWrites[h.scrollWrites.length - 1]).toBe(10 * ROW_H);
+    expect(h.enqueued.length).toBe(commands); // nothing fetched again
   });
 
   test("`s` 看板搜尋：送出（換板）⇒ 不還原", () => {

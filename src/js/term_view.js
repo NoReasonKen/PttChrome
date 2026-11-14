@@ -2032,7 +2032,8 @@ TermView.prototype = {
     return !!(app && ((app.aidNavigation && app.aidNavigation.active) ||
       (app.articleShortcutSearch && app.articleShortcutSearch.active) ||
       (app.boardNoteSkip && app.boardNoteSkip.active) ||
-      (app.helpMenu && app.helpMenu.holding)));
+      (app.helpMenu && app.helpMenu.holding) ||
+      (app.boardSearchHold && app.boardSearchHold.holding)));
   },
 
   // The list easy-reading branch of redraw owns this frame. Article frames

@@ -301,7 +301,9 @@ async function installNestedServer(page, session) {
         cursor = [4, 1];
       } else if (state.surface === 'boardPrompt') {
         // CompleteBoard asks on row two; cancellation preserves this list.
-        rows = { 0: '【主功能表】', 1: '請輸入看板名稱(按空白鍵自動搜尋)：' };
+        // state.selectTitle: PTT's own title row (MSG_SELECT_BOARD, bbs.c
+        // do_select clears row 0), as the prompt shows over an article list.
+        rows = { 0: state.selectTitle ? '【 選擇看板 】' : '【主功能表】', 1: '請輸入看板名稱(按空白鍵自動搜尋)：' };
         cursor = [2, 35];
       } else if (state.surface === 'boardPause') {
         rows = { 0: 'Board entry notice', [termRows - 1]: '                         請按任意鍵繼續' };

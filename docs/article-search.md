@@ -130,6 +130,15 @@ ordinary search-sheet input keeps the prompt-verified sequence. See
 
 收尾都在**同一個** prompt 上、都握 `searchInFlight` 直到 prompt 消失：送出＝`退格＋板名＋\r`（不加 `\f`，同 `submitSearch` 第二步）；取消（Esc／切種類／關彈窗）＝`Ctrl-C`＋`\f`（ESC 不是 vgetstring 的取消鍵）。prompt 還沒開出來就送出／取消 ⇒ 排在開啟之後。prompt 開不出來 ⇒ `unavailable`，送出改走 `submitSearch`；開出來後被別的擁有者 `flush`（離板、開文）⇒ 不再送任何鍵。
 
+### prompt 是資料，不畫出來（#190）
+
+背景的 `s` prompt（`【 選擇看板 】`）只是給彈窗讀的資料：橋接握著它的整段期間（開彈窗、打字、補全、點搜尋紀錄、送出、取消），彈窗底下**一直是使用者原本的那一頁**（首頁面板、文章列表、看板列表、文章——AID 選板），PTT 的 prompt 與途中的任何原生畫面都不畫。打進看板名稱的 `submitSearch`（`s` 叫出的彈窗沒有橋接時、橋接用不了時）同一套；首頁面板的已知看板批次進板不經 prompt，不在此列。
+
+- 握住＝`core.boardSearchHold`（`article_search.js` 的 `beginBoardSearchHold`）：`term_view._navigationHeld()` 多認這一項，握著時 held 分支不畫 PTT 的幀（同說明選單 #157，[help-menu.md](help-menu.md)）；首頁面板握著時不因 prompt 幀收起（`home_dashboard._onSettled`）。
+- 收尾：prompt 消失後**等好讀把落點顯示出來**才放開——列表進到 buffer 模式、回到主功能表（面板 `recheck` 再蓋上）、或 AID 選板接手的 `aidNavigation` 跑起來。停在原生鏡像的列表 session 當場收回這一幀（`list_session.resumeNow`／`board_list_session.resumeNow`，不等靜置探針）：取消時 PTT 還回的是同一份列表，文章列表留著手上的列（同說明選單關掉，[easy-reading-list.md](easy-reading-list.md) 不變量 15），閱讀紀錄的還原在列表收回之後才跑；沒有停在原生鏡像的列表時（AID 選板的文章），取消的收尾（`reopenPicked`）照舊在 prompt 消失的那一個 settle 裡當場跑。
+- 放開時 `view.navigationEnded()` 讓 held 分支補畫被擋下的那一幀。保底：prompt 一直沒開出來 `BOARD_SEARCH_HOLD_MS`（5 秒）、prompt 收掉後落點一直沒顯示 `BOARD_SEARCH_LANDING_MS`（6 秒）就放開；prompt 開不出來、命令被 flush、收尾失敗都當場放開。
+- 看板列表的取消：`_beginPassthroughBytes` 進原生時就丟掉了 buffer，收回時從 PTT 的那一頁重建（不經過原生幀，但捲動位置交給閱讀紀錄）。
+
 ### 彈窗版面
 
 打字時彈窗高度不可跟著補全結果變（手機 sheet 貼底、桌機彈窗，高度一變輸入框就被推動 ⇒ 邊打邊抖）：
@@ -159,4 +168,4 @@ localStorage `pttchrome.searchHistory.v2` = `{title,author,push,board}`，每類
 
 ## 測試
 
-unit：`article_search.test.js`（判準／指紋／兩條送出路徑／看板列表 session 多步）、`board_search_bridge.test.js`（畫面解析／鍵序／被拒／最新勝出／逾時／收尾閘門）、`search_history.test.js`、`search_modal.test.jsx`（看板補全用假橋接）、`search_history_manager.test.jsx`、`pref_modal_local_tab.test.jsx`、`search_key_intercept.test.js`。offline e2e：`article_search.offline.spec.js`（線上 bytes＝`/\f` → prompt 幀 → `關鍵字\r`、↑ 叫回、Esc 零 byte、pref 關＝原生、已有 prompt 時不攔；看板補全用頁內照 `name.c` 寫的迷你 namecomplete 模擬）；`board_note_skip.offline.spec.js` 的主選單 `s` 卷含一趟合成的補全回應；手機入口在 `mobile_toolbar.offline.spec.js`；搜尋紀錄區的版面與管理頁在 `mobile_search_history.offline.spec.js`（種類切換列不被裁切的檢查在 `helpers/search_kinds.js`，搜尋視窗那一份在 `mobile_toolbar.offline.spec.js`）。
+unit：`article_search.test.js`（判準／指紋／兩條送出路徑／看板列表 session 多步）、`board_search_bridge.test.js`（畫面解析／鍵序／被拒／最新勝出／逾時／收尾閘門／原畫面握住的起訖）、`search_history.test.js`、`search_modal.test.jsx`（看板補全用假橋接）、`search_history_manager.test.jsx`、`pref_modal_local_tab.test.jsx`、`search_key_intercept.test.js`。offline e2e：`article_search.offline.spec.js`（線上 bytes＝`/\f` → prompt 幀 → `關鍵字\r`、↑ 叫回、Esc 零 byte、pref 關＝原生、已有 prompt 時不攔；看板補全用頁內照 `name.c` 寫的迷你 namecomplete 模擬）；`board_note_skip.offline.spec.js` 的主選單 `s` 卷含一趟合成的補全回應；手機入口在 `mobile_toolbar.offline.spec.js`；看板搜尋時彈窗底下逐幀不出現原生畫面在 `mobile_board_search_hold.offline.spec.js`（首頁送出／打字送出／取消、文章列表送出／取消）；搜尋紀錄區的版面與管理頁在 `mobile_search_history.offline.spec.js`（種類切換列不被裁切的檢查在 `helpers/search_kinds.js`，搜尋視窗那一份在 `mobile_toolbar.offline.spec.js`）。

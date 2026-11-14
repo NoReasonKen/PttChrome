@@ -16,6 +16,7 @@
   - 其餘一律擋下、什麼都不送，給與文章／列表相同的「好讀模式目前不支援…」錯誤提示（`unsupported_hint.js`）：PTT 說明畫面列的其他指令（進入看板 `r`／`R`、未讀文章 Ctrl-Y／Ctrl-N、Ctrl-Z／Ctrl-U／Ctrl-R）、移動選單游標的鍵（方向鍵、Enter、`e`／`E`／`q`／`Q`、Home／End／PgUp／PgDn、選單項目字母）、數字、其他 Ctrl 組合、Alt remap、手機工具列／鍵盤列的鍵（`sendKeyAsUser` 走同一條分派）。輸入法或軟鍵盤上的單一 ASCII 字元當成它代表的鍵（`term_view.onTextInput`），其餘上字與貼上擋下（「…在首頁輸入文字／貼上文字」）。
   - 分類是純函式 `homeKeyAction`（同 `easy_reading.articleLeftoverKey` 的形狀），`takeKey`／`refuseText` 由 `term_view` 呼叫。說明選單開著（phase 不是 idle 或 hold 中）時鍵歸說明選單。好讀關著＝原生主功能表，所有鍵照送。
 - **認不出 ⇒ 原生**：只在「標題列是主功能表＋畫面上有 `(F)avorite` 選單項＋游標不在輸入欄」時出現（`isHomeScreen`）。
+- **看板搜尋握住面板（#190）**：搜尋彈窗的看板補全／打字送出看板握著 PTT 的 `s` prompt 期間（`core.boardSearchHold`），面板不因 prompt 幀收起，照原樣蓋在主功能表上；握住結束時由 `recheck()` 重看畫面（回到主功能表就留著，進了看板就收起）。規則見 [article-search.md](article-search.md)「prompt 是資料，不畫出來」。
 - **抓我的最愛＝原生鍵**（`fetchFavorites`）：`Ctrl+Z f`（menu.c#ZA_Select 的「我的最愛」，任何畫面都能進根目錄、不動主功能表的游標）→ 讀頁 →（進來不在第 1 頁就跳 `1⏎`）→ 一頁滿 20 個就跳 `<最後一號+1>⏎`，被夾回同一頁＝沒有下一頁（stuff.c#search_num）→ 跳回進來時的游標 → `q`。最多 `FAV_MAX_PAGES` 頁。每一步落地不符就停手（`fail`），人留在 PTT 給的畫面上。
 - **什麼時候抓**：面板出現後等 `AUTO_FETCH_DELAY_MS`，快取超過 `FAV_TTL_MS` 才抓；中間送出了 `h`、首頁上開著 sheet（`modalShown`，例：看板搜尋）、說明選單 hold 中、線路有別人的事（`serializedOpHint`、CommandQueue 不閒、deep link／斷線回到原處還在排程）就不抓。失敗後 TTL 內不重試。
 - **手動更新＝重新整理**：面板的「更新」、F5／⌘R、手機工具列「重整」、手機下拉，全部走 `screen_refresh` 的 `home` target（面板畫著才算；好讀關著的原生主功能表不接，F5 交還瀏覽器），同一道冷卻、同一套忙碌提示，最後落到 `fetchFavorites`。下拉在整片卡片按鈕上也能起手（`pull_refresh.ignoredTarget` 對 `#homeDashboard` 放行）；點一下不會走出 slop，拉過門檻也不會變成點卡片。

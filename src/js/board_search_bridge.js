@@ -24,7 +24,8 @@ import {
   isSearchPromptFrame,
   searchGateFacts,
   beginInFlight,
-  endInFlight
+  endInFlight,
+  beginBoardSearchHold
 } from './article_search';
 import { recordFor } from './reading_record';
 
@@ -156,7 +157,11 @@ export function BoardSearchBridge(core, onUpdate, opts) {
   // 閱讀紀錄（決策表 'board-search'）：prompt 一開，列表就切到原生鏡像；取消／開不
   // 出來時要把視野還回去，送出（換板）則不還原。
   this._bookmark = core ? recordFor(core).begin('board-search') : null;
+  // The page under the sheet stays on screen while this bridge owns PTT's
+  // prompt (#190; docs/article-search.md).
+  this._hold = core ? beginBoardSearchHold(core) : null;
   this._open();
+  if (this._dead) this._release();
 }
 
 BoardSearchBridge.prototype = {
@@ -218,6 +223,7 @@ BoardSearchBridge.prototype = {
       onDone: function(frame) {
         self._busy = false;
         self._opened = true;
+        if (self._hold) self._hold.opened();
         self._field = frame.field;
         self._emit();
         self._pump();
@@ -259,6 +265,7 @@ BoardSearchBridge.prototype = {
     const fin = this._final;
     this._final = null;
     this._endRecord('fail');
+    this._release();
     if (fin) {
       endInFlight(this._core);
       // prompt 從沒開出來＝PTT 不接受 `s`（同 submitSearch 第一步的 onFail）；
@@ -349,16 +356,34 @@ BoardSearchBridge.prototype = {
       },
       onDone: function(result) {
         self._finish();
-        self._endRecord(isSubmit ? 'done' : 'cancel');
-        if (fin.cb.onDone) fin.cb.onDone(result);
+        const hold = self._hold;
+        self._hold = null;
+        if (isSubmit) {
+          self._endRecord('done');
+          if (fin.cb.onDone) fin.cb.onDone(result);
+          // Held until easy reading presents the board (or the AID run that
+          // the caller just started takes the page over).
+          if (hold) hold.land({});
+          return;
+        }
+        // PTT gave the page back: the list owner takes it again before the
+        // reading record restores the view onto it.
+        const back = function() {
+          self._endRecord('cancel');
+          if (fin.cb.onDone) fin.cb.onDone(result);
+        };
+        if (hold) hold.land({ keepList: true, before: back });
+        else back();
       },
       onFail: function() {
         self._finish();
+        self._release();
         self._endRecord('fail');
         if (fin.cb.onFail) fin.cb.onFail();
       },
       onFlushed: function() {
         self._finish();
+        self._release();
         if (fin.cb.onFail) fin.cb.onFail('lost');
       }
     };
@@ -370,6 +395,13 @@ BoardSearchBridge.prototype = {
     this._dead = true;
     this._final = null;
     endInFlight(this._core);
+  },
+
+  // The search is lost or never started: the view draws PTT's frame again.
+  _release: function() {
+    const hold = this._hold;
+    this._hold = null;
+    if (hold) hold.release();
   },
 
   // 書籤只交回一次（_lost 與收尾命令的 onFail 可能都會走到）。

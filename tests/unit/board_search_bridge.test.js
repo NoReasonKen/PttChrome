@@ -15,6 +15,11 @@ import {
   sanitizeBoardQuery,
 } from "../../src/js/board_search_bridge";
 import { CommandQueue } from "../../src/js/command_queue";
+import {
+  BOARD_SEARCH_HOLD_MS,
+  BOARD_SEARCH_LANDING_MS,
+  submitSearch,
+} from "../../src/js/article_search";
 
 const ROWS = 24;
 const PROMPT = "請輸入看板名稱(按空白鍵自動搜尋): ";
@@ -305,5 +310,217 @@ describe("BoardSearchBridge（共用 CommandQueue）", () => {
     const t2 = setup({ core: { activeListSession: () => frozen } });
     expect(frozen._beginPassthroughBytes).not.toHaveBeenCalled();
     expect(t2.bridge.status).toBe("unavailable");
+  });
+});
+
+// #190: PTT's board-select prompt is data. While a board search owns it, the
+// page the reader was on stays under the search sheet (term_view's held
+// branch reads core.boardSearchHold.holding), and the hold ends only once the
+// destination is presented by easy reading, or the page is back as it was.
+function homeFrame() {
+  const rowTexts = Array.from({ length: ROWS }, () => "");
+  rowTexts[0] = "【主功能表】";
+  rowTexts[23] = "我是主選單";
+  return { rowTexts, rows: ROWS, curX: 0, curY: 4 };
+}
+
+function holdSetup(opts) {
+  const o = opts || {};
+  vi.useFakeTimers();
+  const sent = [];
+  const log = [];
+  const queue = new CommandQueue({ send: (s) => sent.push(s) });
+  let screen = o.screen || homeFrame();
+  const listeners = [];
+  const buf = {
+    rows: ROWS,
+    cols: 80,
+    listRenderMode: o.listRenderMode || "native",
+    get cur_x() {
+      return screen.curX;
+    },
+    get cur_y() {
+      return screen.curY;
+    },
+    getRowText: (r) => screen.rowTexts[r] || "",
+    addEventListener: (type, fn) => {
+      if (type === "screenSettled") listeners.push(fn);
+    },
+    removeEventListener: (type, fn) => {
+      const i = listeners.indexOf(fn);
+      if (i >= 0) listeners.splice(i, 1);
+    },
+  };
+  const core = {
+    commandQueue: queue,
+    buf,
+    searchInFlight: false,
+    view: { navigationEnded: vi.fn(() => log.push("navigationEnded")) },
+    homeDashboard: { recheck: vi.fn(() => log.push("homeRecheck")) },
+    ...o.core,
+  };
+  if (o.setupCore) o.setupCore(core, { queue, buf, log });
+  const bridge = o.noBridge ? null : new BoardSearchBridge(core, () => {}, o.bridgeOpts);
+  // A settle: the queue's expect first (list_session drives it), then every
+  // other screenSettled listener, then the microtasks queued meanwhile.
+  const settle = async (f) => {
+    screen = f;
+    queue.onSettle(null, f);
+    listeners.slice().forEach((fn) => fn());
+    for (let i = 0; i < 5; ++i) await Promise.resolve();
+  };
+  const held = () => !!(core.boardSearchHold && core.boardSearchHold.holding);
+  return { sent, log, queue, core, buf, bridge, settle, held };
+}
+
+describe("BoardSearchBridge: the page under the sheet is held (#190)", () => {
+  test("held from opening the sheet, through typing, until a cancel brings the page back", async () => {
+    const t = holdSetup();
+    expect(t.held()).toBe(true);
+    await t.settle(promptFrame("", null));
+    expect(t.bridge.status).toBe("ready");
+    t.bridge.query("go");
+    await t.settle(promptFrame("go", [["GO", "Golf"]]));
+    // The reader may keep the sheet open as long as they like.
+    vi.advanceTimersByTime(60000);
+    expect(t.held()).toBe(true);
+    expect(t.core.view.navigationEnded).not.toHaveBeenCalled();
+    t.bridge.cancel();
+    expect(t.held()).toBe(true);
+    await t.settle(homeFrame());
+    expect(t.held()).toBe(false);
+    // The home dashboard looks at the screen again before the held frame is drawn.
+    expect(t.log).toEqual(["homeRecheck", "navigationEnded"]);
+  });
+
+  test("a bridge that never gets its prompt lets the page go", async () => {
+    const t = holdSetup();
+    vi.advanceTimersByTime(BOARD_SEARCH_HOLD_MS);
+    expect(t.held()).toBe(false);
+    expect(t.core.view.navigationEnded).toHaveBeenCalledTimes(1);
+  });
+
+  test("a prompt PTT refuses ends the hold at once", async () => {
+    const t = holdSetup();
+    vi.advanceTimersByTime(3000); // soft timeout → \f probe
+    await t.settle(homeFrame());
+    expect(t.bridge.status).toBe("unavailable");
+    expect(t.held()).toBe(false);
+  });
+
+  test("a submit keeps the page until easy reading presents the destination", async () => {
+    const t = holdSetup();
+    await t.settle(promptFrame("", null));
+    const onDone = vi.fn();
+    t.bridge.submit("Test", { onDone });
+    await t.settle(listFrame()); // the prompt is gone; PTT shows the board natively
+    expect(onDone).toHaveBeenCalled();
+    expect(t.held()).toBe(true);
+    // The article list takes the screen over in easy reading.
+    t.buf.listRenderMode = "buffer";
+    await t.settle(listFrame());
+    expect(t.held()).toBe(false);
+    expect(t.core.view.navigationEnded).toHaveBeenCalledTimes(1);
+  });
+
+  test("a destination presented in the landing settle itself ends the hold in that settle", async () => {
+    const t = holdSetup();
+    await t.settle(promptFrame("", null));
+    t.bridge.submit("Test");
+    t.buf.listRenderMode = "buffer";
+    await t.settle(listFrame());
+    expect(t.held()).toBe(false);
+  });
+
+  test("a destination never presented ends the hold after its budget", async () => {
+    const t = holdSetup();
+    await t.settle(promptFrame("", null));
+    t.bridge.submit("Test");
+    await t.settle(listFrame());
+    expect(t.held()).toBe(true);
+    vi.advanceTimersByTime(BOARD_SEARCH_LANDING_MS);
+    expect(t.held()).toBe(false);
+    expect(t.core.view.navigationEnded).toHaveBeenCalledTimes(1);
+  });
+
+  // The easy-reading article list under the sheet: the bridge parks it through
+  // _beginPassthroughBytes (native mirror, held), and it must take the frame
+  // back itself before the hold ends.
+  function articleListSetup() {
+    return holdSetup({
+      screen: listFrame(),
+      listRenderMode: "buffer",
+      setupCore: (core, { queue, buf, log }) => {
+        const ls = {
+          state: "active",
+          _renderMode: "buffer",
+          readingPosition: () => ({ kind: "list", board: "Test" }),
+          _beginPassthroughBytes: (steps) => {
+            ls.state = "functionMode";
+            buf.listRenderMode = "native";
+            queue.enqueue(Object.assign({ fullRepaint: true }, steps[0]));
+          },
+          resumeNow: vi.fn((board) => {
+            log.push("resume:" + board);
+            ls.state = "active";
+            buf.listRenderMode = "buffer";
+          }),
+        };
+        core.listSession = ls;
+        core.activeListSession = () => (ls.state === "active" ? ls : null);
+      },
+    });
+  }
+
+  test("a cancel over the article list: the list takes the frame back with its rows, then the hold ends", async () => {
+    const t = articleListSetup();
+    expect(t.held()).toBe(true);
+    await t.settle(promptFrame("", null));
+    t.bridge.cancel();
+    await t.settle(listFrame()); // Ctrl-C: PTT redraws the list as it stood
+    expect(t.held()).toBe(false);
+    expect(t.log).toEqual(["resume:Test", "homeRecheck", "navigationEnded"]);
+  });
+
+  test("a submit over the article list: the new board's list is measured at once, without the old rows", async () => {
+    const t = articleListSetup();
+    await t.settle(promptFrame("", null));
+    t.bridge.submit("Other");
+    await t.settle(listFrame());
+    expect(t.held()).toBe(false);
+    expect(t.log).toEqual(["resume:null", "homeRecheck", "navigationEnded"]);
+  });
+
+  test("a submit that starts another held run (an AID pick) hands the page over to it", async () => {
+    const t = holdSetup({ core: { aidNavigation: { active: false } } });
+    await t.settle(promptFrame("", null));
+    t.bridge.submit("Test", { onDone: () => (t.core.aidNavigation.active = true) });
+    await t.settle(listFrame());
+    expect(t.held()).toBe(false);
+  });
+});
+
+describe("submitSearch for a board: the page stays until the destination is presented (#190)", () => {
+  test("the typed route from home holds every frame of the prompt and the landing", async () => {
+    const t = holdSetup({ noBridge: true });
+    expect(submitSearch(t.core, "board", "Test")).toBe(true);
+    expect(t.held()).toBe(true);
+    await t.settle(promptFrame("", null));
+    expect(t.sent[1]).toBe("Test\r");
+    await t.settle(listFrame()); // the board, drawn by PTT before easy reading takes it
+    expect(t.held()).toBe(true);
+    t.buf.listRenderMode = "buffer";
+    await t.settle(listFrame());
+    expect(t.held()).toBe(false);
+    expect(t.core.view.navigationEnded).toHaveBeenCalledTimes(1);
+  });
+
+  test("a prompt that never opens ends the hold", async () => {
+    const t = holdSetup({ noBridge: true });
+    submitSearch(t.core, "board", "Test");
+    vi.advanceTimersByTime(3000);
+    await t.settle(homeFrame());
+    vi.advanceTimersByTime(20000);
+    expect(t.held()).toBe(false);
   });
 });

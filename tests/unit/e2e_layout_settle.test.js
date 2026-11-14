@@ -75,6 +75,7 @@ const STACKING_ONLY = {
   "mobile_easy_reading_entry.offline.spec.js": "checks which reading surface reaches paint; picks no click point",
   "mobile_stack_board_reveal.offline.spec.js": "checks that the dashboard copy stays on top; picks no click point",
   "mobile_stack_search_source.offline.spec.js": "samples which article row or native screen shows on top; picks no click point",
+  "mobile_board_search_hold.offline.spec.js": "checks which page reaches paint under the search sheet; picks no click point",
 };
 
 describe("offline e2e 版面穩定契約", () => {
