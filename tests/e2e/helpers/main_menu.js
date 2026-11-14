@@ -60,9 +60,13 @@ const USER_MENU = {
 const FIRST_ITEM_ROW = 13;
 const ART_ROWS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
-async function drawMenu(page, menu) {
+// before: data fed to the app in the same task, just ahead of the menu frame.
+// Such frames reach the app (and a debug recording) but never settle as a
+// page of their own, so nothing presents them before the menu replaces them.
+async function drawMenu(page, menu, { before = [] } = {}) {
   await page.evaluate(
-    ({ ART, menu, FIRST_ITEM_ROW }) => {
+    ({ ART, menu, FIRST_ITEM_ROW, before }) => {
+      for (const data of before) window.__app.onData(data);
       const u2b = (str) => {
         let out = '';
         for (const ch of str) {
@@ -98,13 +102,13 @@ async function drawMenu(page, menu) {
       d += '\x1b[' + (FIRST_ITEM_ROW + menu.cursor + 1) + ';21H';
       window.__app.onData(d);
     },
-    { ART, menu, FIRST_ITEM_ROW }
+    { ART, menu, FIRST_ITEM_ROW, before }
   );
   await waitScreenSettled(page, { 0: menu.title, [FIRST_ITEM_ROW + menu.cursor]: menu.items[menu.cursor] });
   await page.waitForFunction(() => window.__app.buf.pageState === 1);
 }
 
-const drawMainMenu = (page) => drawMenu(page, MAIN_MENU);
+const drawMainMenu = (page, options) => drawMenu(page, MAIN_MENU, options);
 const drawUserMenu = (page) => drawMenu(page, USER_MENU);
 
 // 一張 pressanykey 畫面（pageState 5）：子選單的標題不在白名單，以前只能沿用這個 5。

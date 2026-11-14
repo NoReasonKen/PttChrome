@@ -254,15 +254,16 @@ for (const source of ['local', 'manager']) {
     await expectSyntheticLogin(page);
     // A server response can split identity and credential echoes across frames.
     // Use the actual capture/export path, with no direct redaction registration.
-    await page.evaluate(values => {
-      window.__app.onData('\x1b[H\x1b[2Jprivacy-login-context ' + values[0].slice(0, 7));
-      window.__app.onData(values[0].slice(7) + ' ' + values.slice(1).join(' ') + '\r\n');
-    }, privacyValues);
+    // The main menu follows in the same task: left to settle, this synthetic
+    // screen would be presented on the native grid under easy reading.
+    await drawMainMenu(page, { before: [
+      '\x1b[H\x1b[2Jprivacy-login-context ' + privacyValues[0].slice(0, 7),
+      privacyValues[0].slice(7) + ' ' + privacyValues.slice(1).join(' ') + '\r\n',
+    ] });
     const first = await exportPrivacyRecording(page);
     expect(first.events.filter(event => event.dir === 'recv')
       .map(event => Buffer.from(event.data, 'base64').toString('latin1')).join(''))
       .toContain('privacy-login-context');
-    await drawMainMenu(page);
     await openCredentials(page);
     await expectPrivateSettingsExport(page);
     await closeSettings(page);

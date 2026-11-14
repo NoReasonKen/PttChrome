@@ -30,14 +30,23 @@ async function holdUpwardFill(page) {
   });
 }
 
-async function releaseUpwardFill(page) {
-  await page.evaluate(() => window.__heldListFill.release());
+// The list is at rest once the background fill has found the top and no
+// command is in flight, and the reserve above the first row has settled.
+// Until then a fill can insert rows above and move every card under a point
+// read earlier.
+async function waitListAtRest(page) {
   await page.waitForFunction(() => {
     const app = window.__app;
     const screen = app.view.componentScreen;
-    return app.listSession._edgeUp && !screen._listReserveTimer && !screen._listScrollBusy();
+    return app.listSession._edgeUp && app.commandQueue.idle &&
+      !screen._listReserveTimer && !screen._listScrollBusy();
   });
   await nextFrames(page, 2);
+}
+
+async function releaseUpwardFill(page) {
+  await page.evaluate(() => window.__heldListFill.release());
+  await waitListAtRest(page);
 }
 
 for (const releaseAt of ['before contact', 'during contact']) {
@@ -106,6 +115,9 @@ test('tapping empty filler below short search results opens no article', async (
   await recordSearchTaps(page, () => bootNestedShortcutSearch(page));
   await tapShortcut(page, 'author');
   await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
+  // The filler point is only filler while no background fill can still move
+  // the cards; otherwise the tap lands on a result that moved under it.
+  await waitListAtRest(page);
   const point = await page.evaluate(overriding => {
     const app = window.__app;
     const viewport = document.querySelector('.main:not([data-stack-layer]) .listBodyView');
