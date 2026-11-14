@@ -48,6 +48,8 @@ const ITEMS = [
 // opts.caption: the row-0 【caption】, which names the screen help was asked
 // from (default 我的最愛).
 async function drawHelpPage(page, pageNo, opts = {}) {
+  // A stand-in answer to the help key (answerHelpKey) lands first.
+  await page.waitForFunction(() => window.__helpKeyAnswer !== 'pending');
   const info = await page.evaluate(
     ({ CAPTION, ITEMS, pageNo, cursor, angel }) => {
       const u2b = (str) =>
@@ -100,4 +102,25 @@ async function drawOtherScreen(page) {
   });
 }
 
-module.exports = { CAPTION, ITEMS, drawHelpPage, drawOtherScreen };
+// PTT answers the help key with its help screen straight away. A replay has
+// no answer recorded for it, so the page would still show the screen help was
+// asked from, and an easy-reading list would take that screen back before the
+// spec draws page 1. The next time `keys` goes out, a blank screen stands for
+// PTT's answer (once), until drawHelpPage draws the real one (after it).
+async function answerHelpKey(page, keys) {
+  await page.evaluate((keys) => {
+    const sent = window.__stubWSSent;
+    window.__stubWSSent = (data) => {
+      sent(data);
+      if (data !== keys) return;
+      window.__stubWSSent = sent;
+      window.__helpKeyAnswer = 'pending';
+      setTimeout(() => {
+        window.__app.onData('\x1b[H\x1b[2J');
+        window.__helpKeyAnswer = 'done';
+      }, 0);
+    };
+  }, keys);
+}
+
+module.exports = { CAPTION, ITEMS, answerHelpKey, drawHelpPage, drawOtherScreen };

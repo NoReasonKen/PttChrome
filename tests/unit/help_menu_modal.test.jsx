@@ -125,3 +125,35 @@ test("小天使按鈕只在 footer 有 (h)小天使 時出現", async () => {
   fireEvent.click(document.querySelector("[data-help-angel]"));
   expect(sent).toEqual(["h"]);
 });
+
+// #222: asked from an easy-reading page, the rows the page refuses are
+// unavailable (dimmed, disabled, skipped by the keyboard), and the angel is gone.
+test("a detachable visit: unavailable rows cannot be picked; the keyboard skips them", async () => {
+  const { pttchrome, sent, feed } = setup();
+  const typed = [];
+  pttchrome.view = {
+    navigationEnded() {},
+    sendKeyAsUser: (key) => typed.push(key),
+  };
+  pttchrome.helpMenu.expect({ wouldRefuse: (k) => k.key === "a" });
+  feed(HELP_FAV_PAGE1);
+  feed(HELP_FAV_PAGE2);
+  await waitItems(35);
+  act(() => pttchrome.helpMenu.noteScreen(null)); // PTT left its help screen
+  const help = items()[0]; // (h/H) 說明
+  const add = items()[1]; // (a/i) 增加看板, refused by this page
+  expect(help.disabled).toBe(true);
+  expect(add.getAttribute("aria-disabled")).toBe("true");
+  expect(add.hasAttribute("data-unavailable")).toBe(true);
+  expect(document.querySelector("[data-help-angel]")).toBeNull();
+  fireEvent.click(add);
+  expect(typed).toEqual([]);
+  // The first pickable row is (d) 刪除; ↓ lands on (g) 新增目錄.
+  const dialog = document.querySelector("[data-help-menu]");
+  await waitFor(() => expect(items()[2].hasAttribute("data-active")).toBe(true));
+  fireEvent.keyDown(dialog, { key: "ArrowDown" });
+  fireEvent.keyDown(dialog, { key: "Enter" });
+  expect(typed).toEqual(["g"]);
+  expect(sent.at(-1)).toBe("q");
+  await waitItems(0);
+});

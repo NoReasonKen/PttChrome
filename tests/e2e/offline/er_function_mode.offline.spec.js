@@ -54,7 +54,7 @@ async function openAndAccumulate(page, cassette) {
 }
 
 test.describe('好讀 functionMode（scenario 重放）', () => {
-  test('h → PTT 操作說明（functionMode）→ 說明選單彈窗補齊全部頁 → Esc 離開回長頁', async ({ page }) => {
+  test('h → PTT 操作說明（functionMode）→ 說明選單彈窗補齊全部頁 → 自己送 q 分離、長頁接回 → Esc 關掉不送', async ({ page }) => {
     test.skip(!help, '缺 scn-er-help（yarn record:scenarios）');
     await bootScenario(page, ptt, help);
     const fed = await openAndAccumulate(page, help);
@@ -84,24 +84,27 @@ test.describe('好讀 functionMode（scenario 重放）', () => {
     // functionMode stays on underneath.
     const quit = help.steps.findIndex((s) => s.on === 'raw' && Buffer.from(s.send || '', 'base64').toString() === 'q');
     expect(quit).toBeGreaterThan(fed);
-    await waitFed(page, quit);
-    await expect.poll(() => page.evaluate(() => {
-      const h = window.__app.helpMenu.snapshot();
-      return h.open && !h.loading;
-    })).toBe(true);
-    await expect(page.locator('[data-help-item]').first()).toBeFocused();
-    await waitBufSettled(page);
-    expect(await fnMode(page)).toBe(true);
-    expect(await bufText(page)).toContain('操作說明');
-    expect(await pageUnder()).toEqual(under);
-
-    // Esc leaves the popup by sending q, as natively.
-    await page.keyboard.press('Escape');
+    // #222: once every page is read the sheet sends that `q` itself, behind the
+    // sheet, and stays open, detached from PTT: the article is back underneath.
     await waitFed(page, quit + 1);
+    await expect.poll(() => page.evaluate(() => {
+      const h = window.__app.helpMenu;
+      return h.phase === 'detached' && !h.holding && h.snapshot().open && !h.snapshot().loading;
+    })).toBe(true);
+    // The help key is shown unavailable; focus lands on the first row the
+    // article takes.
+    await expect(page.locator('[data-help-item]').first()).toBeDisabled();
+    await expect(page.locator('[data-help-item]:not([data-unavailable])').first()).toBeFocused();
     await expect.poll(() => fnMode(page)).toBe(false);
-    // 'resume'：回好讀長頁，footer overlay 復現。
     expect(await page.evaluate(() => window.__app.view.useEasyReadingMode)).toBe(true);
     await expect.poll(() => lastRowDisplay(page)).toBe('block');
+    expect(await pageUnder()).toEqual(under);
+
+    // Esc closes the detached sheet and sends nothing.
+    const sent = await page.evaluate(() => window.__replay.sent.length);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-help-item]')).toHaveCount(0);
+    expect(await page.evaluate((n) => window.__replay.sent.slice(n), sent)).toEqual([]);
     clearInterval(watch);
     expect(sawHelp).toBe(false);
     expect(await pageUnder()).toEqual(under);

@@ -87,6 +87,7 @@ import {
   isBoardListCommandKind
 } from './list_render_owner';
 import { PAGE } from './page_stack';
+import { searchKeyOpensSheet } from './article_search';
 
 // 程式化平滑捲動的最長等待：超過就放棄「等它到站」，把 scroll 事件當成使用者
 // 自己捲的（動畫會被使用者的滾輪／拖曳取消，那時永遠到不了目標）。
@@ -916,6 +917,10 @@ export function ListSession(core, view, termBuf, queue) {
   // The list's board when help was asked for (_beginHelp): the native excursion
   // clears _boardName, and a closed help sheet gives it back (resumeAfterHelp).
   this._helpBoard = null;
+  // The row the reader had selected when help was asked for ({ num, pinnedKey }):
+  // `h` goes out without moving PTT's cursor there first (#222), so the list
+  // PTT redraws has its cursor elsewhere, and the selection comes back from here.
+  this._helpSelection = null;
   // 採用原生落點時那一頁的最後一列（{ num, pinnedKey }）。下一次 applyScrollAfterRender
   // 用 landingTopPos 把視口調到游標可見（手機卡片一屏放不下原生一頁）後清掉。
   this._landingFit = null;
@@ -1447,10 +1452,29 @@ ListSession.prototype = {
   // still in them, and the reading record's restore that follows applies it
   // in the same frame. A rebuild would show PTT's page first and the view only
   // once the rows around it were fetched again.
+  // The reader's selection stays where it was: PTT's cursor (still on another
+  // row, #222) is only where the next command that needs it syncs from.
   resumeAfterHelp: function(listKept) {
     const board = this._helpBoard;
+    const sel = this._helpSelection;
     this._helpBoard = null;
+    this._helpSelection = null;
     this.resumeNow(listKept ? board : null);
+    if (!listKept || !sel || this.state !== 'active' || this._renderMode !== 'buffer') return;
+    if (sel.num === this._selectedNum && sel.pinnedKey === this._selectedPinnedKey) return;
+    this._selectedNum = sel.num;
+    this._selectedPinnedKey = sel.pinnedKey;
+    this._forceRedraw();
+  },
+
+  // A key the help menu sheet offers (help_menu.js, #222): whether this list
+  // refuses it when typed. The search keys open the search sheet before the
+  // list sees them (term_view.onKeyDown); the rest is the list's own table.
+  wouldRefuse: function(k) {
+    const ctrl = !!(k && k.ctrlKey);
+    if (!ctrl && searchKeyOpensSheet(k.key, OWNER_ARTICLE_LIST)) return false;
+    const c = this._classifyKey({ key: k.key, ctrlKey: ctrl, altKey: false, metaKey: false, shiftKey: false });
+    return c.class === 'unsupported' || c.class === 'ignore';
   },
 
   // A held excursion over the list ended (the help menu, a board search from
@@ -1757,15 +1781,18 @@ ListSession.prototype = {
 
   // Help (`h`, the footer's help button, the mobile toolbar's help button):
   // PTT's help screen is asked for through the serialized sequence, and the
-  // help menu sheet presents it.
+  // help menu sheet presents it. `h` goes out at once, without moving PTT's
+  // cursor to the selected row first (#222): a command picked from the sheet
+  // is typed on this list afterwards, and syncs the cursor itself if it needs it.
   _beginHelp: function() {
     // The native excursion asks PTT for the list anew (#125).
     this._spendLayer('nativePassthrough');
     this._helpBoard = this._boardName;
+    this._helpSelection = { num: this._selectedNum, pinnedKey: this._selectedPinnedKey };
     // The list stays on screen under the sheet (help_menu.expect), and is
     // given the frame back when the sheet is over (resumeAfterHelp).
     this._core.helpMenu?.expect(this);
-    this._beginPassthroughBytes('h', { kind: 'help', hint: null });
+    this._beginPassthroughBytes('h', { kind: 'help', hint: null, noSync: true });
   },
 
   // The serialized sequence behind PttChrome's own list operations (search,
@@ -1809,6 +1836,10 @@ ListSession.prototype = {
       self._enqueuePassthroughStep(steps, 0);
       if (hint && self._view.flashListHint) self._view.flashListHint(hint, 4000);
     };
+    // opts.noSync: the key does not act on the cursor row (help, #222). The
+    // native excursion flushes the queue, so the key is not stuck behind an
+    // in-flight prefetch either.
+    if (opts && opts.noSync) return finish();
     if (this._selectedNum != null && this._selectedNum !== this._serverNum) {
       this._freezeForTransaction();
       // A sync that fails sends nothing: the key would act on another row (#158).

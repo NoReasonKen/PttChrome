@@ -17,7 +17,7 @@ import { BoardSearchBridge } from "../../src/js/board_search_bridge";
 import { recordFor } from "../../src/js/reading_record";
 import { HelpMenuController, parseHelpMenuScreen } from "../../src/js/help_menu";
 import { submitSearch } from "../../src/js/article_search";
-import { HELP_FAV_PAGE1 } from "./fixtures/help_menu_rows";
+import { HELP_FAV_PAGE1, HELP_FAV_PAGE2 } from "./fixtures/help_menu_rows";
 
 const listRows = fixture.pageScreens[0]; // 真實 C_Chat 一頁：350024..350039＋置底
 
@@ -308,6 +308,39 @@ describe("說明選單（h）：離開後回好讀時視野回到原處", () => 
     hm.noteScreen(null);
     expect(h.s.state).toBe("functionMode");
     expect(h.s._boardName).toBe(null);
+  });
+
+  // #222: the help key goes out at once, the sheet detaches from PTT with one q,
+  // and the list comes back with the reader's own selection, not PTT's cursor.
+  test("help from the list: no cursor sync before h; after the detach the reader's selection is back", () => {
+    const h = makeSession();
+    const sent = [];
+    const hm = new HelpMenuController(h.core, null, { send: (b) => sent.push(b), enabled: () => true });
+    h.core.helpMenu = hm;
+    h.s._selectedNum = 350031; // the reader moved off PTT's cursor (350026)
+    h.s._beginHelp();
+    expect(h.enqueued.map((c) => c.kind)).toEqual(["help"]);
+    step(h, "help").onDone(true);
+    hm.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    expect(sent).toEqual(["\x1b[6~"]); // the second page, fetched behind the sheet
+    hm.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE2));
+    expect(sent).toEqual(["\x1b[6~", "q"]); // all pages read: detach
+    hm.noteScreen(null); // PTT redraws the article list
+    expect(hm.phase).toBe("detached");
+    expect(hm.open).toBe(true);
+    expect(h.s.state).toBe("active");
+    expect(h.s._renderMode).toBe("buffer");
+    expect(h.s._selectedNum).toBe(350031);
+    hm.close();
+    expect(sent).toEqual(["\x1b[6~", "q"]); // closing the detached sheet sends nothing
+  });
+
+  test("wouldRefuse follows the list's own keys", () => {
+    const h = makeSession();
+    for (const key of ["ArrowUp", "ArrowDown", "Enter", "/", "a", "Z", "s", "q", "[", "t"]) {
+      expect([key, h.s.wouldRefuse({ key })]).toEqual([key, false]);
+    }
+    expect(h.s.wouldRefuse({ key: "x", ctrlKey: true })).toBe(true);
   });
 
   test("說明選單交還原生（頁數變了）、在原生說明選單裡自己離開 ⇒ 一樣回原處", () => {

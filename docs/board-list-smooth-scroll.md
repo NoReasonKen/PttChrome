@@ -245,7 +245,7 @@ So `_maybeFill` is "down first, then up once the bottom edge is reached", and **
 | Cursor sync `brd-*-sync-jump` | `<sel>\r` + `\f` | `cursorNum === sel ∧ same variant ∧ no board name on the page contradicts the buffer` (`_listContradicts`; in a different list the same number is another board, and Enter or ← follows right after) |
 | Enter board `brd-open-board` | `\r` | **Any settle**; onDone → `_reset()` only when the landing is another list or menu (`brdlist`/`brdlist-other`/`menu`), otherwise (board entry screen / article list / unknown) `_suspend()` (buffer kept) |
 | Back up a level `brd-leave` | `\x1b[D` | Same as above |
-| Help `brd-help` (#192) | `h` + `\f` (with `brd-native-sync-jump` first when needed); the help-menu hold keeps the native help screen off the page | Same as above; when the sheet is closed, `HelpMenuController` calls `resumeAfterHelp(true)` and the kept list comes back in the same frame (`_resumeHeldList`, viewport unchanged); any other ending → the idle probe re-seeds |
+| Help `brd-help` (#192, #222) | `h` + `\f` at once, with no cursor-sync leg: a background fetch on the wire is cut short (`flushPendingKind` + `_expediteBackground`); the help-menu hold keeps the native help screen off the page | Once every help page is read, the sheet sends `q` behind itself and detaches: `HelpMenuController` calls `resumeAfterHelp(true)` and the kept list comes back in the same frame (`_resumeHeldList`, rows, selection and viewport unchanged; `_serverNum` adopts PTT's cursor); any other ending → the idle probe re-seeds |
 | PttChrome's own sequences (`_beginPassthroughBytes`) | Bytes PttChrome itself decides to send + `\f` (with the sync leg first) | Same as above (the screen is already the native mirror); `resumeOnLanding` re-engages on the landing. **No reader key, paste or typed text goes this way any more** (#192) |
 | A-class keys `brd-native-inplace` | `t`/`v`/`V` + `\f` (with `brd-inplace-sync-jump` first when needed) | `brd.parked ∧ cursorNum≠null ∧ same variant` → `_resumeInPlace` (adopts the landing, **anchor unchanged**); landing not in the buffer → `rebuild` |
 
@@ -277,9 +277,11 @@ the footer buttons for those keys, paste and typed text show the error hint 「�
 Two keys are not refused because easy reading presents them:
 - `s` opens the board-search sheet (`article_search.tryOpenSearchModal`), from the keyboard and from the footer button alike.
 - `h` opens the help-menu sheet over the **kept** board list: `_beginHelp` asks `HelpMenuController.expect(this)` to hold the native help screen,
-  syncs the cursor if needed, and sends `h` with `keepList` (`_enterNative` stashes the list in `_helpList` instead of dropping the buffer).
-  Closing the sheet calls `resumeAfterHelp(true)`; if the landing is the same board-list variant, `_resumeHeldList` puts the list back with the
-  same rows, selection and viewport (no scroll jump, no native frame). Leaving the sheet any other way, or landing elsewhere, falls back to the idle probe.
+  and sends `h` at once with `keepList` (no cursor sync first, #222; `_enterNative` stashes the list in `_helpList` instead of dropping the buffer).
+  Once the sheet has read every help page it sends `q` behind itself and detaches from PTT (`docs/help-menu.md`): `resumeAfterHelp(true)` runs, and if
+  the landing is the same board-list variant, `_resumeHeldList` puts the list back with the same rows, selection and viewport (no scroll jump, no native frame)
+  while the sheet stays open. A row picked from the sheet types its first key into the list (`view.sendKeyAsUser`); rows whose key the list refuses
+  (`wouldRefuse`, the same `_classifyKey` table plus `s`) are shown unavailable. Leaving the sheet any other way, or landing elsewhere, falls back to the idle probe.
   `H`/`?` (PTT's help aliases) do the same as `h`.
 Browser shortcuts that do not map to a PTT byte (Ctrl+C/V/A, Alt+digit, Alt+arrow, F-keys) are left to the browser.
 The full inventory of what PTT offers on this screen and what easy reading does with it is §4.6.
@@ -304,7 +306,7 @@ Alias rule: the table follows the commands PTT lists on its help screen, aliases
 | `t` | Tag the row | Kept (frozen in-place transaction) |
 | `v`/`V` | Mark the board read / unread | Kept (frozen in-place transaction) |
 | `s` | Search for a board by name | Kept (board-search sheet) |
-| `h`/`H`/`?` | Help screen | Kept (help-menu sheet over the kept list) |
+| `h`/`H`/`?` | Help screen | Kept (help-menu sheet over the kept list, detached from PTT once read, #222) |
 | `/` | Filter the list by keyword | Refused |
 | `Ctrl-S` | Search the list locally | Refused |
 | `c`/`C` | Toggle the newflag view | Refused |

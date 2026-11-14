@@ -377,8 +377,9 @@ function makeCore(start = mainMenu()) {
     helpMenu: {
       phase: "idle",
       holding: false,
-      expect() {
+      expect(requester) {
         this.holding = true;
+        this.requester = requester;
       },
     },
     view: {
@@ -759,6 +760,21 @@ describe("HomeDashboard：何時出現", () => {
     c.show(mainMenu());
     expect(c.key("s")).toBe(true);
     expect(c.hints).toEqual([{ m: UNSUPPORTED_KEY_HINT, level: HINT_ERROR }]);
+  });
+
+  // #222: home asks for the sheet as its requester, so the sheet's rows follow
+  // the keys home takes once the sheet has left PTT's help screen.
+  test("help at home: home is the requester, and only the keys home takes are available", () => {
+    const { core, home, show, key } = makeCore();
+    show(mainMenu());
+    key("h");
+    expect(core.helpMenu.requester).toBe(home);
+    expect(home.wouldRefuse({ key: "s" })).toBe(false);
+    expect(home.wouldRefuse({ key: "S" })).toBe(false);
+    for (const k of ["ArrowDown", "Enter", "q", "a", "f", "c"]) {
+      expect([k, home.wouldRefuse({ key: k })]).toEqual([k, true]);
+    }
+    expect(home.wouldRefuse({ key: "x", ctrlKey: true })).toBe(true);
   });
 
   test("首頁按 H／? ⇒ 與 h 一樣：送出、hold 住、面板留著", () => {

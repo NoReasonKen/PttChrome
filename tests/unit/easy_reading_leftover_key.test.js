@@ -1,7 +1,7 @@
 // A key the reading keys did not take, while an article is open in easy
 // reading (#160): a help or reply key keeps the native route, every other PTT command
 // is refused, and keys PTT never sees are left to the browser or the app.
-import { articleLeftoverKey } from "../../src/js/easy_reading";
+import { articleLeftoverKey, articleReadingKey, articleWouldRefuse } from "../../src/js/easy_reading";
 
 const ev = (key, mods = {}) => ({
   key,
@@ -42,4 +42,29 @@ test("clipboard and browser shortcuts are left alone", () => {
 
 test("keys that send PTT nothing are not commands", () => {
   for (const k of ["CapsLock", "F5", "Shift", "NumLock"]) expect(articleLeftoverKey(ev(k))).toBe(null);
+});
+
+// #222: the help menu sheet offers a row only when typing its key would do
+// something in the article.
+describe("articleWouldRefuse (help menu rows over an article)", () => {
+  const prefs = {};
+  test("reading keys, push keys, reply and help are kept", () => {
+    for (const key of ["ArrowDown", "ArrowUp", "PageDown", "PageUp", " ", "Home", "End", "0", "$", "g", "G", "j", "k", "ArrowLeft", "Enter", "a", "=", "[", "]", "X", "%", "y", "r", "h"])
+      expect([key, articleWouldRefuse({ key }, prefs)]).toEqual([key, false]);
+    expect(articleWouldRefuse({ key: "f", ctrlKey: true }, prefs)).toBe(false);
+    expect(articleWouldRefuse({ key: "b", ctrlKey: true }, prefs)).toBe(false);
+  });
+
+  test("refused, swallowed and find keys are not", () => {
+    for (const key of ["s", "Q", "E", "c", "Tab", "/"]) expect([key, articleWouldRefuse({ key }, prefs)]).toEqual([key, true]);
+    expect(articleWouldRefuse({ key: "x", ctrlKey: true }, prefs)).toBe(true);
+    expect(articleWouldRefuse({ key: "u", ctrlKey: true }, prefs)).toBe(true);
+  });
+
+  test("articleReadingKey names what the article does with a key", () => {
+    expect(articleReadingKey(ev("PageDown"))).toBe("pageDown");
+    expect(articleReadingKey(ev("f", { ctrlKey: true }))).toBe("scrollPageDown");
+    expect(articleReadingKey(ev("=", { code: "Equal" }))).toBe("threadJump");
+    expect(articleReadingKey(ev("s"))).toBe(null);
+  });
 });

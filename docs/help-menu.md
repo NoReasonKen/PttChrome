@@ -23,7 +23,7 @@ bottom sheet（手機）一次列出**全部頁**的指令，點一下＝執行�
 | 其餘鍵 | ↑↓（k/p/^P、j/n/^N）、PgUp/PgDn（±rows，夾在範圍內）、Home/`0`、End/`$`、`h`＝小天使、`q`/←＝離開；其他鍵忽略 | 同上 |
 | caption | 呼叫端給的（「我的最愛」「文章閱讀」…）⇒ row 0 開頭就是 `【我的最愛】`，**長得像看板列表標題** | `psb.c`、`more.c:166` |
 
-## 流程（`HelpMenuController`，phase：idle／open／leaving／native）
+## 流程（`HelpMenuController`，phase：idle／open／detaching／detached／leaving／native）
 
 - 每個 `screenSettled`（跳過純本地重繪）解析畫面。認得出且 idle：好讀關著或起點不是第 1 頁 ⇒ `native`
   （這一次交給原生，直到畫面離開說明選單）；否則 `open`。`native` 只由這些自動判定（與下面的頁數變了、離開逾時）進入；
@@ -55,6 +55,33 @@ bottom sheet（手機）一次列出**全部頁**的指令，點一下＝執行�
   守護：`tests/unit/reading_record_list.test.js`「the sheet over the easy-reading list closed」、
   `reading_record_board_list.test.js`「說明選單（h）關掉彈窗」、`board_list_keys.test.js`、offline
   `easy-reading-list.offline.spec.js`「leaving the help menu keeps the list where the reader scrolled it, every frame」（逐幀量視口）。
+
+## 從好讀頁要求的說明：彈窗與 PTT 分離（#222）
+
+從好讀頁（文章、文章列表、看板列表平滑捲動、首頁儀表板）要求、而且 hold 住的那一次（`expect()` 時 `holding` 為真 ⇒ `_detachable`）
+不再讓彈窗一直接著 PTT 的說明畫面，而是讀完就離開，彈窗留著當成一份「這一頁可以按的鍵」清單：
+
+- **立刻送說明鍵**：兩種列表的 `_beginHelp` 都以 `noSync` 送 `h`，前面沒有游標同步那一腿；看板列表還會砍掉線上的背景抓取
+  （`flushPendingKind` 掉排隊的 fetch、`_expediteBackground` 讓在途那筆不等完）。文章列表的 `_enterFunctionMode` 本來就 flush 佇列。
+- **先顯示、後補頁**：第 1 頁靜置就開彈窗，其餘頁在彈窗後面照舊一次一個 PgDn 補。
+- **分離**：全部頁讀到（或補頁逾時放棄）⇒ 在彈窗後面送一個 `q`（phase `detaching`；線上有命令在途就延後重試）。
+  畫面離開說明選單 ⇒ phase `detached`：解除 hold（`navigationEnded` 補畫）、把同一幀交給要求者的 `resumeAfterHelp(true)`、閱讀紀錄書籤以「離開」交回。
+  整段好讀頁都留在畫面上，原生的說明幀一張都不畫；hold 一路涵蓋 `q` 的來回與頁面接回。
+  `q` 之後還是說明畫面且超過 `LEAVE_TIMEOUT_MS` ⇒ `_toNative`（彈窗收起、交給原生）。
+- **點一項**：彈窗收起，把該項的**第一個鍵**（`helpItemKey`：`^X`→Ctrl+X、`←`／`Enter`／`PgDn`…→ 同名鍵、單一字元→ 本身）
+  經 `view.sendKeyAsUser` 交給這一頁自己的按鍵處理，與實體鍵盤同一條分派（搜尋鍵會開搜尋彈窗、列表鍵走列表…）。
+  分離完成之前點的：彈窗先收起、`q` 立刻送出（補頁中也一樣），那個鍵等 PTT 離開說明畫面、頁面接回之後（`setTimeout 0`）才打；
+  中途掉進 `_toNative` 等退路 ⇒ 這個鍵丟掉。
+- **關閉**：已分離的彈窗關掉什麼都不送；分離之前關 ⇒ 收起並立刻送 `q`。
+- **不可用的項目**：每一頁提供 `wouldRefuse(key)`，沿用自己的分類表（`ListSession`／`BoardListSession` 的 `_classifyKey`＋搜尋鍵、
+  文章的 `articleWouldRefuse`、首頁的 `homeKeyAction`）。這一頁會擋下的鍵、說明鍵本身（`h`／`H`／`?`，顯示為不可用而不是拿掉）、
+  沒有單一鍵的項目（如 `1-9`）都是不可用：變暗、不能聚焦、`disabled`＋`aria-disabled`，鍵盤 ↑↓ 跳過。小天使在這種造訪裡不給（snapshot `angel` 為假）。
+- **列表的選取不動**：`ListSession` 在 `_beginHelp` 記下讀者的選取（`_helpSelection`），`resumeAfterHelp` 接回後還原，PTT 的游標只當同步起點；
+  看板列表的 `_resumeHeldList` 本來就從 `_helpList` 還原選取。
+- 不是從好讀頁要求的說明選單照舊走上面的「接著 PTT」流程（Home→PgDn→↓→Enter 執行、`q` 離開）；不快取、動畫不變。
+- 守護：`tests/unit/help_menu.test.js`「the detached sheet (#222)」、`help_menu_modal.test.jsx`「a detachable visit」、
+  `board_list_keys.test.js`、`reading_record_list.test.js`「help from the list」、`home_dashboard.test.js`「help at home」、
+  `easy_reading_leftover_key.test.js`（`articleWouldRefuse`）；offline `easy-reading-list`、`board_list`、`mobile_home_dashboard`（逐幀、送出的 bytes）。
 
 ## UI
 

@@ -14,8 +14,8 @@
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { loadCassette, bootScenario, waitFed } = require('../helpers/replay');
-const { waitRectStable } = require('../helpers/layout');
-const { drawHelpPage } = require('../helpers/help_menu');
+const { waitRectStable, installPaintedFrameProbe } = require('../helpers/layout');
+const { answerHelpKey, drawHelpPage } = require('../helpers/help_menu');
 
 const smooth = loadCassette('scn-boardlist-class');
 const prompt = loadCassette('scn-board-search-prompt');
@@ -140,18 +140,17 @@ test.describe('看板列表平滑捲動（scenario 重放）', () => {
     });
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     await settledActive(page);
-    // 素材已用完，回不了游標同步跳號 ⇒ 確認 PTT 的游標就在選取列（Home 剛落地），`h` 直接送出。
-    expect(await page.evaluate(() => {
-      const s = window.__app.boardListSession;
-      return s._selectedNum === s._serverNum;
-    })).toBe(true);
+    // #222: `h` goes out at once (no cursor sync first). Every painted frame
+    // (helpers/layout.installPaintedFrameProbe) from here to the end is sampled.
+    await installPaintedFrameProbe(page);
     await page.evaluate(() => {
       // What the reader sees: the first board row in the viewport and how far
       // it sits from the viewport's top (scrollTop alone also moves when the
       // scroll reserve above board 1 is resized, without anything moving).
       window.__viewOf = () => {
         const app = window.__app;
-        const v = document.querySelector('#mainContainer .listBodyView');
+        const main = document.getElementById('mainContainer');
+        const v = main.querySelector('.listBodyView');
         let first = null;
         let off = null;
         if (v) {
@@ -172,44 +171,85 @@ test.describe('看板列表平滑捲動（scenario 重放）', () => {
           state: app.boardListSession.state,
           mode: app.buf.listRenderMode,
           holding: app.helpMenu.holding,
+          phase: app.helpMenu.phase,
+          sheet: !!document.querySelector('[data-help-item]'),
+          helpDrawn: main.textContent.includes('操作說明 (Help)'),
         };
       };
       window.__helpFrames = [];
-      let after = -1;
-      const tick = () => {
-        const f = window.__viewOf();
-        window.__helpFrames.push(f);
-        if (after < 0 && window.__helpClosed && f.state === 'active' && f.mode === 'buffer') after = 0;
-        if (after >= 0 && ++after > 8) return;
-        requestAnimationFrame(tick);
-      };
-      tick();
+      const sample = () => window.__helpFrames.push(window.__viewOf());
+      window.__stopHelpFrames = () => window.__paintedFrame.remove(sample);
+      window.__paintedFrame.add(sample);
     });
     const before = await page.evaluate(() => window.__viewOf());
     expect(before.first).not.toBe(1); // scrolled off Home's landing
-    const sentBeforeHelp = await page.evaluate(() => window.__replay.sent.length);
-    await ptt.sendKey(page, 'h');
-    await expect
-      .poll(() => page.evaluate((n) => window.__replay.sent.slice(n), sentBeforeHelp))
-      .toEqual(['h\f']);
-    expect(await page.evaluate(() => window.__app.helpMenu.holding)).toBe(true);
-    await drawHelpPage(page, 1);
-    await expect(page.locator('[data-help-item]').first()).toBeVisible();
-    await page.evaluate(() => { window.__helpClosed = true; });
+    const sel0 = await page.evaluate(() => window.__app.boardListSession._selectedNum);
+
+    // One help visit up to the detach: h, PgDn for page 2, then the sheet's own
+    // `q`; PTT answers it by redrawing the list under the sheet as it stood
+    // (the cassette's fed bytes once more; the last of them is that page).
+    const openDetached = async () => {
+      const sent0 = await page.evaluate(() => window.__replay.sent.length);
+      const sentSince = () => page.evaluate((n) => window.__replay.sent.slice(n), sent0);
+      await answerHelpKey(page, 'h\f');
+      await ptt.sendKey(page, 'h');
+      await expect.poll(sentSince).toEqual(['h\f']);
+      expect(await page.evaluate(() => window.__app.helpMenu.holding)).toBe(true);
+      const { total } = await drawHelpPage(page, 1);
+      await expect(page.locator('[data-help-item]').first()).toBeVisible();
+      // The rest of the pages behind the sheet, one PgDn each (how many
+      // depends on the terminal's rows), then the sheet's own `q`.
+      const bytes = ['h\f'];
+      for (let n = 2; n <= total; ++n) {
+        bytes.push('\x1b[6~');
+        await expect.poll(sentSince).toEqual(bytes);
+        await drawHelpPage(page, n);
+      }
+      bytes.push('q');
+      await expect.poll(sentSince).toEqual(bytes);
+      await page.evaluate((recvs) => {
+        window.__app.onData(recvs.slice(0, window.__replay.fed).map((r) => atob(r)).join(''));
+      }, smooth.steps.map((st) => st.recv));
+      await page.waitForFunction(() => window.__app.helpMenu.phase === 'detached' && !window.__app.helpMenu.holding);
+      await settledActive(page);
+      await expect(page.locator('[data-help-item]').first()).toBeVisible();
+      // `/` is refused on the board list, so its row is dimmed; `s` is kept.
+      await expect(page.locator('[data-help-item]', { hasText: '搜尋看板中文關鍵字' })).toBeDisabled();
+      await expect(page.locator('[data-help-item]', { hasText: '搜尋全站看板名稱' })).toBeEnabled();
+      return { sentSince, bytes };
+    };
+    const framesSoFar = async () => {
+      const n = await page.evaluate(() => window.__helpFrames.length);
+      await page.waitForFunction((k) => window.__helpFrames.length > k + 8, n);
+      return page.evaluate(() => window.__helpFrames.slice());
+    };
+
+    // (a) Close the detached sheet: nothing more is sent.
+    let { sentSince, bytes } = await openDetached();
     await page.keyboard.press('Escape');
     await expect(page.locator('[data-help-item]')).toHaveCount(0);
-    // PTT 回應離開：把說明選單底下那份列表原樣重畫（素材已餵過的 bytes 重來一次，終局就是那一頁）。
-    await page.evaluate((recvs) => {
-      window.__app.onData(recvs.slice(0, window.__replay.fed).map((r) => atob(r)).join(''));
-    }, smooth.steps.map((st) => st.recv));
-    await page.waitForFunction(() => {
-      const f = window.__helpFrames;
-      return f.length > 8 && f.slice(-9).every((x) => x.state === 'active' && x.mode === 'buffer');
-    });
-    const frames = await page.evaluate(() => window.__helpFrames);
-    // 每一幀：看到的第一列與它的位置不動、緩衝沒被丟掉重建。
+    let frames = await framesSoFar();
+    expect(await sentSince()).toEqual(bytes);
+    expect(await page.evaluate(() => window.__app.boardListSession._selectedNum)).toBe(sel0);
+
+    // (b) Pick a kept command (↓): it is typed into the list, which moves its
+    // selection locally and sends PTT nothing. The frames checked end at the
+    // pick: what the key does to the view afterwards is the list's own.
+    ({ sentSince, bytes } = await openDetached());
+    frames = await framesSoFar();
+    await page.evaluate(() => window.__stopHelpFrames());
+    await page.locator('[data-help-item]', { hasText: '向下移動' }).click();
+    await expect(page.locator('[data-help-item]')).toHaveCount(0);
+    await expect
+      .poll(() => page.evaluate(() => window.__app.boardListSession._selectedNum))
+      .toBe(sel0 + 1);
+    expect(await sentSince()).toEqual(bytes);
+
+    // Every frame: the list on the page, never PTT's help screen, the first row
+    // seen and its place unchanged, the buffer never dropped and rebuilt.
+    expect(frames.some((f) => f.phase === 'detached' && f.sheet)).toBe(true);
     const moved = frames.filter(
-      (f) => f.first !== before.first || Math.abs(f.off - before.off) > 1 || f.buffered !== before.buffered
+      (f) => f.helpDrawn || f.first !== before.first || Math.abs(f.off - before.off) > 1 || f.buffered !== before.buffered
     );
     expect(moved, JSON.stringify({ before, frames })).toEqual([]);
 

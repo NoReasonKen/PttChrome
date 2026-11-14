@@ -285,7 +285,9 @@ test.describe('手機首頁儀表板（離線重放）', () => {
   // The owner's phone test (#191): `h` at home opened the help sheet, but the
   // page behind it switched to PTT's own help screen. The dashboard is the page
   // under the sheet for the whole visit, and no native help frame is ever drawn.
-  test('首頁用軟鍵盤打 h ⇒ 說明選單 sheet；從打字到關掉，每一幀面板都在、原生說明畫面一幀都沒畫', async ({ page }) => {
+  // #222: once both help pages are read, the sheet sends one `q` behind itself
+  // and stays open, detached from PTT; only the keys home takes can be picked.
+  async function openDetachedHelp(page) {
     await bootHome(page);
     await drawMainMenu(page);
     await answerFetch(page);
@@ -299,9 +301,11 @@ test.describe('手機首頁儀表板（離線重放）', () => {
         const lines = [...document.querySelectorAll('[data-type="bbsline"]')];
         window.__homeFrames.push({
           dashboard: !!r && r.height > 0 && getComputedStyle(dash).visibility !== 'hidden',
+          scrollTop: dash ? Math.round(dash.scrollTop) : null,
           helpDrawn: lines.some((el) => el.textContent.includes('操作說明 (Help)')),
           sheet: !!document.querySelector('[data-sheet="help"]'),
           holding: window.__app.helpMenu.holding,
+          phase: window.__app.helpMenu.phase,
         });
       };
       window.__stopHomeFrames = () => window.__paintedFrame.remove(sample);
@@ -316,28 +320,61 @@ test.describe('手機首頁儀表板（離線重放）', () => {
     const { perPage } = await drawHelpPage(page, 1, { caption: '主功能表' });
     await expect(page.locator('[data-sheet="help"] [data-help-item]')).toHaveCount(perPage);
     await expect.poll(() => peekCapture(page)).toBe('\x1b[6~');
-    await takeCapture(page);
+    expect(await takeCapture(page)).toBe('\x1b[6~');
     await drawHelpPage(page, 2, { caption: '主功能表' });
     await expect(page.locator('[data-sheet="help"] [data-help-item]')).toHaveCount(ITEMS.length);
-    const b = await waitRectStable(page, '[data-sheet="help"] [data-help-close]');
-    await page.touchscreen.tap(b.left + b.width / 2, b.top + b.height / 2);
+    // Every page read: one `q` behind the sheet, then PTT's main menu again.
     await expect.poll(() => peekCapture(page)).toBe('q');
     expect(await takeCapture(page)).toBe('q');
     await drawMainMenu(page);
-    await expect(page.locator('[data-sheet="help"]')).toHaveCount(0);
-    await page.waitForFunction(() => !window.__app.helpMenu.holding);
-    await page.waitForFunction(() => window.__homeFrames.length > 8);
+    await page.waitForFunction(() => window.__app.helpMenu.phase === 'detached' && !window.__app.helpMenu.holding);
+    await expect(page.locator('[data-sheet="help"]')).toBeVisible();
+    // Home takes only its board search keys (s, S); every other row is dimmed.
+    await expect(page.locator('[data-sheet="help"] [data-help-item]:not([data-unavailable])')).toHaveCount(2);
+    await expect(page.locator('[data-sheet="help"] [data-help-item][data-unavailable]').first()).toBeDisabled();
+    return page.evaluate(() => window.__homeFrames[0]);
+  }
+
+  async function homeFrames(page) {
     const before = await page.evaluate(() => window.__homeFrames.length);
     await page.waitForFunction((n) => window.__homeFrames.length > n + 8, before);
-    const frames = await page.evaluate(() => {
+    return page.evaluate(() => {
       window.__stopHomeFrames();
       return window.__homeFrames;
     });
+  }
+
+  function expectHomeHeld(frames, first) {
     expect(frames.some((f) => f.sheet)).toBe(true);
     expect(frames.some((f) => f.holding)).toBe(true);
+    expect(frames.some((f) => f.phase === 'detached' && f.sheet)).toBe(true);
     expect(frames.filter((f) => !f.dashboard)).toEqual([]);
     expect(frames.filter((f) => f.helpDrawn)).toEqual([]);
+    expect(frames.filter((f) => f.scrollTop !== first.scrollTop)).toEqual([]);
+  }
+
+  test('首頁用軟鍵盤打 h ⇒ 說明選單 sheet；讀完送一個 q 分離，關掉什麼都不送，每一幀面板都在、原生說明畫面一幀都沒畫', async ({ page }) => {
+    const first = await openDetachedHelp(page);
+    const b = await waitRectStable(page, '[data-sheet="help"] [data-help-close]');
+    await page.touchscreen.tap(b.left + b.width / 2, b.top + b.height / 2);
+    await expect(page.locator('[data-sheet="help"]')).toHaveCount(0);
+    expectHomeHeld(await homeFrames(page), first);
     await expect(dashboard(page)).toBeVisible();
     expect(await takeCapture(page)).toBe('');
+  });
+
+  test('分離後點「找看板」⇒ sheet 收起、交給首頁開看板搜尋，PTT 只收到 h、PgDn、q，再來是 s', async ({ page }) => {
+    const first = await openDetachedHelp(page);
+    const row = page.locator('[data-sheet="help"] [data-help-item]', { hasText: '找看板' });
+    await expect(row).toBeEnabled();
+    await row.tap();
+    await expect(page.locator('[data-sheet="help"]')).toHaveCount(0);
+    // Home's own `s`: the board search sheet, which opens PTT's board-select
+    // prompt with that same `s` (exactly what typing `s` at home sends).
+    await expect(page.locator('[data-sheet="search"]')).toBeVisible();
+    expectHomeHeld(await homeFrames(page), first);
+    // This replay draws no board-select prompt, so on a slow run the open step
+    // times out and the queue asks PTT for a redraw (^L) after the `s`.
+    expect(await takeCapture(page)).toMatch(/^s\f?$/);
   });
 });

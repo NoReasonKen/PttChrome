@@ -36,6 +36,18 @@
   outline-offset: -2px;
 }
 
+/* 這個頁面不收的指令（#222）：變暗、不能點、沒有懸停底色。 */
+.helpMenuItem[data-unavailable],
+.helpMenuList[data-mobile] .helpMenuItem[data-unavailable] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.helpMenuItem[data-unavailable]:hover,
+.helpMenuList[data-mobile] .helpMenuItem[data-unavailable]:active {
+  background: transparent;
+}
+
 .helpMenuKeys {
   display: flex;
   flex-wrap: wrap;
