@@ -63,11 +63,16 @@ test('keyboard changes keep a prepared list intact and reveal it at the real lis
   await enterAlpha(page, { portrait: true });
   const before = await page.locator(PREPARED).boundingBox();
   await page.locator('[data-key="__keys"]').tap();
+  const articleBefore = await waitRectStable(page, MAIN, { fullRect: true });
+  const insetBefore = await page.evaluate(() => window.__app.view.keyboardInset);
   await page.locator('[data-key="__keyboard"]').tap();
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('pttandroid:ime', { detail: { inset: 200 } })));
-  await expect.poll(() => page.evaluate(() => window.__app.view.keyboardInset)).toBeGreaterThanOrEqual(200);
+  await expect.poll(() => page.evaluate(() =>
+    document.documentElement.style.getPropertyValue('--vv-kb-inset')
+  )).toBe('200px');
+  expect(await page.evaluate(() => window.__app.view.keyboardInset)).toBe(insetBefore);
   const article = await waitRectStable(page, MAIN, { fullRect: true });
-  expect(article.height).toBeLessThan(before.height);
+  expect(article).toEqual(articleBefore);
   expect((await page.locator(PREPARED).boundingBox()).height).toBe(before.height);
   await page.screenshot({ path: testInfo.outputPath('keyboard-article.png') });
   const contact = await beginArticleTouch(page, { x: 20, y: article.top + 50 });

@@ -299,7 +299,7 @@ describe('App 手機模式：軟鍵盤與 visualViewport', () => {
     input.remove();
     vi.unstubAllGlobals();
     delete document.documentElement.clientHeight;
-    document.documentElement.style.removeProperty('--kb-inset');
+    document.documentElement.style.removeProperty('--vv-kb-inset');
     document.documentElement.style.removeProperty('--term-bottom-inset');
   });
 
@@ -318,14 +318,27 @@ describe('App 手機模式：軟鍵盤與 visualViewport', () => {
     return app;
   };
 
-  // 終端機的底部 inset ＝ 軟鍵盤 ＋ 常駐的底部工具列（＋展開中的按鍵面板）；
-  // --kb-inset 只算軟鍵盤（工具列自己靠它浮在鍵盤上）。
-  test('鍵盤升起：終端機與工具列一起往上推', () => {
+  // real-input: tests/e2e/android/mobile_input.android.spec.js
+  test('the terminal keyboard covers the toolbar without moving reading content', () => {
     const app = makeApp();
+    app._readSafeInsets = () => ({ top: 24, bottom: 16 });
+    app.setMobileKeysPanelInset(156);
+    const before = app.view.setKeyboardInset.mock.lastCall[0];
     app.toggleSoftKeyboard();
     setVV(480);
-    expect(app.view.setKeyboardInset).toHaveBeenLastCalledWith(320 + MOBILE_TOOLBAR_PX);
-    expect(document.documentElement.style.getPropertyValue('--kb-inset')).toBe('320px');
+    expect(app.view.setKeyboardInset).toHaveBeenLastCalledWith(before);
+    expect(before).toBe(MOBILE_TOOLBAR_PX + 156 + 16);
+    expect(document.documentElement.style.getPropertyValue('--safe-bottom')).toBe('16px');
+    expect(app.softKeyboard).toBe(true);
+    expect(document.documentElement.style.getPropertyValue('--vv-kb-inset')).toBe('320px');
+  });
+
+  test('form inputs still receive keyboard overlap without moving the terminal', () => {
+    const app = makeApp();
+    setVV(480);
+    expect(app.softKeyboard).toBe(false);
+    expect(app.view.setKeyboardInset).toHaveBeenLastCalledWith(MOBILE_TOOLBAR_PX);
+    expect(document.documentElement.style.getPropertyValue('--vv-kb-inset')).toBe('320px');
   });
 
   test('沒有軟鍵盤時終端機也排在工具列上方', () => {
@@ -333,15 +346,14 @@ describe('App 手機模式：軟鍵盤與 visualViewport', () => {
     expect(app.view.setKeyboardInset).toHaveBeenLastCalledWith(MOBILE_TOOLBAR_PX);
   });
 
-  // 底部浮動提示（term_view 的 flashListHint／讀取中／T2 輸入框）靠它讓開工具列與軟鍵盤
-  // （bottom_overlays_inset.test.js）。
+  // Terminal prompts reserve the toolbar, independently of keyboard overlap.
   test('--term-bottom-inset ＝ 終端機的底部 inset；離開手機模式歸零', () => {
     const app = makeApp();
     const v = () => document.documentElement.style.getPropertyValue('--term-bottom-inset');
     expect(v()).toBe(MOBILE_TOOLBAR_PX + 'px');
     app.toggleSoftKeyboard();
     setVV(480);
-    expect(v()).toBe(320 + MOBILE_TOOLBAR_PX + 'px');
+    expect(v()).toBe(MOBILE_TOOLBAR_PX + 'px');
     app.toggleSoftKeyboard();
     setVV(800);
     app.mobileLayoutMode = 'off';
@@ -363,11 +375,10 @@ describe('App 手機模式：軟鍵盤與 visualViewport', () => {
     expect(app.view.setTopInset).toHaveBeenLastCalledWith(0);
   });
 
-  test('按鍵面板展開：面板高度併進終端機底部 inset（不改 --kb-inset），收起歸還', () => {
+  test('按鍵面板展開：面板高度併進終端機底部 inset，收起歸還', () => {
     const app = makeApp();
     app.setMobileKeysPanelInset(156);
     expect(app.view.setKeyboardInset).toHaveBeenLastCalledWith(MOBILE_TOOLBAR_PX + 156);
-    expect(document.documentElement.style.getPropertyValue('--kb-inset')).toBe('0px');
     app.setMobileKeysPanelInset(0);
     expect(app.view.setKeyboardInset).toHaveBeenLastCalledWith(MOBILE_TOOLBAR_PX);
   });

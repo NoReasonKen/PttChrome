@@ -5,7 +5,7 @@
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { findCassettes, bootOffline, replayCassette, waitScreenSettled } = require('../helpers/replay');
-const { waitRectStable } = require('../helpers/layout');
+const { waitRectStable, waitPreviewsSettled } = require('../helpers/layout');
 const { expectKindLabelsFit } = require('../helpers/search_kinds');
 
 const articles = findCassettes('article');
@@ -195,6 +195,52 @@ test.describe('手機底部工具列（離線重放）', () => {
 
   test.describe('文章好讀', () => {
     test.skip(!articles.length, '尚無 article cassette');
+
+    // The native event is the boundary substitute; real IME coverage lives in
+    // tests/e2e/android/apk.android.spec.js and mobile_input.android.spec.js.
+    test('native keyboard overlap preserves article geometry and reading position', async ({ page }) => {
+      await page.addInitScript(() => { window.__PTT_ANDROID__ = { version: 'test' }; });
+      await bootOffline(page, ptt);
+      await ptt.applyPrefs(page, { enableEasyReading: true });
+      await replayCassette(page, articles[0], { easyReading: true });
+      await byKey(page, '__keys').tap();
+      await waitRectStable(page, '#mobileKeypad');
+      await byKey(page, 'PageDown').tap();
+      await expect.poll(() => scrollTop(page)).toBeGreaterThan(0);
+      await waitPreviewsSettled(page);
+      await waitRectStable(page, '#mainContainer');
+      const geometry = () => page.evaluate(() => {
+        const app = window.__app;
+        const rect = (el) => {
+          const r = el.getBoundingClientRect();
+          return { top: r.top, bottom: r.bottom, height: r.height };
+        };
+        return {
+          toolbar: rect(document.querySelector('.mobileToolbarBar')),
+          panel: rect(document.querySelector('#mobileKeypad')),
+          reading: rect(app.view.mainDisplay),
+          scroll: app.view.mainDisplay.scrollTop,
+          rows: app.buf.rows,
+          height: innerHeight,
+        };
+      });
+      await byKey(page, '__keyboard').tap();
+      const before = await geometry();
+      const reportOverlap = (inset) => page.evaluate((inset) => {
+        window.dispatchEvent(new CustomEvent('pttandroid:ime', { detail: { inset } }));
+      }, inset);
+      await reportOverlap(320);
+      expect(await page.evaluate(() => window.__app.softKeyboard)).toBe(true);
+      expect(await geometry()).toEqual(before);
+      await reportOverlap(0);
+      expect(await page.evaluate(() => window.__app.softKeyboard)).toBe(false);
+      expect(await inputMode(page)).toBe('none');
+      expect(await geometry()).toEqual(before);
+      await byKey(page, '__keyboard').tap();
+      await reportOverlap(280);
+      expect(await page.evaluate(() => window.__app.softKeyboard)).toBe(true);
+      expect(await geometry()).toEqual(before);
+    });
 
     test('文章裡出現推、沒有搜尋；tap 不叫鍵盤；PgDn 捲動好讀、不搶 #t 焦點；鍵盤鈕切 inputmode', async ({ page }) => {
       test.setTimeout(90000);

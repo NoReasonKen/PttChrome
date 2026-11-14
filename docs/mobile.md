@@ -16,7 +16,7 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
 | Phase | 內容 | 狀態 |
 |---|---|---|
 | 1 | tap 不叫鍵盤＋虛擬按鍵（2026-10 起為底部工具列）＋鍵盤鈕＋viewport 解鎖縮放 | CONFIRMED（Android 真機實測） |
-| 2 | 版面不被切（所有畫面縮到塞滿）＋軟鍵盤不蓋底列 | 已實作（軟鍵盤不蓋底列：Android 模擬器 e2e 已驗 `mobile_input`；真機待實測） |
+| 2 | Screen fitting; the terminal keyboard overlays stationary content and controls | Owner accepted on the phone; automated Android coverage runs in CI |
 | 3 | 文章好讀：正常字級＋超寬換行（`mobileReflow`），reflow 下關掉以 col 判斷的滑鼠區域 | 已實作（換行與不橫向溢出：Android 模擬器 e2e 已驗 `mobile_chrome`；真機待實測） |
 | 4 | 文章列表／看板列表：手機卡片版（固定高 `K*chh` 保住 `list_scroll` 等高假設） | 已實作（真機 `guess`：待實測） |
 | 5 | 選單（主功能表＋所有 domenu 子選單）：選單項大按鈕（ANSI 圖仍縮小格線） | 已實作（真機 `guess`：待實測） |
@@ -46,13 +46,11 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
   偵測：看過 inset>0 之後回到 0 ⇒ `softKeyboard` 歸零、通知工具列（`onMobileChange(fn(mobile, kb, sel, ctrl))`）。
   「看過出現」是必要條件：剛按鍵盤鈕那幾幀鍵盤還沒升起。
 - 底部導覽（`src/components/MobileToolbar`，掛在 ContextMenu 內，`modalOpen` 時隱藏；Material bottom navigation，icon＝`@tabler/icons-react`）：
-  - 固定貼底（`bottom: var(--kb-inset)`、`padding-bottom: var(--safe-bottom)`），bar 高 `MOBILE_TOOLBAR_PX`（48，與 CSS `.mobileToolbarBar` 一致，unit 守）。
+  - Fixed at `bottom: 0`, with `padding-bottom: var(--safe-bottom)`; the phone keyboard covers it rather than moving it. Bar height is `MOBILE_TOOLBAR_PX` (48), matching `.mobileToolbarBar`.
     **常駐 ⇒ 從列數扣**：`App._applyMobileGeometry` 用 `mobile_layout.mobileRowsHeight(h, safe)`（扣 App Bar＋工具列＋safe-area）算 rows；
-    位置由 `_onVisualViewport` 經 `mobileChromeInsets` 寫 `view.setTopInset`／`setKeyboardInset`（下＝軟鍵盤＋工具列＋展開中的按鍵面板＋safeBottom，鍵盤升起時 safeBottom＝0）。
-    `--kb-inset` 只算軟鍵盤。`innerBounds` 本身不扣（測試以 `Object.create(App.prototype)` 直接塞它）。
+    `_onVisualViewport` applies `mobileChromeInsets` through `view.setTopInset` / `setKeyboardInset`: the bottom reserves the toolbar, expanded key panel and safe area, independently of keyboard overlap. `innerBounds` remains unmodified.
     同一個底部 inset 也寫進 `--term-bottom-inset`：term_view 的底部浮動提示（`flashListHint`、「讀取中…」、T2 說明列與輸入框）
-    都從它往上算（`aboveBottomInset`），圖片上傳的進度／結果卡（`ImageUpload.css`）也是。工具列 z-index 比提示高，沒讓開就整個被蓋住；軟鍵盤只縮 visual viewport，
-    fixed 的輸入框會落在鍵盤後面（守護 `bottom_overlays_inset.test.js`）。新增貼底的浮動元件一律照這個辦法。
+    use `aboveBottomInset`, as do image-upload progress/result cards. These terminal prompts stay above the toolbar/key panel but may be covered by the phone keyboard. Editable overlays use their separate `--vv-kb-inset` avoidance path.
   - 動作依畫面（`mobile_toolbar.toolbarContextFromFacts`，App 在 `screenSettled` 重算、`onScreenContextChange(fn)` 有變才通知；鍵出處 `mbbsd/more.c pager_common_cmds`、`bbs.c` Ctrl('P')）：
 
     **固定 6 格**（`mobile_toolbar.toolbarSlots`）：按鈕位置不隨畫面變——有條件出現＋flex 等寬會讓同一顆按鈕
@@ -124,12 +122,13 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
   值裡沒有 `termSizeMode` 不動尺寸。
 - **手機欄數同樣恆 80，不送窄欄 NAWS**：pttbbs 雖已允許 20 欄（`4488584e`），但畫面層沒跟著重排，
   理由見 `docs/terminal-size.md` §3。
-- **軟鍵盤蓋住底列（PTT 的輸入列）**：**不可**加 `interactive-widget=resizes-content`（鍵盤開關變成
-  layout resize ⇒ 重算字級、改列數、重送 NAWS）。維持 Android 預設 `resizes-visual`（layout 高度不變 ⇒
-  列數穩定），`App._onVisualViewport` 以 `mobile_layout.keyboardInset` 算被蓋住的高度 →
-  `view.setKeyboardInset` → `term_size.termLayoutOffsets({bottomInset})`：在可視區內置中，放不下就底對齊
-  （頂端列被推出畫面）。同一個值寫進 CSS 變數 `--kb-inset` 推高底部工具列（fixed 錨在 layout viewport）；終端機的 inset 另加工具列與按鍵面板（見上）。
-  只在 `softKeyboard` 時算；`visualViewport.scale ≠ 1`（雙指縮放）不算。
+- **The key-panel keyboard overlays the reading page.** Keep the toolbar, key panel,
+  reading position and terminal geometry unchanged as the keyboard opens or closes.
+  Lower PTT input prompts and controls may be covered until the keyboard is dismissed.
+  Do not add `interactive-widget=resizes-content`: changing layout height would change
+  terminal rows and send NAWS. `keyboardInset` still detects keyboard dismissal, while
+  `overlayKeyboardInset` supplies `--vv-kb-inset` for search sheets and comment inputs.
+  Do not disable those form-specific avoidance paths or keyboard visibility tracking.
 - **開站原點**：`#BBSWindow` 顯示前量到的 `firstGridOffset` 是 0；`main.jsx` 顯示後呼叫
   `onWindowResize({ immediate: true })` 跳過 resizer 的 500ms debounce（手機與桌機 fixed-font-size 都有 resizer）。
 
