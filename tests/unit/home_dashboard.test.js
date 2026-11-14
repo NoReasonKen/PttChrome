@@ -31,11 +31,8 @@ import {
 } from "../../src/js/home_dashboard";
 import { serializedOpHint } from "../../src/js/serialized_op_gate";
 import { HINT_ERROR } from "../../src/js/status_hint";
-<<<<<<< HEAD
 import { pinHistoryEntries, unpinHistoryEntries, moveHistoryEntries } from "../../src/js/history_entries";
-=======
 import { UNSUPPORTED_KEY_HINT, unsupportedPasteHint, unsupportedTextHint } from "../../src/js/unsupported_hint";
->>>>>>> 6e259e39 (Refuse keys easy reading does not present at home)
 
 const ROWS = 24;
 const ZA_FAV = "\x1af";
