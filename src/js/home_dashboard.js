@@ -3,8 +3,9 @@
 // docs/home-dashboard.md —— 改這支之前先讀它。
 //
 // 三條規則：
-//   1. **不是 modal**：鍵盤照常進 #t 送給 PTT。使用者在面板開著時打任何字 ⇒ 面板收起、
-//      那個鍵照原生走（主功能表的快捷鍵、↑↓ 都還在）。
+//   1. **不是 modal**：鍵盤照常進 #t 送給 PTT，面板留著（#191：好讀開著時沒有切回原生
+//      主選單的入口）。鍵帶到哪個畫面，就由那個畫面的好讀呈現或已記錄的好讀缺口接手（#161）；
+//      面板只在畫面離開主功能表時收起。
 //   2. **認不出 ⇒ 原生**：只在「標題列是主功能表＋畫面上有 (F)avorite 選單項＋游標不在
 //      輸入欄」時出現；抓我的最愛的任何一步落地不符就停手，人留在 PTT 給的畫面上。
 //   3. **每個動作都是原生鍵**：抓最愛＝Ctrl+Z f（menu.c#ZA_Select 的「我的最愛」）→ 讀頁
@@ -326,10 +327,9 @@ export function applyHomeAnchor(container, record) {
   return true;
 }
 
-// 使用者按的這個鍵要不要收起面板。純修飾鍵、F 鍵（我們自己的快捷鍵，送不到 PTT）不算；
-// 重新整理鍵（⌘R）也不算——它要由 screen_refresh 認成首頁（重抓我的最愛），面板先收起
-// 的話就認不出來、交還瀏覽器整頁重載（＝斷線）。
-export function keyDismissesHome(e) {
+// 使用者按的這個鍵會不會送到 PTT（會的話，等著的自動抓我的最愛這次先不送，免得和它搶線）。
+// 純修飾鍵、F 鍵（我們自己的快捷鍵）、重新整理鍵（⌘R，由 screen_refresh 接成首頁的重抓）不算。
+export function keyGoesToPtt(e) {
   if (!e || !e.key) return false;
   if (isRefreshKeyEvent(e)) return false;
   if (/^(Shift|Control|Alt|Meta|CapsLock|Dead|Process|Unidentified)$/.test(e.key)) return false;
@@ -365,9 +365,7 @@ function enabled() {
 export function HomeDashboard(core) {
   this._core = core;
   this._listeners = new Set();
-  this._atHome = false;
   this._recentVisitBoard = null;
-  this._dismissed = false;
   this._autoTimer = null;
   this._transitTimer = null;
   // 閱讀紀錄交回的待還原錨（面板下一次畫出來時套用，見 applyPendingViewport）。
@@ -394,12 +392,13 @@ export function HomeDashboard(core) {
     });
   const input = core.inputArea;
   if (input && input.addEventListener) {
-    // capture：在 term_view 的處理之前看到，但**不吞**——鍵照常送給 PTT。
+    // capture：在 term_view 的處理之前看到，但**不吞**——鍵照常送給 PTT，面板留著。
+    // 使用者的鍵在線上 ⇒ 等著的自動抓先不送；PTT 回應落地（settle）時重新排程。
     input.addEventListener('keydown', function(e) {
-      if (keyDismissesHome(e)) self.dismiss();
+      if (keyGoesToPtt(e)) self._clearAutoTimer();
     }, true);
     input.addEventListener('input', function() {
-      self.dismiss();
+      self._clearAutoTimer();
     }, true);
   }
 }
@@ -492,19 +491,20 @@ HomeDashboard.prototype = {
     this._transitTimer = null;
     const transit = home && navigating;
     if (!home || transit) {
-      this._atHome = false;
-      this._dismissed = false;
       this._clearAutoTimer();
       this._set({ visible: false });
       if (transit) this._transitTimer = setTimeout(() => this._onSettled(), HOME_TRANSIT_RECHECK_MS);
       return;
     }
-    if (!this._atHome) {
-      this._atHome = true;
-      this._dismissed = false;
-    }
-    this._set({ visible: !this._dismissed, newMail: hasNewMail(facts.rowTexts[0]) });
-    if (this._state.visible) this._scheduleAutoFetch();
+    this._set({ visible: true, newMail: hasNewMail(facts.rowTexts[0]) });
+    this._scheduleAutoFetch();
+  },
+
+  // The easy-reading switch changed: judge the screen now, since no settle comes
+  // while the reader sits on the main menu. The switch is the one way to PTT's
+  // own main menu (#191).
+  evaluateNow: function() {
+    this._onSettled();
   },
 
   // 指令面板的「最近去過／我的最愛」（command_palette.quickBoardItems）：只讀現成資料。
@@ -627,16 +627,6 @@ HomeDashboard.prototype = {
       if (!isHomeScreen(self._facts())) return;
       if (shouldFetchFavorites(self._state, Date.now())) self.fetchFavorites();
     }, AUTO_FETCH_DELAY_MS);
-  },
-
-  // 使用者要原生主功能表（按鈕、或直接打字）。這一趟留在主功能表期間不再出現；
-  // 離開再回來（或重新整理頁面）才會再出現。
-  dismiss: function() {
-    if (!this._state.visible || this._state.fetching) return;
-    this._dismissed = true;
-    this._pendingViewport = null;
-    this._clearAutoTimer();
-    this._set({ visible: false });
   },
 
   // 面板的「更新」鈕：與 F5／手機工具列／下拉同一個入口（screen_refresh 的 'home'

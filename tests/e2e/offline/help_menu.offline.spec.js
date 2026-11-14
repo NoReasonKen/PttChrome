@@ -69,16 +69,11 @@ test.describe('說明選單好讀（桌機）', () => {
     await expect(items(page)).toHaveCount(0);
   });
 
-  test('「原生畫面」⇒ 收起彈窗、Home 回第 1 頁，之後按鍵直接給 PTT', async ({ page }) => {
+  // Easy reading is one switch (#191): no button hands the help menu to PTT's native screen.
+  test('沒有「原生畫面」鈕', async ({ page }) => {
     await openFull(page);
-    await page.locator('[data-help-native]').click();
-    await expect(items(page)).toHaveCount(0);
-    await expect.poll(() => peekCapture(page)).toBe(HOME);
-    await takeCapture(page);
-    // 原生說明選單的 Home 回應：不再彈出。
-    await drawHelpPage(page, 1);
-    await expect(items(page)).toHaveCount(0);
-    await expectOnlyFence(page, () => page.keyboard.press('j'), 'j', '原生說明選單收鍵');
+    await expect(page.locator('[data-help-close]')).toBeVisible();
+    await expect(page.locator('[data-help-native]')).toHaveCount(0);
   });
 
   test('好讀關著 ⇒ 不彈、不送 PgDn（原生說明選單照常）', async ({ page }) => {

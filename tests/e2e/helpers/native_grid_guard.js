@@ -94,9 +94,8 @@ function pageGuard({ tag, log }) {
         functionMode: !!buf.easyReadingFunctionMode,
         listRenderMode: buf.listRenderMode,
         title: buf.getRowText(0, 0, buf.cols).trim().replace(/\s+/g, ' ').slice(0, 40),
-        // Context for classifying a hit: the dashboard dismissed by a key, a
-        // reconnect resume in flight, the list owner's state.
-        homeDismissed: !!(app.homeDashboard && app.homeDashboard._dismissed),
+        // Context for classifying a hit: a reconnect resume in flight, the
+        // list owner's state.
         resume: (app.reconnectResume && app.reconnectResume.diagnostics().pendingKind) || null,
         listState: app.listSession ? app.listSession.state : null,
       });
@@ -175,10 +174,9 @@ const ALLOWED = [
     match: (hit) => hit.listState === 'functionMode' },
   { issue: 189, why: 'unexpected pause screen after Back, and the list after it',
     match: (hit) => hit.listState === 'suspended' },
-  { issue: 190, why: 'board-select prompt from the search history', match: (hit) => hit.title.includes('選擇看板') },
-  { issue: 191, why: 'native main menu opened from home, and the screens reached from it',
-    match: (hit, { test }) => hit.homeDismissed ||
-      (/ from a fresh main menu /.test(test) && !hit.title.includes('主功能表')) },
+  { issue: 190, why: 'board search: the board-select prompt, and the list a typed search lands on before easy reading takes it',
+    match: (hit, { test }) => hit.title.includes('選擇看板') ||
+      (/ from the search key at home /.test(test) && hit.listState === 'idle' && hit.title.includes('看板《')) },
   { issue: 187, why: 'main menu painted before the home dashboard covers it',
     match: (hit) => hit.title.includes('主功能表') },
 ];

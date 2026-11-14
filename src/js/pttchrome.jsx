@@ -2392,6 +2392,8 @@ App.prototype.onPrefChange = function(name, value) {
       // OFF is the reader's way out of a held article (#193): the copy over
       // the reading area goes, and keys reach PTT again.
       if (!value) this.articleHold?.reset();
+      // At home the dashboard comes and goes with the switch at once.
+      this.homeDashboard?.evaluateNow();
       // ON while already sitting on a settled list: no settle will come, so
       // evaluate the current screen immediately (e2e applyPrefs relies on this).
       // OFF: single-exit cleanup back to native.

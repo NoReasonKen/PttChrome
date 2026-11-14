@@ -92,8 +92,9 @@ test.describe('手機首頁儀表板（離線重放）', () => {
     await answerFetch(page);
   });
 
-  // 手機的標題只有一行：App Bar 寫「首頁」、「原生主選單」在 App Bar 右邊，面板不再畫大標題。
-  test('App Bar 標題＝首頁；「原生主選單」在 App Bar，tap 收起面板、不送鍵', async ({ page }) => {
+  // 手機的標題只有一行：App Bar 寫「首頁」，面板不再畫大標題。好讀開著時沒有切回原生主選單的
+  // 控制項（#191）。
+  test('App Bar 標題＝首頁；沒有「原生主選單」鈕', async ({ page }) => {
     await bootHome(page);
     await drawMainMenu(page);
     await answerFetch(page);
@@ -108,12 +109,8 @@ test.describe('手機首頁儀表板（離線重放）', () => {
       return card.top - bar.bottom;
     });
     expect(gap).toBeLessThan(80);
-    const native = page.locator('#mobileAppBar [data-key="__homeNative"]');
-    await expect(native).toHaveText(await label('home_native'));
-    await native.tap();
-    await expect(dashboard(page)).toHaveCount(0);
     await expect(page.locator('#mobileAppBar [data-key="__homeNative"]')).toHaveCount(0);
-    await expect(page.locator('#mobileAppBar [data-key="__title"]')).toHaveText('主功能表');
+    await expect(page.locator('#mobileAppBar button')).toHaveCount(0);
     expect(await takeCapture(page)).toBe('');
   });
 

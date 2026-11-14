@@ -3,7 +3,7 @@
 // 陣列；畫面由 noteScreen 直餵實錄的兩頁。守的是使用者的操作：
 //   - 兩頁的指令一次列出來（桌機 Modal／手機 bottom sheet 都是）；
 //   - 點一下＝執行那一項（送 Home → PgDn → ↓… → Enter）；
-//   - 鍵盤：↓ 移動、Enter 執行、q 離開；「原生畫面」收起彈窗；
+//   - 鍵盤：↓ 移動、Enter 執行、q 離開；沒有「原生畫面」鈕（#191）；
 //   - 開著＝modal（setModalOpen("helpMenu")），收起就解除。
 // real-input: tests/e2e/offline/help_menu.offline.spec.js
 import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
@@ -98,15 +98,14 @@ test("q 離開；開著＝modal，收起就解除", async () => {
   expect(modal.get("helpMenu")).toBe(false);
 });
 
-test("「原生畫面」收起彈窗，不送離開鍵", async () => {
-  const { sent, feed } = setup();
+// Easy reading is one switch (#191): the sheet has no button that hands the
+// help menu to PTT's native screen; leaving it is q (or Back), as natively.
+test("沒有「原生畫面」鈕：只有離開（與小天使）", async () => {
+  const { feed } = setup();
   feed(HELP_FAV_PAGE1);
   await waitItems(25);
-  sent.length = 0;
-  fireEvent.click(document.querySelector("[data-help-native]"));
-  await waitItems(0);
-  // 第 1 頁時已送出補頁的 PgDn ⇒ Home 回第 1 頁；不送 q
-  expect(sent).toEqual([KEY_HOME]);
+  expect(document.querySelector("[data-help-native]")).toBeNull();
+  expect(document.querySelector("[data-help-close]")).not.toBeNull();
 });
 
 test("小天使按鈕只在 footer 有 (h)小天使 時出現", async () => {

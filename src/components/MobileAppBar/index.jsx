@@ -39,8 +39,8 @@ export const MobileAppBar = ({ pttchrome }) => {
     );
   }, [pttchrome]);
 
-  // 首頁儀表板開著 ⇒ 標題＝「首頁」，「原生主選單」放在 App Bar 右邊（面板自己就不再畫
-  // 一行大標題，docs/home-dashboard.md「手機」）。
+  // 首頁儀表板開著 ⇒ 標題＝「首頁」（面板自己就不再畫一行大標題，
+  // docs/home-dashboard.md「手機」）。
   const home = pttchrome.homeDashboard;
   const [homeVisible, setHomeVisible] = useState(false);
   useEffect(() => {
@@ -108,19 +108,6 @@ export const MobileAppBar = ({ pttchrome }) => {
         <span className="mobileAppBarBadge" data-key="__newMail" role="status">
           {i18n("mobileAppBar_newMail")}
         </span>
-      ) : null}
-      {homeVisible ? (
-        <button
-          type="button"
-          className="mobileAppBarAction"
-          data-key="__homeNative"
-          onClick={(e) => {
-            e.stopPropagation();
-            home.dismiss();
-          }}
-        >
-          {i18n("home_native")}
-        </button>
       ) : null}
       <MessageInbox pttchrome={pttchrome} inline />
       {busy ? (

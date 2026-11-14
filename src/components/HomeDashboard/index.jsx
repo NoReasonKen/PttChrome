@@ -147,8 +147,8 @@ export const HomeDashboard = ({ pttchrome, layer = false }) => {
       onClick={swallow}
     >
       <div className="homeInner">
-        {/* 手機：標題「首頁」與「原生主選單」都在 App Bar（MobileAppBar），這一行只在有新信時
-          出現（放「開信箱」鈕）。桌機照舊。 */}
+        {/* 手機：標題「首頁」在 App Bar（MobileAppBar），這一行只在有新信時出現（放「開信箱」鈕）。
+          桌機照舊。 */}
         {(!mobile || state.newMail) && (
           <div className="homeHeader">
             {!mobile && <h2 className="homeTitle">{i18n("home_title")}</h2>}
@@ -159,12 +159,6 @@ export const HomeDashboard = ({ pttchrome, layer = false }) => {
                 onClick={() => home.openMail()}
               >
                 {i18n("home_newMail")} · {i18n("home_openMail")}
-              </Button>
-            )}
-            <span className="homeSpacer" />
-            {!mobile && (
-              <Button data-home-native onClick={() => home.dismiss()}>
-                {i18n("home_native")}
               </Button>
             )}
           </div>

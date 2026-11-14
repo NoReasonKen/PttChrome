@@ -437,9 +437,6 @@ export const en_US = {
   "helpMenu_loading": {
     "message": "Loading more commands…"
   },
-  "helpMenu_native": {
-    "message": "Native screen"
-  },
   "helpMenu_angel": {
     "message": "Angel"
   },
@@ -1124,9 +1121,6 @@ export const en_US = {
   "home_updatedAt": {
     "message": "Updated {time}"
   },
-  "home_native": {
-    "message": "Native main menu"
-  },
   "home_newMail": {
     "message": "You have new mail"
   },
@@ -1146,7 +1140,7 @@ export const en_US = {
     "message": "New posts"
   },
   "home_hint": {
-    "message": "Typing works on the main menu as usual (any key switches back to the native screen)."
+    "message": "Typing works on the main menu as usual."
   },
   "split_collapse": {
     "message": "Hide"

@@ -1,5 +1,5 @@
 // 首頁儀表板（src/js/home_dashboard.js、docs/home-dashboard.md）：主功能表上蓋面板 → 自動送
-// Ctrl+Z f 抓我的最愛 → q 回主功能表 → 畫出卡片；點卡片走 s<板>；真鍵盤打字收起面板、鍵照送。
+// Ctrl+Z f 抓我的最愛 → q 回主功能表 → 畫出卡片；點卡片走 s<板>；真鍵盤打字鍵照送、面板留著。
 // 進看板讀完最新一篇回來 ⇒ 該板不再標有新文章（不重抓）；F5 ＝重抓我的最愛。
 // server 的回應由測試照 pttbbs 版面畫（主功能表＝helpers/main_menu，我的最愛／文章列表＝helpers/home_screens）。
 // 焦點留在 #t、點面板不變成點終端機、面板開著打字照常送 PTT，只有真瀏覽器驗得出來。
@@ -57,21 +57,16 @@ test.describe('首頁儀表板', () => {
     await expect(page.locator('#t')).toBeFocused();
   });
 
-  test('面板開著用真鍵盤打字 ⇒ 面板收起、鍵照常送給 PTT', async ({ page }) => {
+  // Easy reading is one switch (#191): typing at home sends the key and the
+  // dashboard stays; there is no control that shows PTT's main menu.
+  test('面板開著用真鍵盤打字 ⇒ 鍵照常送給 PTT，面板留著', async ({ page }) => {
     await bootHome(page);
     await fetchFlow(page);
+    await expect(page.locator('[data-home-native]')).toHaveCount(0);
     await page.keyboard.press('ArrowDown');
-    await expect(dashboard(page)).toHaveCount(0);
     await expect.poll(() => peekCapture(page)).toContain('\x1b[B');
     expect(await takeCapture(page)).toBe('\x1b[B');
-  });
-
-  test('「原生主選單」⇒ 收起，主功能表留在原地', async ({ page }) => {
-    await bootHome(page);
-    await fetchFlow(page);
-    await page.locator('[data-home-native]').click();
-    await expect(dashboard(page)).toHaveCount(0);
-    expect(await page.evaluate(() => window.__app.buf.getRowText(0, 0, 80))).toContain('主功能表');
+    await expect(dashboard(page)).toHaveCount(1);
   });
 
   test('進了看板、最新一篇讀過 ⇒ 回首頁時不再標有新文章，一個 byte 都不送', async ({ page }) => {

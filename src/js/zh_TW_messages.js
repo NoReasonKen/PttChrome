@@ -453,9 +453,6 @@
   "helpMenu_loading": {
     "message": "載入其餘指令中…"
   },
-  "helpMenu_native": {
-    "message": "原生畫面"
-  },
   "helpMenu_angel": {
     "message": "小天使"
   },
@@ -1139,9 +1136,6 @@
   "home_updatedAt": {
     "message": "更新於 {time}"
   },
-  "home_native": {
-    "message": "原生主選單"
-  },
   "home_newMail": {
     "message": "你有新信件"
   },
@@ -1161,7 +1155,7 @@
     "message": "有新文章"
   },
   "home_hint": {
-    "message": "直接打字照常操作主功能表（按任何鍵會切回原生畫面）"
+    "message": "直接打字照常操作主功能表"
   },
   "split_collapse": {
     "message": "收起"

@@ -48,14 +48,17 @@ async function entryFrames(page) {
   return page.evaluate(() => { window.__stopEntryWatch(); return window.__entryFrames; });
 }
 
-for (const from of ['home', 'main menu']) {
+// The board is entered from home by its card, or by typing the board-search key
+// at home: the dashboard stays while the key goes to PTT (#191).
+const ENTRIES = ['a home card', 'the search key at home'];
+
+for (const from of ENTRIES) {
   test(`opening an article after entering from ${from} paints no native article frame`, async ({ page }) => {
     await bootDashboard(page, loadCassette('scn-stack-home-article-back'));
     await watchEntry(page);
-    if (from === 'home') {
+    if (from === ENTRIES[0]) {
       await page.locator('#homeDashboard [data-home-board="C_Chat"]').tap();
     } else {
-      await page.locator('#mobileAppBar [data-key="__homeNative"]').tap();
       await ptt.sendKey(page, 's');
       const search = page.locator('input[name="searchKeyword"]');
       await search.fill('C_Chat');
@@ -91,11 +94,11 @@ test('opening a board from home hides the skipped board entry screen', async ({ 
   expect(frames.filter(frame => ['grid', 'menu'].includes(frame.surface) && frame.shown)).toEqual([]);
 });
 
-test('entering favorites from the main menu paints no native board-list frame', async ({ page }) => {
+test('entering favorites by typing f at home paints no native board-list frame', async ({ page }) => {
   await bootOffline(page, ptt);
   await page.evaluate(() => { window.__app.homeDashboard._state.fetchedAt = Date.now(); });
   await drawMainMenu(page);
-  await page.locator('#mobileAppBar [data-key="__homeNative"]').tap();
+  await expect.poll(() => page.evaluate(() => window.__app.homeDashboard.state.visible)).toBe(true);
   await watchEntry(page);
   await ptt.sendKey(page, 'f');
   await replayListCassette(page, loadCassette('scn-stack-boardlist-board'));
@@ -105,8 +108,8 @@ test('entering favorites from the main menu paints no native board-list frame', 
   expect(frames.filter(frame => frame.boardList && frame.surface === 'grid' && frame.shown)).toEqual([]);
 });
 
-for (const from of ['home', 'main menu']) {
-  test(`first board and article opened from a fresh ${from} stay in easy reading`, async ({ page }, testInfo) => {
+for (const from of ENTRIES) {
+  test(`first board and article opened from ${from} after a fresh login stay in easy reading`, async ({ page }, testInfo) => {
     await bootNestedShortcutSearch(page, { startAtMain: true, homeMenu: true, dynamicRows: true, ptList: true });
     expect(await page.evaluate(() => window.__app.view.useEasyReadingMode)).toBe(false);
     await page.evaluate(() => {
@@ -115,9 +118,8 @@ for (const from of ['home', 'main menu']) {
       home._set({ boards: [{ name: 'Test', desc: 'controlled' }] });
     });
     await watchEntry(page);
-    if (from === 'home') await page.locator('#homeDashboard [data-home-board="Test"]').tap();
+    if (from === ENTRIES[0]) await page.locator('#homeDashboard [data-home-board="Test"]').tap();
     else {
-      await page.locator('#mobileAppBar [data-key="__homeNative"]').tap();
       await ptt.sendKey(page, 's');
       const search = page.locator('input[name="searchKeyword"]');
       await search.fill('Test');
@@ -129,25 +131,24 @@ for (const from of ['home', 'main menu']) {
     const frames = await entryFrames(page);
     expect(frames.some(frame => frame.state === 3 && frame.surface === 'article' && frame.shown)).toBe(true);
     expect(frames.filter(frame => [2, 3].includes(frame.state) && frame.surface === 'grid' && frame.shown)).toEqual([]);
-    if (from === 'home')
+    if (from === ENTRIES[0])
       expect(frames.filter(frame => ['grid', 'menu'].includes(frame.surface) && frame.shown)).toEqual([]);
-    if (from === 'home' && process.env.E2E_ARTIFACT_DIR)
+    if (from === ENTRIES[0] && process.env.E2E_ARTIFACT_DIR)
       await testInfo.attach('easy-reading-entry', { body: await page.screenshot(), contentType: 'image/png' });
   });
-
-  test(`opening an article by AID from ${from} paints no native article frame`, async ({ page }) => {
-    await bootNestedShortcutSearch(page, { startAtMain: true, homeMenu: true, dynamicRows: true });
-    expect(await page.evaluate(() => window.__app.view.useEasyReadingMode)).toBe(false);
-    await page.evaluate(() => { window.__app.homeDashboard._state.fetchedAt = Date.now(); });
-    if (from === 'main menu') await page.locator('#mobileAppBar [data-key="__homeNative"]').tap();
-    await watchEntry(page);
-    await page.evaluate(() => window.__app.aidNavigation.startExternal('1gIeu-3A', 'Test'));
-    await waitArticle(page, 'Alpha');
-    const frames = await entryFrames(page);
-    expect(frames.some(frame => frame.state === 3 && frame.surface === 'article' && frame.shown)).toBe(true);
-    expect(frames.filter(frame => frame.state === 3 && frame.surface === 'grid' && frame.shown)).toEqual([]);
-  });
 }
+
+test('opening an article by AID from home paints no native article frame', async ({ page }) => {
+  await bootNestedShortcutSearch(page, { startAtMain: true, homeMenu: true, dynamicRows: true });
+  expect(await page.evaluate(() => window.__app.view.useEasyReadingMode)).toBe(false);
+  await page.evaluate(() => { window.__app.homeDashboard._state.fetchedAt = Date.now(); });
+  await watchEntry(page);
+  await page.evaluate(() => window.__app.aidNavigation.startExternal('1gIeu-3A', 'Test'));
+  await waitArticle(page, 'Alpha');
+  const frames = await entryFrames(page);
+  expect(frames.some(frame => frame.state === 3 && frame.surface === 'article' && frame.shown)).toBe(true);
+  expect(frames.filter(frame => frame.state === 3 && frame.surface === 'grid' && frame.shown)).toEqual([]);
+});
 
 for (const boardEntry of ['none', 'pause', 'pager', 'movie']) {
   test(`known-board entry batches the initial keys with a ${boardEntry} entry screen`, async ({ page }) => {

@@ -3,7 +3,7 @@
 //   （page.mouse／keyboard；本檔手捏事件只測分支邏輯，見 tests/unit/e2e_real_input.test.js）
 // 首頁儀表板的外殼（src/components/HomeDashboard）。鎖：
 //  1. 只照 homeDashboard.state 畫：不可見就不畫；卡片、未讀標記、狀態文字、新信、最近看板；
-//  2. 點卡片／最近看板 → openBoard，「原生主選單」→ dismiss，「更新」→ fetchFavorites，新信 → openMail；
+//  2. 點卡片／最近看板 → openBoard，「更新」→ fetchFavorites，新信 → openMail；沒有切回原生畫面的按鈕（#191）；
 //  3. mousedown preventDefault（不搶 #t 焦點 ⇒ 打字照常送 PTT）、滑鼠事件不外洩到 window；
 //  4. #homeDashboard 被 App 的滑鼠入口認得（isHomeDashboardTarget），滾輪才不會變成翻頁；
 //  5. 捲動位置是閱讀紀錄的 home 紀錄：點看板離開、回來時捲回同一張卡片（真版面量）。
@@ -46,7 +46,6 @@ function fakeHome(state) {
     },
     openBoard: vi.fn(),
     openMail: vi.fn(),
-    dismiss: vi.fn(),
     refresh: vi.fn(),
     applyPendingViewport: vi.fn(),
   };
@@ -94,7 +93,7 @@ test("抓過但是空的 ⇒ 空清單提示；更新中 ⇒ 狀態文字、更�
   expect(q("[data-home-refresh]").disabled).toBe(true);
 });
 
-test("按鈕接到控制器：原生主選單、更新、新信、最近看板", () => {
+test("按鈕接到控制器：更新、新信、最近看板", () => {
   const home = fakeHome({ newMail: true, recents: ["Gossiping"] });
   render(<HomeDashboard pttchrome={{ homeDashboard: home }} />);
   fireEvent.click(q("[data-home-refresh]"));
@@ -103,8 +102,17 @@ test("按鈕接到控制器：原生主選單、更新、新信、最近看板",
   expect(home.openMail).toHaveBeenCalled();
   fireEvent.click(q('[data-home-recent="Gossiping"]'));
   expect(home.openBoard).toHaveBeenCalledWith("Gossiping");
-  fireEvent.click(q("[data-home-native]"));
-  expect(home.dismiss).toHaveBeenCalled();
+});
+
+// Easy reading is one switch (#191): no control on the dashboard shows PTT's
+// main menu, and its hint no longer says a key switches to the native screen.
+test("桌機：沒有「原生主選單」鈕；提示不說打字會切回原生畫面", () => {
+  render(<HomeDashboard pttchrome={{ homeDashboard: fakeHome({ newMail: true }) }} />);
+  expect(q(".homeHeader")).not.toBeNull();
+  expect(q("[data-home-native]")).toBeNull();
+  const hint = q(".homeHint").textContent;
+  expect(hint).toBe(i18n("home_hint"));
+  expect(hint).not.toMatch(/原生|native/i);
 });
 
 test("mousedown 不搶焦點、滑鼠事件不外洩到 window", () => {
@@ -148,7 +156,7 @@ test("手機：讓開 App Bar 與底部工具列，不顯示桌機打字提示",
   expect(window.innerHeight - rect.bottom).toBeGreaterThanOrEqual(48);
 });
 
-test("手機：不畫大標題與「原生主選單」（都在 App Bar）；有新信才留一行放「開信箱」", () => {
+test("手機：不畫大標題（在 App Bar）；有新信才留一行放「開信箱」", () => {
   const home = fakeHome({});
   const { unmount } = render(<HomeDashboard pttchrome={{ homeDashboard: home, mobile: true }} />);
   expect(root().querySelector(".homeTitle")).toBeNull();
