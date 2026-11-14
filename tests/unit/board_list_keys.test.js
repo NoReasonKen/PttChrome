@@ -9,6 +9,7 @@
 // PttChrome's own sequences (_beginPassthroughBytes) are unchanged.
 import { BoardListSession } from "../../src/js/board_list_session";
 import { BRD_CMD_PREFIX } from "../../src/js/list_render_owner";
+import { UNSUPPORTED_KEY_HINT, unsupportedPasteHint, unsupportedTextHint } from "../../src/js/unsupported_hint";
 
 const pad7 = (n) => String(n).padStart(7, " ");
 const brdRow = (num, name) =>
@@ -156,9 +157,9 @@ const keyEvent = (key, mods = {}) => ({
   },
 });
 
-const KEY_HINT = "好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）";
-const PASTE_HINT = "好讀模式目前不支援在列表貼上文字";
-const TEXT_HINT = "好讀模式目前不支援在列表輸入文字";
+const KEY_HINT = UNSUPPORTED_KEY_HINT;
+const PASTE_HINT = unsupportedPasteHint("列表");
+const TEXT_HINT = unsupportedTextHint("列表");
 
 function expectUntouched(h) {
   expect(h.sent).toEqual([]);

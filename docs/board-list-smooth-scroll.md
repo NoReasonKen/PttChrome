@@ -273,7 +273,7 @@ stale marks, so it is passthrough (switching to native and rebuilding fully on r
 **Everything else is refused (#192)**, following the rule of `docs/easy-reading-list.md` invariant 12: easy reading keeps only the
 keys of the features it presents itself. Ctrl combinations, Alt-remapped keys (Alt+R/T/W/V = `^R/^T/^W/^V`), every other letter or symbol,
 the footer buttons for those keys, paste and typed text show the error hint 「好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）」
-(or the paste / text variant) and **send nothing**; the shared hints and `refuseUnsupported(view, what)` live in `src/js/list_refusal.js`.
+(or the paste / text variant) and **send nothing**; the hint wording comes from `src/js/unsupported_hint.js` (shared by every easy-reading page) and both lists refuse through `refuseUnsupported(view, what)` in `src/js/list_refusal.js`.
 Two keys are not refused because easy reading presents them:
 - `s` opens the board-search sheet (`article_search.tryOpenSearchModal`), from the keyboard and from the footer button alike.
 - `h` opens the help-menu sheet over the **kept** board list: `_beginHelp` asks `HelpMenuController.expect(this)` to hold the native help screen,
