@@ -124,6 +124,13 @@ Every offline page gets two guards, so any spec that crosses the condition catch
 - **ResizeObserver loop** (`tests/e2e/helpers/resize_observer_guard.js`): a loop raised by one of the project's own observers fails the test.
 - **Native grid** (`tests/e2e/helpers/native_grid_guard.js`): with easy reading on and after login, a frame painted on PTT's grid, visible and not covered by the home dashboard or a page-stack layer, fails the test on `offline-mobile`. Known hits are allowed while their issue is open; each entry of its `ALLOWED` list names the issue, and fixing that issue removes the entry. An entry marked `fixture` is a frame only a test fixture draws, such as a main menu without My Favorites, which the home dashboard leaves native by design. `NATIVE_GRID_GUARD=report NATIVE_GRID_REPORT=<file.jsonl>` writes every hit with its allowed issue instead, to inventory a whole suite; `bootOffline(page, ptt, { nativeGridGuard: 'off' })` records hits without judging them.
 
+Individual cases can install the native-grid guard with `{ diagnostics: true }`
+before boot. The first unallowed hit saves `native-grid-diagnostics.json`, with
+up to 80 recent input/render/paint state changes and geometry captured at the hit.
+The case flushes pending diagnostics before ending. Other cases keep the default
+guard behavior. Diagnostic attachments use files under the test output directory:
+nightly uploads `test-results/`, so an in-memory HTML attachment alone is insufficient.
+
 ## scenario 卷（`yarn record:scenarios`，2026-10）
 一段「要真 PTT 往返」的操作錄成可重放素材，取代 live e2e 的功能測項（live 只剩核心，見
 `tests/e2e/README.md`「live 範圍」）。錄製器 `tests/e2e/tools/record-scenarios.spec.js`，

@@ -5,7 +5,7 @@
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { bootOffline } = require('../helpers/replay');
-const { nativeGridJudged } = require('../helpers/native_grid_guard');
+const { nativeGridJudged, installNativeGridGuard } = require('../helpers/native_grid_guard');
 const { drawMainMenu, drawPressAnyKey } = require('../helpers/main_menu');
 
 const hits = (page) => page.evaluate(() => window.__nativeGridGuard.hits);
@@ -24,6 +24,32 @@ test.describe('native grid guard', () => {
     await expect.poll(() => hits(page)).toEqual([
       expect.objectContaining({ surface: 'grid', pageState: 5, title: 'some screen' }),
     ]);
+    expect((await hits(page))[0].diagnostics).toBeUndefined();
+  });
+
+  test('opt-in diagnostics freeze a bounded paint timeline and hit geometry', async ({ page }) => {
+    await installNativeGridGuard(page, { mode: 'off', diagnostics: true });
+    await bootOffline(page, ptt);
+    await ptt.applyPrefs(page, { enableEasyReading: true });
+    await drawMainMenu(page);
+    await expect.poll(() => page.evaluate(() => window.__app.homeDashboard.state.visible)).toBe(true);
+    await page.evaluate(() => window.__nativeGridGuard.reset());
+    await page.keyboard.press('ArrowLeft');
+    await drawPressAnyKey(page);
+    await expect.poll(() => hits(page)).toEqual([
+      expect.objectContaining({ surface: 'grid', pageState: 5, title: 'some screen' }),
+    ]);
+    const [hit] = await hits(page);
+    expect(hit.diagnostics.timeline.length).toBeLessThanOrEqual(80);
+    expect(hit.diagnostics.timeline.some(entry => entry.event === 'key' && entry.key === 'ArrowLeft')).toBe(true);
+    const paint = hit.diagnostics.timeline.at(-1);
+    expect(paint.event).toBe('paint');
+    expect(paint.grid).toBe(true);
+    expect(paint.listScroll).toBe(false);
+    expect(paint.main.visible).toBe(true);
+    expect(paint.targets).toHaveLength(3);
+    expect(paint.queue).toHaveProperty('idle');
+    expect(paint.stack).toHaveProperty('pages');
   });
 
   test('the same screen with easy reading off is not a hit', async ({ page }) => {
