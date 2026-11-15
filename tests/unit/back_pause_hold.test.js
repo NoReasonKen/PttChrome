@@ -272,6 +272,17 @@ describe("the hold", () => {
     expect(h.hold.phase).toBe("idle");
   });
 
+  test("Back answered with a menu or a prompt: not absorbed, so the stack handoff ends at once", () => {
+    for (const answer of [MAIN_MENU, screen({ [ROWS - 1]: " 確定要離開嗎? [y/N]: " }, { curX: 22, onField: true })]) {
+      const h = makeHarness();
+      h.userSend("\x1b[D");
+      h.settle(answer);
+      expect(h.hold.absorbs()).toBe(false);
+      expect(h.hold.holding).toBe(false);
+      expect(h.sent).toEqual(["\x1b[D"]);
+    }
+  });
+
   test("Back answered with the list: no hold, nothing sent", () => {
     const h = makeHarness();
     h.userSend("\x1b[D");
