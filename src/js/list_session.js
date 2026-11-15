@@ -1000,6 +1000,8 @@ export function ListSession(core, view, termBuf, queue) {
   // An unproven landing being judged ('landing' hold, #206): { message, dismissed }.
   this._landingHold = null;
   this._landingTimer = null;
+  // The operation told the reader why PTT refused; PTT's own words stay unsaid.
+  this._landingExplained = false;
   // The footer row of the last clean list, standing in while a message covers it.
   this._footerText = null;
   // 靜置探針的 timer handle 與它的兩個時鐘來源（見 RESUME_QUIET_MS）。
@@ -1969,6 +1971,7 @@ ListSession.prototype = {
     const r = transitionListSession(this.state, { type: 'key', keyClass: 'transact' });
     this.state = r.next; // functionMode（吸收在途 settle／吞鍵），render 是 frozen
     this._freezeForTransaction();
+    this._landingExplained = false;
     const self = this;
     const send = function() {
       self._enqueuePassthroughStep(steps, 0, function(landed) {
@@ -2064,7 +2067,9 @@ ListSession.prototype = {
       this.state = 'active';
       this._resumeBuffer(now);
       this._runAction('rebuild', now);
-      if (hold.message && this._view.flashListHint) this._view.flashListHint(hold.message, 4000, HINT_ERROR);
+      // An operation that explained the refusal itself keeps its own words.
+      if (hold.message && !this._landingExplained && this._view.flashListHint)
+        this._view.flashListHint(hold.message, 4000, HINT_ERROR);
       return;
     }
     const last = now.rowTexts[now.rows - 1] || '';
@@ -3190,6 +3195,7 @@ ListSession.prototype = {
             const rejected = !!applyFacts && markReadRejected(applyFacts.rowTexts);
             // 只有好讀已關掉才停在原生；拒絕畫面（vmsg）凍著收掉再回列表（#206）。
             const native = !self._autoResumeEnabled();
+            if (rejected) self._landingExplained = true;
             self._view.flashListHint(
               (rejected
                 ? 'PTT 不接受這篇當參考點，已讀記錄沒有變動（請改用其它文章）。'

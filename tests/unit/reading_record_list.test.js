@@ -697,6 +697,27 @@ describe("落地即回好讀：重新整理／搜尋／跳到未讀不切原生�
     expect(seen).toContainEqual({ msg: "找不到符合條件的文章。", level: "error" });
   });
 
+  test("an operation that explained the refusal itself keeps its words: PTT's are not repeated", () => {
+    const h = makeSession();
+    const seen = hints(h);
+    submitSearch(h.core, "title", "nomatch");
+    step(h, "search-open").onDone(true);
+    const list = h.screen.rows[23];
+    h.screen.rows[23] = " ◆ 找不到符合條件的文章。 [按任意鍵繼續]";
+    h.screen.curY = 23;
+    h.screen.curX = 1;
+    landOn(h, "search-submit");
+    h.s._landingExplained = true;
+    vi.advanceTimersByTime(300);
+    const dismiss = step(h, "landing-dismiss");
+    h.screen.rows[23] = list;
+    h.screen.curY = 5;
+    dismiss.onDone(true);
+    vi.advanceTimersByTime(300);
+    expect(h.s.state).toBe("active");
+    expect(seen.map((x) => x.msg)).not.toContain("找不到符合條件的文章。");
+  });
+
   test("收掉框之後還不是列表 ⇒ 停在原處說明失敗，下拉重新整理回到列表", () => {
     const h = makeSession();
     const seen = hints(h);
