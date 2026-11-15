@@ -434,6 +434,9 @@ export const en_US = {
   "helpMenu_titleWith": {
     "message": "{0} Help"
   },
+  "helpMenu_pending": {
+    "message": "Loading help…"
+  },
   "helpMenu_loading": {
     "message": "Loading more commands…"
   },

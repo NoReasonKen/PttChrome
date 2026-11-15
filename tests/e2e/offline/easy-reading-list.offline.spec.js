@@ -20,8 +20,8 @@ const {
 } = require('../helpers/replay');
 // 滾輪 smoke 會量 rect 又會動指標 ⇒ 版面穩定契約要求走這個模組
 // （tests/unit/e2e_layout_settle.test.js 靜態守護）。
-const { drawHelpPage } = require('../helpers/help_menu');
-const { waitRectStable, waitScrollStable } = require('../helpers/layout');
+const { answerHelpKey, drawHelpPage } = require('../helpers/help_menu');
+const { waitRectStable, waitScrollStable, installPaintedFrameProbe } = require('../helpers/layout');
 const {
   pasteText,
   imeSetComposition,
@@ -553,6 +553,177 @@ test.describe('文章列表好读模式（离线）', () => {
         (f) => f.firstNum !== before.firstNum || Math.abs(f.scrollTop - before.scrollTop) > 1
       );
       expect(moved, JSON.stringify({ before, frames })).toEqual([]);
+    } catch (e) {
+      console.log('--- console tail ---');
+      for (const l of logs.slice(-25)) console.log(l);
+      throw e;
+    }
+  });
+
+  // #222: help from the list goes out at once, the sheet shows on page 1, the
+  // rest is fetched behind it, then one `q` detaches it from PTT. The list stays
+  // painted the whole time; the detached sheet's close sends nothing and a pick
+  // types its key into the list.
+  async function openDetachedListHelp(page) {
+    await bootOffline(page, ptt);
+    await ptt.applyPrefs(page, { enableEasyReading: false });
+    await replayListCassette(page, nav);
+    await page.waitForFunction(() => window.__app.buf.pageState === 2);
+    await ptt.applyPrefs(page, {
+      enableEasyReading: true,
+      easyReadingListPrefetchCount: 30
+    });
+    await waitState(page, (x) => x.state === 'active' && x.listLen > 30 && x.queueIdle, 20000);
+    // The background fill's last page-up went unanswered (the cassette ran
+    // out), so the session no longer knows where PTT's cursor is and would
+    // fetch to find it. Teach it the row the terminal shows the cursor on, as
+    // the test above does: this replay cannot answer that fetch.
+    await page.evaluate(() => {
+      const app = window.__app;
+      const ls = app.listSession;
+      const num = Number(/^\D?\s*(\d+)/.exec(app.buf.getRowText(app.buf.cur_y, 0, app.buf.cols))[1]);
+      ls._selectedNum = num;
+      ls._serverNum = num;
+      ls._selectedPinnedKey = null;
+      ls._forceRedraw();
+    });
+    await nextFrames(page);
+    await waitState(page, (x) => x.queueIdle);
+    // Every painted frame (helpers/layout.installPaintedFrameProbe): what the
+    // reader sees of the list, and whether PTT's own screen reached the page.
+    await installPaintedFrameProbe(page);
+    await page.evaluate(() => {
+      window.__listFrames = [];
+      const sample = () => {
+        const app = window.__app;
+        const main = document.getElementById('mainContainer');
+        const v = main.querySelector('.listBodyView');
+        window.__listFrames.push({
+          list: !!v,
+          scrollTop: v ? Math.round(v.scrollTop) : null,
+          helpDrawn: main.textContent.includes('操作說明 (Help)'),
+          native: !app.helpMenu.holding && app.buf.listRenderMode === 'native',
+          sheet: !!document.querySelector('[data-help-item]'),
+          // The sheet's laid-out height (offsetHeight: the open transition's
+          // transform does not count), rows or not.
+          sheetH: (() => {
+            const list = document.querySelector('[data-help-menu-list]');
+            const box = list && list.closest('.mantine-Modal-content, .mobileSheet');
+            return box ? box.offsetHeight : null;
+          })(),
+          phase: app.helpMenu.phase
+        });
+      };
+      window.__stopListFrames = () => window.__paintedFrame.remove(sample);
+      window.__paintedFrame.add(sample);
+    });
+    const sent0 = await page.evaluate(() => window.__replay.sent.length);
+    const sel0 = await page.evaluate(() => window.__app.listSession._selectedNum);
+    const sentSince = () => page.evaluate((k) => window.__replay.sent.slice(k).join(''), sent0);
+
+    // PTT answers `h` with its help screen straight away; this replay has no
+    // answer recorded, so a blank screen stands for it until page 1 is drawn
+    // (otherwise the list, still PTT's screen here, is taken back meanwhile).
+    await answerHelpKey(page, 'h\f');
+    await page.locator('#t').focus();
+    await imeCommit(page, 'h');
+    await expect.poll(sentSince).toBe('h\f');
+    // The sheet is open at the keypress, before any of PTT's help screen: one
+    // quiet line where the rows go.
+    await expect(page.locator('[data-help-pending-text]')).toBeVisible();
+    expect(await page.locator('[data-help-item]').count()).toBe(0);
+    expect(await page.evaluate(() => window.__app.helpMenu.phase)).toBe('loading');
+    const { total } = await drawHelpPage(page, 1, { caption: '文章列表' });
+    await expect(page.locator('[data-help-item]').first()).toBeVisible();
+    // The sheet shows on page 1; the rest is fetched behind it, one PgDn each
+    // (how many pages there are depends on the terminal's rows).
+    let bytes = 'h\f';
+    for (let n = 2; n <= total; ++n) {
+      bytes += '\x1b[6~';
+      await expect.poll(sentSince).toBe(bytes);
+      await drawHelpPage(page, n, { caption: '文章列表' });
+    }
+    bytes += 'q';
+    await expect.poll(sentSince).toBe(bytes);
+    // PTT answers the `q` with its whole list redrawn as it stood (as in the
+    // test above: the fed bytes, then the last full page again).
+    await page.evaluate((steps) => {
+      const fed = steps.slice(0, window.__replay.fed);
+      const full = fed.filter((st) => st.on === 'start' || st.on === 'pageup' || st.on === 'back');
+      const d = fed.concat(full.slice(-1)).map((st) => atob(st.recv)).join('');
+      window.__app.onData(d);
+    }, nav.steps.map((st) => ({ on: st.on, recv: st.recv })));
+    await page.waitForFunction(() => window.__app.helpMenu.phase === 'detached' && !window.__app.helpMenu.holding);
+    await waitState(page, (x) => x.state === 'active' && x.renderMode === 'buffer');
+    await expect(page.locator('[data-help-item]').first()).toBeVisible();
+    // The help key itself is shown, dimmed and not focusable.
+    const helpRow = page.locator('[data-help-item]', { hasText: '顯示操作說明' });
+    await expect(helpRow).toHaveAttribute('data-unavailable', /.*/);
+    await expect(helpRow).toBeDisabled();
+    expect(await page.evaluate(() => window.__app.listSession._selectedNum)).toBe(sel0);
+    return { sentSince, sel0, bytes };
+  }
+
+  async function listFrames(page) {
+    const before = await page.evaluate(() => window.__listFrames.length);
+    await page.waitForFunction((n) => window.__listFrames.length > n + 8, before);
+    return page.evaluate(() => {
+      window.__stopListFrames();
+      return window.__listFrames;
+    });
+  }
+
+  function expectListHeld(frames) {
+    expect(frames.some((f) => f.phase === 'detached' && f.sheet)).toBe(true);
+    // Open before its rows, and one height from then on: rows arriving move nothing.
+    expect(frames.some((f) => f.phase === 'loading' && f.sheetH)).toBe(true);
+    const heights = frames.filter((f) => f.sheetH).map((f) => f.sheetH);
+    expect([...new Set(heights)]).toEqual([heights[0]]);
+    expect(frames.filter((f) => !f.list || f.helpDrawn || f.native)).toEqual([]);
+    expect(frames.filter((f) => f.scrollTop !== frames[0].scrollTop)).toEqual([]);
+  }
+
+  test('help from the list detaches after the last page; closing it sends nothing', async ({ page }) => {
+    test.setTimeout(60000);
+    const logs = ptt.attachConsole(page);
+    try {
+      const { sentSince, sel0, bytes } = await openDetachedListHelp(page);
+      await page.keyboard.press('Escape');
+      await expect(page.locator('[data-help-item]')).toHaveCount(0);
+      expectListHeld(await listFrames(page));
+      expect(await sentSince()).toBe(bytes);
+      expect(await page.evaluate(() => window.__app.listSession._selectedNum)).toBe(sel0);
+    } catch (e) {
+      console.log('--- console tail ---');
+      for (const l of logs.slice(-25)) console.log(l);
+      throw e;
+    }
+  });
+
+  test('a pick from the detached help sheet is typed into the list', async ({ page }) => {
+    test.setTimeout(60000);
+    const logs = ptt.attachConsole(page);
+    try {
+      const { sentSince, sel0, bytes } = await openDetachedListHelp(page);
+      // The frames checked end at the pick: what the key does to the view
+      // afterwards is the list's own.
+      expectListHeld(await listFrames(page));
+      await page.locator('[data-help-item]', { hasText: '向下移動' }).click();
+      await expect(page.locator('[data-help-item]')).toHaveCount(0);
+      // ↓ moves the selection locally. The list's window demand may then fill
+      // rows above with its own prefetch (PgUp, anchored by a number jump
+      // `<num>\r\f` when PTT's cursor is not at the buffer's edge), on a scroll
+      // frame's timing, as the same ↓ typed without help does (a command the
+      // queue gives up on adds its `\f` redraw under load); nothing else
+      // reaches PTT: no help key, no second `q`.
+      await expect
+        .poll(() => page.evaluate(() => window.__app.listSession._selectedNum))
+        .toBe(sel0 + 1);
+      await waitState(page, (x) => x.queueIdle);
+      const after = await sentSince();
+      expect(after.slice(0, bytes.length)).toBe(bytes);
+      const rest = after.slice(bytes.length);
+      expect(rest, JSON.stringify(rest)).toMatch(/^(\d+\r|\f|\x1b\[5~)*$/);
     } catch (e) {
       console.log('--- console tail ---');
       for (const l of logs.slice(-25)) console.log(l);

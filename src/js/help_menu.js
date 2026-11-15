@@ -146,6 +146,42 @@ export function helpSelectKeys(index, pageSize, totalPages) {
   return s + KEY_DOWN.repeat(t) + KEY_ENTER;
 }
 
+// Key names the help screen prints (psb_help_format_keys) → the key a reader
+// types (KeyboardEvent.key). A name with no single key ("1-9") has none.
+const NAMED_KEYS = {
+  '←': 'ArrowLeft', '→': 'ArrowRight', '↑': 'ArrowUp', '↓': 'ArrowDown',
+  Enter: 'Enter', Space: ' ', PgUp: 'PageUp', PgDn: 'PageDown',
+  Home: 'Home', End: 'End', Tab: 'Tab', Esc: 'Escape', BS: 'Backspace'
+};
+// The help keys: picking the help item from the help menu would only ask for
+// the help menu again.
+export const HELP_KEYS = ['h', 'H', '?'];
+
+// One key name the help screen prints, as { key, ctrlKey } for
+// view.sendKeyAsUser; null when it names no single key ("1-9").
+function helpKeyOf(name) {
+  if (typeof name !== 'string' || !name) return null;
+  if (/^\^[A-Za-z]$/.test(name)) return { key: name.charAt(1).toLowerCase(), ctrlKey: true };
+  if (Object.prototype.hasOwnProperty.call(NAMED_KEYS, name)) return { key: NAMED_KEYS[name], ctrlKey: false };
+  if (name.length === 1) return { key: name, ctrlKey: false };
+  return null;
+}
+
+const isHelpKey = (k) => !k.ctrlKey && HELP_KEYS.indexOf(k.key) >= 0;
+const isDigitKey = (k) => !k.ctrlKey && /^[0-9]$/.test(k.key);
+
+// The key a pick of this item types (#222): of the item's keys, the first one
+// the page does not refuse (`refuses(key)`, optional), trying the non-digit
+// keys before the digits, since a digit on a list starts a number jump
+// ("0/Home" types Home). The help keys would only ask for the help menu
+// again. null when every key is refused or names no single key.
+export function helpItemKey(item, refuses) {
+  const keys = ((item && item.keys) || []).map(helpKeyOf).filter((k) => k && !isHelpKey(k));
+  const ordered = keys.filter((k) => !isDigitKey(k)).concat(keys.filter(isDigitKey));
+  for (const k of ordered) if (!(refuses && refuses(k))) return k;
+  return null;
+}
+
 // 各頁 → 依頁序串起來、以身分去重（滾輪錯位時相鄰頁會重疊）。
 export function mergeHelpPages(pages, totalPages) {
   const out = [];
@@ -170,16 +206,34 @@ export function helpMenuPopupEnabled(prefs) {
 
 // ---- 控制器 ----
 // phase：
-//   idle     沒有說明選單
-//   open     彈窗開著（背景可能還在 PgDn 補頁）
-//   leaving  送出執行／離開鍵了，等畫面離開說明選單（期間的說明幀一律不理）
-//   native   這一次說明選單交給原生（使用者選了「原生畫面」、好讀關著、認不出起點…），
-//            直到畫面離開說明選單
+//   idle      沒有說明選單
+//   loading   （從好讀頁要求的這一次）說明鍵已送出、彈窗已經開著，等 PTT 的說明畫面第 1 頁
+//   open      彈窗開著、PTT 停在說明選單（背景可能還在 PgDn 補頁）
+//   detaching （從好讀頁要求的這一次）`q` 已經在彈窗後面送出，等 PTT 離開說明選單
+//   detached  PTT 已經回到好讀頁、頁面已接回；彈窗還開著、與 PTT 脫鉤（#222）
+//   leaving   （不是從好讀頁要求的）送出執行／離開鍵了，等畫面離開說明選單（期間的說明幀一律不理）
+//   native    這一次說明選單交給原生（好讀關著、認不出起點、頁數變了、離開逾時），
+//             直到畫面離開說明選單
+//
+// Detachable visit (#222): help asked from an easy-reading page (expect()).
+// Its rows are a snapshot of PTT's help pages, so PTT is let go of once they
+// are read: `q` goes out behind the sheet and the page under it takes its
+// frame back while the hold still covers PTT's answer. A pick is then the
+// item's first key handed to the page as if the reader typed it there
+// (view.sendKeyAsUser), and closing sends nothing. A pick or close made before
+// that (pages still loading, or `q` unanswered) hides the sheet and lets go at
+// once; the pick waits until the page resumed and is dropped by any fallback.
+// A row is unavailable when the requesting page would refuse its key
+// (requester.wouldRefuse), when it is the help item, or when it names no single
+// key; the angel exists only on PTT's help screen and is unavailable too.
+// The sheet of such a visit opens at the keypress (phase `loading`, no rows
+// yet) and fills in place when page 1 arrives, read as soon as a frame shows
+// it whole (its footer is drawn last) rather than after the settle.
 //
 // 閱讀紀錄（決策表 'help-menu'）：從列表按 h 時列表好讀／看板列表已經切原生、丟掉緩衝
 // （切進去那一刻凍結了視野）。認出說明選單就領書籤（不論接不接管），畫面離開說明選單時
-// 交回：執行了某一項＝'done'（指令的結果就是目的地），其餘（q、原生畫面裡自己離開）
-// ＝'cancel' ⇒ 回到同一份列表的原處。
+// 交回：執行了某一項＝'done'（指令的結果就是目的地），其餘（q、原生畫面裡自己離開、
+// 脫鉤）＝'cancel' ⇒ 回到同一份列表的原處。
 export function HelpMenuController(core, termBuf, opts) {
   this._core = core;
   this._termBuf = termBuf;
@@ -192,8 +246,10 @@ export function HelpMenuController(core, termBuf, opts) {
   // React 端（components/HelpMenu）訂閱：每次狀態變動呼叫一次，參數＝snapshot()。
   this.onChange = null;
   this._reset();
-  if (termBuf && termBuf.addEventListener)
+  if (termBuf && termBuf.addEventListener) {
     termBuf.addEventListener('screenSettled', this._onScreenSettled.bind(this));
+    termBuf.addEventListener('change', this._onScreenChanged.bind(this));
+  }
 }
 
 HelpMenuController.prototype = {
@@ -210,30 +266,53 @@ HelpMenuController.prototype = {
     this._bookmark = null;
     this._outcome = 'cancel';
     this._requester = null;
+    // Detachable visit (#222): whether this visit was asked from an
+    // easy-reading page, whether the reader still has the sheet up, and the
+    // key picked before PTT let go of its help screen.
+    this._detachable = false;
+    this._shown = false;
+    this._pick = null;
+    // The page read from a frame before its settle (_onScreenChanged): the
+    // settle reads it again and its rows replace these.
+    this._earlyPage = 0;
     this._clearTimers();
     this._releaseHold();
   },
 
   // The reader asked for help from an easy-reading page (an article, the
-  // article list, the board list). That page stays on screen under the sheet: while `holding`,
-  // term_view draws none of PTT's help screens (its held branch). The hold ends
-  // when the help menu is over, when this visit is handed to the native screen,
-  // or when no help menu shows up in time.
-  // requester: the list that asked (ListSession or BoardListSession). It is
-  // given the frame back when this visit ends (resumeAfterHelp); an article
-  // passes none.
+  // article list, the board list, home). That page stays on screen under the
+  // sheet: while `holding`, term_view draws none of PTT's help screens (its
+  // held branch). The hold ends once PTT has left its help screen again and
+  // the page took its frame back (the detach, #222), when this visit is handed
+  // to the native screen, or when no help menu shows up in time.
+  // The sheet opens now, empty (phase `loading`), as the search sheet opens at
+  // its key: the rows fill in when PTT's help screen arrives. No help screen
+  // within HOLD_TIMEOUT_MS ⇒ the sheet closes and the page is let go.
+  // requester: the page that asked. Optional members:
+  //   resumeAfterHelp(listKept)  given the frame back when PTT left its help
+  //                              screen (the lists; an article and home stay
+  //                              on screen by themselves)
+  //   wouldRefuse({key, ctrlKey}) whether that page refuses the key when typed:
+  //                              the sheet's row for it is unavailable
   expect: function(requester) {
     if (!this._enabled() || this.phase !== 'idle') return;
     this._clearHoldTimer();
     this.holding = true;
     this._requester = requester || null;
+    this.phase = 'loading';
+    this._detachable = true;
+    this._shown = true;
     this._holdTimer = this._setTimeout(() => {
       this._holdTimer = null;
-      if (this.phase === 'idle') {
-        this._requester = null;
-        this._releaseHold();
-      }
+      if (this.phase !== 'loading') return;
+      // No help screen came: nothing was asked of it, so nothing is sent.
+      this._log('loadTimeout', { shown: this._shown });
+      const wasOpen = this._sheetOpen();
+      this._reset();
+      if (wasOpen) this._emit();
     }, HOLD_TIMEOUT_MS);
+    this._log('loading', {});
+    this._emit();
   },
 
   _clearHoldTimer: function() {
@@ -251,28 +330,64 @@ HelpMenuController.prototype = {
   },
 
   _toNative: function() {
+    const wasOpen = this._sheetOpen();
     this.phase = 'native';
+    this._pick = null;
+    this._shown = false;
+    this._clearTimers();
+    this._fetchPage = 0;
     this._releaseHold();
+    if (wasOpen) this._emit();
   },
 
   _clearTimers: function() {
     if (this._fetchTimer) this._clearTimeout(this._fetchTimer);
     if (this._retryTimer) this._clearTimeout(this._retryTimer);
+    if (this._pickTimer) this._clearTimeout(this._pickTimer);
     this._fetchTimer = null;
     this._retryTimer = null;
+    this._pickTimer = null;
+  },
+
+  // The sheet is up: from the first page until the reader closes or picks.
+  _sheetOpen: function() {
+    if (this.phase === 'detached') return true;
+    if (this.phase === 'loading') return this._shown;
+    return (this.phase === 'open' || this.phase === 'detaching') && this._shown;
   },
 
   get open() {
-    return this.phase === 'open';
+    return this._sheetOpen();
+  },
+
+  // A row's key and whether the reader can pick it. Every row of a visit that
+  // keeps PTT's help screen (not detachable) runs there, so it is available.
+  _rowOf: function(item) {
+    if (!this._detachable) return Object.assign({}, item, { available: true });
+    return Object.assign({}, item, { available: !!this._keyOf(item) });
+  },
+
+  // The key a pick of this row types on the page that asked for help; null
+  // when the page would refuse every key the row lists.
+  _keyOf: function(item) {
+    const page = this._requester;
+    const refuses = page && typeof page.wouldRefuse === 'function' ? (k) => page.wouldRefuse(k) : null;
+    return helpItemKey(item, refuses);
   },
 
   snapshot: function() {
     return {
-      open: this.phase === 'open',
+      open: this._sheetOpen(),
       caption: this._caption,
-      angel: this._angel,
-      items: mergeHelpPages(this._pages, this._totalPages),
-      loading: this.phase === 'open' && !this._incomplete && this._pages.size < this._totalPages
+      // The angel lives on PTT's help screen: a detachable visit lets go of it.
+      angel: this._angel && !this._detachable,
+      items: mergeHelpPages(this._pages, this._totalPages).map((item) => this._rowOf(item)),
+      loading: this.phase === 'open' && !this._incomplete && this._pages.size < this._totalPages,
+      // Open before PTT's help screen arrived: no rows yet.
+      pending: this.phase === 'loading',
+      // A detachable visit's sheet keeps one height (its maximum) from the
+      // keypress on, so nothing moves when the rows arrive.
+      fill: this._detachable
     };
   },
 
@@ -310,43 +425,55 @@ HelpMenuController.prototype = {
     this.noteScreen(parseHelpMenuScreen(this._rowTexts()));
   },
 
+  // A frame (before its settle) while the loading sheet waits for page 1. PTT
+  // draws its help screen top to bottom, footer last, after clearing the
+  // screen; the parser needs the header and the footer rows and no gap
+  // between rows, so a frame it reads is the whole page. The rows fill in
+  // without waiting SETTLE_MS more; the settle reads the page again and its
+  // rows replace these.
+  _onScreenChanged: function() {
+    if (this.phase !== 'loading') return;
+    const parsed = parseHelpMenuScreen(this._rowTexts());
+    if (!parsed || parsed.page !== 1) return;
+    this._earlyPage = 1;
+    this.noteScreen(parsed);
+  },
+
   // 一張靜止畫面的解析結果（null ＝不是說明選單）。unit 直接呼叫。
   noteScreen: function(parsed) {
     if (!parsed) {
+      // Frames before PTT's help screen (the page's own, an earlier answer).
+      if (this.phase === 'loading') return;
+      if (this.phase === 'detaching') return this._detached();
+      // Detached: PTT is on the page; its frames are the page's business.
+      if (this.phase === 'detached') return;
       if (this.phase !== 'idle') {
-        const wasOpen = this.phase === 'open';
+        const wasOpen = this._sheetOpen();
         const bm = this._bookmark;
         const outcome = this._outcome;
-        // The sheet over a held page was closed: PTT saw only help keys, so
-        // the list it redrew is the one still shown under the sheet.
-        const closed = this.phase === 'leaving' && outcome === 'cancel' && this.holding;
-        // The list that asked for help (the article list or the board list);
-        // a visit begun on PTT's own screen gives the article list the frame,
-        // as before.
-        const ls = this._requester || this._core?.listSession;
+        // The page that asked for help (a list); a visit begun on PTT's own
+        // screen gives the article list the frame, as before.
+        const ls = this._pageToResume();
         this._log('end', { phase: this.phase, outcome: outcome });
         this._reset();
         if (wasOpen) this._emit();
+        recordFor(this._core).end(bm, outcome);
         // Left without running an item: the list under the sheet takes this
         // frame back at once, so PTT's own list is never shown between.
-        // After a closed sheet it keeps the rows it holds, and takes the frame
-        // back before the reading record's restore: that restore then lands on
-        // a list already shown and puts the reader's view back in this frame.
-        if (closed) ls?.resumeAfterHelp?.(true);
-        recordFor(this._core).end(bm, outcome);
-        if (outcome === 'cancel' && !closed) ls?.resumeAfterHelp?.(false);
+        if (outcome === 'cancel') ls?.resumeAfterHelp?.(false);
       }
       return;
     }
-    if (this.phase === 'native') return;
-    if (this.phase === 'leaving') {
+    if (this.phase === 'native' || this.phase === 'detached') return;
+    if (this.phase === 'leaving' || this.phase === 'detaching') {
       if (this._now() - this._leavingAt > LEAVE_TIMEOUT_MS) {
-        this._log('leaveStuck', {});
+        this._log('leaveStuck', { phase: this.phase });
         this._toNative();
       }
       return;
     }
-    if (this.phase === 'idle') {
+    if (this.phase === 'idle' || this.phase === 'loading') {
+      const loading = this.phase === 'loading';
       // 列表切原生那一刻凍結的視野（鏡像期間 current() 回的就是它）。
       this._bookmark = recordFor(this._core).begin('help-menu');
       this._outcome = 'cancel';
@@ -357,31 +484,52 @@ HelpMenuController.prototype = {
         return;
       }
       this.phase = 'open';
+      // A loading sheet the reader closed stays closed.
+      if (!loading) this._shown = true;
+      this._detachable = !!this.holding;
       this._clearHoldTimer();
       this._caption = parsed.caption;
       this._totalPages = parsed.totalPages;
       this._angel = parsed.angel;
       this._pageSize = parsed.totalPages > 1 ? parsed.items.length : 0;
-      this._log('open', { caption: parsed.caption, totalPages: parsed.totalPages, items: parsed.items.length });
+      this._log('open', {
+        caption: parsed.caption, totalPages: parsed.totalPages, items: parsed.items.length,
+        detachable: this._detachable, shown: this._shown, early: this._earlyPage === parsed.page
+      });
+      // Closed while loading: PTT's help screen is there now, let go of it.
+      if (this._detachable && !this._shown) {
+        this._pages.set(parsed.page, parsed.items);
+        this._detach();
+        return;
+      }
     }
     // 頁數變了（終端機列數改變 ⇒ server 重算 rows）：已收的頁與執行鍵的頁大小都不對了
     // ⇒ 這一次交還原生（罕見，不值得重抓）。
     if (parsed.totalPages !== this._totalPages) {
       this._log('native', { reason: 'resized' });
-      this._clearTimers();
-      this._fetchPage = 0;
       this._toNative();
-      this._emit();
       return;
     }
     if (!this._pages.has(parsed.page)) this._pages.set(parsed.page, parsed.items);
+    else if (this._earlyPage === parsed.page && this._fetchPage !== parsed.page) {
+      // The settled frame of the page read early: its rows are final.
+      this._earlyPage = 0;
+      this._pages.set(parsed.page, parsed.items);
+    }
     if (this._fetchPage && parsed.page >= this._fetchPage) {
       this._fetchPage = 0;
       if (this._fetchTimer) this._clearTimeout(this._fetchTimer);
       this._fetchTimer = null;
     }
     this._maybeFetch(parsed.page);
+    this._maybeDetach();
     this._emit();
+  },
+
+  // The page whose frame comes back when PTT leaves its help screen.
+  _pageToResume: function() {
+    const page = this._requester;
+    return page && page.resumeAfterHelp ? page : this._core?.listSession;
   },
 
   // 還缺頁就往下翻一頁（一次只一個在途：pttbbs typeahead 會吞掉中間幀）。
@@ -409,10 +557,103 @@ HelpMenuController.prototype = {
       this._log('fetchTimeout', { page: this._fetchPage });
       this._fetchPage = 0;
       this._incomplete = true;
+      this._maybeDetach();
       this._emit();
     }, FETCH_TIMEOUT_MS);
     this._log('fetch', { page: this._fetchPage });
     this._send(KEY_PGDN);
+  },
+
+  // A detachable visit whose pages are all read (or no more will come) lets go
+  // of PTT's help screen.
+  _maybeDetach: function() {
+    if (this.phase !== 'open' || !this._detachable || this._fetchPage) return;
+    if (this._incomplete || this._pages.size >= this._totalPages) this._detach();
+  },
+
+  // `q` behind the sheet (or behind a sheet already put away). A PgDn still on
+  // the wire is answered first; a help frame answering it is ignored.
+  _detach: function() {
+    if (this.phase !== 'open') return;
+    if (this._wireBusy()) {
+      if (!this._retryTimer) {
+        this._retryTimer = this._setTimeout(() => {
+          this._retryTimer = null;
+          this._detach();
+        }, WIRE_RETRY_MS);
+      }
+      return;
+    }
+    this._clearTimers();
+    this._fetchPage = 0;
+    this.phase = 'detaching';
+    this._leavingAt = this._now();
+    this._log('detach', { pages: this._pages.size, totalPages: this._totalPages, shown: this._shown });
+    this._send(KEY_QUIT);
+  },
+
+  // PTT left its help screen after the detach: this frame is the page's again.
+  // The page takes it back while the hold is still on (as a closed sheet did
+  // before #222), then the hold ends and the reading record restores the view.
+  _detached: function() {
+    const bm = this._bookmark;
+    const page = this._pageToResume();
+    const pick = this._pick;
+    this._bookmark = null;
+    this._pick = null;
+    this._log('detached', { shown: this._shown, pick: !!pick });
+    if (this._shown) this.phase = 'detached';
+    else this._reset();
+    this._releaseHold();
+    page?.resumeAfterHelp?.(true);
+    recordFor(this._core).end(bm, 'cancel');
+    this._emit();
+    // After every other listener of this settle has seen it: the page has
+    // taken it as its own before the key arrives.
+    if (pick) {
+      this._pickTimer = this._setTimeout(() => {
+        this._pickTimer = null;
+        this._typeKey(pick);
+      }, 0);
+    }
+  },
+
+  // The picked item's key, typed on the page (the toolbar's entrance).
+  _typeKey: function(key) {
+    this._log('pick', { key: key.key.length > 1 ? key.key : 'char', ctrl: key.ctrlKey });
+    const view = this._core && this._core.view;
+    if (view && typeof view.sendKeyAsUser === 'function')
+      view.sendKeyAsUser(key.key, key.ctrlKey ? { ctrlKey: true } : undefined);
+  },
+
+  // Put the detachable visit's sheet away: detached ⇒ over at once; otherwise
+  // PTT is let go of now and the pick (if any) waits for it.
+  _putAway: function(pick) {
+    if (this.phase === 'detached') {
+      this._reset();
+      this._emit();
+      if (pick) this._typeKey(pick);
+      return true;
+    }
+    if (this.phase === 'loading') {
+      // No rows yet, so no pick. PTT's help screen is let go of when it
+      // arrives (noteScreen); if it never does, nothing is sent.
+      if (!this._shown) return false;
+      this._shown = false;
+      this._log('closeLoading', {});
+      this._emit();
+      return true;
+    }
+    if (!this._shown || (this.phase !== 'open' && this.phase !== 'detaching')) return false;
+    this._shown = false;
+    this._pick = pick || null;
+    if (this.phase === 'open') {
+      this._clearTimers();
+      this._fetchPage = 0;
+      this._detach();
+    }
+    this._emit();
+    return true;
   },
 
   _leave: function(bytes, reason) {
@@ -420,6 +661,7 @@ HelpMenuController.prototype = {
     this._clearTimers();
     this._fetchPage = 0;
     this.phase = 'leaving';
+    this._shown = false;
     this._leavingAt = this._now();
     // 閱讀紀錄：離開（q）回原處；執行某一項／小天使＝那個指令接手畫面。
     this._outcome = reason === 'close' ? 'cancel' : 'done';
@@ -433,23 +675,29 @@ HelpMenuController.prototype = {
   select: function(index) {
     const items = mergeHelpPages(this._pages, this._totalPages);
     if (!(index >= 0 && index < items.length)) return false;
+    if (this._detachable) {
+      const key = this._keyOf(items[index]);
+      if (!key) return false;
+      return this._putAway(key);
+    }
     return this._leave(helpSelectKeys(index, this._pageSize, this._totalPages), 'select');
   },
 
-  // 離開說明選單（＝原生的 q）。
+  // 離開說明選單：PTT 還停在說明選單時＝原生的 q；脫鉤之後什麼都不送。
   close: function() {
+    if (this._detachable) return this._putAway(null);
     return this._leave(KEY_QUIT, 'close');
   },
 
-  // 呼叫小天使（＝原生的 h，只在 footer 有這顆時）。
+  // 呼叫小天使（＝原生的 h，只在 footer 有這顆、而且 PTT 還停在說明選單時）。
   callAngel: function() {
-    if (!this._angel) return false;
+    if (!this._angel || this._detachable) return false;
     return this._leave(KEY_ANGEL, 'angel');
   },
 
   // 斷線：什麼都不留。
   reset: function() {
-    const wasOpen = this.phase === 'open';
+    const wasOpen = this._sheetOpen();
     this._reset();
     if (wasOpen) this._emit();
   }

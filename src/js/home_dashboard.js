@@ -606,13 +606,27 @@ HomeDashboard.prototype = {
     if (action === 'help' && !this._state.fetching) {
       // The key is on the wire: Ctrl+Z f must not race it.
       this._clearAutoTimer();
-      this._core.helpMenu?.expect?.();
+      const hm = this._core.helpMenu;
+      hm?.expect?.(this);
+      // The help sheet opens at this keypress (#222) and is a modal before the
+      // key's own keypress, which it would keep from PTT: send the key now.
+      if (hm && hm.phase === 'loading') {
+        this._core.view?._send?.(e.key);
+        return true;
+      }
       return false;
     }
     // Either search key opens the same sheet; it sends PTT's own key itself.
     if (action === 'search' && !this._state.fetching && tryOpenSearchModal(this._core, 's', null)) return true;
     this._refuse(UNSUPPORTED_KEY_HINT);
     return true;
+  },
+
+  // A key the help menu sheet offers (help_menu.js, #222): whether home
+  // refuses it when typed. Home keeps help and board search (homeKeyAction).
+  wouldRefuse: function(k) {
+    const action = homeKeyAction({ key: k.key, ctrlKey: !!k.ctrlKey, altKey: false, metaKey: false, shiftKey: false });
+    return action !== 'help' && action !== 'search';
   },
 
   // Text that is not one typed key (an input method, a paste): true when it

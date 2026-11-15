@@ -47,6 +47,11 @@
   -webkit-touch-callout: none;
 }
 
+/* fill（index.jsx）：內容還沒到也是最高，到了不會再長。 */
+.mobileSheet[data-fill] {
+  height: calc(100dvh - 48px - var(--vv-kb-inset, 0px));
+}
+
 /* 浮動（長按選單，js/sheet_placement.js#floatMenuPlacement）：貼著長按的那一列浮出來，
    像原生浮動選單。位置（top／bottom／left／width）由 MobileSheet 以 inline style 寫在
    content 上；這裡把 Drawer 的貼邊 flex 版面拆掉，改絕對定位。 */

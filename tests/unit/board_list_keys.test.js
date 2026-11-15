@@ -8,6 +8,7 @@
 // list, and a closed sheet gives the list back as the reader left it.
 // PttChrome's own sequences (_beginPassthroughBytes) are unchanged.
 import { BoardListSession } from "../../src/js/board_list_session";
+import { helpItemKey, splitHelpKeys } from "../../src/js/help_menu";
 import { BRD_CMD_PREFIX } from "../../src/js/list_render_owner";
 import { UNSUPPORTED_KEY_HINT, unsupportedPasteHint, unsupportedTextHint } from "../../src/js/unsupported_hint";
 
@@ -421,14 +422,12 @@ describe("help (`h`) is presented by the help menu sheet over the board list", (
     } else {
       expect(h.s.onFunctionKey("h")).toBe(true);
     }
-    // The real cursor lags (1 vs 7): synced first, frozen meanwhile.
-    expect(h.enqueued[0].kind).toBe(BRD_CMD_PREFIX + "native-sync-jump");
-    expect(h.enqueued[0].keys).toBe("7\r");
-    expect(h.s._renderMode).toBe("frozen");
-    h.s._serverNum = 7;
-    h.enqueued[0].onDone();
-    expect(h.enqueued[1].kind).toBe(BRD_CMD_PREFIX + "help");
-    expect(h.enqueued[1].keys).toBe("h");
+    // The real cursor lags (1 vs 7), and `h` goes out at once all the same
+    // (#222): no cursor sync before it. A command picked from the sheet is
+    // typed on the list later and syncs the cursor itself.
+    expect(h.enqueued.map((c) => c.kind)).toEqual([BRD_CMD_PREFIX + "help"]);
+    expect(h.enqueued[0].keys).toBe("h");
+    expect(h.s._renderMode).toBe("native");
     return h;
   }
 
@@ -442,6 +441,44 @@ describe("help (`h`) is presented by the help menu sheet over the board list", (
     expect(h.termBuf.brdListLines.length).toBe(40);
   });
 
+  test("a background fetch on the wire is cut short, not waited out, before h", () => {
+    const h = engaged();
+    const calls = [];
+    h.queue.inFlightKind = BRD_CMD_PREFIX + "fetch-up";
+    h.queue.expedite = (ms) => calls.push("expedite:" + ms);
+    h.queue.flushPendingKind = (prefix) => calls.push("drop:" + prefix);
+    h.s.onKeyDown(keyEvent("h"));
+    expect(calls).toEqual(["drop:" + BRD_CMD_PREFIX + "fetch", "expedite:250"]);
+    expect(h.enqueued.at(-1).keys).toBe("h");
+  });
+
+  test("the sheet's rows follow the list's keys (wouldRefuse)", () => {
+    const h = engaged();
+    const refused = (key, ctrlKey = false) => h.s.wouldRefuse({ key, ctrlKey });
+    // Kept: navigation, open, leave, number jump, board search (the search
+    // sheet), the in-place marks.
+    for (const k of ["ArrowUp", "PageDown", "Home", "End", "ArrowRight", "ArrowLeft", "1", "s", "t", "v"])
+      expect(refused(k)).toBe(false);
+    expect(refused("b", true)).toBe(false); // Ctrl-B, the page-up alias
+    // Refused (#192): editing the favorites, other searches, PTT's own screens.
+    for (const k of ["a", "d", "g", "M", "/", "c", "S", "y", "*"]) expect(refused(k)).toBe(true);
+    for (const k of ["d", "s", "u", "z"]) expect(refused(k, true)).toBe(true);
+  });
+
+  // #222: a row lists several keys; its pick types the first one the list
+  // keeps, the non-digit keys first (a digit starts a number jump).
+  test("a help row's pick is the first key the board list keeps, non-digits first", () => {
+    const h = engaged();
+    const pick = (keysText) => helpItemKey({ keys: splitHelpKeys(keysText) }, (k) => h.s.wouldRefuse(k));
+    expect(pick("0/Home")).toEqual({ key: "Home", ctrlKey: false });
+    expect(pick("PgUp/P/b/^B")).toEqual({ key: "PageUp", ctrlKey: false });
+    expect(pick("S/s")).toEqual({ key: "s", ctrlKey: false }); // S refused, s kept
+    expect(pick("^S/1")).toEqual({ key: "1", ctrlKey: false }); // only the digit is kept
+    expect(pick("a/i")).toBeNull(); // every key refused: unavailable
+    expect(pick("h/H")).toBeNull(); // the help keys
+    expect(pick("1-9")).toBeNull();
+  });
+
   test("the footer's help button takes the same route", () => {
     const h = askHelp("button");
     expect(h.helpCalls).toEqual([h.s]);
@@ -449,18 +486,19 @@ describe("help (`h`) is presented by the help menu sheet over the board list", (
 
   test("closed sheet (listKept) → the list comes back as the reader left it, no rebuild", () => {
     const h = askHelp();
-    h.enqueued[1].onDone && h.enqueued[1].onDone();
+    h.enqueued[0].onDone && h.enqueued[0].onDone();
     h.termBuf.feed(HELP_ROWS, { curY: 23 });
-    // PTT redraws its board list page (rows 1..20, cursor on 7) after q.
-    h.termBuf.show(brdScreenRows(), { curY: 3 + 6 });
+    // PTT redraws its board list page (rows 1..20) after q, its cursor where
+    // it was (1): nothing moved it there.
+    h.termBuf.show(brdScreenRows(), { curY: 3 });
     h.enqueued.length = 0;
     h.s.resumeAfterHelp(true);
     expect(h.s.state).toBe("active");
     expect(h.s._renderMode).toBe("buffer");
     expect(h.s._holdReason).toBe(null);
     expect(h.termBuf.brdListLines.length).toBe(40); // not re-seeded
-    expect(h.s._selectedNum).toBe(7);
-    expect(h.s._serverNum).toBe(7);
+    expect(h.s._selectedNum).toBe(7); // the reader's selection
+    expect(h.s._serverNum).toBe(1); // PTT's cursor, synced by the next command that needs it
     expect(h.s._topNum).toBe(5); // the reader's scroll position, not PTT's page top
     expect(h.s._scrollFrac).toBe(3);
   });
@@ -476,9 +514,7 @@ describe("help (`h`) is presented by the help menu sheet over the board list", (
       hasListViewport: () => true,
     };
     h.s.onKeyDown(keyEvent("h"));
-    h.s._serverNum = 7;
-    h.enqueued[0].onDone();
-    h.enqueued[1].onDone && h.enqueued[1].onDone();
+    h.enqueued[0].onDone && h.enqueued[0].onDone();
     h.termBuf.show(brdScreenRows(), { curY: 3 + 6 });
     h.s.resumeAfterHelp(true);
     expect(h.s.state).toBe("active");
@@ -488,7 +524,7 @@ describe("help (`h`) is presented by the help menu sheet over the board list", (
 
   test("closed sheet, but PTT shows another list (variant or names differ) → rebuilt from PTT's page", () => {
     const h = askHelp();
-    h.enqueued[1].onDone && h.enqueued[1].onDone();
+    h.enqueued[0].onDone && h.enqueued[0].onDone();
     const rows = brdScreenRows();
     rows[3 + 6] = brdRow(7, "Other");
     h.termBuf.show(rows, { curY: 3 + 6 });
@@ -500,7 +536,7 @@ describe("help (`h`) is presented by the help menu sheet over the board list", (
 
   test("left otherwise (not closed) → resumes at once by re-seeding from PTT's page", () => {
     const h = askHelp();
-    h.enqueued[1].onDone && h.enqueued[1].onDone();
+    h.enqueued[0].onDone && h.enqueued[0].onDone();
     h.termBuf.show(brdScreenRows(), { curY: 3 + 6 });
     h.s.resumeAfterHelp(false);
     expect(h.s.state).toBe("active");
@@ -511,7 +547,7 @@ describe("help (`h`) is presented by the help menu sheet over the board list", (
 
   test("not back on a board list → stays on native for the idle probe; held rows are dropped", () => {
     const h = askHelp();
-    h.enqueued[1].onDone && h.enqueued[1].onDone();
+    h.enqueued[0].onDone && h.enqueued[0].onDone();
     h.termBuf.show(HELP_ROWS, { curY: 23 });
     h.s.resumeAfterHelp(true);
     expect(h.s.state).toBe("functionMode");
@@ -521,7 +557,7 @@ describe("help (`h`) is presented by the help menu sheet over the board list", (
 
   test("the reading record's restore after a closed sheet applies at once (no lingering pending view)", () => {
     const h = askHelp();
-    h.enqueued[1].onDone && h.enqueued[1].onDone();
+    h.enqueued[0].onDone && h.enqueued[0].onDone();
     h.termBuf.show(brdScreenRows(), { curY: 3 + 6 });
     h.s.resumeAfterHelp(true);
     h.s.requestViewportRestore({ variant: h.s._variant, topNum: 5, scrollFrac: 3, cursorNum: 7 });

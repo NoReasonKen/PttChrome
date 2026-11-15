@@ -9,7 +9,7 @@
 ## 規則
 
 - **不讓使用者盲操作背後的原生主功能表（#191）**：焦點留在 `#t`，但好讀開著、面板畫在主功能表上時，鍵與字只放行好讀有呈現的入口：
-  - `h`、`H`、`?`（主功能表的說明鍵，底列只寫 `(h)說明`）：照送 PTT，同時 `helpMenu.expect()`；說明選單整趟（hold 期間）面板留在 sheet 底下，`_onSettled` 看到說明畫面也不收（每 `HOME_TRANSIT_RECHECK_MS` 重看一次，hold 一解除——關掉回主功能表、交給原生、等不到說明選單——就照常判定）。抓我的最愛途中的 `h` 擋下。
+  - `h`、`H`、`?`（主功能表的說明鍵，底列只寫 `(h)說明`）：照送 PTT，同時 `helpMenu.expect(this)`；說明頁讀完後彈窗在背後送 `q` 與 PTT 分離（#222，`docs/help-menu.md`），彈窗裡只有首頁收的鍵可點（`wouldRefuse`：`s`／`S` 看板搜尋，其餘列變暗），點了就經 `sendKeyAsUser` 交給 `takeKey`；說明選單整趟（hold 期間）面板留在 sheet 底下，`_onSettled` 看到說明畫面也不收（每 `HOME_TRANSIT_RECHECK_MS` 重看一次，hold 一解除——關掉回主功能表、交給原生、等不到說明選單——就照常判定）。抓我的最愛途中的 `h` 擋下。
   - `s`、`S`（PTT 的「選擇看板」）：開看板搜尋 sheet，鍵被吞掉、不提示（PTT 收到的是搜尋自己送的 `s`，不是 `S`）（`s` 由 `term_view.onKeyDown` 的 `tryOpenSearchModal` 在面板判定之前接走；`S` 由 `takeKey` 以同一個入口開）。sheet 開不了或正在抓我的最愛時擋下。
   - app 自己的快捷鍵（F 鍵：返回原文、複製連結、跳未讀、指令面板；F5／⌘R 重新整理）、瀏覽器組合鍵（Ctrl+C／A／V、⌘ 組合、Alt 組合）、送不出 byte 的鍵（修飾鍵、CapsLock）：不是指令，照舊。
   - 面板上的按鈕（卡片、更新、新信）：直接呼叫入口，不經鍵盤。

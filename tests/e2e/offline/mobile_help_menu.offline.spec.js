@@ -4,10 +4,13 @@
 // 送出的鍵。
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
-const { bootOffline } = require('../helpers/replay');
+const { bootOffline, loadCassette, replayListCassette } = require('../helpers/replay');
 const { startCapture, peekCapture, takeCapture } = require('../helpers/capture');
-const { ITEMS, drawHelpPage } = require('../helpers/help_menu');
-const { scrollIntoViewStable, waitRectStable } = require('../helpers/layout');
+const { ITEMS, answerHelpKey, drawHelpPage } = require('../helpers/help_menu');
+const { installPaintedFrameProbe, scrollIntoViewStable, waitRectStable } = require('../helpers/layout');
+const { imeCommit } = require('../helpers/real_input');
+
+const nav = loadCassette('cchat-list-nav');
 
 const HOME = '\x1b[1~';
 const PGDN = '\x1b[6~';
@@ -92,5 +95,79 @@ test.describe('說明選單入口（手機「更多」）', () => {
     await takeCapture(page);
     const { perPage } = await drawHelpPage(page, 1);
     await expect(items(page)).toHaveCount(perPage);
+  });
+});
+
+// #222: `h` on the easy-reading article list opens the sheet at the keypress,
+// as `/` opens the search sheet, before PTT has answered: one quiet line where
+// the rows go, at the sheet's full height. Page 1 fills the same sheet in
+// place. Every painted frame keeps the list on screen, never PTT's help
+// screen, and the sheet's height never changes.
+test.describe('說明選單從手機文章列表要求（#222）', () => {
+  test.skip(!nav, '缺 cchat-list-nav cassette');
+
+  test('the sheet opens at the keypress and fills in place, at one height, over the list every frame', async ({ page }) => {
+    test.setTimeout(60000);
+    await bootOffline(page, ptt);
+    await replayListCassette(page, nav);
+    await page.waitForFunction(() => window.__app.buf.pageState === 2);
+    await ptt.applyPrefs(page, { enableEasyReading: true, easyReadingListPrefetchCount: 30 });
+    await page.waitForFunction(() => {
+      const app = window.__app;
+      return app.listSession.state === 'active' && (app.buf.listLines || []).length > 30 && app.commandQueue.idle;
+    }, null, { timeout: 20000 });
+    // The cassette's last page-up went unanswered: teach the list the row the
+    // terminal shows the cursor on (as easy-reading-list's help tests do).
+    await page.evaluate(() => {
+      const app = window.__app;
+      const ls = app.listSession;
+      const num = Number(/^\D?\s*(\d+)/.exec(app.buf.getRowText(app.buf.cur_y, 0, app.buf.cols))[1]);
+      ls._selectedNum = num;
+      ls._serverNum = num;
+      ls._selectedPinnedKey = null;
+      ls._forceRedraw();
+    });
+    await page.waitForFunction(() => window.__app.commandQueue.idle);
+    await installPaintedFrameProbe(page);
+    await page.evaluate(() => {
+      window.__frames = [];
+      const sample = () => {
+        const main = document.getElementById('mainContainer');
+        const sheet = document.querySelector('[data-sheet="help"]');
+        window.__frames.push({
+          list: !!main.querySelector('.listBodyView'),
+          helpDrawn: main.textContent.includes('操作說明 (Help)'),
+          // Laid-out height (the slide's transform does not count).
+          sheetH: sheet ? sheet.offsetHeight : null,
+          rows: document.querySelectorAll('[data-sheet="help"] [data-help-item]').length,
+          phase: window.__app.helpMenu.phase,
+        });
+      };
+      window.__stopFrames = () => window.__paintedFrame.remove(sample);
+      window.__paintedFrame.add(sample);
+    });
+    await answerHelpKey(page, 'h\f');
+    await page.locator('#t').focus();
+    await imeCommit(page, 'h');
+    await expect(page.locator('[data-sheet="help"] [data-help-pending-text]')).toBeVisible();
+    expect(await items(page).count()).toBe(0);
+    // The sheet has slid in and painted before any of PTT's help screen.
+    await waitRectStable(page, '[data-sheet="help"]');
+    const { perPage } = await drawHelpPage(page, 1, { caption: '文章列表' });
+    await expect(items(page)).toHaveCount(perPage);
+    await expect(page.locator('[data-sheet="help"] [data-help-pending-text]')).toHaveCount(0);
+    const before = await page.evaluate(() => window.__frames.length);
+    await page.waitForFunction((n) => window.__frames.length > n + 8, before);
+    const frames = await page.evaluate(() => {
+      window.__stopFrames();
+      return window.__frames;
+    });
+    const loading = frames.filter((f) => f.phase === 'loading' && f.sheetH);
+    expect(loading.length).toBeGreaterThan(0);
+    expect(loading.every((f) => f.rows === 0)).toBe(true);
+    expect(frames.some((f) => f.rows > 0)).toBe(true);
+    const heights = frames.filter((f) => f.sheetH).map((f) => f.sheetH);
+    expect([...new Set(heights)]).toEqual([heights[0]]);
+    expect(frames.filter((f) => !f.list || f.helpDrawn)).toEqual([]);
   });
 });

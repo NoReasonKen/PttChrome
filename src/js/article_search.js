@@ -13,7 +13,7 @@
 
 import { u2b, ansiHalfColorConv } from './string_util';
 import { boardListContextKind } from './board_list_parse';
-import { listRenderOwnerOf, OWNER_ARTICLE_LIST } from './list_render_owner';
+import { listRenderOwnerOf, OWNER_ARTICLE_LIST, OWNER_BOARD_LIST } from './list_render_owner';
 import { rowHasTitle, MAIN_MENU, parseBoardName, boardNameFromKey } from './screen_titles';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { recordFor } from './reading_record';
@@ -122,11 +122,19 @@ export function searchGateFacts(core) {
 export function availableSearchKinds(facts) {
   if (!facts || facts.inputField) return [];
   if (facts.listOwner === OWNER_ARTICLE_LIST) return SEARCH_KINDS.slice();
+  if (facts.listOwner === OWNER_BOARD_LIST) return ['board'];
   const ctx = boardListContextKind(facts);
   if (ctx === 'article-list') return SEARCH_KINDS.slice();
   if (ctx === 'brdlist' || ctx === 'brdlist-other') return ['board'];
   if (rowHasTitle((facts.rowTexts || [])[0] || '', MAIN_MENU)) return ['board'];
   return [];
+}
+
+// Whether `key`, typed without modifiers on the list `listOwner` presents,
+// opens the search sheet. The help menu sheet asks it for its rows (#222).
+export function searchKeyOpensSheet(key, listOwner) {
+  const kind = searchKindOfKey(key);
+  return !!kind && availableSearchKinds({ listOwner: listOwner, rowTexts: [] }).indexOf(kind) >= 0;
 }
 
 // 鍵盤／IME 兩條攔截入口的判準。

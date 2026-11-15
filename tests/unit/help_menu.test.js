@@ -19,6 +19,8 @@ import {
   KEY_DOWN,
   FETCH_TIMEOUT_MS,
   HOLD_TIMEOUT_MS,
+  LEAVE_TIMEOUT_MS,
+  helpItemKey,
 } from "../../src/js/help_menu";
 import { boardEntryArms } from "../../src/js/board_note_skip";
 import { DEFAULT_PREFS } from "../../src/js/pref_storage";
@@ -140,6 +142,7 @@ function makeController(opts = {}) {
   const ctrl = new HelpMenuController(core, { addEventListener() {} }, {
     send: (b) => sent.push(b),
     enabled: () => opts.enabled !== false,
+    ...(opts.now ? { now: opts.now } : {}),
     setTimeout: (fn, ms) => {
       timers.push({ fn, ms });
       return timers.length;
@@ -340,7 +343,9 @@ describe("hold of the page under the sheet", () => {
     for (const [act, calls] of [
       [(c) => c.close(), ["resume:true", "restore"]],
       [(c) => c.noteScreen(resized()), ["restore", "resume:false"]],
-      [(c) => c.select(0), []],
+      // A held visit lets go of PTT's help screen for a pick as well (#222):
+      // the list is back the same way, and the key is typed on it afterwards.
+      [(c) => c.select(10), ["resume:true", "restore"]],
     ]) {
       const h = held();
       const log = [];
@@ -424,5 +429,376 @@ describe("hold of the page under the sheet", () => {
     const b = held({ enabled: false });
     b.ctrl.expect();
     expect(b.ctrl.holding).toBeFalsy();
+  });
+});
+
+// #222: a help menu asked from an easy-reading page lets go of PTT's help
+// screen once its pages are read. `q` goes out behind the sheet, PTT is back on
+// the page, and the sheet stays open over it, detached: a pick is the item's
+// key handed to the page as if typed there, and closing sends nothing.
+describe("the detached sheet (#222)", () => {
+  function page(opts = {}) {
+    const h = makeController(opts);
+    h.log = [];
+    h.keys = [];
+    h.core.view = {
+      navigationEnded: () => h.log.push("drawn"),
+      sendKeyAsUser: (key, mods) => h.keys.push(mods && mods.ctrlKey ? "^" + key : key),
+    };
+    h.requester = {
+      resumeAfterHelp: (kept) => h.log.push("resume:" + kept),
+      wouldRefuse: opts.wouldRefuse || ((k) => k.key === "d"),
+      readingPosition: () => null,
+      requestViewportRestore: () => h.log.push("restore"),
+    };
+    h.ctrl.expect(h.requester);
+    return h;
+  }
+  const itemIndex = (h, keysText) => h.changes.at(-1).items.findIndex((i) => i.keysText === keysText);
+
+  test("all pages read ⇒ one q behind the sheet; PTT back on the page ⇒ detached, hold over, page resumed", () => {
+    const h = page();
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    expect(h.sent).toEqual([KEY_PGDN]);
+    expect(h.ctrl.phase).toBe("open");
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE2));
+    expect(h.sent).toEqual([KEY_PGDN, "q"]);
+    expect(h.ctrl.phase).toBe("detaching");
+    expect(h.changes.at(-1)).toMatchObject({ open: true, loading: false });
+    expect(h.ctrl.holding).toBe(true);
+    // PTT's help frames answering nothing in particular are not a second q.
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE2));
+    expect(h.sent).toEqual([KEY_PGDN, "q"]);
+    h.ctrl.noteScreen(null);
+    expect(h.ctrl.phase).toBe("detached");
+    expect(h.ctrl.holding).toBe(false);
+    expect(h.log).toEqual(["drawn", "resume:true"]);
+    expect(h.changes.at(-1)).toMatchObject({ open: true, loading: false });
+    expect(h.changes.at(-1).items).toHaveLength(35);
+    // The page's own frames after that are not the help menu's business.
+    h.ctrl.noteScreen(null);
+    expect(h.ctrl.phase).toBe("detached");
+  });
+
+  test("a one-page help menu detaches at once", () => {
+    const h = page();
+    const single = { ...parseHelpMenuScreen(HELP_FAV_PAGE1), totalPages: 1 };
+    h.ctrl.noteScreen(single);
+    expect(h.sent).toEqual(["q"]);
+    expect(h.ctrl.phase).toBe("detaching");
+  });
+
+  test("a page that never comes ⇒ the sheet lists what it has and detaches", () => {
+    const h = page();
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    h.fire(FETCH_TIMEOUT_MS);
+    expect(h.sent).toEqual([KEY_PGDN, "q"]);
+    expect(h.ctrl.phase).toBe("detaching");
+  });
+
+  test("closing the detached sheet sends nothing", () => {
+    const h = page();
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE2));
+    h.ctrl.noteScreen(null);
+    h.sent.length = 0;
+    expect(h.ctrl.close()).toBe(true);
+    expect(h.sent).toEqual([]);
+    expect(h.keys).toEqual([]);
+    expect(h.ctrl.phase).toBe("idle");
+    expect(h.changes.at(-1).open).toBe(false);
+  });
+
+  test("a pick on the detached sheet is the item's key typed on the page; PTT's help screen gets nothing", () => {
+    const h = page();
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE2));
+    h.ctrl.noteScreen(null);
+    h.sent.length = 0;
+    expect(h.ctrl.select(itemIndex(h, "→/Enter/r/l"))).toBe(true);
+    expect(h.keys).toEqual(["ArrowRight"]);
+    expect(h.sent).toEqual([]);
+    expect(h.ctrl.phase).toBe("idle");
+    expect(h.changes.at(-1).open).toBe(false);
+  });
+
+  test("a pick before the detach is kept, and typed only once PTT left its help screen and the page resumed", () => {
+    const h = page();
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    // Page 2 is still on its way: the sheet closes, the fetch stops, q goes out.
+    expect(h.ctrl.select(itemIndex(h, "s"))).toBe(true);
+    expect(h.changes.at(-1).open).toBe(false);
+    expect(h.sent).toEqual([KEY_PGDN, "q"]);
+    expect(h.keys).toEqual([]);
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE2)); // the PgDn's answer
+    expect(h.sent).toEqual([KEY_PGDN, "q"]);
+    expect(h.keys).toEqual([]);
+    h.ctrl.noteScreen(null);
+    expect(h.log).toEqual(["drawn", "resume:true"]);
+    expect(h.ctrl.phase).toBe("idle");
+    expect(h.keys).toEqual([]); // after this settle's other listeners
+    h.fire(0);
+    expect(h.keys).toEqual(["s"]);
+    expect(h.sent).toEqual([KEY_PGDN, "q"]);
+  });
+
+  test("a pick made while q is on its way is kept the same way", () => {
+    const h = page();
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE2));
+    expect(h.ctrl.select(itemIndex(h, "^U"))).toBe(true);
+    expect(h.sent).toEqual([KEY_PGDN, "q"]);
+    h.ctrl.noteScreen(null);
+    h.fire(0);
+    expect(h.keys).toEqual(["^u"]);
+  });
+
+  test("a kept pick is dropped when the visit falls back to the native screen", () => {
+    let now = 0;
+    const h = page({ now: () => now });
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    h.ctrl.select(itemIndex(h, "s"));
+    now = LEAVE_TIMEOUT_MS + 1;
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1)); // still on the help screen
+    expect(h.ctrl.phase).toBe("native");
+    expect(h.ctrl.holding).toBe(false);
+    h.ctrl.noteScreen(null);
+    h.fire();
+    expect(h.keys).toEqual([]);
+  });
+
+  test("closing before the detach hides the sheet and lets go of the help screen at once", () => {
+    const h = page();
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    h.ctrl.close();
+    expect(h.changes.at(-1).open).toBe(false);
+    expect(h.sent).toEqual([KEY_PGDN, "q"]);
+    h.ctrl.noteScreen(null);
+    expect(h.ctrl.phase).toBe("idle");
+    expect(h.log).toEqual(["drawn", "resume:true"]);
+    h.fire();
+    expect(h.keys).toEqual([]);
+  });
+
+  test("rows the page would refuse, the help item and the angel are unavailable", () => {
+    const h = page();
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE2));
+    const s = h.changes.at(-1);
+    const avail = (k) => s.items[itemIndex(h, k)].available;
+    expect(avail("d")).toBe(false); // the page refuses it
+    expect(avail("h/H")).toBe(false); // help again
+    expect(avail("1-9")).toBe(false); // no single key to type
+    expect(avail("s")).toBe(true);
+    expect(avail("→/Enter/r/l")).toBe(true);
+    expect(s.angel).toBe(false);
+    h.ctrl.noteScreen(null);
+    expect(h.ctrl.select(itemIndex(h, "d"))).toBe(false);
+    expect(h.ctrl.callAngel()).toBe(false);
+    expect(h.keys).toEqual([]);
+    expect(h.ctrl.phase).toBe("detached");
+  });
+
+  test("the attached flow (nobody's request) keeps every row and the angel", () => {
+    const h = makeController();
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE2));
+    const s = h.changes.at(-1);
+    expect(s.items.every((i) => i.available)).toBe(true);
+    expect(s.angel).toBe(true);
+    expect(h.sent).toEqual([KEY_PGDN]);
+    expect(h.ctrl.phase).toBe("open");
+  });
+
+  test("helpItemKey: the first key the page keeps, as the key a reader types", () => {
+    const key = (keysText, refuses) => helpItemKey({ keys: splitHelpKeys(keysText) }, refuses);
+    expect(key("→/Enter/r/l")).toEqual({ key: "ArrowRight", ctrlKey: false });
+    expect(key("→/Enter/r/l", (k) => k.key !== "r")).toEqual({ key: "r", ctrlKey: false });
+    // Digits come last: "0/Home" types Home.
+    expect(key("0/Home")).toEqual({ key: "Home", ctrlKey: false });
+    expect(key("0/Home", (k) => k.key === "Home")).toEqual({ key: "0", ctrlKey: false });
+    expect(key("0/Home", () => true)).toBeNull();
+    expect(key("h/H")).toBeNull();
+    expect(key("PgUp/P/b/^B")).toEqual({ key: "PageUp", ctrlKey: false });
+    expect(key("^Z")).toEqual({ key: "z", ctrlKey: true });
+    expect(key("Space")).toEqual({ key: " ", ctrlKey: false });
+    expect(key("/")).toEqual({ key: "/", ctrlKey: false });
+    expect(key("1-9")).toBeNull();
+  });
+});
+
+// #222: the sheet of a help visit asked from an easy-reading page opens at the
+// keypress, before PTT's help screen is there (phase `loading`), and the rows
+// fill in place when page 1 arrives.
+describe("the loading sheet (#222)", () => {
+  function asked(opts = {}) {
+    const h = makeController(opts);
+    h.log = [];
+    h.core.view = { navigationEnded: () => h.log.push("drawn") };
+    h.requester = {
+      resumeAfterHelp: (kept) => h.log.push("resume:" + kept),
+      wouldRefuse: () => false,
+      readingPosition: () => null,
+      requestViewportRestore: () => {},
+    };
+    h.ctrl.expect(h.requester);
+    return h;
+  }
+
+  test("the request opens the sheet at once: no rows, its full height, nothing sent", () => {
+    const h = asked();
+    expect(h.ctrl.phase).toBe("loading");
+    expect(h.changes).toHaveLength(1);
+    expect(h.changes[0]).toMatchObject({ open: true, pending: true, fill: true, items: [], angel: false });
+    expect(h.sent).toEqual([]);
+    expect(h.ctrl.holding).toBe(true);
+  });
+
+  test("frames before PTT's help screen leave it loading; page 1 fills the same open sheet", () => {
+    const h = asked();
+    h.ctrl.noteScreen(null);
+    expect(h.ctrl.phase).toBe("loading");
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    expect(h.ctrl.phase).toBe("open");
+    expect(h.sent).toEqual([KEY_PGDN]);
+    // Never closed in between: the slide is not played again.
+    expect(h.changes.every((s) => s.open)).toBe(true);
+    expect(h.changes.at(-1)).toMatchObject({ pending: false, fill: true, loading: true });
+    expect(h.changes.at(-1).items).toHaveLength(HELP_FAV_PAGE1.length - 3);
+  });
+
+  test("closed while loading ⇒ hidden at once; PTT's help screen, when it comes, gets one q and no PgDn", () => {
+    const h = asked();
+    expect(h.ctrl.close()).toBe(true);
+    expect(h.changes.at(-1).open).toBe(false);
+    expect(h.sent).toEqual([]);
+    expect(h.ctrl.holding).toBe(true);
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    expect(h.sent).toEqual(["q"]);
+    expect(h.ctrl.phase).toBe("detaching");
+    expect(h.changes.at(-1).open).toBe(false);
+    h.ctrl.noteScreen(null); // PTT back on the page
+    expect(h.ctrl.phase).toBe("idle");
+    expect(h.ctrl.holding).toBe(false);
+    expect(h.log).toEqual(["drawn", "resume:true"]);
+    expect(h.sent).toEqual(["q"]);
+    // The sheet never came back.
+    expect(h.changes.slice(1).some((s) => s.open)).toBe(false);
+  });
+
+  test("closed while loading and the wire busy ⇒ the q waits for it", () => {
+    const h = asked();
+    h.ctrl.close();
+    h.core.commandQueue.inFlightKind = "help";
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    expect(h.sent).toEqual([]);
+    h.core.commandQueue.inFlightKind = null;
+    h.fire();
+    expect(h.sent).toEqual(["q"]);
+  });
+
+  test("closed while loading and no help screen ever comes ⇒ nothing is sent, the page is let go", () => {
+    const h = asked();
+    h.ctrl.close();
+    h.fire(HOLD_TIMEOUT_MS);
+    expect(h.ctrl.phase).toBe("idle");
+    expect(h.ctrl.holding).toBe(false);
+    expect(h.log).toEqual(["drawn"]);
+    expect(h.sent).toEqual([]);
+    expect(h.changes.slice(1).some((s) => s.open)).toBe(false);
+  });
+
+  test("no help screen in time ⇒ the loading sheet closes, nothing is sent, the hold ends", () => {
+    const h = asked();
+    h.fire(HOLD_TIMEOUT_MS);
+    expect(h.ctrl.phase).toBe("idle");
+    expect(h.changes.at(-1)).toMatchObject({ open: false });
+    expect(h.ctrl.holding).toBe(false);
+    expect(h.log).toEqual(["drawn"]);
+    expect(h.sent).toEqual([]);
+  });
+
+  test("a help screen not on its first page ⇒ the loading sheet closes and the visit goes native", () => {
+    const h = asked();
+    h.ctrl.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE2));
+    expect(h.ctrl.phase).toBe("native");
+    expect(h.changes.at(-1).open).toBe(false);
+    expect(h.ctrl.holding).toBe(false);
+    expect(h.sent).toEqual([]);
+  });
+
+  test("nothing can be picked while loading", () => {
+    const h = asked();
+    expect(h.ctrl.select(0)).toBe(false);
+    expect(h.ctrl.phase).toBe("loading");
+  });
+
+  test("a disconnect while loading closes the sheet", () => {
+    const h = asked();
+    h.ctrl.reset();
+    expect(h.ctrl.phase).toBe("idle");
+    expect(h.changes.at(-1).open).toBe(false);
+  });
+
+  // A frame shows page 1 whole once its footer (drawn last) is there: the rows
+  // fill in then, not SETTLE_MS later; the settle reads the page again.
+  describe("page 1 read from its frame, before the settle", () => {
+    function withBuf() {
+      const listeners = {};
+      const buf = {
+        rows: HELP_FAV_PAGE1.length,
+        cols: 80,
+        lines: HELP_FAV_PAGE1.map(() => ""),
+        getRowText(r) {
+          return this.lines[r];
+        },
+        addEventListener(name, fn) {
+          listeners[name] = fn;
+        },
+      };
+      const sent = [];
+      const changes = [];
+      const ctrl = new HelpMenuController({ commandQueue: { inFlightKind: null } }, buf, {
+        send: (b) => sent.push(b),
+        enabled: () => true,
+        setTimeout: () => 1,
+        clearTimeout: () => {},
+      });
+      ctrl.onChange = (s) => changes.push(s);
+      ctrl.expect({ resumeAfterHelp() {}, wouldRefuse: () => false });
+      const frame = (rows) => {
+        buf.lines = rows.slice();
+        listeners.change();
+      };
+      const settle = () => listeners.screenSettled();
+      return { ctrl, sent, changes, frame, settle };
+    }
+
+    test("a frame with the footer fills the rows and fetches page 2 at once", () => {
+      const b = withBuf();
+      b.frame(HELP_FAV_PAGE1);
+      expect(b.ctrl.phase).toBe("open");
+      expect(b.changes.at(-1).items).toHaveLength(HELP_FAV_PAGE1.length - 3);
+      expect(b.sent).toEqual([KEY_PGDN]);
+      b.settle();
+      expect(b.sent).toEqual([KEY_PGDN]);
+      expect(b.changes.at(-1).items).toHaveLength(HELP_FAV_PAGE1.length - 3);
+    });
+
+    test("a frame without the footer yet is not read", () => {
+      const b = withBuf();
+      const partial = HELP_FAV_PAGE1.slice();
+      partial[partial.length - 1] = "";
+      b.frame(partial);
+      expect(b.ctrl.phase).toBe("loading");
+      expect(b.sent).toEqual([]);
+    });
+
+    test("frames after the sheet has rows are left to the settle", () => {
+      const b = withBuf();
+      b.frame(HELP_FAV_PAGE1);
+      b.frame(HELP_FAV_PAGE2);
+      expect(b.changes.at(-1).items).toHaveLength(HELP_FAV_PAGE1.length - 3);
+    });
   });
 });

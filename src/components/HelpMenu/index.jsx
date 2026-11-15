@@ -9,6 +9,10 @@ import "./HelpMenu.css";
 // 執行（控制器送 Home → PgDn… → ↓… → Enter，等同原生在那一項上按 Enter）。
 // 桌機＝Mantine Modal（↑↓／Home／End 移動、Enter 執行、q／←／Esc 離開，同原生鍵位）；
 // 手機＝bottom sheet（系統返回＝離開，同原生 q）。
+// 從好讀頁要求的說明選單（#222）：每項帶 available；那個頁面不收的鍵、說明本身、
+// 沒有單一鍵的項目畫成不可用（變暗、disabled、鍵盤跳過），小天使不出現。
+// 這種造訪在按鍵當下就開（pending：還沒有列，清單區一行安靜的提示），高度一開始就是
+// 上限（fill），第 1 頁到了原地補上列，不重播滑入；有列之後焦點落在第一個可選的項目。
 // 開著＝modal：桌機經 App.setModalOpen("helpMenu")；手機 MobileSheet 自己登記。
 const EMPTY = {
   open: false,
@@ -16,6 +20,8 @@ const EMPTY = {
   angel: false,
   items: [],
   loading: false,
+  pending: false,
+  fill: false,
 };
 
 export const HelpMenu = ({ pttchrome, mobile }) => {
@@ -40,9 +46,45 @@ export const HelpMenu = ({ pttchrome, mobile }) => {
     return () => pttchrome.setModalOpen("helpMenu", false);
   }, [pttchrome, mobile, snap.open]);
 
+  // The rows the reader can pick (#222: a detachable visit marks the others
+  // unavailable). Keyboard moves skip the others.
+  const pickable = useCallback(
+    (i) => !!snap.items[i] && snap.items[i].available !== false,
+    [snap.items],
+  );
+  const firstPickable = snap.items.findIndex(
+    (item) => item.available !== false,
+  );
+
   useEffect(() => {
-    if (snap.open) setActive(0);
+    if (snap.open) setActive(Math.max(0, firstPickable));
+    // Only when the sheet opens: rows arriving later do not move the reader.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snap.open]);
+
+  // A sheet opened before its rows (pending): when the first rows arrive,
+  // focus goes to the first pickable one, as the open itself does when the
+  // rows are already there (data-autofocus). Later pages do not move it.
+  const hadRows = useRef(false);
+  useEffect(() => {
+    const has = snap.open && snap.items.length > 0;
+    if (has && !hadRows.current && firstPickable >= 0) {
+      const el = itemRefs.current[firstPickable];
+      const focused = typeof document !== "undefined" && document.activeElement;
+      // Keep focus the reader already put on a row.
+      if (el && !(focused && focused.hasAttribute?.("data-help-item"))) {
+        setActive(firstPickable);
+        el.focus({ preventScroll: true });
+      }
+    }
+    hadRows.current = has;
+  }, [snap.open, snap.items.length, firstPickable]);
+
+  // One height from the keypress until the sheet has slid away: the fill of
+  // the visit that opened it stays while it closes.
+  const fillRef = useRef(false);
+  if (snap.open) fillRef.current = !!snap.fill;
+  const fill = fillRef.current;
 
   const onClose = useCallback(() => ctrl && ctrl.close(), [ctrl]);
   const onAngel = useCallback(() => ctrl && ctrl.callAngel(), [ctrl]);
@@ -62,23 +104,31 @@ export const HelpMenu = ({ pttchrome, mobile }) => {
     (e) => {
       if (e.ctrlKey || e.altKey || e.metaKey) return;
       const n = snap.items.length;
+      // The nearest pickable row from `from` in direction `dir`; -1 if none.
+      const seek = (from, dir) => {
+        for (let i = from; i >= 0 && i < n; i += dir) if (pickable(i)) return i;
+        return -1;
+      };
+      const move = (i) => {
+        if (i >= 0) focusItem(i);
+      };
       let handled = true;
       switch (e.key) {
         case "ArrowDown":
-          if (n) focusItem(Math.min(n - 1, active + 1));
+          move(seek(active + 1, 1));
           break;
         case "ArrowUp":
-          if (n) focusItem(Math.max(0, active - 1));
+          move(seek(active - 1, -1));
           break;
         case "Home":
-          if (n) focusItem(0);
+          move(seek(0, 1));
           break;
         case "End":
-          if (n) focusItem(n - 1);
+          move(seek(n - 1, -1));
           break;
         case "Enter":
         case "ArrowRight":
-          if (n) onSelect(active);
+          if (pickable(active)) onSelect(active);
           break;
         case "q":
         case "Q":
@@ -97,6 +147,7 @@ export const HelpMenu = ({ pttchrome, mobile }) => {
     },
     [
       snap.items.length,
+      pickable,
       snap.angel,
       active,
       focusItem,
@@ -115,37 +166,61 @@ export const HelpMenu = ({ pttchrome, mobile }) => {
       className="helpMenuList"
       data-help-menu-list
       data-mobile={mobile ? "" : undefined}
+      data-help-pending={snap.pending ? "" : undefined}
+      aria-busy={snap.pending ? true : undefined}
+      // No rows yet: the open puts focus on the list itself (not the footer's
+      // button), and the first row takes it when the rows arrive.
+      tabIndex={snap.pending ? -1 : undefined}
+      data-autofocus={snap.pending ? true : undefined}
       role="listbox"
       aria-label={title}
     >
-      {snap.items.map((item, i) => (
-        <button
-          type="button"
-          key={item.keysText + "\t" + item.label}
-          ref={(el) => {
-            itemRefs.current[i] = el;
-          }}
-          className="helpMenuItem"
-          role="option"
-          aria-selected={i === active}
-          data-help-item={i}
-          data-active={i === active ? "" : undefined}
-          // Modal 開的當下焦點落在第一項：鍵盤使用者直接 ↑↓／Enter。
-          data-autofocus={i === 0 ? true : undefined}
-          onClick={() => onSelect(i)}
-          onFocus={() => setActive(i)}
+      {snap.items.map((item, i) => {
+        const unavailable = item.available === false;
+        return (
+          <button
+            type="button"
+            key={item.keysText + "\t" + item.label}
+            ref={(el) => {
+              itemRefs.current[i] = el;
+            }}
+            className="helpMenuItem"
+            role="option"
+            aria-selected={i === active && !unavailable}
+            // Unavailable on this page (#222): not focusable, not pickable.
+            disabled={unavailable}
+            aria-disabled={unavailable ? true : undefined}
+            data-unavailable={unavailable ? "" : undefined}
+            data-help-item={i}
+            data-active={i === active && !unavailable ? "" : undefined}
+            // Modal 開的當下焦點落在第一個可選的項目：鍵盤使用者直接 ↑↓／Enter。
+            data-autofocus={i === firstPickable ? true : undefined}
+            onClick={() => onSelect(i)}
+            onFocus={() => setActive(i)}
+          >
+            <span className="helpMenuKeys">
+              {item.keys.map((k, j) => (
+                <kbd key={j} className="helpMenuKey">
+                  {k}
+                </kbd>
+              ))}
+            </span>
+            <span className="helpMenuLabel">{item.label}</span>
+            <span className="helpMenuDesc">{item.help}</span>
+          </button>
+        );
+      })}
+      {snap.pending ? (
+        // Before PTT's help screen arrived: one quiet line where the rows go.
+        <Text
+          size="xs"
+          c="dimmed"
+          className="helpMenuLoading helpMenuPending"
+          data-help-pending-text
         >
-          <span className="helpMenuKeys">
-            {item.keys.map((k, j) => (
-              <kbd key={j} className="helpMenuKey">
-                {k}
-              </kbd>
-            ))}
-          </span>
-          <span className="helpMenuLabel">{item.label}</span>
-          <span className="helpMenuDesc">{item.help}</span>
-        </button>
-      ))}
+          {i18n("helpMenu_pending")}
+        </Text>
+      ) : null}
       {snap.loading ? (
         <Text
           size="xs"
@@ -191,6 +266,7 @@ export const HelpMenu = ({ pttchrome, mobile }) => {
         title={title}
         sheetKey="help"
         footer={footer}
+        fill={fill}
       >
         {list}
       </MobileSheet>
@@ -202,6 +278,17 @@ export const HelpMenu = ({ pttchrome, mobile }) => {
       title={title}
       size="lg"
       yOffset="5vh"
+      // The modal's maximum height from the keypress on (see fill).
+      styles={
+        fill
+          ? {
+              content: {
+                "--modal-content-height":
+                  "calc(100dvh - var(--modal-y-offset) * 2)",
+              },
+            }
+          : undefined
+      }
     >
       <div onKeyDown={onKeyDown} data-help-menu>
         {list}

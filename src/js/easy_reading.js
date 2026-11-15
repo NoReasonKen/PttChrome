@@ -14,6 +14,7 @@ import { isJumpParkedListScreen } from './list_session';
 import { createBottomStick } from './bottom_stick';
 import { followScrollRestore } from './scroll_restore_follow';
 import { recordFor } from './reading_record';
+import { isPushKey } from './long_push_gate';
 
 // Pure decision for auto-enabling easy reading, evaluated once per settle edge
 // (term_buf 'pageStateSettled'), not per redraw frame. Kept side-effect free so it
@@ -2450,6 +2451,79 @@ EasyReading.prototype._stickBottom = function() {
   return true;
 };
 
+// The reading keys of article easy reading: what a key does, or null when
+// none of them takes it (then articleLeftoverKey decides). The table behind
+// _onKeyDownProcessUI, and what the help menu sheet asks (#222).
+//   pageBack / pageForward  a page up / down; at the edge, leave the article
+//   pageUp / pageDown       a page up / down (pageDown kicks a stuck load)
+//   scrollPageDown          a page down (Ctrl-F)
+//   lineBack / lineForward  a line up / down; at the edge, leave the article
+//   lineUp / lineDown       a line up / down
+//   top / bottom            the article's top / bottom (bottom sticks)
+//   leave                   back to the list
+//   threadJump              same-thread and author jumps (a b f = + - [ ] A B F)
+//   swallow                 taken and nothing done (Tab, Ctrl with @ ^ _ ?)
+// Ctrl and Alt letters share one route (ctrlLetterOf).
+export function articleReadingKey(e) {
+  if (!e.ctrlKey && !e.altKey) {
+    switch (e.key) {
+      case 'Backspace': return 'pageBack';
+      case 'ArrowRight':
+      case ' ':
+      case 't':
+        return 'pageForward';
+      case 'PageUp': return 'pageUp';
+      case 'PageDown': return 'pageDown';
+      case 'ArrowLeft': return 'leave';
+      case 'ArrowUp': return 'lineBack';
+      case 'Enter':
+      case 'ArrowDown':
+        return 'lineForward';
+      case 'k': return 'lineUp';
+      case 'j': return 'lineDown';
+      case 'Home':
+      case '0':
+      case 'g':
+        return 'top';
+      // End/$/G jump to the article bottom and stay in easy reading, like the
+      // official term. Symmetric with Home/0/g (_scrollTop).
+      case 'End':
+      case '$':
+      case 'G':
+        return 'bottom';
+      case 'Tab': return 'swallow';
+    }
+    if (!e.metaKey && "abf=+-[]ABF".indexOf(e.key) >= 0) return 'threadJump';
+    return null;
+  }
+  switch (ctrlLetterOf(e)) {
+    case null: return null;
+    case 'f': return 'scrollPageDown';
+    case 'b': return 'pageUp';
+    case 'h': return 'pageBack';
+  }
+  // 符號鍵本次不納入 Alt remap，所以這裡仍比對 e.key（Alt 給不出它們）。
+  return "@^_?".indexOf(e.key) >= 0 ? 'swallow' : null;
+}
+
+// A key the help menu sheet offers (#222), as { key, ctrlKey }: whether the
+// article refuses it when typed. Push keys open the long-comment sheet before
+// the article sees them (term_view.onKeyDown); the find keys only point to the
+// browser's own find; reply and help keep the native route.
+export function articleWouldRefuse(k, prefs) {
+  const e = { key: k.key, ctrlKey: !!k.ctrlKey, altKey: false, metaKey: false, shiftKey: false };
+  if (!e.ctrlKey && isPushKey(e.key)) return false;
+  if (easyReadingFindKeyAction(e, prefs)) return true;
+  const reading = articleReadingKey(e);
+  // A swallowed key does nothing in the article: a row for it would do nothing.
+  if (reading) return reading === 'swallow';
+  return articleLeftoverKey(e) !== 'native';
+}
+
+EasyReading.prototype.wouldRefuse = function(k) {
+  return articleWouldRefuse(k, readValuesWithDefault());
+};
+
 EasyReading.prototype._onKeyDownProcessUI = function(e) {
   var stop = false;
   // 讀者按了別的鍵（捲動、翻頁、進 prompt…）⇒ 不再黏在文末。
@@ -2466,110 +2540,75 @@ EasyReading.prototype._onKeyDownProcessUI = function(e) {
     e.preventDefault();
     return;
   }
-  if (!e.ctrlKey && !e.altKey) {
-    switch (e.key) {
-      case 'Backspace':
-        stop = this._scrollBy(-this._turnPageLines);
-        if (!stop)
-          this.leaveCurrentPost();
-        break;
-      case 'ArrowRight':
-      case ' ':
-      case 't':
-        stop = this._scrollBy(this._turnPageLines);
-        if (!stop)
-          this.leaveCurrentPost();
-        break;
-      case 'PageUp':
-        this._scrollBy(-this._turnPageLines);
-        stop = true;
-        break;
-      case 'PageDown':
-        // Can't scroll any further AND the article isn't fully loaded ⇒ the auto-paging
-        // transaction is stuck, and PgDn would silently do nothing (the reported
-        // symptom). Kick it. See _kickPageDown.
-        if (!this._scrollBy(this._turnPageLines))
-          this._kickPageDown();
-        stop = true;
-        break;
-      case 'ArrowLeft':
-        this.stopEasyReading();
-        break;
-      case 'ArrowUp':
-        stop = this._scrollBy(-1);
-        if (!stop)
-          this.leaveCurrentPost();
-        break;
-      case 'Enter':
-      case 'ArrowDown':
-        stop = this._scrollBy(1);
-        if (!stop)
-          this.leaveCurrentPost();
-        break;
-      case 'k':
-        this._scrollBy(-1);
-        stop = true;
-        break;
-      case 'j':
-        this._scrollBy(1);
-        stop = true;
-        break;
-      case 'Home':
-      case '0':
-      case 'g':
-        stop = this._scrollTop();
-        break;
-      // End/$/G jump to the article bottom and stay in easy reading, like the
-      // official term. Symmetric with Home/0/g (_scrollTop).
-      case 'End':
-      case '$':
-      case 'G':
-        stop = this._stickBottom();
-        // 還在讀取中 ⇒ 反向讀取：直接跳到文末、往上讀（docs/easy-reading.md
-        // 「反向讀取」）。已讀完就只是上面那一行的捲到底。
-        this._requestReverse();
-        break;
-      case 'Tab':
-        stop = true;
-        break;
-      default:
-        if (!e.metaKey && "abf=+-[]ABF".indexOf(e.key) >= 0) {
-          this.leaveCurrentPost();
-          // Same-thread keys land however far their target is (#65).
-          stop = !!this._core.threadJump?.start(e.key);
-          break;
-        }
-        // Every other key is a PTT command easy reading does not present
-        // (#160): refused with a message. Help and reply keep the native route.
-        stop = this._leftoverKey(e);
-        break;
-    }
-  } else if (ctrlLetterOf(e) !== null) {
-    // Ctrl 版與 Alt 版走同一條路，理由見 ctrlLetterOf 上方。
-    switch (ctrlLetterOf(e)) {
-      case 'f':
-        this._scrollBy(this._turnPageLines);
-        stop = true;
-        break;
-      case 'b':
-        this._scrollBy(-this._turnPageLines);
-        stop = true;
-        break;
-      case 'h':
-        stop = this._scrollBy(-this._turnPageLines);
-        if (!stop)
-          this.leaveCurrentPost();
-        break;
-      default:
-        // 符號鍵本次不納入 Alt remap，所以這裡仍比對 e.key（Alt 給不出它們）。
-        if ("@^_?".indexOf(e.key) >= 0) {
-          stop = true;
-          break;
-        }
-        stop = this._leftoverKey(e);
-    }
-  } else {
-    stop = this._leftoverKey(e);
+  switch (articleReadingKey(e)) {
+    case 'pageBack':
+      stop = this._scrollBy(-this._turnPageLines);
+      if (!stop)
+        this.leaveCurrentPost();
+      break;
+    case 'pageForward':
+      stop = this._scrollBy(this._turnPageLines);
+      if (!stop)
+        this.leaveCurrentPost();
+      break;
+    case 'pageUp':
+      this._scrollBy(-this._turnPageLines);
+      stop = true;
+      break;
+    case 'pageDown':
+      // Can't scroll any further AND the article isn't fully loaded ⇒ the auto-paging
+      // transaction is stuck, and PgDn would silently do nothing (the reported
+      // symptom). Kick it. See _kickPageDown.
+      if (!this._scrollBy(this._turnPageLines))
+        this._kickPageDown();
+      stop = true;
+      break;
+    case 'scrollPageDown':
+      this._scrollBy(this._turnPageLines);
+      stop = true;
+      break;
+    case 'leave':
+      this.stopEasyReading();
+      break;
+    case 'lineBack':
+      stop = this._scrollBy(-1);
+      if (!stop)
+        this.leaveCurrentPost();
+      break;
+    case 'lineForward':
+      stop = this._scrollBy(1);
+      if (!stop)
+        this.leaveCurrentPost();
+      break;
+    case 'lineUp':
+      this._scrollBy(-1);
+      stop = true;
+      break;
+    case 'lineDown':
+      this._scrollBy(1);
+      stop = true;
+      break;
+    case 'top':
+      stop = this._scrollTop();
+      break;
+    case 'bottom':
+      stop = this._stickBottom();
+      // 還在讀取中 ⇒ 反向讀取：直接跳到文末、往上讀（docs/easy-reading.md
+      // 「反向讀取」）。已讀完就只是上面那一行的捲到底。
+      this._requestReverse();
+      break;
+    case 'swallow':
+      stop = true;
+      break;
+    case 'threadJump':
+      this.leaveCurrentPost();
+      // Same-thread keys land however far their target is (#65).
+      stop = !!this._core.threadJump?.start(e.key);
+      break;
+    default:
+      // Every other key is a PTT command easy reading does not present
+      // (#160): refused with a message. Help and reply keep the native route.
+      stop = this._leftoverKey(e);
   }
   if (stop)
     e.preventDefault();
@@ -2578,7 +2617,7 @@ EasyReading.prototype._onKeyDownProcessUI = function(e) {
 // A help or reply character goes to PTT through the native mirror. For help,
 // the article stays on screen under the help menu sheet (help_menu.expect).
 EasyReading.prototype.enterNativeRoute = function(ch) {
-  if (!this._functionMode && ARTICLE_HELP_KEYS.indexOf(ch) >= 0) this._core?.helpMenu?.expect();
+  if (!this._functionMode && ARTICLE_HELP_KEYS.indexOf(ch) >= 0) this._core?.helpMenu?.expect(this);
   this._enterFunctionMode();
 };
 
@@ -2586,7 +2625,16 @@ EasyReading.prototype.enterNativeRoute = function(ch) {
 // caller prevents it); a help or reply key opens the native mirror and still goes out.
 EasyReading.prototype._leftoverKey = function(e) {
   const what = articleLeftoverKey(e);
-  if (what === 'native') this.enterNativeRoute(e.key);
+  if (what === 'native') {
+    this.enterNativeRoute(e.key);
+    // The help sheet opens at this keypress (help_menu.expect, #222) and is a
+    // modal before the key's own keypress arrives, which is a separate event
+    // the modal then keeps from PTT: the help key goes out from here.
+    if (this._core?.helpMenu?.phase === 'loading' && ARTICLE_HELP_KEYS.indexOf(e.key) >= 0) {
+      this._core.view?._send(e.key);
+      return true;
+    }
+  }
   if (what !== 'refuse') return false;
   this._refuseUnsupported('key');
   return true;

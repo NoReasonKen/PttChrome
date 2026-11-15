@@ -66,7 +66,7 @@ import {
 } from './term_keyboard';
 import { decideUserBytes, PASS, SWALLOW } from './list_user_bytes';
 import { refuseUnsupported } from './list_refusal';
-import { tryOpenSearchModal } from './article_search';
+import { tryOpenSearchModal, searchKeyOpensSheet } from './article_search';
 import { clickableColStart } from './mouse_regions';
 import { LEFT_ARROW } from './function_key_plan';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
@@ -1005,8 +1005,10 @@ BoardListSession.prototype = {
   // Help (`h`, the footer's help button): PTT's help screen is asked for
   // through the serialized sequence, and the help menu sheet presents it over
   // the board list, which help_menu holds on screen (expect). The rows the
-  // reader sees are kept, so a closed sheet gives the list back as it was
-  // (resumeAfterHelp).
+  // reader sees are kept, so the list comes back as it was once PTT left its
+  // help screen (resumeAfterHelp). `h` goes out at once, without moving PTT's
+  // cursor to the selected board first (#222): a command picked from the sheet
+  // is typed on this list afterwards and syncs the cursor itself if it needs it.
   _beginHelp: function() {
     // The native excursion asks PTT for the list anew (#125).
     this._core.navigationStack?.spend('nativePassthrough', 'board');
@@ -1019,12 +1021,23 @@ BoardListSession.prototype = {
       this._topNum = pos.topNum;
       this._scrollFrac = pos.scrollFrac;
     }
-    this._beginPassthroughBytes('h', { kind: 'help', hint: null, keepList: true });
+    this._beginPassthroughBytes('h', { kind: 'help', hint: null, keepList: true, noSync: true });
   },
 
-  // The help menu is over (help_menu.noteScreen). listKept: the sheet over
-  // this list was closed, so PTT saw only help keys and redrew the list the
-  // reader still sees under the sheet. That list comes back with its rows,
+  // A key the help menu sheet offers (help_menu.js, #222): whether this list
+  // refuses it when typed. The board search key opens the search sheet before
+  // the list sees it (term_view.onKeyDown); the rest is the list's own table.
+  wouldRefuse: function(k) {
+    const ctrl = !!(k && k.ctrlKey);
+    if (!ctrl && searchKeyOpensSheet(k.key, OWNER_BOARD_LIST)) return false;
+    const c = this._classifyKey({ key: k.key, ctrlKey: ctrl, altKey: false, metaKey: false, shiftKey: false });
+    return c.class === 'unsupported' || c.class === 'ignore';
+  },
+
+  // PTT left its help screen (help_menu.noteScreen). listKept: PTT saw only
+  // help keys (the detached sheet, #222, or a sheet closed while PTT still
+  // showed its help screen) and redrew the list the reader still sees under
+  // the sheet. That list comes back with its rows,
   // selection and scroll position, in this frame. Otherwise (an item was run
   // from the native screen, or PTT's page is another list) it is rebuilt from
   // PTT's page at once instead of after the idle probe's wait.
@@ -1092,6 +1105,14 @@ BoardListSession.prototype = {
       self._enqueuePassthroughStep(steps, 0);
       if (hint && self._view.flashListHint) self._view.flashListHint(hint, 4000);
     };
+    // opts.noSync: the key does not act on the cursor row (help, #222). A
+    // background fetch still on the wire is cut to about a round trip and the
+    // queued ones dropped, so the key is not stuck behind them.
+    if (opts && opts.noSync) {
+      this._queue.flushPendingKind(BRD_CMD_PREFIX + 'fetch');
+      this._expediteBackground();
+      return finish();
+    }
     if (this._selectedNum != null && this._selectedNum !== this._serverNum) {
       this._freezeForTransaction();
       // A sync that fails sends nothing: the key would act on another row (#158).

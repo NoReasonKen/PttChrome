@@ -15,9 +15,9 @@ import { MarkAllRead } from "../../src/js/mark_all_read";
 import { ScreenRefresh } from "../../src/js/screen_refresh";
 import { BoardSearchBridge } from "../../src/js/board_search_bridge";
 import { recordFor } from "../../src/js/reading_record";
-import { HelpMenuController, parseHelpMenuScreen } from "../../src/js/help_menu";
+import { HelpMenuController, parseHelpMenuScreen, helpItemKey, splitHelpKeys } from "../../src/js/help_menu";
 import { submitSearch } from "../../src/js/article_search";
-import { HELP_FAV_PAGE1 } from "./fixtures/help_menu_rows";
+import { HELP_FAV_PAGE1, HELP_FAV_PAGE2 } from "./fixtures/help_menu_rows";
 
 const listRows = fixture.pageScreens[0]; // 真實 C_Chat 一頁：350024..350039＋置底
 
@@ -308,6 +308,79 @@ describe("說明選單（h）：離開後回好讀時視野回到原處", () => 
     hm.noteScreen(null);
     expect(h.s.state).toBe("functionMode");
     expect(h.s._boardName).toBe(null);
+  });
+
+  // #222: the help key goes out at once, the sheet detaches from PTT with one q,
+  // and the list comes back with the reader's own selection, not PTT's cursor.
+  test("help from the list: no cursor sync before h; after the detach the reader's selection is back", () => {
+    const h = makeSession();
+    const sent = [];
+    const hm = new HelpMenuController(h.core, null, { send: (b) => sent.push(b), enabled: () => true });
+    h.core.helpMenu = hm;
+    h.s._selectedNum = 350031; // the reader moved off PTT's cursor (350026)
+    h.s._beginHelp();
+    expect(h.enqueued.map((c) => c.kind)).toEqual(["help"]);
+    step(h, "help").onDone(true);
+    hm.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    expect(sent).toEqual(["\x1b[6~"]); // the second page, fetched behind the sheet
+    hm.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE2));
+    expect(sent).toEqual(["\x1b[6~", "q"]); // all pages read: detach
+    hm.noteScreen(null); // PTT redraws the article list
+    expect(hm.phase).toBe("detached");
+    expect(hm.open).toBe(true);
+    expect(h.s.state).toBe("active");
+    expect(h.s._renderMode).toBe("buffer");
+    expect(h.s._selectedNum).toBe(350031);
+    hm.close();
+    expect(sent).toEqual(["\x1b[6~", "q"]); // closing the detached sheet sends nothing
+  });
+
+  // #222: `h` went out without syncing PTT's cursor, so after the detach PTT's
+  // cursor and the reader's selection differ. A command that acts on the
+  // cursor row syncs it to the selection first, on the reader's row.
+  test.each([
+    ["Enter", "open-jump"],
+    ["t", "inplace-sync-jump"],
+  ])("after a detached help with the selection off PTT's cursor, %s acts on the selected row", (key, kind) => {
+    const h = makeSession();
+    const hm = new HelpMenuController(h.core, null, { send() {}, enabled: () => true });
+    h.core.helpMenu = hm;
+    h.s._selectedNum = 350031; // PTT's cursor stays on 350026 (curY 5)
+    h.s._beginHelp();
+    step(h, "help").onDone(true);
+    hm.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE1));
+    hm.noteScreen(parseHelpMenuScreen(HELP_FAV_PAGE2));
+    hm.noteScreen(null);
+    expect(hm.phase).toBe("detached");
+    hm.close();
+    expect(h.s._selectedNum).toBe(350031);
+    expect(h.s._serverNum).not.toBe(350031);
+    const before = h.enqueued.length;
+    h.s.onKeyDown({ key, ctrlKey: false, altKey: false, metaKey: false, shiftKey: false, preventDefault() {} });
+    const next = h.enqueued.slice(before);
+    expect(next.length).toBeGreaterThan(0);
+    expect(next[0].kind).toBe(kind);
+    expect(next[0].keys).toBe("350031\r");
+  });
+
+  test("wouldRefuse follows the list's own keys", () => {
+    const h = makeSession();
+    for (const key of ["ArrowUp", "ArrowDown", "Enter", "/", "a", "Z", "s", "q", "[", "t"]) {
+      expect([key, h.s.wouldRefuse({ key })]).toEqual([key, false]);
+    }
+    expect(h.s.wouldRefuse({ key: "x", ctrlKey: true })).toBe(true);
+  });
+
+  // #222: a row lists several keys; its pick types the first one the list
+  // keeps, the non-digit keys first: `0` starts a number jump here, not Home.
+  test("a help row's pick is the first key the article list keeps, non-digits first", () => {
+    const h = makeSession();
+    const pick = (keysText) => helpItemKey({ keys: splitHelpKeys(keysText) }, (k) => h.s.wouldRefuse(k));
+    expect(pick("0/Home")).toEqual({ key: "Home", ctrlKey: false });
+    expect(pick("End/$")).toEqual({ key: "End", ctrlKey: false });
+    expect(pick("^X/a")).toEqual({ key: "a", ctrlKey: false }); // Ctrl+X refused, a (search) kept
+    expect(pick("^X/^U")).toBeNull(); // every key refused: unavailable
+    expect(pick("h/H")).toBeNull();
   });
 
   test("說明選單交還原生（頁數變了）、在原生說明選單裡自己離開 ⇒ 一樣回原處", () => {
