@@ -129,7 +129,48 @@ test("shared tools select desktop and mobile consumer regressions without select
   const receipt = JSON.parse(fs.readFileSync(receiptPath(root), "utf8"));
   receipt.offlineSpecs = [lights];
   fs.writeFileSync(receiptPath(root), JSON.stringify(receipt));
-  expect(() => verifyReceipt(root)).toThrow("lacks required shared-tool offline coverage");
+  expect(() => verifyReceipt(root)).toThrow("lacks required offline coverage");
+});
+
+const mobileKeyboard = ["mobile_toolbar", "mobile_prepared_list"].map(name => ({
+  project: "offline-mobile", spec: `tests/e2e/offline/${name}.offline.spec.js`,
+}));
+
+test.each(["src/js/mobile_layout.js", "src/components/MobileToolbar/index.jsx", "src/components/MobileToolbar/nested/control.js"])(
+  "%s selects both mobile keyboard consumer specs", source => {
+    for (const { spec } of mobileKeyboard) addFixture(spec);
+    addFixture(source);
+    expect(requiredOfflineSpecs(root)).toEqual(mobileKeyboard);
+    validate(root, [], () => {});
+    expect(verifyReceipt(root).offlineSpecs).toEqual(mobileKeyboard);
+    for (const missing of mobileKeyboard) {
+      const receipt = JSON.parse(fs.readFileSync(receiptPath(root), "utf8"));
+      receipt.offlineSpecs = mobileKeyboard.filter(selection => selection !== missing);
+      fs.writeFileSync(receiptPath(root), JSON.stringify(receipt));
+      expect(() => verifyReceipt(root)).toThrow("lacks required offline coverage");
+    }
+  },
+);
+
+test("unrelated sources do not select mobile keyboard specs", () => {
+  addFixture("src/js/android_bridge.js");
+  addFixture("src/js/pttchrome.jsx");
+  addFixture("src/components/MobileToolbarExtra/control.js");
+  expect(requiredOfflineSpecs(root)).toEqual([]);
+});
+
+test("mixed source groups and explicit selections run each required spec once", () => {
+  addToolFixtures();
+  for (const { spec } of mobileKeyboard) addFixture(spec);
+  addFixture("src/js/mobile_layout.js");
+  const calls = [];
+  validate(root, [], args => calls.push(args), { offlineSpecs: [lights, mobileKeyboard[0], mobileKeyboard[0]] });
+  const required = requiredOfflineSpecs(root);
+  expect(required).toHaveLength(6);
+  expect(calls.filter(args => args[0] === "offline-spec")).toEqual(
+    required.map(({ project, spec }) => ["offline-spec", project, spec]),
+  );
+  expect(verifyReceipt(root).offlineSpecs).toEqual(required);
 });
 
 test("existing receipts without offline selections remain valid for unrelated changes", () => {

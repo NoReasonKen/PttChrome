@@ -11,6 +11,7 @@ const { test: base, expect, _android } = require('@playwright/test');
 const fs = require('fs');
 const {
   ENV_ERROR_TAG,
+  classifyLaunchBrowserError,
   pickEmulatorSerial,
   sdkTool,
   APK_PKG,
@@ -162,7 +163,7 @@ const test = base.extend({
   context: async ({ android }, use) => {
     let timer;
     const context = await Promise.race([
-      android.device.launchBrowser({ baseURL: `http://localhost:${PORT}` }),
+      android.device.launchBrowser({ baseURL: `http://localhost:${PORT}` }).catch((error) => { throw classifyLaunchBrowserError(error); }),
       new Promise((_, reject) => {
         timer = setTimeout(() => reject(envError(`Chrome ${LAUNCH_TIMEOUT_MS / 1000}s 內沒起來（看 device-screen／logcat-crash）`)), LAUNCH_TIMEOUT_MS);
       }),

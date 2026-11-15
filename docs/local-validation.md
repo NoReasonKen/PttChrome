@@ -36,6 +36,10 @@ extend it alongside changes to those shared entry points and consumers. This
 coverage supplements the explicitly selected files and is printed before tests.
 It does not replace other relevant regression or adverse-image coverage.
 
+Staged changes to `src/js/mobile_layout.js` or `src/components/MobileToolbar/`
+also select the mobile toolbar and prepared-list specs. Overlapping automatic
+and explicit selections run once.
+
 The validation run holds the shared queue through unit, build, and each offline
 file. Only the held local queue grants the linked-worktree override. Each file
 uses this checkout's Playwright CLI and existing worker policy, requires a new
@@ -61,7 +65,7 @@ validation again. A failed check removes the old receipt instead of allowing
 an earlier successful run to authorize the new commit.
 
 Receipts also record each selected offline project and file. The commit hook
-recomputes the shared-tools requirements and rejects a receipt missing one.
+recomputes the automatic requirements and rejects a receipt missing one.
 Older receipts without an offline list remain valid for unrelated changes.
 
 This is a workflow guard, not tamper-proof security: a person able to modify

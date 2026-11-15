@@ -9,6 +9,24 @@ import fs from "fs";
 import path from "path";
 import config from "../../playwright.config.js";
 import androidEnv from "../e2e/android/android_env.js";
+
+describe("Android browser launch error classification", () => {
+  test("wraps only the exact device-closed launch error with its cause", () => {
+    const original = new Error("androidDevice.launchBrowser: Device is closed");
+    const result = androidEnv.classifyLaunchBrowserError(original);
+    expect(result.message).toContain("[android-env]");
+    expect(result.cause).toBe(original);
+  });
+  test.each([
+    "browserContext.close: Target closed",
+    "androidDevice.launchBrowser: Target closed",
+    "androidDevice.launchBrowser: Device is closed unexpectedly",
+    "APK WebView timeout after pm clear",
+  ])("preserves unrelated error %s", (message) => {
+    const original = new Error(message);
+    expect(androidEnv.classifyLaunchBrowserError(original)).toBe(original);
+  });
+});
 import { ANDROID_E2E_GLOBS, globToRegExp, matchAndroidE2e } from "../../scripts/android-e2e-needed.mjs";
 import {
   ANDROID_E2E_GROUPS,

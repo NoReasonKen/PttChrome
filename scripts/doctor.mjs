@@ -10,19 +10,19 @@ import { inspectGitHooks } from "./check-git-hooks.mjs";
 import { inspectAgentDocuments, inspectAgentHooks } from "./check-agent-hooks.mjs";
 
 const require = createRequire(import.meta.url);
-const { sdkTool } = require("../tests/e2e/android/android_env.js");
+const { sdkTool, sdkRoot, SYSTEM_IMAGE, parseAdbDevices, pickEmulatorSerial, AVD_NAME } = require("../tests/e2e/android/android_env.js");
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const IS_WSL = process.platform === "linux" && /microsoft/i.test(os.release());
 
 export function parseOptions(argv) {
-  const options = { browser: false, android: false, web: false, device: false, agent: false };
+  const options = { browser: false, android: false, web: false, device: false, agent: false, emulator: false };
   for (const arg of argv) {
     const key = arg.replace(/^--/, "");
     if (!arg.startsWith("--") || !Object.hasOwn(options, key))
       throw new Error(`Unknown option: ${arg}`);
     options[key] = true;
   }
-  if (options.device) options.android = true;
+  if (options.device || options.emulator) options.android = true;
   return options;
 }
 
@@ -152,6 +152,34 @@ export function deviceSummary(text) {
   };
 }
 
+export function checkEmulator(adb, { env = process.env, run = runCommand, locate = sdkTool, exists = fs.existsSync } = {}) {
+  const devices = adb.ok ? run(adb.command, ["devices"]) : { ok: false, message: "ADB is required to list devices." };
+  let existing;
+  if (!devices.ok) existing = { ok: false, blocked: true, message: devices.message };
+  else {
+    const serials = parseAdbDevices(devices.stdout).filter((serial) => /^emulator-\d+$/.test(serial));
+    const selected = pickEmulatorSerial(serials, env);
+    const blocked = !selected && (!!env.ANDROID_SERIAL || serials.length > 1);
+    existing = selected
+      ? { ok: true, message: `Selectable emulator ${selected} is ready for --no-boot.` }
+      : { ok: false, blocked, message: env.ANDROID_SERIAL
+          ? `ANDROID_SERIAL ${env.ANDROID_SERIAL} does not select a ready emulator.`
+          : serials.length > 1 ? "Multiple ready emulators; set ANDROID_SERIAL to select one." : "No ready emulator for --no-boot." };
+  }
+  const emulator = locate("emulator", env);
+  if (!emulator) return { existing, boot: { ok: false, message: "Android emulator binary not found in the SDK." } };
+  const avds = run(emulator, ["-list-avds"]);
+  if (!avds.ok) return { existing, boot: { ok: false, message: `Cannot list AVDs: ${avds.message}` } };
+  if (!avds.stdout.split(/\r?\n/).map((line) => line.trim()).includes(AVD_NAME))
+    return { existing, boot: { ok: false, message: `AVD ${AVD_NAME} not found.` } };
+  const image = path.join(sdkRoot(env), ...SYSTEM_IMAGE.split(";"));
+  if (!["source.properties", "system.img"].every((file) => exists(path.join(image, file))))
+    return { existing, boot: { ok: false, message: `System image ${SYSTEM_IMAGE} is incomplete or missing.` } };
+  const accel = run(emulator, ["-accel-check"]);
+  if (!accel.ok) return { existing, boot: { ok: false, message: `Emulator acceleration check failed: ${accel.message}` } };
+  return { existing, boot: { ok: true, message: `Emulator binary, ${AVD_NAME}, system image files, and acceleration are available. AVD configuration, boot, and E2E execution are not verified.` } };
+}
+
 export async function checkWeb({
   origin = "http://127.0.0.1:8080",
   wsl = IS_WSL,
@@ -208,6 +236,8 @@ export async function runDoctor(
     browserCheck = checkBrowser,
     webCheck = checkWeb,
     env = process.env,
+    locate = sdkTool,
+    exists = fs.existsSync,
   } = {},
 ) {
   const checks = [];
@@ -281,8 +311,9 @@ export async function runDoctor(
     }
   } else skip("Browsers", "--browser");
 
+  let adb;
   if (options.android) {
-    const adb = findAdb({ env, run });
+    adb = findAdb({ env, run });
     add("ADB", adb);
     if (options.device) {
       if (!adb.ok)
@@ -303,6 +334,17 @@ export async function runDoctor(
   } else {
     skip("ADB", "--android");
     skip("Devices", "--device");
+  }
+  if (options.emulator) {
+    const emulator = checkEmulator(adb, { env, run, locate, exists });
+    const { existing, boot } = emulator;
+    if (!existing.ok && !existing.blocked && boot.ok) existing.status = "SKIP";
+    if (!boot.ok && existing.ok) boot.status = "SKIP";
+    add("Emulator --no-boot", existing);
+    add("Emulator boot prerequisites", boot);
+  } else {
+    skip("Emulator --no-boot", "--emulator");
+    skip("Emulator boot prerequisites", "--emulator");
   }
   if (options.web) add("Web", await webCheck({ run }));
   else skip("Web", "--web");

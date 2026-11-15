@@ -22,6 +22,12 @@ Optional capabilities are checked only when requested:
 - `yarn doctor --device`: also list device readiness, including unauthorized and
   offline devices. Allow USB debugging on the phone when prompted. Listing may
   start the host ADB daemon; it does not select or change a device.
+- `yarn doctor --emulator`: check ADB, a selectable running emulator for
+  `--no-boot`, and the emulator binary, target AVD, system image files and acceleration needed to
+  attempt a boot. A phone never counts; set `ANDROID_SERIAL` when several
+  emulators are ready. These checks do not verify AVD configuration, boot or E2E
+  success. Either available path passes; an invalid or ambiguous selection still
+  fails, because the runner will not choose a fallback.
 - `yarn doctor --web`: check the existing Vite service on IPv4 localhost port 8080. In WSL it also probes from Windows using `curl.exe`, covering the host
   connection used by Windows ADB. It does not verify the phone connection or
   execute the application page. Start `yarn start --host` separately if needed.

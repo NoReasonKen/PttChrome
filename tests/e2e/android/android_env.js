@@ -8,6 +8,13 @@ const path = require('path');
 // run-android-e2e.mjs 據此把整輪判成 exit 2，而不是測試紅。
 const ENV_ERROR_TAG = '[android-env]';
 
+function classifyLaunchBrowserError(error) {
+  if (error instanceof Error && error.message === 'androidDevice.launchBrowser: Device is closed') {
+    return new Error(`${ENV_ERROR_TAG} ${error.message}`, { cause: error });
+  }
+  return error;
+}
+
 // 原生 Pixel 6（1080x2400 @420dpi ⇒ 412 CSS px 寬、DPR 2.625），跟真手機同比例。
 const AVD_NAME = 'pttchrome_e2e';
 const AVD_DEVICE = 'pixel_6';
@@ -145,6 +152,7 @@ function sdkTool(name, env = process.env, platform = process.platform) {
 
 module.exports = {
   ENV_ERROR_TAG,
+  classifyLaunchBrowserError,
   AVD_NAME,
   AVD_DEVICE,
   SYSTEM_IMAGE,

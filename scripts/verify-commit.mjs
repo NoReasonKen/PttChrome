@@ -15,6 +15,10 @@ const floatingToolSpecs = [
   { project: "offline-mobile", spec: "tests/e2e/offline/mobile_debug_home.offline.spec.js" },
   { project: "offline-mobile", spec: "tests/e2e/offline/mobile_float_tools.offline.spec.js" },
 ];
+const mobileKeyboardSpecs = [
+  { project: "offline-mobile", spec: "tests/e2e/offline/mobile_toolbar.offline.spec.js" },
+  { project: "offline-mobile", spec: "tests/e2e/offline/mobile_prepared_list.offline.spec.js" },
+];
 
 export function assertOfflineSpecs(root, selections) {
   if (!Array.isArray(selections)) throw new Error("Offline specs must be a list of project/spec selections.");
@@ -42,7 +46,12 @@ export function assertOfflineSpecs(root, selections) {
 
 export function requiredOfflineSpecs(root) {
   const changed = git(root, "diff", "--cached", "--name-only", "-z").split("\0");
-  return changed.some(file => floatingToolSources.has(file)) ? floatingToolSpecs.map(selection => ({ ...selection })) : [];
+  const required = [];
+  if (changed.some(file => floatingToolSources.has(file))) required.push(...floatingToolSpecs);
+  if (changed.some(file => file === "src/js/mobile_layout.js" || file.startsWith("src/components/MobileToolbar/"))) {
+    required.push(...mobileKeyboardSpecs);
+  }
+  return required.map(selection => ({ ...selection }));
 }
 
 export function selectOfflineSpecs(root, requested = []) {
@@ -105,7 +114,7 @@ export function verifyReceipt(root) {
   assertOfflineSpecs(root, offlineSpecs);
   const completed = new Set(offlineSpecs.map(selection => `${selection.project}:${selection.spec}`));
   if (requiredOfflineSpecs(root).some(selection => !completed.has(`${selection.project}:${selection.spec}`))) {
-    throw new Error(`Validation receipt lacks required shared-tool offline coverage. ${instruction}`);
+    throw new Error(`Validation receipt lacks required offline coverage. ${instruction}`);
   }
   return receipt;
 }
