@@ -182,7 +182,7 @@ search-result recovery document above for bounds and ambiguity handling.
   recomputing its viewport using changed row heights. Foreground checkpoints
   wait for stable geometry and do not run while the document is hidden.
 - 接：開機讀一次就刪（`readSnapshot`）。`bootResumeMode`：好讀關 ⇒ 不接；APK 回收重建 ⇒ 照舊直接出發；其餘 ⇒ 計畫帶 `fromOpen`。超過 `SNAPSHOT_MAX_AGE_MS`（12 小時）不接。
-- 出發前倒數：登入回主功能表後先顯示底部提示「即將回到上次的地方：<板>…」＋「取消」（`#resumeLastPlace`，`OPEN_RESUME_DELAY_MS`），倒數完再確認一次（連線中、還在主功能表、AID 跳文沒在跑、deep link 沒在等）才 `startResume`。使用者按取消、自己走開（離開主功能表）、倒數中斷線、deep link 登記 ⇒ 一個鍵都不送。提示的滑鼠事件不外傳（`App._onUploadLayer` 認 `isResumeToastTarget`）。
+- 出發前倒數：登入回主功能表後先顯示底部提示「即將回到上次的地方：<板>…」＋「取消」（`#resumeLastPlace`，`OPEN_RESUME_DELAY_MS`＝1 秒），倒數完再確認一次（連線中、還在主功能表、AID 跳文沒在跑、deep link 沒在等）才 `startResume`。使用者按取消、自己走開（離開主功能表）、倒數中斷線、deep link 登記 ⇒ 一個鍵都不送。提示的滑鼠事件不外傳（`App._onUploadLayer` 認 `isResumeToastTarget`）。
 - deep link 進來時以 deep link 為準：同斷線重連的 superseded。
 - 開關：沒有自己的開關，好讀開著就做（會送鍵 ⇒ 好讀行為）。e2e 預設關（同一個 context 重整會自己送鍵），live 的共用 session 也關。
 

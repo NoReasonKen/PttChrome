@@ -41,7 +41,7 @@ import { serializedOpHint } from './serialized_op_gate';
 import { captureSearchResultAnchor, validateSearchResultAnchor } from './search_result_anchor';
 
 // 開站接回時，登入回到主功能表後先倒數這麼久（提示上有「取消」）才出發。
-export const OPEN_RESUME_DELAY_MS = 2500;
+export const OPEN_RESUME_DELAY_MS = 1000;
 export const RESUME_TOAST_ID = 'resumeLastPlace';
 
 export const SNAPSHOT_KEY = 'pttchrome.rendererResume.v1';

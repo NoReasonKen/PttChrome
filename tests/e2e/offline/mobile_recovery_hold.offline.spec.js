@@ -187,8 +187,13 @@ test('a reload returns to the article at the same line without painting PTT\'s s
 test('canceling the countdown after a reload stays home', async ({ page }) => {
   await readFullList(page, { homeMenu: true });
   await reloadAndWatch(page);
+  // Hold the clock inside the 1 s countdown, so a loaded machine cannot let it
+  // expire before the tap (as the search-trail recovery spec does).
+  await pauseClockNow(page);
   await nestedSessionAfterLogin(page, { homeMenu: true });
+  await page.clock.runFor(500);
   await page.locator('#resumeLastPlace button').tap();
+  await page.clock.resume();
   await expect(page.locator('#resumeLastPlace')).toBeHidden();
   await expect(page.locator('#homeDashboard')).toBeVisible();
   // Past the countdown: nothing set off, home stays.
