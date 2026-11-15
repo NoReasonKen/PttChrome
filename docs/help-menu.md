@@ -63,7 +63,26 @@ bottom sheet（手機）一次列出**全部頁**的指令，點一下＝執行�
 
 - **立刻送說明鍵**：兩種列表的 `_beginHelp` 都以 `noSync` 送 `h`，前面沒有游標同步那一腿；看板列表還會砍掉線上的背景抓取
   （`flushPendingKind` 掉排隊的 fetch、`_expediteBackground` 讓在途那筆不等完）。文章列表的 `_enterFunctionMode` 本來就 flush 佇列。
-- **先顯示、後補頁**：第 1 頁靜置就開彈窗，其餘頁在彈窗後面照舊一次一個 PgDn 補。
+- **按下去就開（phase `loading`）**：`expect()` 當下就開彈窗，跟 `/` 開搜尋彈窗一樣不等 PTT——清單區只有一行安靜的「讀取操作說明中…」
+  （`data-help-pending-text`，沒有轉圈），標題先是不帶 caption 的「操作說明」。高度一開始就是上限（snapshot `fill`：手機 `MobileSheet fill`
+  ＝`.mobileSheet` 的 max-height、桌機 Modal 的 `--modal-content-height`＝內容上限），列到了也不長高；收起滑出時沿用開的那一次的 fill。
+  第 1 頁到了在同一個彈窗裡原地補上列（`open` 一路為真，不重播滑入），焦點落在第一個可選的項目（讀者已經把焦點放在某一列就不動）。
+  - 等 PTT 的期間不是說明選單的畫面（列表自己的幀、更早的回應）一律不理。
+  - `HOLD_TIMEOUT_MS` 內沒有說明畫面 ⇒ 彈窗收起、hold 解除，什麼都不送。
+  - 說明畫面不是從第 1 頁開始、頁數變了 ⇒ `_toNative`（彈窗收起、交給原生，同以前的退路）。
+  - **等待中關掉**（關閉鈕、返回、Esc）：彈窗立刻收起、先不送任何鍵（PTT 可能還沒畫出說明畫面，這時送 `q` 會落到頁面上）；
+    說明畫面一出現 ⇒ 不補頁、直接送一個 `q`（線上有命令在途就延後重試），之後同「分離之前關」：PTT 回到頁面、頁面接回、hold 解除。
+    說明畫面始終沒來 ⇒ 逾時收場，一個鍵都沒送。逾時之後才來的說明畫面不是這一次的要求（以前就如此：當成沒人要求的造訪）。
+- **說明鍵從 keydown 送出**：彈窗在 keydown 當下就成了 modal，同一顆鍵之後的 keypress 是另一個事件（Chrome 的 RawKeyDown／Char 分開送），
+  會被 modal 擋掉、PTT 收不到。所以文章（`_leftoverKey`）與首頁（`takeKey`）在彈窗開成 `loading` 時自己從 keydown 送出那顆鍵並擋下預設；
+  兩種列表本來就從 keydown 經佇列送 `h\f`。
+- **第 1 頁不等靜置**：等待中每一幀（termBuf 的 `change`，30 ms 更新計時之後）就解析一次。PTT 清畫面後由上往下畫、底列 footer 最後畫，
+  解析要同時有 row 0 標題、row 1 欄位列、底列 footer 且項目之間沒有空洞 ⇒ 解析得出來就是完整的第 1 頁，馬上補上列、送下一頁的 PgDn，
+  不再多等 `SETTLE_MS`（50 ms）。之後那一頁的靜置會再解析一次，以它的列為準（`_earlyPage`）。只用在第 1 頁；後面的頁照舊等靜置。
+- **後補頁**：其餘頁在彈窗後面照舊一次一個 PgDn 補。
+- 量測（offline-mobile、手機文章列表、按鍵到各階段的 ms；說明畫面在 `h` 送出後立刻餵＝RTT 0）：
+  改前 1×：送出 9、解析 101、彈窗第一幀 150、滑入停妥 373；改後 1×：彈窗第一幀 32、送出 9、解析 67、列畫出 96、停妥 240。
+  4× CPU 降速：改前第一幀 390、停妥 637；改後第一幀 166、列畫出 376、停妥 485。同條件下 `/` 的搜尋彈窗：1× 第一幀 58、停妥 270；4× 第一幀 253、停妥 520。
 - **分離**：全部頁讀到（或補頁逾時放棄）⇒ 在彈窗後面送一個 `q`（phase `detaching`；線上有命令在途就延後重試）。
   畫面離開說明選單 ⇒ phase `detached`：解除 hold（`navigationEnded` 補畫）、把同一幀交給要求者的 `resumeAfterHelp(true)`、閱讀紀錄書籤以「離開」交回。
   整段好讀頁都留在畫面上，原生的說明幀一張都不畫；hold 一路涵蓋 `q` 的來回與頁面接回。
@@ -80,9 +99,11 @@ bottom sheet（手機）一次列出**全部頁**的指令，點一下＝執行�
 - **列表的選取不動**：`ListSession` 在 `_beginHelp` 記下讀者的選取（`_helpSelection`），`resumeAfterHelp` 接回後還原，PTT 的游標只當同步起點；
   看板列表的 `_resumeHeldList` 本來就從 `_helpList` 還原選取。
 - 不是從好讀頁要求的說明選單照舊走上面的「接著 PTT」流程（Home→PgDn→↓→Enter 執行、`q` 離開）；不快取、動畫不變。
-- 守護：`tests/unit/help_menu.test.js`「the detached sheet (#222)」、`help_menu_modal.test.jsx`「a detachable visit」、
+- 守護：`tests/unit/help_menu.test.js`「the detached sheet (#222)」「the loading sheet (#222)」、`help_menu_modal.test.jsx`「a detachable visit」
+  「closing the loading sheet」、
   `board_list_keys.test.js`、`reading_record_list.test.js`「help from the list」、`home_dashboard.test.js`「help at home」、
-  `easy_reading_leftover_key.test.js`（`articleWouldRefuse`）；offline `easy-reading-list`、`board_list`、`mobile_home_dashboard`（逐幀、送出的 bytes）。
+  `easy_reading_leftover_key.test.js`（`articleWouldRefuse`）；offline `easy-reading-list`、`board_list`、`mobile_home_dashboard`、
+  `mobile_help_menu`「the sheet opens at the keypress」（逐幀：餵說明畫面之前彈窗已開、沒有一幀畫原生說明、彈窗高度不變；送出的 bytes）。
 
 ## UI
 

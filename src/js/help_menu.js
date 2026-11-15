@@ -207,6 +207,7 @@ export function helpMenuPopupEnabled(prefs) {
 // ---- 控制器 ----
 // phase：
 //   idle      沒有說明選單
+//   loading   （從好讀頁要求的這一次）說明鍵已送出、彈窗已經開著，等 PTT 的說明畫面第 1 頁
 //   open      彈窗開著、PTT 停在說明選單（背景可能還在 PgDn 補頁）
 //   detaching （從好讀頁要求的這一次）`q` 已經在彈窗後面送出，等 PTT 離開說明選單
 //   detached  PTT 已經回到好讀頁、頁面已接回；彈窗還開著、與 PTT 脫鉤（#222）
@@ -225,6 +226,9 @@ export function helpMenuPopupEnabled(prefs) {
 // A row is unavailable when the requesting page would refuse its key
 // (requester.wouldRefuse), when it is the help item, or when it names no single
 // key; the angel exists only on PTT's help screen and is unavailable too.
+// The sheet of such a visit opens at the keypress (phase `loading`, no rows
+// yet) and fills in place when page 1 arrives, read as soon as a frame shows
+// it whole (its footer is drawn last) rather than after the settle.
 //
 // 閱讀紀錄（決策表 'help-menu'）：從列表按 h 時列表好讀／看板列表已經切原生、丟掉緩衝
 // （切進去那一刻凍結了視野）。認出說明選單就領書籤（不論接不接管），畫面離開說明選單時
@@ -242,8 +246,10 @@ export function HelpMenuController(core, termBuf, opts) {
   // React 端（components/HelpMenu）訂閱：每次狀態變動呼叫一次，參數＝snapshot()。
   this.onChange = null;
   this._reset();
-  if (termBuf && termBuf.addEventListener)
+  if (termBuf && termBuf.addEventListener) {
     termBuf.addEventListener('screenSettled', this._onScreenSettled.bind(this));
+    termBuf.addEventListener('change', this._onScreenChanged.bind(this));
+  }
 }
 
 HelpMenuController.prototype = {
@@ -266,6 +272,9 @@ HelpMenuController.prototype = {
     this._detachable = false;
     this._shown = false;
     this._pick = null;
+    // The page read from a frame before its settle (_onScreenChanged): the
+    // settle reads it again and its rows replace these.
+    this._earlyPage = 0;
     this._clearTimers();
     this._releaseHold();
   },
@@ -276,6 +285,9 @@ HelpMenuController.prototype = {
   // held branch). The hold ends once PTT has left its help screen again and
   // the page took its frame back (the detach, #222), when this visit is handed
   // to the native screen, or when no help menu shows up in time.
+  // The sheet opens now, empty (phase `loading`), as the search sheet opens at
+  // its key: the rows fill in when PTT's help screen arrives. No help screen
+  // within HOLD_TIMEOUT_MS ⇒ the sheet closes and the page is let go.
   // requester: the page that asked. Optional members:
   //   resumeAfterHelp(listKept)  given the frame back when PTT left its help
   //                              screen (the lists; an article and home stay
@@ -287,13 +299,20 @@ HelpMenuController.prototype = {
     this._clearHoldTimer();
     this.holding = true;
     this._requester = requester || null;
+    this.phase = 'loading';
+    this._detachable = true;
+    this._shown = true;
     this._holdTimer = this._setTimeout(() => {
       this._holdTimer = null;
-      if (this.phase === 'idle') {
-        this._requester = null;
-        this._releaseHold();
-      }
+      if (this.phase !== 'loading') return;
+      // No help screen came: nothing was asked of it, so nothing is sent.
+      this._log('loadTimeout', { shown: this._shown });
+      const wasOpen = this._sheetOpen();
+      this._reset();
+      if (wasOpen) this._emit();
     }, HOLD_TIMEOUT_MS);
+    this._log('loading', {});
+    this._emit();
   },
 
   _clearHoldTimer: function() {
@@ -333,6 +352,7 @@ HelpMenuController.prototype = {
   // The sheet is up: from the first page until the reader closes or picks.
   _sheetOpen: function() {
     if (this.phase === 'detached') return true;
+    if (this.phase === 'loading') return this._shown;
     return (this.phase === 'open' || this.phase === 'detaching') && this._shown;
   },
 
@@ -362,7 +382,12 @@ HelpMenuController.prototype = {
       // The angel lives on PTT's help screen: a detachable visit lets go of it.
       angel: this._angel && !this._detachable,
       items: mergeHelpPages(this._pages, this._totalPages).map((item) => this._rowOf(item)),
-      loading: this.phase === 'open' && !this._incomplete && this._pages.size < this._totalPages
+      loading: this.phase === 'open' && !this._incomplete && this._pages.size < this._totalPages,
+      // Open before PTT's help screen arrived: no rows yet.
+      pending: this.phase === 'loading',
+      // A detachable visit's sheet keeps one height (its maximum) from the
+      // keypress on, so nothing moves when the rows arrive.
+      fill: this._detachable
     };
   },
 
@@ -400,9 +425,25 @@ HelpMenuController.prototype = {
     this.noteScreen(parseHelpMenuScreen(this._rowTexts()));
   },
 
+  // A frame (before its settle) while the loading sheet waits for page 1. PTT
+  // draws its help screen top to bottom, footer last, after clearing the
+  // screen; the parser needs the header and the footer rows and no gap
+  // between rows, so a frame it reads is the whole page. The rows fill in
+  // without waiting SETTLE_MS more; the settle reads the page again and its
+  // rows replace these.
+  _onScreenChanged: function() {
+    if (this.phase !== 'loading') return;
+    const parsed = parseHelpMenuScreen(this._rowTexts());
+    if (!parsed || parsed.page !== 1) return;
+    this._earlyPage = 1;
+    this.noteScreen(parsed);
+  },
+
   // 一張靜止畫面的解析結果（null ＝不是說明選單）。unit 直接呼叫。
   noteScreen: function(parsed) {
     if (!parsed) {
+      // Frames before PTT's help screen (the page's own, an earlier answer).
+      if (this.phase === 'loading') return;
       if (this.phase === 'detaching') return this._detached();
       // Detached: PTT is on the page; its frames are the page's business.
       if (this.phase === 'detached') return;
@@ -431,7 +472,8 @@ HelpMenuController.prototype = {
       }
       return;
     }
-    if (this.phase === 'idle') {
+    if (this.phase === 'idle' || this.phase === 'loading') {
+      const loading = this.phase === 'loading';
       // 列表切原生那一刻凍結的視野（鏡像期間 current() 回的就是它）。
       this._bookmark = recordFor(this._core).begin('help-menu');
       this._outcome = 'cancel';
@@ -442,7 +484,8 @@ HelpMenuController.prototype = {
         return;
       }
       this.phase = 'open';
-      this._shown = true;
+      // A loading sheet the reader closed stays closed.
+      if (!loading) this._shown = true;
       this._detachable = !!this.holding;
       this._clearHoldTimer();
       this._caption = parsed.caption;
@@ -451,8 +494,14 @@ HelpMenuController.prototype = {
       this._pageSize = parsed.totalPages > 1 ? parsed.items.length : 0;
       this._log('open', {
         caption: parsed.caption, totalPages: parsed.totalPages, items: parsed.items.length,
-        detachable: this._detachable
+        detachable: this._detachable, shown: this._shown, early: this._earlyPage === parsed.page
       });
+      // Closed while loading: PTT's help screen is there now, let go of it.
+      if (this._detachable && !this._shown) {
+        this._pages.set(parsed.page, parsed.items);
+        this._detach();
+        return;
+      }
     }
     // 頁數變了（終端機列數改變 ⇒ server 重算 rows）：已收的頁與執行鍵的頁大小都不對了
     // ⇒ 這一次交還原生（罕見，不值得重抓）。
@@ -462,6 +511,11 @@ HelpMenuController.prototype = {
       return;
     }
     if (!this._pages.has(parsed.page)) this._pages.set(parsed.page, parsed.items);
+    else if (this._earlyPage === parsed.page && this._fetchPage !== parsed.page) {
+      // The settled frame of the page read early: its rows are final.
+      this._earlyPage = 0;
+      this._pages.set(parsed.page, parsed.items);
+    }
     if (this._fetchPage && parsed.page >= this._fetchPage) {
       this._fetchPage = 0;
       if (this._fetchTimer) this._clearTimeout(this._fetchTimer);
@@ -579,6 +633,15 @@ HelpMenuController.prototype = {
       this._reset();
       this._emit();
       if (pick) this._typeKey(pick);
+      return true;
+    }
+    if (this.phase === 'loading') {
+      // No rows yet, so no pick. PTT's help screen is let go of when it
+      // arrives (noteScreen); if it never does, nothing is sent.
+      if (!this._shown) return false;
+      this._shown = false;
+      this._log('closeLoading', {});
+      this._emit();
       return true;
     }
     if (!this._shown || (this.phase !== 'open' && this.phase !== 'detaching')) return false;

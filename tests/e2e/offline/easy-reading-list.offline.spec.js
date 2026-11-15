@@ -604,6 +604,13 @@ test.describe('文章列表好读模式（离线）', () => {
           helpDrawn: main.textContent.includes('操作說明 (Help)'),
           native: !app.helpMenu.holding && app.buf.listRenderMode === 'native',
           sheet: !!document.querySelector('[data-help-item]'),
+          // The sheet's laid-out height (offsetHeight: the open transition's
+          // transform does not count), rows or not.
+          sheetH: (() => {
+            const list = document.querySelector('[data-help-menu-list]');
+            const box = list && list.closest('.mantine-Modal-content, .mobileSheet');
+            return box ? box.offsetHeight : null;
+          })(),
           phase: app.helpMenu.phase
         });
       };
@@ -621,6 +628,11 @@ test.describe('文章列表好读模式（离线）', () => {
     await page.locator('#t').focus();
     await imeCommit(page, 'h');
     await expect.poll(sentSince).toBe('h\f');
+    // The sheet is open at the keypress, before any of PTT's help screen: one
+    // quiet line where the rows go.
+    await expect(page.locator('[data-help-pending-text]')).toBeVisible();
+    expect(await page.locator('[data-help-item]').count()).toBe(0);
+    expect(await page.evaluate(() => window.__app.helpMenu.phase)).toBe('loading');
     const { total } = await drawHelpPage(page, 1, { caption: '文章列表' });
     await expect(page.locator('[data-help-item]').first()).toBeVisible();
     // The sheet shows on page 1; the rest is fetched behind it, one PgDn each
@@ -663,6 +675,10 @@ test.describe('文章列表好读模式（离线）', () => {
 
   function expectListHeld(frames) {
     expect(frames.some((f) => f.phase === 'detached' && f.sheet)).toBe(true);
+    // Open before its rows, and one height from then on: rows arriving move nothing.
+    expect(frames.some((f) => f.phase === 'loading' && f.sheetH)).toBe(true);
+    const heights = frames.filter((f) => f.sheetH).map((f) => f.sheetH);
+    expect([...new Set(heights)]).toEqual([heights[0]]);
     expect(frames.filter((f) => !f.list || f.helpDrawn || f.native)).toEqual([]);
     expect(frames.filter((f) => f.scrollTop !== frames[0].scrollTop)).toEqual([]);
   }

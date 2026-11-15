@@ -11,6 +11,8 @@ import "./HelpMenu.css";
 // 手機＝bottom sheet（系統返回＝離開，同原生 q）。
 // 從好讀頁要求的說明選單（#222）：每項帶 available；那個頁面不收的鍵、說明本身、
 // 沒有單一鍵的項目畫成不可用（變暗、disabled、鍵盤跳過），小天使不出現。
+// 這種造訪在按鍵當下就開（pending：還沒有列，清單區一行安靜的提示），高度一開始就是
+// 上限（fill），第 1 頁到了原地補上列，不重播滑入；有列之後焦點落在第一個可選的項目。
 // 開著＝modal：桌機經 App.setModalOpen("helpMenu")；手機 MobileSheet 自己登記。
 const EMPTY = {
   open: false,
@@ -18,6 +20,8 @@ const EMPTY = {
   angel: false,
   items: [],
   loading: false,
+  pending: false,
+  fill: false,
 };
 
 export const HelpMenu = ({ pttchrome, mobile }) => {
@@ -57,6 +61,30 @@ export const HelpMenu = ({ pttchrome, mobile }) => {
     // Only when the sheet opens: rows arriving later do not move the reader.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snap.open]);
+
+  // A sheet opened before its rows (pending): when the first rows arrive,
+  // focus goes to the first pickable one, as the open itself does when the
+  // rows are already there (data-autofocus). Later pages do not move it.
+  const hadRows = useRef(false);
+  useEffect(() => {
+    const has = snap.open && snap.items.length > 0;
+    if (has && !hadRows.current && firstPickable >= 0) {
+      const el = itemRefs.current[firstPickable];
+      const focused = typeof document !== "undefined" && document.activeElement;
+      // Keep focus the reader already put on a row.
+      if (el && !(focused && focused.hasAttribute?.("data-help-item"))) {
+        setActive(firstPickable);
+        el.focus({ preventScroll: true });
+      }
+    }
+    hadRows.current = has;
+  }, [snap.open, snap.items.length, firstPickable]);
+
+  // One height from the keypress until the sheet has slid away: the fill of
+  // the visit that opened it stays while it closes.
+  const fillRef = useRef(false);
+  if (snap.open) fillRef.current = !!snap.fill;
+  const fill = fillRef.current;
 
   const onClose = useCallback(() => ctrl && ctrl.close(), [ctrl]);
   const onAngel = useCallback(() => ctrl && ctrl.callAngel(), [ctrl]);
@@ -138,6 +166,12 @@ export const HelpMenu = ({ pttchrome, mobile }) => {
       className="helpMenuList"
       data-help-menu-list
       data-mobile={mobile ? "" : undefined}
+      data-help-pending={snap.pending ? "" : undefined}
+      aria-busy={snap.pending ? true : undefined}
+      // No rows yet: the open puts focus on the list itself (not the footer's
+      // button), and the first row takes it when the rows arrive.
+      tabIndex={snap.pending ? -1 : undefined}
+      data-autofocus={snap.pending ? true : undefined}
       role="listbox"
       aria-label={title}
     >
@@ -176,6 +210,17 @@ export const HelpMenu = ({ pttchrome, mobile }) => {
           </button>
         );
       })}
+      {snap.pending ? (
+        // Before PTT's help screen arrived: one quiet line where the rows go.
+        <Text
+          size="xs"
+          c="dimmed"
+          className="helpMenuLoading helpMenuPending"
+          data-help-pending-text
+        >
+          {i18n("helpMenu_pending")}
+        </Text>
+      ) : null}
       {snap.loading ? (
         <Text
           size="xs"
@@ -221,6 +266,7 @@ export const HelpMenu = ({ pttchrome, mobile }) => {
         title={title}
         sheetKey="help"
         footer={footer}
+        fill={fill}
       >
         {list}
       </MobileSheet>
@@ -232,6 +278,17 @@ export const HelpMenu = ({ pttchrome, mobile }) => {
       title={title}
       size="lg"
       yOffset="5vh"
+      // The modal's maximum height from the keypress on (see fill).
+      styles={
+        fill
+          ? {
+              content: {
+                "--modal-content-height":
+                  "calc(100dvh - var(--modal-y-offset) * 2)",
+              },
+            }
+          : undefined
+      }
     >
       <div onKeyDown={onKeyDown} data-help-menu>
         {list}

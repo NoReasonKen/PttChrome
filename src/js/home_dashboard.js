@@ -606,7 +606,14 @@ HomeDashboard.prototype = {
     if (action === 'help' && !this._state.fetching) {
       // The key is on the wire: Ctrl+Z f must not race it.
       this._clearAutoTimer();
-      this._core.helpMenu?.expect?.(this);
+      const hm = this._core.helpMenu;
+      hm?.expect?.(this);
+      // The help sheet opens at this keypress (#222) and is a modal before the
+      // key's own keypress, which it would keep from PTT: send the key now.
+      if (hm && hm.phase === 'loading') {
+        this._core.view?._send?.(e.key);
+        return true;
+      }
       return false;
     }
     // Either search key opens the same sheet; it sends PTT's own key itself.

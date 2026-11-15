@@ -2625,7 +2625,16 @@ EasyReading.prototype.enterNativeRoute = function(ch) {
 // caller prevents it); a help or reply key opens the native mirror and still goes out.
 EasyReading.prototype._leftoverKey = function(e) {
   const what = articleLeftoverKey(e);
-  if (what === 'native') this.enterNativeRoute(e.key);
+  if (what === 'native') {
+    this.enterNativeRoute(e.key);
+    // The help sheet opens at this keypress (help_menu.expect, #222) and is a
+    // modal before the key's own keypress arrives, which is a separate event
+    // the modal then keeps from PTT: the help key goes out from here.
+    if (this._core?.helpMenu?.phase === 'loading' && ARTICLE_HELP_KEYS.indexOf(e.key) >= 0) {
+      this._core.view?._send(e.key);
+      return true;
+    }
+  }
   if (what !== 'refuse') return false;
   this._refuseUnsupported('key');
   return true;

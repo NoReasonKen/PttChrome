@@ -1,7 +1,7 @@
 // A key the reading keys did not take, while an article is open in easy
 // reading (#160): a help or reply key keeps the native route, every other PTT command
 // is refused, and keys PTT never sees are left to the browser or the app.
-import { articleLeftoverKey, articleReadingKey, articleWouldRefuse } from "../../src/js/easy_reading";
+import { EasyReading, articleLeftoverKey, articleReadingKey, articleWouldRefuse } from "../../src/js/easy_reading";
 
 const ev = (key, mods = {}) => ({
   key,
@@ -66,5 +66,38 @@ describe("articleWouldRefuse (help menu rows over an article)", () => {
     expect(articleReadingKey(ev("f", { ctrlKey: true }))).toBe("scrollPageDown");
     expect(articleReadingKey(ev("=", { code: "Equal" }))).toBe("threadJump");
     expect(articleReadingKey(ev("s"))).toBe(null);
+  });
+});
+
+// #222: the help key opens the help sheet at once (help_menu.expect), a modal
+// before the key's own keypress, which the modal would keep from PTT: the help
+// key goes out from the keydown, and the keydown is stopped.
+describe("the help key while the help sheet opens", () => {
+  const article = (phaseAfter) => {
+    const sent = [];
+    const core = { helpMenu: { phase: "idle" }, view: { _send: (b) => sent.push(b) } };
+    const er = Object.create(EasyReading.prototype);
+    er._core = core;
+    er.enterNativeRoute = () => {
+      core.helpMenu.phase = phaseAfter;
+    };
+    return { er, sent };
+  };
+
+  test("the sheet is loading ⇒ the key is sent now and the keydown stopped", () => {
+    for (const k of ["h", "H", "?"]) {
+      const { er, sent } = article("loading");
+      expect(er._leftoverKey(ev(k))).toBe(true);
+      expect(sent).toEqual([k]);
+    }
+  });
+
+  test("no sheet (popup off) or a reply key ⇒ left to the keypress as before", () => {
+    const off = article("idle");
+    expect(off.er._leftoverKey(ev("h"))).toBe(false);
+    expect(off.sent).toEqual([]);
+    const reply = article("loading");
+    expect(reply.er._leftoverKey(ev("y"))).toBe(false);
+    expect(reply.sent).toEqual([]);
   });
 });

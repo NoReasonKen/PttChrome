@@ -195,6 +195,9 @@ test.describe('看板列表平滑捲動（scenario 重放）', () => {
       await ptt.sendKey(page, 'h');
       await expect.poll(sentSince).toEqual(['h\f']);
       expect(await page.evaluate(() => window.__app.helpMenu.holding)).toBe(true);
+      // The sheet is open at the keypress, before any of PTT's help screen.
+      await expect(page.locator('[data-help-pending-text]')).toBeVisible();
+      expect(await page.locator('[data-help-item]').count()).toBe(0);
       const { total } = await drawHelpPage(page, 1);
       await expect(page.locator('[data-help-item]').first()).toBeVisible();
       // The rest of the pages behind the sheet, one PgDn each (how many

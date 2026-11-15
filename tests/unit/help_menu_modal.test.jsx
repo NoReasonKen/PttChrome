@@ -6,7 +6,13 @@
 //   - 鍵盤：↓ 移動、Enter 執行、q 離開；沒有「原生畫面」鈕（#191）；
 //   - 開著＝modal（setModalOpen("helpMenu")），收起就解除。
 // real-input: tests/e2e/offline/help_menu.offline.spec.js
-import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  act,
+  waitFor,
+} from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import HelpMenu from "../../src/components/HelpMenu";
 import { setupI18n, i18n } from "../../src/js/i18n";
@@ -48,20 +54,23 @@ const items = () => Array.from(document.querySelectorAll("[data-help-item]"));
 // Modal／Drawer 開關有過場：內容掛上與卸下都是非同步的。
 const waitItems = (n) => waitFor(() => expect(items()).toHaveLength(n));
 
-test.each([false, true])("兩頁合併列出、點第 2 頁的項目就執行（mobile=%s）", async (mobile) => {
-  const { sent, feed } = setup({ mobile });
-  feed(HELP_FAV_PAGE1);
-  await waitItems(25);
-  expect(document.querySelector("[data-help-loading]")).not.toBeNull();
-  feed(HELP_FAV_PAGE2);
-  await waitItems(35);
-  expect(document.querySelector("[data-help-loading]")).toBeNull();
-  const target = items().find((el) => el.textContent.includes("線上使用者"));
-  sent.length = 0;
-  fireEvent.click(target);
-  expect(sent).toEqual([KEY_HOME + KEY_PGDN + KEY_DOWN.repeat(8) + "\r"]);
-  await waitItems(0);
-});
+test.each([false, true])(
+  "兩頁合併列出、點第 2 頁的項目就執行（mobile=%s）",
+  async (mobile) => {
+    const { sent, feed } = setup({ mobile });
+    feed(HELP_FAV_PAGE1);
+    await waitItems(25);
+    expect(document.querySelector("[data-help-loading]")).not.toBeNull();
+    feed(HELP_FAV_PAGE2);
+    await waitItems(35);
+    expect(document.querySelector("[data-help-loading]")).toBeNull();
+    const target = items().find((el) => el.textContent.includes("線上使用者"));
+    sent.length = 0;
+    fireEvent.click(target);
+    expect(sent).toEqual([KEY_HOME + KEY_PGDN + KEY_DOWN.repeat(8) + "\r"]);
+    await waitItems(0);
+  },
+);
 
 test("標題帶 caption；鍵名逐一畫成按鍵", async () => {
   const { feed } = setup();
@@ -71,7 +80,9 @@ test("標題帶 caption；鍵名逐一畫成按鍵", async () => {
     screen.getByText(i18n("helpMenu_titleWith").replace("{0}", "我的最愛")),
   ).toBeTruthy();
   const first = items()[0];
-  expect(Array.from(first.querySelectorAll("kbd")).map((k) => k.textContent)).toEqual(["h", "H"]);
+  expect(
+    Array.from(first.querySelectorAll("kbd")).map((k) => k.textContent),
+  ).toEqual(["h", "H"]);
 });
 
 test("桌機鍵盤：↓↓ Enter 執行第 3 項", async () => {
@@ -93,7 +104,9 @@ test("q 離開；開著＝modal，收起就解除", async () => {
   await waitItems(25);
   expect(modal.get("helpMenu")).toBe(true);
   sent.length = 0;
-  fireEvent.keyDown(document.querySelector("[data-help-menu-list]"), { key: "q" });
+  fireEvent.keyDown(document.querySelector("[data-help-menu-list]"), {
+    key: "q",
+  });
   expect(sent).toEqual(["q"]);
   expect(modal.get("helpMenu")).toBe(false);
 });
@@ -120,7 +133,9 @@ test("小天使按鈕只在 footer 有 (h)小天使 時出現", async () => {
   feed([]);
   await waitItems(0);
   feed(HELP_FAV_PAGE1);
-  await waitFor(() => expect(document.querySelector("[data-help-angel]")).not.toBeNull());
+  await waitFor(() =>
+    expect(document.querySelector("[data-help-angel]")).not.toBeNull(),
+  );
   sent.length = 0;
   fireEvent.click(document.querySelector("[data-help-angel]"));
   expect(sent).toEqual(["h"]);
@@ -135,7 +150,9 @@ test("a detachable visit: unavailable rows cannot be picked; the keyboard skips 
     navigationEnded() {},
     sendKeyAsUser: (key) => typed.push(key),
   };
-  pttchrome.helpMenu.expect({ wouldRefuse: (k) => k.key === "a" || k.key === "i" });
+  pttchrome.helpMenu.expect({
+    wouldRefuse: (k) => k.key === "a" || k.key === "i",
+  });
   feed(HELP_FAV_PAGE1);
   feed(HELP_FAV_PAGE2);
   await waitItems(35);
@@ -150,10 +167,70 @@ test("a detachable visit: unavailable rows cannot be picked; the keyboard skips 
   expect(typed).toEqual([]);
   // The first pickable row is (d) 刪除; ↓ lands on (g) 新增目錄.
   const dialog = document.querySelector("[data-help-menu]");
-  await waitFor(() => expect(items()[2].hasAttribute("data-active")).toBe(true));
+  await waitFor(() =>
+    expect(items()[2].hasAttribute("data-active")).toBe(true),
+  );
   fireEvent.keyDown(dialog, { key: "ArrowDown" });
   fireEvent.keyDown(dialog, { key: "Enter" });
   expect(typed).toEqual(["g"]);
   expect(sent.at(-1)).toBe("q");
   await waitItems(0);
 });
+
+// #222: asked from an easy-reading page, the sheet opens at the request, before
+// PTT's help screen: one quiet line where the rows go, already at its full
+// height. Page 1 fills the same sheet (no remount, so no second slide) and the
+// first pickable row takes focus.
+test.each([false, true])(
+  "a detachable visit opens at the request and fills in place (mobile=%s)",
+  async (mobile) => {
+    const { pttchrome, sent, feed } = setup({ mobile });
+    pttchrome.view = { navigationEnded() {}, sendKeyAsUser() {} };
+    act(() =>
+      pttchrome.helpMenu.expect({
+        wouldRefuse: (k) => k.key === "a" || k.key === "i",
+      }),
+    );
+    await waitFor(() =>
+      expect(document.querySelector("[data-help-pending-text]")).not.toBeNull(),
+    );
+    expect(items()).toHaveLength(0);
+    expect(sent).toEqual([]);
+    const list = document.querySelector("[data-help-menu-list]");
+    expect(list.getAttribute("aria-busy")).toBe("true");
+    if (mobile)
+      expect(
+        document
+          .querySelector('.mobileSheet[data-sheet="help"]')
+          .hasAttribute("data-fill"),
+      ).toBe(true);
+    feed(HELP_FAV_PAGE1);
+    await waitItems(25);
+    expect(document.querySelector("[data-help-pending-text]")).toBeNull();
+    expect(document.querySelector("[data-help-menu-list]")).toBe(list);
+    expect(list.hasAttribute("aria-busy")).toBe(false);
+    // (h/H) and (a/i) are unavailable: (d) 刪除 is the first pickable row.
+    await waitFor(() => expect(document.activeElement).toBe(items()[2]));
+  },
+);
+
+test.each([false, true])(
+  "closing the loading sheet sends nothing until PTT's help screen is there (mobile=%s)",
+  async (mobile) => {
+    const { pttchrome, sent, modal, feed } = setup({ mobile });
+    pttchrome.view = { navigationEnded() {}, sendKeyAsUser() {} };
+    act(() => pttchrome.helpMenu.expect({ wouldRefuse: () => false }));
+    await waitFor(() =>
+      expect(document.querySelector("[data-help-close]")).not.toBeNull(),
+    );
+    if (!mobile) expect(modal.get("helpMenu")).toBe(true);
+    fireEvent.click(document.querySelector("[data-help-close]"));
+    await waitFor(() =>
+      expect(document.querySelector("[data-help-menu-list]")).toBeNull(),
+    );
+    expect(sent).toEqual([]);
+    feed(HELP_FAV_PAGE1);
+    expect(sent).toEqual(["q"]);
+    expect(document.querySelector("[data-help-menu-list]")).toBeNull();
+  },
+);

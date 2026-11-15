@@ -777,6 +777,26 @@ describe("HomeDashboard：何時出現", () => {
     expect(home.wouldRefuse({ key: "x", ctrlKey: true })).toBe(true);
   });
 
+  // #222: the help sheet opens at the keypress, a modal before the key's own
+  // keypress: home sends the help key itself and stops the keydown.
+  test("help at home while the sheet opens: the key is sent from the keydown", () => {
+    for (const [k, mods] of [["h"], ["H", { shiftKey: true }], ["?"]]) {
+      const { core, show, key, hints } = makeCore();
+      const sent = [];
+      core.view._send = (b) => sent.push(b);
+      const expectHelp = core.helpMenu.expect;
+      core.helpMenu.expect = function (requester) {
+        expectHelp.call(this, requester);
+        this.phase = "loading";
+      };
+      show(mainMenu());
+      expect(key(k, mods)).toBe(true);
+      expect(sent).toEqual([k]);
+      expect(core.helpMenu.holding).toBe(true);
+      expect(hints).toEqual([]);
+    }
+  });
+
   test("首頁按 H／? ⇒ 與 h 一樣：送出、hold 住、面板留著", () => {
     for (const [k, mods] of [["H", { shiftKey: true }], ["?", undefined]]) {
       const { core, home, show, key, hints } = makeCore();

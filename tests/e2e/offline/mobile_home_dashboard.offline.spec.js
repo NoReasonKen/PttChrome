@@ -304,6 +304,8 @@ test.describe('手機首頁儀表板（離線重放）', () => {
           scrollTop: dash ? Math.round(dash.scrollTop) : null,
           helpDrawn: lines.some((el) => el.textContent.includes('操作說明 (Help)')),
           sheet: !!document.querySelector('[data-sheet="help"]'),
+          // Laid-out height (the slide's transform does not count).
+          sheetH: document.querySelector('[data-sheet="help"]')?.offsetHeight || null,
           holding: window.__app.helpMenu.holding,
           phase: window.__app.helpMenu.phase,
         });
@@ -315,6 +317,9 @@ test.describe('手機首頁儀表板（離線重放）', () => {
     await imeCommit(page, 'h');
     await expect.poll(() => peekCapture(page)).toBe('h');
     expect(await takeCapture(page)).toBe('h');
+    // The sheet opened at the keypress, before any of PTT's help screen.
+    await expect(page.locator('[data-sheet="help"] [data-help-pending-text]')).toBeVisible();
+    expect(await page.locator('[data-sheet="help"] [data-help-item]').count()).toBe(0);
     // The help menu asked from the main menu; its caption is the main menu's
     // own title, which no list fingerprint takes.
     const { perPage } = await drawHelpPage(page, 1, { caption: '主功能表' });
@@ -348,6 +353,10 @@ test.describe('手機首頁儀表板（離線重放）', () => {
     expect(frames.some((f) => f.sheet)).toBe(true);
     expect(frames.some((f) => f.holding)).toBe(true);
     expect(frames.some((f) => f.phase === 'detached' && f.sheet)).toBe(true);
+    // Open before its rows, at one height throughout: the rows arriving move nothing.
+    expect(frames.some((f) => f.phase === 'loading' && f.sheetH)).toBe(true);
+    const heights = frames.filter((f) => f.sheetH).map((f) => f.sheetH);
+    expect([...new Set(heights)]).toEqual([heights[0]]);
     expect(frames.filter((f) => !f.dashboard)).toEqual([]);
     expect(frames.filter((f) => f.helpDrawn)).toEqual([]);
     expect(frames.filter((f) => f.scrollTop !== first.scrollTop)).toEqual([]);

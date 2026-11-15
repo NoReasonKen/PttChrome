@@ -450,6 +450,9 @@
   "helpMenu_titleWith": {
     "message": "{0} 操作說明"
   },
+  "helpMenu_pending": {
+    "message": "讀取操作說明中…"
+  },
   "helpMenu_loading": {
     "message": "載入其餘指令中…"
   },

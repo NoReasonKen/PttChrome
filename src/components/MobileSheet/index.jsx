@@ -28,6 +28,7 @@ import "./MobileSheet.css";
 //   3. 拖曳把手往下拉超過 SHEET_DISMISS_DRAG_PX 收起；只有把手區接手勢，內容照常捲動。
 // float：長按選單不貼底，改浮在長按的那一列旁邊（js/sheet_placement.js#floatMenuPlacement
 // 的結果）——手指移動距離短、也不蓋住那一列。浮動時沒有拖曳把手（遮罩／返回照樣收起）。
+// fill：貼底 sheet 一開就是最高（內容晚到也不長高，說明選單 #222）。
 // footer：固定在捲動區下方的列（送出鍵），內容再長、鍵盤再高都看得到，不必先收鍵盤
 // 才點得到（LongPushModal 手機版）。
 // z-index 高於底部工具列（2500）與 App Bar：sheet 開著時兩條 bar 都在遮罩下面。
@@ -73,6 +74,7 @@ export const MobileSheet = ({
   float = null,
   footer = null,
   closeOnClickOutside = true,
+  fill = false,
 }) => {
   const reduceMotion = useReducedMotion();
   const theme = useMantineTheme();
@@ -255,6 +257,7 @@ export const MobileSheet = ({
         onPointerCancelCapture={cancelItemContact}
         onClickCapture={preserveItemClick}
         data-position={float ? "float" : "bottom"}
+        data-fill={fill && !float ? "" : undefined}
         data-float-side={float ? float.side : undefined}
         style={{
           ...(drag ? { transform: `translateY(${drag}px)` } : null),
