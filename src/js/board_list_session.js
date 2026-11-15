@@ -600,8 +600,10 @@ BoardListSession.prototype = {
   // to it (#31). `another`: a list other than the one shown before, such as
   // a class group's.
   _presented: function(another) {
-    if (this.state === 'active' && this._renderMode === 'buffer')
-      this._core.articleGestures?.pagePresented(PAGE.BOARD_LIST, { another: !!another });
+    if (this.state !== 'active' || this._renderMode !== 'buffer') return;
+    const core = this._core;
+    core.articleGestures?.pagePresented(PAGE.BOARD_LIST, { another: !!another });
+    core.reconnectResume?.pagePresented?.();
   },
 
   // ---- 外部入口 --------------------------------------------------------------
@@ -632,6 +634,12 @@ BoardListSession.prototype = {
 
   // 外部序列收尾（reading_record.releaseExternal）：停在看板列表時把 'external'
   // 換成 'passthrough'，交回靜置探針（同 list_session.endExternalNavigation）。
+  // An external sequence holds the board list, or has ended and the resume
+  // probe has yet to measure the list it left (the reconnect recovery, #188).
+  returningFromExternal: function() {
+    return this.state === 'functionMode' && (this._holdReason === 'external' || this._holdReason === 'passthrough');
+  },
+
   endExternalNavigation: function() {
     if (this.state !== 'functionMode' || this._holdReason !== 'external') return;
     this._holdReason = 'passthrough';

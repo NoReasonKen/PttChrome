@@ -2035,6 +2035,7 @@ TermView.prototype = {
     var app = this.bbscore;
     return !!(app && ((app.aidNavigation && app.aidNavigation.active) ||
       (app.articleShortcutSearch && app.articleShortcutSearch.active) ||
+      (app.reconnectResume && app.reconnectResume.holding) ||
       (app.boardNoteSkip && app.boardNoteSkip.active) ||
       (app.helpMenu && app.helpMenu.holding) ||
       (app.boardSearchHold && app.boardSearchHold.holding) ||

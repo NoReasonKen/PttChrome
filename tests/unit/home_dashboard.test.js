@@ -1181,3 +1181,60 @@ describe("HomeDashboard: arrival hold", () => {
     expect(shown.core.view.navigationEnded).not.toHaveBeenCalled();
   });
 });
+
+// Recovery after a reload (#188): home is shown while the countdown offers to
+// return, and the dashboard stays the page shown while the recovery drives PTT.
+describe("HomeDashboard: reconnect and reload recovery", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const recovery = (state) => ({
+    holding: false,
+    hasPending: () => state.countdown || state.pending,
+    countingDown: () => state.countdown,
+    inTransit() {
+      return state.pending || this.holding;
+    },
+  });
+
+  test("the countdown shows home but keeps the wire for the recovery", () => {
+    const { core, home, show, enqueued } = makeCore();
+    core.reconnectResume = recovery({ countdown: true, pending: false });
+    show(mainMenu());
+    expect(home.state.visible).toBe(true);
+    vi.advanceTimersByTime(AUTO_FETCH_DELAY_MS * 2);
+    expect(enqueued).toHaveLength(0);
+  });
+
+  test("a plan waiting at its main menu is a transit: the dashboard does not show", () => {
+    const { core, home, show } = makeCore();
+    core.reconnectResume = recovery({ countdown: false, pending: true });
+    show(mainMenu());
+    expect(home.state.visible).toBe(false);
+  });
+
+  test("the dashboard shown stays over the screens the recovery drives through, and goes at its release", () => {
+    const { core, home, show } = makeCore();
+    const state = { countdown: true, pending: false };
+    core.reconnectResume = recovery(state);
+    show(mainMenu());
+    expect(home.state.visible).toBe(true);
+    state.countdown = false;
+    core.reconnectResume.holding = true;
+    show(mainMenu({ inputField: true }));
+    expect(home.state.visible).toBe(true);
+    show(ARTICLE_LIST());
+    expect(home.state.visible).toBe(true);
+    core.reconnectResume.holding = false;
+    home.recheck();
+    expect(home.state.visible).toBe(false);
+  });
+
+  test("a recovery hold does not bring up a dashboard that was not shown", () => {
+    const { core, home, show } = makeCore(ARTICLE_LIST());
+    core.reconnectResume = recovery({ countdown: false, pending: false });
+    core.reconnectResume.holding = true;
+    show(mainMenu());
+    expect(home.state.visible).toBe(false);
+  });
+});

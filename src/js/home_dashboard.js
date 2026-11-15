@@ -474,7 +474,11 @@ HomeDashboard.prototype = {
 
   // 線路上有沒有別人的事（AID 跳文、搜尋、deep link／斷線回到原處還在排程…）。
   _wireBusy: function() {
-    if (this._core.commandQueue && !this._core.commandQueue.idle) return true;
+    const core = this._core;
+    if (core.commandQueue && !core.commandQueue.idle) return true;
+    // A reopening's countdown shows home, but the wire stays the recovery's.
+    const rr = core.reconnectResume;
+    if (rr && rr.hasPending && rr.hasPending()) return true;
     return this._inTransit();
   },
 
@@ -487,8 +491,16 @@ HomeDashboard.prototype = {
     const dl = core.deepLinkController;
     if (dl && dl.hasPending && dl.hasPending()) return true;
     const rr = core.reconnectResume;
-    if (rr && rr.hasPending && rr.hasPending()) return true;
+    if (rr && rr.inTransit && rr.inTransit()) return true;
     return false;
+  },
+
+  // The recovery holds the page while it drives PTT (#188): a dashboard on
+  // screen is that page until the recovery releases it (recheck).
+  _recoveryHeld: function() {
+    const core = this._core;
+    const rr = core.reconnectResume;
+    return !!(rr && rr.holding);
   },
 
   // A board search's hold ended (#190): look at the screen it left.
@@ -572,8 +584,9 @@ HomeDashboard.prototype = {
     this._transitTimer = null;
     const transit = home && navigating;
     // Help asked from home: the dashboard is the page under the help menu sheet
-    // for the whole visit, and stays up until the hold ends (#191).
-    const held = !home && this._state.visible && this._helpHeld();
+    // for the whole visit, and stays up until the hold ends (#191). A recovery
+    // leaving from home after its countdown keeps it up the same way (#188).
+    const held = this._state.visible && ((!home && this._helpHeld()) || this._recoveryHeld());
     if (!home || transit) {
       this._clearAutoTimer();
       if (!held) this._set({ visible: false });

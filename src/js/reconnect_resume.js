@@ -47,6 +47,15 @@ export const RESUME_TOAST_ID = 'resumeLastPlace';
 export const SNAPSHOT_KEY = 'pttchrome.rendererResume.v1';
 export const CHECKPOINT_DELAY_MS = 500;
 const DEBUG_TRACE_KEY = 'pttchrome.recoveryDebug.v1';
+// The recovery hold (#188): with easy reading on, the recovery keeps the page
+// shown while it drives PTT, as app-driven navigation does (#157). Each phase
+// has its own budget, after which the screen PTT shows is drawn anyway:
+//   arrival:    the first main-menu frame of the login until its settle decides;
+//   driving:    the run (startResume and any search reconstruction after it);
+//   presenting: the run ended on an article list, until easy reading presents it.
+export const RECOVERY_ARRIVAL_HOLD_MS = 1000;
+export const RECOVERY_DRIVE_HOLD_MS = 30000;
+export const RECOVERY_PRESENT_HOLD_MS = 2000;
 // 回收後多久內回來還接得回去。再久的位置使用者多半不記得了，跳過去反而突兀。
 export const SNAPSHOT_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
@@ -186,8 +195,15 @@ export function ReconnectResume(core, view, termBuf) {
   this._loggedIn = false;
   this._checkpointTimer = null;
   this._lastVisibleSnapshot = null;
-  if (termBuf && termBuf.addEventListener)
+  // The recovery hold (term_view._navigationHeld): its phase while on, or null.
+  this.holding = false;
+  this._holdPhase = null;
+  this._holdTimer = null;
+  if (termBuf && termBuf.addEventListener) {
     termBuf.addEventListener('screenSettled', this._onSettled.bind(this));
+    // 'change' comes before the view draws the frame (term_buf.notify).
+    termBuf.addEventListener('change', this._onFrame.bind(this));
+  }
   // 倒數中的出發（開站接回）：{ timer, plan } | null。
   this._countdown = null;
   if (typeof window !== 'undefined' && window.localStorage) {
@@ -307,6 +323,7 @@ ReconnectResume.prototype = {
   // loggedOut：這次斷線是使用者自己登出。
   capture: function(loggedOut) {
     this._cancelCheckpoint();
+    this._release('disconnect');
     // 倒數中斷線：那份計畫作廢（重連後照斷線這一刻的位置重新算）。
     this._cancelCountdown();
     const wasLoggedIn = this._loggedIn;
@@ -384,10 +401,72 @@ ReconnectResume.prototype = {
     if (!hadPending) return;
     this._diag('discard', { reason: reason });
     this._pending = null;
+    this._release(reason);
   },
 
   hasPending: function() {
     return !!(this._pending || this._countdown);
+  },
+
+  countingDown: function() {
+    return !!this._countdown;
+  },
+
+  // The recovery is passing through screens: a reconnect's plan waits for its
+  // main menu, or the hold is on. A reopening's plan and its countdown are not:
+  // the reader arrives home and is free to stay, so home shows from the first
+  // main-menu frame.
+  inTransit: function() {
+    return !!(this._pending && !this._pending.fromOpen) || this.holding;
+  },
+
+  _hold: function(phase, ms) {
+    clearTimeout(this._holdTimer);
+    this.holding = true;
+    this._holdPhase = phase;
+    this._holdTimer = setTimeout(() => this._release('timeout'), ms);
+  },
+
+  // The screen PTT shows now is drawn (term_view.navigationEnded) and the home
+  // dashboard judges it again, as it would after the reader's own navigation.
+  _release: function(reason) {
+    clearTimeout(this._holdTimer);
+    this._holdTimer = null;
+    if (!this.holding) return;
+    const phase = this._holdPhase;
+    this.holding = false;
+    this._holdPhase = null;
+    this._diag('release', { mode: phase, reason: reason });
+    this._core?.homeDashboard?.recheck?.();
+    this._view?.navigationEnded?.();
+  },
+
+  // The run ended. An article landing is easy reading's already; an article
+  // list (or board list) returning from the run's external hold is presented
+  // by its owner shortly after (pagePresented).
+  _runEnded: function() {
+    if (this._holdPhase !== 'driving') return;
+    if (this._awaitingPresentation()) this._hold('presenting', RECOVERY_PRESENT_HOLD_MS);
+    else this._release('ended');
+  },
+
+  _awaitingPresentation: function() {
+    const core = this._core;
+    return !!(core.listSession?.returningFromExternal?.() || core.boardListSession?.returningFromExternal?.());
+  },
+
+  // An easy-reading list or board list presented a page.
+  pagePresented: function() {
+    if (this._holdPhase === 'presenting') this._release('presented');
+  },
+
+  // A frame arrives: the main menu a waiting plan leaves from is held from its
+  // first frame until the settle decides. The countdown of a reopening is
+  // not held (the home dashboard shows it); its run is (_dispatch).
+  _onFrame: function() {
+    if (this.holding || !this._pending || this._pending.fromOpen || this._core.connectState !== 1) return;
+    if (!this._atMainMenu() || !enabled()) return;
+    this._hold('arrival', RECOVERY_ARRIVAL_HOLD_MS);
   },
 
   // 開站接回的倒數：提示＋「取消」。倒數完再確認一次還在主功能表才出發。
@@ -418,6 +497,7 @@ ReconnectResume.prototype = {
     this._diag('cancel', {});
     this._cancelCountdown();
     this._pending = null;
+    this._release('cancel');
   },
 
   _showToast: function(plan) {
@@ -465,9 +545,13 @@ ReconnectResume.prototype = {
     const core = this._core;
     const nav = core.aidNavigation;
     const dl = core.deepLinkController;
-    if (core.connectState !== 1 || !this._atMainMenu() || !nav || nav.active || (dl && dl.hasPending && dl.hasPending())) {
+    // An operation on the wire (one the reader started from home during the
+    // countdown) supersedes it as well: its keys and ours must not interleave.
+    if (core.connectState !== 1 || !this._atMainMenu() || !nav || nav.active || (dl && dl.hasPending && dl.hasPending()) ||
+        serializedOpHint(core) || core.commandQueue?.idle === false) {
       this._diag('discard', { reason: 'superseded' });
       this._core?.articleShortcutSearch?.abandonRecovery('superseded');
+      this._release('superseded');
       return;
     }
     // 同 deep_link_controller._dispatch：AutoLogin 的「請按任意鍵 ⇒ 送空白」會踩到
@@ -475,12 +559,20 @@ ReconnectResume.prototype = {
     if (core.autoLogin && core.autoLogin.stop) core.autoLogin.stop();
     this._diag('dispatch', { kind: plan.kind, board: plan.board, fromOpen: !!plan.fromOpen });
     const self = this;
+    if (enabled()) this._hold('driving', RECOVERY_DRIVE_HOLD_MS);
     const started = nav.startResume(plan, function(result) {
-      const ended = outcome => self._core?.articleShortcutSearch?.recoveryEnded(plan, outcome);
+      const ended = outcome => {
+        const notice = self._core?.articleShortcutSearch?.recoveryEnded(plan, outcome);
+        self._runEnded();
+        return notice;
+      };
       if (result?.ok && plan.search) resumeSearchResults(core, plan.search, ended, plan.searchPosition);
       else ended(result);
     });
-    if (!started) this._core?.articleShortcutSearch?.abandonRecovery('superseded');
+    if (!started) {
+      this._core?.articleShortcutSearch?.abandonRecovery('superseded');
+      this._release('superseded');
+    }
   },
 
   _atMainMenu: function() {
@@ -489,7 +581,18 @@ ReconnectResume.prototype = {
     return isMainMenuRow(buf.getRowText(0, 0, buf.cols));
   },
 
+  // Every settle ends the arrival hold unless it set the run off (_dispatch).
   _onSettled: function() {
+    try {
+      this._judgeSettled();
+    } finally {
+      if (this._holdPhase === 'arrival') this._release('settled');
+    }
+  },
+
+  _judgeSettled: function() {
+    // The run left its list hold and the list is not taking the landing over.
+    if (this._holdPhase === 'presenting' && !this._awaitingPresentation()) this._release('ended');
     if (this._core.articleResize?.active || this._core.listResize?.active) return;
     this._scheduleCheckpoint();
     if (!this._atMainMenu()) {

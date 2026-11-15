@@ -78,6 +78,7 @@ const STACKING_ONLY = {
   "mobile_board_search_hold.offline.spec.js": "checks which page reaches paint under the search sheet; picks no click point",
   "mobile_home_dashboard.offline.spec.js": "checks whether the native main menu reaches paint uncovered by the dashboard; picks no click point",
   "mobile_back_pause.offline.spec.js": "checks whether a pause after Back reaches paint uncovered by the revealed page; picks no click point",
+  "mobile_recovery_hold.offline.spec.js": "checks whether PTT's screens reach paint while recovery drives PTT; picks no click point",
 };
 
 describe("offline e2e 版面穩定契約", () => {
