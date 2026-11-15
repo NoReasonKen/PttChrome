@@ -1389,6 +1389,10 @@ TermView.prototype = {
   // 列是兩套列號，列號變動不算使用者移動游標，故先比對 mode。
   applyCursorHighlight: function(source) {
     if (!this.buf) return;
+    // A held frame keeps the picture before it (the held branch of redraw).
+    // Re-rendering the screen for a highlight would draw the live buffer the
+    // hold keeps back; the redraw that ends the hold applies the highlight.
+    if (this._heldFrame) return;
     var listMode =
       this.buf.listRenderMode === 'buffer' || this.buf.listRenderMode === 'frozen';
     var mode = listMode
@@ -2033,7 +2037,8 @@ TermView.prototype = {
       (app.articleShortcutSearch && app.articleShortcutSearch.active) ||
       (app.boardNoteSkip && app.boardNoteSkip.active) ||
       (app.helpMenu && app.helpMenu.holding) ||
-      (app.boardSearchHold && app.boardSearchHold.holding)));
+      (app.boardSearchHold && app.boardSearchHold.holding) ||
+      (app.homeDashboard && app.homeDashboard.holding)));
   },
 
   // The list easy-reading branch of redraw owns this frame. Article frames

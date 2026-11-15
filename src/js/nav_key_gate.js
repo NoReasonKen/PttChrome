@@ -23,6 +23,11 @@
 export function navKeyBlockReason(core) {
   if (!core) return 'noCore';
   if (core.modalShown) return 'modal';
+  // The home dashboard refuses PTT's own keys over the main menu (#191); a
+  // synthesized ← would only flash its unsupported-key hint. Blocking here lets
+  // Back take its escape branch instead. A sheet open at home is 'modal' first.
+  const home = core.homeDashboard;
+  if (home && typeof home.ownsInput === 'function' && home.ownsInput()) return 'home';
   if (!core.conn || !core.conn.isConnected) return 'disconnected';
   const buf = core.buf;
   if (!buf) return 'noBuf';

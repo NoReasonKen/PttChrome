@@ -445,7 +445,11 @@ frozen 之後畫面會自己再捲幾像素。
 
 送鍵守門 `nav_key_gate.navKeyAllowed(core)`：`modalShown` 關、未連線關、`pageState`
 只允許 1/2/3/4（0/5/6 不送，與 `resolveMouseRegion` 的動作集合一致）、
-`buf.isCursorOnInputField()` 為真時不送。
+`buf.isCursorOnInputField()` 為真時不送。好讀首頁蓋在主選單上、接管輸入時
+（`homeDashboard.ownsInput()`）也不送，原因是 `'home'`：首頁拒收 PTT 自己的鍵，合成的 `←`
+只會閃「好讀不支援這個鍵」。擋下之後返回走逃生門那條（第一次提示怎麼離站，第二次離站／
+APK 退到背景）；其他共用這個出口的手勢則不送。首頁開著的 sheet（搜尋、說明）仍是 `'modal'`，
+返回照舊先收 sheet。實體 `←` 鍵不經過這道，照舊由首頁拒收並提示。
 **例外：`pageState` 5 且 `buf.isPassScreenNow()` 為假 ⇒ 送**——`setPageState` 沒有 reset 分支，
 pressanykey 之後落在判不出的畫面會黏在 5（症狀：左滑有原生動畫、沒送 `←`、閃離站提示，
 進一篇文章才恢復）；本幀已不是 pass 畫面就是殘留。擋下的原因由 `navKeyBlockReason` 回傳，

@@ -123,6 +123,23 @@ describe("重畫後 mouseAction 重算（滑鼠沒動也要有效）", () => {
     expect(t.highlightSources).not.toContain("mouse");
   });
 
+  // #187: applying a highlight can re-render the screen from the live buffer.
+  // A changed frame clears the mouse row without applying it: the view draws
+  // the frame (or holds it back) and applies the highlight itself.
+  test("a changed frame clears the mouse row without applying the highlight before the view draws it", () => {
+    const t = makeBuf();
+    t.paint(menuScreen(18));
+    t.buf.onMouse_move(30, 19);
+    t.highlightSources.length = 0;
+    let updates = 0;
+    t.buf.view.update = () => updates++;
+    t.buf.view.applyCursorHighlight = (source) => t.highlightSources.push([source, updates]);
+    t.paint(menuScreen(19));
+    expect(updates).toBeGreaterThan(0);
+    expect(t.buf.nowHighlight).toBe(-1);
+    expect(t.highlightSources.filter(([, drawn]) => drawn === 0)).toEqual([]);
+  });
+
   test("pressanykey 畫面重畫後不得無中生有（維持 none）", () => {
     const t = makeBuf();
     t.paint(menuScreen(18));

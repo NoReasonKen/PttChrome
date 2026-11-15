@@ -98,9 +98,19 @@ function pageGuard({ tag, log }) {
         // list owner's state.
         resume: (app.reconnectResume && app.reconnectResume.diagnostics().pendingKind) || null,
         listState: app.listSession ? app.listSession.state : null,
+        // Whether a main menu offers My Favorites: only such a menu is the
+        // home screen the dashboard covers (home_dashboard.isHomeScreen).
+        favorites: hasFavoritesItem(buf),
       });
       return true;
     }
+  }
+
+  function hasFavoritesItem(buf) {
+    for (let row = 1; row < buf.rows - 1; row++) {
+      if (buf.getRowText(row, 0, buf.cols).includes('(F)avorite')) return true;
+    }
+    return false;
   }
 
   function loginPrompt(buf) {
@@ -174,8 +184,13 @@ const ALLOWED = [
     match: (hit) => hit.listState === 'functionMode' },
   { issue: 189, why: 'unexpected pause screen after Back, and the list after it',
     match: (hit) => hit.listState === 'suspended' },
-  { issue: 187, why: 'main menu painted before the home dashboard covers it',
-    match: (hit) => hit.title.includes('主功能表') },
+  // A fixture's frame, not real PTT: no issue removes it. The dashboard covers
+  // only a main menu that offers My Favorites (home_dashboard.isHomeScreen,
+  // #187) and leaves any other native by design. Real PTT shows the item to
+  // every member; the bare main menu of the nested-search fixture
+  // (helpers/article_shortcut_search.js without `homeMenu`) does not.
+  { issue: 'fixture', why: 'a fixture main menu without My Favorites is no home screen and stays native',
+    match: (hit) => hit.title.includes('主功能表') && hit.favorites === false },
 ];
 
 function allowedIssue(hit, where) {

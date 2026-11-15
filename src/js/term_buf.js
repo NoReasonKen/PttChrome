@@ -1168,8 +1168,11 @@ TermBuf.prototype = {
       }
       if (this.useMouseBrowsing) {
         // clear highlight and reset cursor on page change
-        // without the redraw being called here
-        this.clearHighlight();
+        // without the redraw being called here: view.update below draws the
+        // frame and applies the highlight. Applying it now would re-render the
+        // screen from the live buffer before the view decides whether this
+        // frame is drawn at all (a held frame, #187).
+        this.clearHighlight({ paintLater: true });
       }
 
       this.dispatchEvent(new CustomEvent('change'));
@@ -1779,8 +1782,10 @@ TermBuf.prototype = {
     if (this.view) this.view.applyCursorHighlight(row >= 0 ? 'mouse' : undefined);
   },
 
-  clearHighlight: function(){
-    this.nowHighlight = -1;
+  // opts.paintLater: only the state is cleared; the caller's redraw applies it.
+  clearHighlight: function(opts){
+    if (opts && opts.paintLater) this._nowHighlight = -1;
+    else this.nowHighlight = -1;
     this.mouseAction = ACT_NONE;
     this.mouseActionRow = -1;
     if (this.view && this.view.setExitAffordance) this.view.setExitAffordance(false);

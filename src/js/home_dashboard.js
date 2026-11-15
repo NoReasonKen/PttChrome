@@ -78,6 +78,10 @@ export const AUTO_FETCH_DELAY_MS = 600;
 // How often a main menu passed during another operation is looked at again, so
 // the dashboard shows once that operation stops there.
 export const HOME_TRANSIT_RECHECK_MS = 250;
+// The longest PTT's main menu is held back for the dashboard's judgement (#187).
+// The screen settles about 50 ms after its last data; this only ends a hold
+// whose settle never comes.
+export const ARRIVAL_HOLD_MS = 1000;
 
 const ZA_FAVORITE = '\x1af';
 const ZA_MAIL = '\x1am';
@@ -402,6 +406,10 @@ export function HomeDashboard(core) {
   this._recentVisitBoard = null;
   this._autoTimer = null;
   this._transitTimer = null;
+  // The arrival hold (#187): while true, term_view draws none of PTT's frames
+  // (its held branch) and the page before the main menu stays on screen.
+  this.holding = false;
+  this._holdTimer = null;
   // 閱讀紀錄交回的待還原錨（面板下一次畫出來時套用，見 applyPendingViewport）。
   this._pendingViewport = null;
   const fav = readJson(HOME_FAV_CACHE_KEY);
@@ -420,10 +428,15 @@ export function HomeDashboard(core) {
     newMail: false
   };
   const self = this;
-  if (core.buf && core.buf.addEventListener)
+  if (core.buf && core.buf.addEventListener) {
+    // 'change' comes before the view draws the frame (term_buf.notify).
+    core.buf.addEventListener('change', function() {
+      self._onFrame();
+    });
     core.buf.addEventListener('screenSettled', function() {
       self._onSettled();
     });
+  }
 }
 
 HomeDashboard.prototype = {
@@ -483,7 +496,44 @@ HomeDashboard.prototype = {
     this._onSettled();
   },
 
+  // A frame arrived, before the screen settles. PTT's main menu is held back
+  // from its first frame until the settle's judgement (#187): home ⇒ the
+  // dashboard shows and the hold ends together, so the main menu is first
+  // drawn under the dashboard; anything else ⇒ the frame is drawn as before.
+  // Only the title row is read here; the settle reads the rest.
+  _onFrame: function() {
+    if (this.holding || this._state.visible) return;
+    const buf = this._core.buf;
+    if (!buf || typeof buf.getRowText !== 'function') return;
+    if (!rowHasTitle(buf.getRowText(0, 0, buf.cols), MAIN_MENU) || !enabled()) return;
+    this.holding = true;
+    this._holdTimer = setTimeout(() => {
+      this._holdTimer = null;
+      this._releaseHold();
+    }, ARRIVAL_HOLD_MS);
+  },
+
+  _releaseHold: function() {
+    clearTimeout(this._holdTimer);
+    this._holdTimer = null;
+    if (!this.holding) return;
+    this.holding = false;
+    // The frame held back is drawn now, even when PTT sends nothing more.
+    const view = this._core.view;
+    if (view && view.navigationEnded) view.navigationEnded();
+  },
+
+  // Every judgement ends the arrival hold, after the dashboard has shown or
+  // hidden (it renders synchronously), so no main-menu frame is drawn uncovered.
   _onSettled: function() {
+    try {
+      this._judge();
+    } finally {
+      this._releaseHold();
+    }
+  },
+
+  _judge: function() {
     const buf = this._core.buf;
     if (!buf || typeof buf.getRowText !== 'function') return;
     // 先只讀頭尾兩列：每次 settle 都會跑，不在主功能表時不必讀滿整頁。
