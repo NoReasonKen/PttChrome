@@ -38,14 +38,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---- 純函式（unit 守護：tests/unit/android_e2e.test.js）----
 
-// CI splits the specs across parallel emulators. The APK group needs the debug APK and runs
-// the instrumented tests; the Chrome group only drives the emulator's Chrome. Every
+// CI splits the specs across parallel emulators. APK and credential groups need the debug
+// APK; only the APK group runs instrumented tests. Chrome drives the emulator's Chrome. Every
 // *.android.spec.js belongs to exactly one group (tests/unit/android_e2e.test.js).
 export const ANDROID_E2E_GROUPS = {
   apk: {
     apk: true,
     instrumented: true,
-    specs: ["apk.android.spec.js", "app_updates.android.spec.js", "credentials.android.spec.js"],
+    specs: ["apk.android.spec.js", "app_updates.android.spec.js"],
+  },
+  "credentials-privacy": {
+    apk: true,
+    instrumented: false,
+    specs: ["credentials.android.spec.js"],
+  },
+  "credentials-lifecycle": {
+    apk: true,
+    instrumented: false,
+    specs: ["credentials_lifecycle.android.spec.js"],
   },
   chrome: {
     apk: false,

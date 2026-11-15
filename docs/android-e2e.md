@@ -21,7 +21,7 @@
   `ANDROID_E2E_APK` 已設（CI）或 `--no-build` 時不建；沒有 APK 就略過，CI 缺 APK＝exit 2。
 - 未涵蓋：密碼管理員／Google 登入 bridge（模擬器上沒有 Google 帳號與已存密碼）、檔案選擇器。
 
-`credentials.android.spec.js` exercises local encrypted automatic login through
+`credentials.android.spec.js` and `credentials_lifecycle.android.spec.js` exercise local encrypted automatic login through
 the real APK bridge and Keystore with synthetic offline prompts. It covers a
 fresh process, ciphertext inspection, approved page-source sharing and compatible
 package replacement. A higher-version compatible APK is optional through
@@ -43,7 +43,7 @@ so these tests never ran in CI before #101. See
 | `tests/e2e/android/fixtures.js` | worker：選機→OS 斷網→清 Chrome→IPv4 轉送＋adb reverse、裝 debug APK；test：`launchBrowser` 覆寫 `page`、`apk`（清 App→dev server 模式→連 WebView）；失敗存整個螢幕 |
 | `tests/e2e/android/screen.js` | spec 共用：強制手機版面開畫面（`openScreen`／列表卡片 `openListCards`）、OS 層真 tap（含落點自檢）／keyevent、收送出的 bytes、軟鍵盤蓋住的高度 |
 | `tests/e2e/android/*.android.spec.js` | spec（project `android`，`playwright.config.js`） |
-| `scripts/run-android-e2e.mjs` | `yarn test:e2e:android`：找／建 AVD、開機、跑、分類 exit 0/1/2、自己開的自己關；`ANDROID_E2E_GROUPS` 分 CI 的兩組；APK 組跑完再跑 instrumented tests |
+| `scripts/run-android-e2e.mjs` | `yarn test:e2e:android`：找／建 AVD、開機、跑、分類 exit 0/1/2、自己開的自己關；`ANDROID_E2E_GROUPS` 分 CI 的四組；APK 組跑完再跑 instrumented tests |
 | `scripts/android-e2e-needed.mjs` | `--if-changed[=base]` 的檔案名單（預設 base `origin/dev`） |
 | `.github/workflows/test.yml` jobs `test-e2e-android-group`／`test-e2e-android` | CI：每次都跑，一組一台 emulator（`--no-boot --group=<組>`），收斂 job 維持 required check 名稱 |
 | 守護 | `tests/unit/android_e2e.test.js`、`tests/unit/e2e_offline_no_network.test.js`「android e2e：OS 層斷網」 |
@@ -52,7 +52,9 @@ so these tests never ran in CI before #101. See
 
 - `yarn test:e2e:android`：手動或有改動才跑。`--if-changed` 沒命中名單⇒印「略過」exit 0。
   `--keep-emulator` 留著模擬器（下一輪省開機）；`--no-boot` 只用已在跑的（CI）；`--no-build` 跳過建 APK；
-  `--group=apk|chrome` 只跑那一組（`chrome` 組不建 APK、不跑 instrumented tests）。其餘參數透傳 playwright。
+  `--group=apk|credentials-privacy|credentials-lifecycle|chrome` selects one scope;
+  `apk` covers the shell and instrumentation, the credential groups build only the
+  app APK, and `chrome` builds no APK. Other arguments pass through to Playwright.
   沒給 `--group` 就全部跑，包括 instrumented tests。
 - exit：0 綠／1 真失敗／2 環境（沒 adb、沒 AVD、開機逾時、失敗全帶 `[android-env]`）。**2 不可當綠**；
   環境錯混到任何一條真斷言紅 ⇒ 1。
@@ -127,18 +129,22 @@ API 35 google_apis（Chrome 124，GPU 不當）試過、**棄用**：
 
 ubuntu-latest＋KVM、`ReactiveCircus/android-emulator-runner`（API 34 google_apis x86_64、`pixel_6`、`-gpu swiftshader_indirect`）。
 matrix 一組一台 emulator，分組在 `scripts/run-android-e2e.mjs` 的 `ANDROID_E2E_GROUPS`（每個 spec 恰好屬於一組，unit 守護）：
-- `apk`：`apk`、`app_updates`、`credentials` spec，跑完再跑 instrumented tests。開機前先
-  `./gradlew assembleDebug assembleDebugAndroidTest`（setup-java 21＋setup-gradle 快取），路徑經 env
-  `ANDROID_E2E_APK`／`ANDROID_E2E_TEST_APK` 交給執行器。
+- `apk`: shell and opt-in updater specs, followed by instrumented tests. Build
+  `./gradlew assembleDebug assembleDebugAndroidTest` before boot (Java 21 and
+  Gradle cache); pass the paths through `ANDROID_E2E_APK` and `ANDROID_E2E_TEST_APK`.
+- `credentials-privacy` / `credentials-lifecycle`: migration and privacy / storage
+  and restart coverage, respectively. Each builds a debug app, without androidTest.
 - `chrome`：只用模擬器上的 Chrome，不裝 Java、不建 APK。
 
 收斂 job `test-e2e-android` 用 `if: always()` 斷言 matrix 的 result，維持分支保護的 required check 名稱。
 不重試；exit 1／2 都是紅，判讀見 `docs/ci-troubleshooting.md`。
 
-Why two jobs (#101): on one emulator the job took 11–12.5 min after the credential spec
+Why the original split (#101): on one emulator the job took 11–12.5 min after the credential spec
 arrived (#93/#94), ~4 min longer than the slowest offline shard. Measured on that single
 job: setup and APK build ~1.5 min, boot ~40 s, the Chrome specs ~2.7 min, the APK specs
 ~5.5 min. Each extra job pays its own setup and boot.
+The credential tests were later split by behavior because they dominated the APK group;
+each additional job still pays its own APK build, setup and boot.
 
 spike 實測（20 次平行 ×2 輪，2026-10）：
 - 第 1 輪：pass 17／env 3／test-fail 0／boot-fail 0。env 3 次同一原因：Launcher ANR 對話框（見踩坑表）。

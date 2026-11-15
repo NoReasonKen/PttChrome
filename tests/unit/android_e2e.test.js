@@ -254,7 +254,10 @@ describe("Android e2e groups", () => {
     expect(chrome.specs).toContain("tests/e2e/android/select_mode.android.spec.js");
     const apk = groupPlan("apk");
     expect(apk).toMatchObject({ apk: true, instrumented: true });
-    expect(apk.specs).toContain("tests/e2e/android/credentials.android.spec.js");
+    expect(apk.specs).toContain("tests/e2e/android/apk.android.spec.js");
+    expect(groupPlan("credentials-privacy")).toMatchObject({ apk: true, instrumented: false, specs: ["tests/e2e/android/credentials.android.spec.js"] });
+    expect(groupPlan("credentials-lifecycle")).toMatchObject({ apk: true, instrumented: false, specs: ["tests/e2e/android/credentials_lifecycle.android.spec.js"] });
+    expect(Object.values(ANDROID_E2E_GROUPS).filter((g) => g.instrumented)).toHaveLength(1);
   });
 });
 
@@ -422,18 +425,18 @@ describe("test.yml: Android e2e groups", () => {
   // A second Gradle build inside the emulator step re-signed the APK, its install failed,
   // and Gradle still reported success. The runner installs the APKs built here instead.
   test("instrumented tests use the APKs built before the emulator, never a second Gradle build", () => {
-    expect(body).toMatch(/gradlew --no-daemon assembleDebug assembleDebugAndroidTest/);
+    expect(body).toMatch(/gradlew --no-daemon assembleDebug .*assembleDebugAndroidTest/);
     expect(body).not.toMatch(/connected\w*AndroidTest/);
     expect(body).toMatch(/ANDROID_E2E_APK: .*app-debug\.apk/);
     expect(body).toMatch(/ANDROID_E2E_TEST_APK: .*app-debug-androidTest\.apk/);
     expect(body).toContain("android/app/build/outputs/androidTest-results/");
   });
-  test("only the APK group sets up Java and builds", () => {
+  test("APK groups set up Java and build, while Chrome does not", () => {
     const steps = body.split(/\n {6}- /);
     for (const marker of ["actions/setup-java@", "gradle/actions/setup-gradle@", "name: Build debug APK"]) {
       const step = steps.find((st) => st.includes(marker));
       expect(step, marker).toBeDefined();
-      expect(step, marker).toMatch(/^\s*if: matrix\.group == 'apk'\s*$/m);
+      expect(step, marker).toMatch(/^\s*if: matrix\.group != 'chrome'\s*$/m);
     }
     expect(ANDROID_E2E_GROUPS.apk.apk).toBe(true);
   });

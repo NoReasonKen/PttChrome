@@ -65,7 +65,18 @@ possible secret representation.
 - **GITHUB_TOKEN 造成的事件不會再觸發 workflow**（GitHub 防遞迴，例外只有 `workflow_dispatch`／`repository_dispatch`）：任何在 Actions 內做 merge／push 的步驟若用 `secrets.GITHUB_TOKEN`，產生的 push **不會**觸發 `deploy.yml` 的 `on: push` → 站台靜默停在舊 commit（實例 PR #16）。`dependabot-auto-merge.yml` 因此改用 GitHub App installation token（secret `AUTOMERGE_APP_CLIENT_ID`／`AUTOMERGE_APP_PRIVATE_KEY`），勿改回 GITHUB_TOKEN。查驗方式：merge commit 的 SHA 上要看得到 `Deploy to GitHub Pages` run（`event: dynamic` 的 run 是 GitHub 動態 workflow，不算）。
 - **CodeQL 是 advanced setup（`.github/workflows/codeql.yml`），default setup 已停用，勿再開**：default setup 對 java-kotlin 只能 `build-mode: none`，而 Kotlin（`android/`）必須編譯 ⇒ 每次 push 紅 `could not process any of it using the 'none' build mode`。兩者不能並存（advanced 上傳會被拒）。新增語言改 matrix；category 維持 `/language:<lang>`（與舊 default setup 相同，alert 才延續）。
 - **CodeQL 綠燈不代表每個檔都分析到**：解析失敗的檔只在 Analyze job 的 log（`Could not process some files due to syntax errors`）和 Security → Code scanning → Tool status 出現，workflow 照樣 success。JavaScript extractor 會把**以 `import.meta` 開頭的陳述式**當成 import 宣告，在 `.` 報 `Unexpected token`（`if (import.meta.hot) import.meta.hot.dispose(…)` 就中）⇒ 先存進區域變數再用（`const hot = import.meta.hot;`）。放在運算式中間（`const x = import.meta.glob(…)`）沒事。
-- **`test-e2e-android` 紅**：這是收斂 job，先看哪一組 `test-e2e-android-group (apk|chrome)` 紅，再看那組 log 末行結論。`exit 2`（失敗全帶 `[android-env]`）＝環境：下載 artifact `e2e-android-<組>-attempt-N` 的 `device-screen.png`（整個螢幕，系統／Chrome 對話框只拍得到這張）與 `logcat-crash`，對照 `docs/android-e2e.md` 踩坑表；新的對話框類型 ⇒ 在 fixture 處理，不是重跑了事。`exit 1`＝斷言紅，當真失敗處理（spike 40 輪 0 次）。apk 組的 instrumented tests 紅或印 `[環境] instrumented tests` 時，原始輸出在 artifact 的 `android/app/build/outputs/androidTest-results/am-instrument/am-instrument.txt`；「no test passed」＝一條都沒跑到（裝不上 APK、test APK 空的），不是可以略過的綠。開機逾時屬 runner 問題，可 `--rerun-failed`。紅在 emulator-runner 的「Install Android SDK」、log 有 `Error on ZipFile unknown archive`＝sdkmanager 下載的系統映像是壞檔，模擬器根本沒開機，與被測 code 無關，可重跑；系統映像已改由 `Cache Android system image` 步驟從 cache 還原（cache 沒命中的那輪才會下載），守護 `android_e2e.test.js`。
+- **`test-e2e-android` failure**: inspect the failed `test-e2e-android-group` cell
+  (`apk`, `credentials-privacy`, `credentials-lifecycle`, or `chrome`) and its final
+  verdict. Exit 2 means no valid conclusion from the environment; exit 1 means a
+  real assertion failure. Download `e2e-android-<group>-attempt-N`, including the
+  whole-device `device-screen.png` and `logcat-crash`, and consult
+  [Android E2E pitfalls](android-e2e.md). New system dialogs need fixture handling.
+  Instrumentation belongs only to `apk`; its raw output is
+  `android/app/build/outputs/androidTest-results/am-instrument/am-instrument.txt`.
+  Zero passing tests is never success. Emulator boot timeout and an SDK download
+  failing with `Error on ZipFile unknown archive` occur before tests and permit
+  failed-job reruns. The system-image cache reduces repeated downloads; its
+  contract is checked by `android_e2e.test.js`.
 - **`Android APK`（`android.yml`）不可加進 required checks**：它有 `paths` 過濾，沒動 `android/**` 的 PR 永遠不會跑 ⇒ required 會讓那些 PR 卡在 pending。
 - **Code scanning 的 alert 用 REST API 處理**：`PATCH /repos/{o}/{r}/code-scanning/alerts/{n}`，body `{state, dismissed_reason, dismissed_comment}`；`dismissed_reason` 只吃 `false positive`／`won't fix`／`used in tests`。兩個硬限制：**`dismissed_comment` 上限 280 字元**（超過回 422，訊息才會說「Only 280 characters are allowed」，先寫長版會白做一次）、**已 dismissed 的 alert 不能直接改 comment**（回 400 `Alert is already dismissed.`），要改必須先 `{"state":"open"}` 再重新 dismiss。
 - **誤判一律寫進 `.github/code-scanning-dismissals.json`，由 workflow `code-scanning-dismiss.yml` 自動 dismiss**（dev 的 CodeQL 跑完接著跑，也可手動 Run；用 GITHUB_TOKEN 的 `security-events: write`，不需 PAT）。以 rule＋path 比對、不比行號，所以同檔同規則的新 alert 也會被關：加列前先確認該檔沒有別的真問題。雲端 Claude session 打不到 code scanning API（agent proxy 把 api.github.com 的認證換成 Claude App token，env 放 PAT 也沒用），只能走這條。
@@ -73,14 +84,15 @@ possible secret representation.
 - **新增 CI job 後要同步分支保護的 required checks**（`dev` 分支，repo 設定、**repo 裡看不到** ⇒ 最容易漏）：目前七個 `test / *` job 全是必跑 gate。漏加的後果是 Dependabot 的 `--auto` 合併不等那個 job ⇒ 它紅著也會被併進去。用 append endpoint 加，**別用整份覆蓋的 PUT**（會把其他保護欄位清成預設）：`POST /repos/{o}/{r}/branches/dev/protection/required_status_checks/contexts`，body `{"contexts":["test / <job>"]}`。context 名是 `<workflow job 名稱前綴> / <job id>`，reusable workflow 下就是 `test / <job>`。
 - **`test-unit` 也跑在 Playwright image 裡**（unit-browser project 要真 Chromium，見 `docs/build-modernization.md`「Vitest Browser Mode」）：容器規則與 e2e job 相同。`Executable doesn't exist` ＝ `playwright` 與 `@playwright/test` 版本不一致（守護 `ci_playwright_container.test.js`）。
 - **unit 耗時看 runner 抽到的 CPU 型號，不是核心數**（CONFIRMED，14 輪：`nproc` 恆 4，AMD EPYC 7763 比較新的 EPYC 9V74／Xeon 8573C 等慢約 1.5 倍）：同一份 code 耗時差一倍屬正常，`Runner CPU` step 印了型號可對照。`--maxWorkers` 調參沒有意義。
-- **CI 耗時（shard 數怎麼定）**：整輪牆鐘＝最慢的測試 job＋build＋deploy。e2e job 每個固定付 ~50s
-  （拉 image ~30s＋checkout／setup-node／`yarn install`），測試本體則隨條數線性長。2026-10-08 量 24 輪
-  （GitHub API 的 job／step 時間＋Playwright log）：offline 從 2×184 條長到 2×215 條，單片測試本體
-  200s→200–350s，整輪 4.5→6.5–9 分，關鍵路徑是 offline 兩片，其次 adverse slow 桶（~4 分）。
-  ⇒ offline 拆 4 片、slow 桶拆 2 片（其餘 job 都在 3 分內）。同一份 code 單片耗時可差 1.5 倍
-  （runner CPU 型號，見上一條；e2e job 的 `Runner resources` 也印機型），比較前先對機型、看多輪。
-  **再慢時的判準**：最慢的 e2e job 測試本體 > ~3 分就加片；加到單片本體 < ~1.5 分就不划算
-  （固定成本過半）。不改 worker 數：4 vCPU 跑 4 workers 已吃滿 CPU（slow 桶例外，見 test.yml）。
+- **CI duration and scope splitting**: ordinary offline CI has desktop/Firefox,
+  mobile controls, and stacked-navigation scopes (4/3/2 shards); Android has shell,
+  credential privacy, credential lifecycle, and Chrome groups. See
+  [timing evidence and tradeoffs](ci-test-splitting.md). Stable aggregate checks
+  require every cell, so matrix changes do not change branch-protection contexts.
+  Compare several runs and runner CPU types before attributing slowdowns. Each
+  cell pays setup; add shards when test execution dominates, rather than splitting
+  into jobs shorter than their fixed setup. Retain four offline workers per
+  four-vCPU runner (the adverse slow bucket has its existing override).
 - **已判定不做**：關掉每條都錄的 video（失敗現場唯一的影像，見 `playwright.config.js`）；live e2e 並行（共用 session 是 worker-scoped，多 worker＝多登入）。
 - **runner 變慢（整個 job 慢數倍、開頭一批 `page.goto` 逾時）**：e2e job 都有 `Runner resources`（`scripts/ci-resource-monitor.mjs start`：機型＋記憶體，背景每 10s 取樣）與 `if: always()` 的 `Runner resources report`（摘要＋逐筆），失敗 artifact 另帶 `ci-diagnostics/resources.jsonl`。**綠 run 基準（2026-10-10，`5deea56`，4 vCPU）**：offline 分片／adverse 各桶 `user+sys` avg 77–97%（本來就設計成吃滿 4 核）、`steal` 0、`iowait` avg ≤1%、load1 max 9–24（slow 桶 8 workers 最高）；Android job `user` avg 53%、開跑前等系統穩定 21s（閒置 75%）。⇒ **`user+sys` 滿是常態，不能單獨當異常訊號**。判讀：`steal` 明顯 >0＝同主機其他 VM 搶 CPU，換台機器就好 ⇒ 重跑失敗 job；`iowait` 遠高於 ~1%＝卡磁碟；兩者都正常、job 卻慢數倍 ⇒ 看取樣時間軸是不是某段 CPU 反而閒下來（卡在等待而不是算不完）。實例：adverse slow 2/2 一次 17 分（平常 3 分）、重跑即綠，當時尚無取樣，根因 `unknown`。
 - **容器裡 adverse runner 的 dev server 180s 等不到**（2026-10-01 發生一次，根因 `unknown`）：再發生時看 `scripts/run-adverse-e2e.mjs#waitForDevServer` 附的 vite 輸出與各位址探測結果，不要從頭猜。
