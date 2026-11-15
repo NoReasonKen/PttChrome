@@ -568,6 +568,8 @@ async function installNestedServer(page, session) {
       while (rest) rest = step(rest);
       if (responds) {
         if (session.dynamicRows) respond(bytes.replace(/\f/g, '') ? frame(bytes.includes('\f')) : render(storedScreen, true));
+        // A hold queues the answer until releaseResponses, as the dynamic path.
+        else if (state.holdResponses) respond(frame());
         else setTimeout(() => app.onData(frame()), 0);
       }
     };

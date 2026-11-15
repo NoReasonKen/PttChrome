@@ -160,10 +160,12 @@ test('a reconnect from a home main menu covers its login screens with home until
   // A card tapped during the run waits for it: the busy hint, nothing sent.
   const card = page.locator('#homeDashboard [data-home-board="Test"]');
   await expect(card).toBeVisible();
-  const sent = await page.evaluate(() => window.__gestureSent.length);
+  // The run waits for PTT's answer to its board jump, so nothing else is due.
+  const sent = await page.evaluate(() => window.__gestureSent.slice());
+  expect(sent.at(-1)).toMatch(/^sTest\r/);
   await card.tap();
   await expect(page.locator('.ListHint')).toContainText('回到斷線前的位置');
-  expect(await page.evaluate(() => window.__gestureSent.length)).toBe(sent);
+  expect(await page.evaluate(() => window.__gestureSent.slice())).toEqual(sent);
   await page.evaluate(() => window.__shortcutServer.releaseResponses());
   await waitArticle(page, 'Alpha');
   await expect.poll(() => topLine(page)).toBe(position);
