@@ -542,7 +542,7 @@ test.describe('长文连续累积（离线重放）', () => {
   test.skip(!longPosts.length, '尚无 article-long cassette');
 
   for (const cassette of longPosts) {
-    test(`30 页不重启、不破洞、每页只送一次 PageDown [${cassette.__file}]`, async ({ page }) => {
+    test(`30 页不重启、不破洞、每页只送一次 PageDown [${cassette.__file}]`, async ({ page }, testInfo) => {
       test.setTimeout(120000);
       const errors = [];
       page.on('pageerror', (e) => errors.push(String(e)));
@@ -563,6 +563,13 @@ test.describe('长文连续累积（离线重放）', () => {
       for (const s of state.sends) {
         if (s.data.indexOf('\x1b[6~') < 0 || !s.sig) continue;
         perPage.set(s.sig, (perPage.get(s.sig) || 0) + 1);
+      }
+      const duplicates = [...perPage].filter(([, count]) => count > 1);
+      if (duplicates.length) {
+        await testInfo.attach('duplicate-paging-requests', {
+          body: Buffer.from(JSON.stringify({ fed: state.fed, total: state.total, duplicates, sends: state.sends }, null, 2)),
+          contentType: 'application/json',
+        });
       }
       for (const [sig, n] of perPage) expect(`${sig}:${n}`).toBe(`${sig}:1`);
 
