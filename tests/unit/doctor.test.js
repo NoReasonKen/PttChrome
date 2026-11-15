@@ -9,6 +9,7 @@ import {
   deviceSummary,
   checkWeb,
   runDoctor,
+  checkEmulator,
 } from "../../scripts/doctor.mjs";
 
 describe("doctor options", () => {
@@ -19,6 +20,7 @@ describe("doctor options", () => {
       web: false,
       device: false,
       agent: false,
+      emulator: false,
     });
     expect(parseOptions(["--device", "--web"])).toEqual({
       browser: false,
@@ -26,8 +28,46 @@ describe("doctor options", () => {
       web: true,
       device: true,
       agent: false,
+      emulator: false,
     });
+    expect(parseOptions(["--emulator"])).toMatchObject({ emulator: true, android: true, device: false });
     expect(() => parseOptions(["--install"])).toThrow("Unknown option");
+  });
+});
+
+describe("emulator readiness", () => {
+  const adb = { ok: true, command: "adb" };
+  function check({ devices = "", serial, binary = "/sdk/emulator", avds = "pttchrome_e2e\n", accel = true, image = true } = {}) {
+    const run = vi.fn((command, args) => {
+      if (command === "adb") return { ok: true, stdout: devices };
+      if (args[0] === "-list-avds") return { ok: true, stdout: avds };
+      return { ok: accel, message: "acceleration unavailable" };
+    });
+    const result = checkEmulator(adb, { env: serial ? { ANDROID_SERIAL: serial } : {}, run, locate: () => binary, exists: () => image });
+    expect(run.mock.calls.every(([, args]) => ["devices", "-list-avds", "-accel-check"].includes(args[0]))).toBe(true);
+    return result;
+  }
+  test("reports boot prerequisites independently of a phone or running emulator", () => {
+    expect(check({ devices: "phone device\n", serial: "phone" })).toMatchObject({ existing: { ok: false }, boot: { ok: true } });
+    expect(check({ devices: "emulator-5554 device\n" })).toMatchObject({ existing: { ok: true }, boot: { ok: true } });
+    expect(check({ binary: null }).boot.message).toContain("binary");
+    expect(check({ avds: "other\n" }).boot.message).toContain("not found");
+    expect(check({ image: false }).boot.message).toContain("System image");
+    expect(check({ accel: false }).boot.message).toContain("acceleration");
+  });
+  test("requires an explicit ready emulator when several exist", () => {
+    const devices = "emulator-5554 device\nemulator-5556 device\nphone device\n";
+    expect(check({ devices }).existing.message).toContain("Multiple");
+    expect(check({ devices, serial: "emulator-5556" }).existing.ok).toBe(true);
+    expect(check({ devices, serial: "emulator-5558" }).existing.ok).toBe(false);
+    expect(check({ devices, serial: "phone" }).existing.ok).toBe(false);
+  });
+  test("a failed device inventory blocks selection", () => {
+    const result = checkEmulator(adb, {
+      run: (command) => command === "adb" ? { ok: false, message: "ADB failed" } : { ok: true, stdout: "pttchrome_e2e\n" },
+      locate: () => "/sdk/emulator", exists: () => true,
+    });
+    expect(result.existing).toMatchObject({ ok: false, blocked: true });
   });
 });
 
@@ -211,11 +251,35 @@ describe("doctor result", () => {
     hooks: vi.fn().mockReturnValue({ ok: true, message: "Hooks enabled." }),
   });
 
+  test.each([
+    ["", true, undefined, 0, "SKIP", "PASS"],
+    ["emulator-5554 device\n", false, undefined, 0, "PASS", "SKIP"],
+    ["", false, undefined, 2, "FAIL", "FAIL"],
+    ["phone device\n", true, "phone", 2, "FAIL", "PASS"],
+    ["emulator-5554 device\nemulator-5556 device\n", true, undefined, 2, "FAIL", "PASS"],
+    ["emulator-5554 device\n", true, "emulator-5558", 2, "FAIL", "PASS"],
+  ])("evaluates alternative emulator paths and selection blockers", async (devices, binary, serial, code, existing, boot) => {
+    const run = vi.fn((command, args) => {
+      if (command === "yarn") return { ok: true, stdout: "4.17.0" };
+      if (args[0] === "version") return { ok: true, stdout: "Android Debug Bridge version 1.0.41" };
+      if (args[0] === "devices") return { ok: true, stdout: devices };
+      if (args[0] === "-list-avds") return { ok: true, stdout: "pttchrome_e2e\n" };
+      return { ok: true, stdout: "" };
+    });
+    const result = await runDoctor(root, parseOptions(["--emulator"]), {
+      ...dependencies(), run, env: serial ? { ANDROID_SERIAL: serial } : {},
+      locate: () => binary ? "/sdk/emulator" : null, exists: () => true,
+    });
+    expect(result.code).toBe(code);
+    expect(result.checks.find((c) => c.name === "Emulator --no-boot").status).toBe(existing);
+    expect(result.checks.find((c) => c.name === "Emulator boot prerequisites").status).toBe(boot);
+  });
+
   test("defaults to basic and hooks, without probing browsers, servers, or devices", async () => {
     const deps = dependencies();
     const result = await runDoctor(root, parseOptions([]), deps);
     expect(result.code).toBe(0);
-    expect(result.checks.filter((c) => c.status === "SKIP")).toHaveLength(6);
+    expect(result.checks.filter((c) => c.status === "SKIP")).toHaveLength(8);
     expect(deps.run.mock.calls).toEqual([["yarn", ["--version"]]]);
   });
 

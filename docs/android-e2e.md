@@ -58,6 +58,12 @@ so these tests never ran in CI before #101. See
   環境錯混到任何一條真斷言紅 ⇒ 1。
 - 已有在跑的模擬器就用它；沒有就用 AVD `pttchrome_e2e`（`pixel_6`＋`system-images;android-34;google_apis;x86_64`），沒 AVD 就建。
 
+The context fixture tags the exact `androidDevice.launchBrowser: Device is closed`
+startup error as an environment failure and preserves its cause. Other browser
+closure errors and failures after the test starts retain their original
+classification. A WebView reconnection timeout after clearing app data is not
+evidence of an environment failure by itself.
+
 ## 本機環境（一次性）
 
 - Android SDK：`platform-tools`、`emulator`、`cmdline-tools;latest`、上面那個系統映像（約 3–5 GB）。
