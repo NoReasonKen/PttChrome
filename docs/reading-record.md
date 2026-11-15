@@ -141,6 +141,18 @@ N1 本身沒有變：探針仍然不碰 external，只有序列的擁有者能�
 - 開關：好讀行為，跟著好讀開關（`enableEasyReading`）。好讀關掉時斷線不記，重連途中才關也在出發前作廢，停在主功能表。
 - 待回目標平常只在記憶體（同 deep link）；例外是 APK 回收重建與下面的開站接回，兩者都走 localStorage `SNAPSHOT_KEY`。debug 錄製檔記 `reconnectResume.capture／restoreSnapshot／countdown／cancel／dispatch／discard`。
 
+### 回到原處途中畫面不換（#188）
+
+好讀開著時，回到原處替使用者送鍵經過的畫面（主功能表、選看板的 prompt、落地後列表好讀接手前的原生列表、重建搜尋結果的每一步）都只是資料：`ReconnectResume.holding` 是 `term_view._navigationHeld` 的一員，握住期間 PTT 的格線畫面不畫，畫面停在握住前的那一幀，與 AID 跳文、捷徑搜尋同一套（#157）。
+
+- 握住：等待中的計畫（不是開站接回的倒數）遇到登入後主功能表的第一幀（`change`，比畫面重畫早）就握，到那一幀 settle 為止（`RECOVERY_ARRIVAL_HOLD_MS`）；出發（`_dispatch`）時改握整趟（`RECOVERY_DRIVE_HOLD_MS`，含 `resumeSearchResults`）；結束時停在文章列表（或看板列表）、列表還在外部 hold 或等靜置探針接手 ⇒ 再握到列表好讀畫出第一頁（`pagePresented`，`RECOVERY_PRESENT_HOLD_MS`）。
+- 放開：落地（文章本來就由好讀畫）、列表好讀接手、失敗或找不到（停在哪就照使用者自己走到那裡的樣子畫：列表好讀接手的照樣接手，其餘照舊）、作廢（deep link、使用者先走開、好讀關掉）、取消、斷線、各階段逾時。放開時通知首頁儀表板重新判定，並讓 view 畫出現在的畫面。
+- 斷線重連：登入流程的畫面照舊畫（使用者可能要自己輸入，例如重複登入的詢問）。登入後主功能表那一幀前面畫著的是登入畫面，不是使用者原本那頁，所以和開站接回一樣由首頁儀表板蓋住：計畫還在等主功能表（`awaitsReconnectMenu`）時，儀表板每一幀都判定一次（`home_dashboard._onFrame`，不等 settle），主功能表一完整（有「我的最愛」）就出現並放開自己的 hold，主功能表第一次畫出來就在儀表板底下；出發時 `_dispatch` 先讓儀表板判定一次再握整趟，儀表板一直蓋著直到落地。和開站接回只差沒有倒數，主功能表一 settle 就出發。不分「斷線後有沒有畫過登入畫面」：真 PTT 重連一定經過登入畫面，一律蓋。主功能表沒有「我的最愛」時（測試站）沒有儀表板，照舊停在主功能表前的那一幀直到回到原處。
+- 蓋著時的提示與點擊：途中照常閃「回到斷線前的位置：<板>…」（`aidNavigation.startResume` 的進度提示），儀表板不抓我的最愛（線路留給回到原處）。點看板卡片、信箱等動作一律被擋下並閃 `serializedOpHint`（「回到斷線前的位置，請稍候…」／「回到上次的地方，請稍候…」），回到原處照走，不被取代；點卡片時連返回堆疊的看板層也不先開。
+- 開站接回：等待中的計畫不算路過，主功能表第一幀就由首頁儀表板蓋著（#187 的 arrival hold），倒數期間儀表板照常出現在提示底下（主功能表有「我的最愛」時；沒有時照舊是原生主功能表）；出發後儀表板一直蓋著，直到落地。
+- 回到文章：途中會進那個看板的文章列表，列表好讀卡片會短暫出現再換成文章，與任何跳文相同（列表不是原生畫面，這裡不擋）。
+- 好讀關著不握。
+
 ## 開站回到上次的地方
 
 Search results with tracked query metadata are reconstructed after the shared
@@ -171,7 +183,7 @@ search-result recovery document above for bounds and ambiguity handling.
   recomputing its viewport using changed row heights. Foreground checkpoints
   wait for stable geometry and do not run while the document is hidden.
 - 接：開機讀一次就刪（`readSnapshot`）。`bootResumeMode`：好讀關 ⇒ 不接；APK 回收重建 ⇒ 照舊直接出發；其餘 ⇒ 計畫帶 `fromOpen`。超過 `SNAPSHOT_MAX_AGE_MS`（12 小時）不接。
-- 出發前倒數：登入回主功能表後先顯示底部提示「即將回到上次的地方：<板>…」＋「取消」（`#resumeLastPlace`，`OPEN_RESUME_DELAY_MS`），倒數完再確認一次（連線中、還在主功能表、AID 跳文沒在跑、deep link 沒在等）才 `startResume`。使用者按取消、自己走開（離開主功能表）、倒數中斷線、deep link 登記 ⇒ 一個鍵都不送。提示的滑鼠事件不外傳（`App._onUploadLayer` 認 `isResumeToastTarget`）。
+- 出發前倒數：登入回主功能表後先顯示底部提示「即將回到上次的地方：<板>…」＋「取消」（`#resumeLastPlace`，`OPEN_RESUME_DELAY_MS`＝1 秒），倒數完再確認一次（連線中、還在主功能表、AID 跳文沒在跑、deep link 沒在等）才 `startResume`。使用者按取消、自己走開（離開主功能表）、倒數中斷線、deep link 登記 ⇒ 一個鍵都不送。提示的滑鼠事件不外傳（`App._onUploadLayer` 認 `isResumeToastTarget`）。
 - deep link 進來時以 deep link 為準：同斷線重連的 superseded。
 - 開關：沒有自己的開關，好讀開著就做（會送鍵 ⇒ 好讀行為）。e2e 預設關（同一個 context 重整會自己送鍵），live 的共用 session 也關。
 
@@ -196,7 +208,8 @@ failed; a non-null plan alone does not prove a successful write.
 | unit（真 Chromium） | `tests/unit/reading_record_list.test.js` | 文章列表：設全部已讀、重新整理、`s` 取消或送出、說明選單離開／執行、文章搜尋找不到／有結果、使用者移過游標、身後的列表、外部 hold 出口（含斷線重連從 idle 停泊）、編號空間 |
 | unit（真 Chromium） | `tests/unit/reading_record_board_list.test.js` | 看板列表：重新整理後還原、說明選單離開後還原、認不出、使用者按鍵作廢、外部 hold 出口 |
 | unit | `tests/unit/aid_navigation.test.js`「閱讀紀錄」各條、`deep_link_controller.test.js`「原生 pmore 讀文」 | 返回錨帶列表、看板錨返回還原、失敗交回 hold、deep link 從列表或原生 pager 出發 |
-| unit | `tests/unit/reconnect_resume.test.js`、`aid_navigation.test.js`「startResume」「currentPostAid」 | 斷線重連：去哪、何時出發、收手條件、鍵序列與落地還原 |
+| unit | `tests/unit/reconnect_resume.test.js`、`aid_navigation.test.js`「startResume」「currentPostAid」 | 斷線重連：去哪、何時出發、收手條件、鍵序列與落地還原、途中握住畫面的每個放開條件 |
+| offline e2e（手機） | `mobile_recovery_hold.offline.spec.js` | 斷線重連與開站接回逐幀都沒有原生畫面：文章、列表、重建的搜尋結果；開站倒數時是首頁儀表板；斷線重連經過重複登入詢問等登入畫面時，主功能表起每一幀都是儀表板或好讀（不是留著的登入畫面），途中點卡片只得到忙碌提示 |
 | unit（真 Chromium） | `tests/unit/reconnect_resume_open.test.js`、`reconnect_resume_renderer.test.js` | 開站接回：存檔時機與清除、開機模式、倒數與取消、走開／deep link／斷線作廢；APK 回收重建 |
 | unit（真 Chromium） | `tests/unit/list_mark_read_viewport.test.js` | 前已讀後未讀（遷移後行為不變） |
 | offline e2e | `scenario_navigation.offline.spec.js`「跳文 → 返回之後，閱讀紀錄記著開文前的列表視野」 | 真 boot 鏈上身後列表的交接 |

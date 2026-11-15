@@ -377,7 +377,8 @@ test('canceling the resume after a reload explains that the trail stays inactive
   await reloadForRecovery(page);
   await pauseClockNow(page);
   await nestedSessionAfterLogin(page);
-  await page.clock.runFor(1000);
+  // Past the main menu's settle, well inside the 1 s countdown.
+  await page.clock.runFor(500);
   await page.locator('#resumeLastPlace button').tap();
   await page.clock.resume();
   await expect.poll(() => bodyText(page)).toContain(INACTIVE);

@@ -1373,6 +1373,8 @@ ListSession.prototype = {
     if (this.state !== 'active' || this._renderMode !== 'buffer') return;
     this._core.articleGestures?.pagePresented(PAGE.ARTICLE_LIST);
     this._core.articleShortcutSearch?.listPresented();
+    const core = this._core;
+    core.reconnectResume?.pagePresented?.();
   },
 
   // ---- external entry points ------------------------------------------------
@@ -1420,6 +1422,12 @@ ListSession.prototype = {
     // A route that keeps the list's number space (the next-article pull in the
     // full list) leaves the list it left kept: its layer says which list it is (#123).
     if (opts && opts.keepsListing) this._layerBoard = board;
+  },
+
+  // An external sequence holds the list, or has ended and the resume probe has
+  // yet to measure the list it left (the reconnect recovery's hold, #188).
+  returningFromExternal: function() {
+    return this.state === 'functionMode' && (this._holdReason === 'external' || this._holdReason === 'passthrough');
   },
 
   // 外部序列收尾（reading_record.releaseExternal）：停在列表上時把 'external' hold

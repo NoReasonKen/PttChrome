@@ -1181,3 +1181,111 @@ describe("HomeDashboard: arrival hold", () => {
     expect(shown.core.view.navigationEnded).not.toHaveBeenCalled();
   });
 });
+
+// Recovery after a reload (#188): home is shown while the countdown offers to
+// return, and the dashboard stays the page shown while the recovery drives PTT.
+describe("HomeDashboard: reconnect and reload recovery", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const recovery = (state) => ({
+    holding: false,
+    hasPending: () => state.countdown || state.pending,
+    countingDown: () => state.countdown,
+    inTransit() {
+      return state.pending || this.holding;
+    },
+  });
+
+  test("the countdown shows home but keeps the wire for the recovery", () => {
+    const { core, home, show, enqueued } = makeCore();
+    core.reconnectResume = recovery({ countdown: true, pending: false });
+    show(mainMenu());
+    expect(home.state.visible).toBe(true);
+    vi.advanceTimersByTime(AUTO_FETCH_DELAY_MS * 2);
+    expect(enqueued).toHaveLength(0);
+  });
+
+  test("a recovery in transit keeps the dashboard from showing", () => {
+    const { core, home, show } = makeCore();
+    core.reconnectResume = recovery({ countdown: false, pending: true });
+    show(mainMenu());
+    expect(home.state.visible).toBe(false);
+  });
+
+  test("the dashboard shown stays over the screens the recovery drives through, and goes at its release", () => {
+    const { core, home, show } = makeCore();
+    const state = { countdown: true, pending: false };
+    core.reconnectResume = recovery(state);
+    show(mainMenu());
+    expect(home.state.visible).toBe(true);
+    state.countdown = false;
+    core.reconnectResume.holding = true;
+    show(mainMenu({ inputField: true }));
+    expect(home.state.visible).toBe(true);
+    show(ARTICLE_LIST());
+    expect(home.state.visible).toBe(true);
+    core.reconnectResume.holding = false;
+    home.recheck();
+    expect(home.state.visible).toBe(false);
+  });
+
+  // After a reconnect the frame before the main menu is a login screen: home
+  // covers the menu from the first frame that shows it whole, not at the settle.
+  test("a reconnect's main menu is covered by home from its first whole frame", () => {
+    const { core, home, show, arrive, enqueued } = makeCore(ARTICLE_LIST());
+    show(ARTICLE_LIST());
+    core.reconnectResume = Object.assign(recovery({ countdown: false, pending: true }), {
+      inTransit: () => false,
+      awaitsReconnectMenu: () => true,
+    });
+    // The menu's title has arrived, My Favorites not yet: held, not shown.
+    arrive(mainMenu({ items: MENU_ITEMS.filter((t) => !t.startsWith("(F)")) }));
+    expect(home.holding).toBe(true);
+    expect(home.state.visible).toBe(false);
+    let visibleAtRelease = null;
+    core.view.navigationEnded.mockImplementation(() => (visibleAtRelease = home.state.visible));
+    arrive(mainMenu());
+    expect(home.state.visible).toBe(true);
+    expect(home.holding).toBe(false);
+    expect(visibleAtRelease).toBe(true);
+    // The wire stays the recovery's.
+    vi.advanceTimersByTime(AUTO_FETCH_DELAY_MS * 2);
+    expect(enqueued).toHaveLength(0);
+  });
+
+  test("a main menu without My Favorites after a reconnect keeps the arrival hold until the settle", () => {
+    const { core, home, show, arrive } = makeCore(ARTICLE_LIST());
+    show(ARTICLE_LIST());
+    core.reconnectResume = Object.assign(recovery({ countdown: false, pending: true }), {
+      inTransit: () => false,
+      awaitsReconnectMenu: () => true,
+    });
+    const bare = mainMenu({ items: MENU_ITEMS.filter((t) => !t.startsWith("(F)")) });
+    arrive(bare);
+    arrive(bare);
+    expect(home.holding).toBe(true);
+    show(bare);
+    expect(home.state.visible).toBe(false);
+    expect(home.holding).toBe(false);
+  });
+
+  test("a card tapped while the recovery drives PTT gets its hint and starts nothing", () => {
+    const { core, home, show, enqueued, hints } = makeCore();
+    show(mainMenu());
+    core.aidNavigation = { active: true, opHint: "回到斷線前的位置，請稍候…" };
+    core.articleGestures = { captureHomeLayer: vi.fn(), dropPendingLayer: vi.fn() };
+    expect(home.openBoard("C_Chat")).toBe(false);
+    expect(enqueued).toHaveLength(0);
+    expect(core.articleGestures.captureHomeLayer).not.toHaveBeenCalled();
+    expect(hints.at(-1).m).toBe("回到斷線前的位置，請稍候…");
+  });
+
+  test("a recovery hold does not bring up a dashboard that was not shown", () => {
+    const { core, home, show } = makeCore(ARTICLE_LIST());
+    core.reconnectResume = recovery({ countdown: false, pending: false });
+    core.reconnectResume.holding = true;
+    show(mainMenu());
+    expect(home.state.visible).toBe(false);
+  });
+});

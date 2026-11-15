@@ -200,8 +200,8 @@ async function bootNestedShortcutSearch(page, { loggedIn = false, startAtMain = 
 
 // A new PTT session on the same board data: it starts at the main menu after
 // login with a fresh cursor and no search. `deleted` carries over.
-async function nestedSessionAfterLogin(page, { deleted = [], legacyCaptions = false, extraArticles = 0 } = {}) {
-  await installNestedServer(page, { surface: 'main', deleted, legacyCaptions, extraArticles });
+async function nestedSessionAfterLogin(page, { deleted = [], legacyCaptions = false, extraArticles = 0, homeMenu = false } = {}) {
+  await installNestedServer(page, { surface: 'main', deleted, legacyCaptions, extraArticles, homeMenu });
 }
 
 async function installNestedServer(page, session) {
@@ -568,6 +568,8 @@ async function installNestedServer(page, session) {
       while (rest) rest = step(rest);
       if (responds) {
         if (session.dynamicRows) respond(bytes.replace(/\f/g, '') ? frame(bytes.includes('\f')) : render(storedScreen, true));
+        // A hold queues the answer until releaseResponses, as the dynamic path.
+        else if (state.holdResponses) respond(frame());
         else setTimeout(() => app.onData(frame()), 0);
       }
     };

@@ -1,7 +1,14 @@
 // 斷線重連後回到原處（src/js/reconnect_resume.js；docs/reading-record.md「斷線重連」）：
 // 斷線那一刻要去哪（resumePlanFrom，純函式）＋什麼時候出發（登入後的主功能表）。
 // 實際的鍵序列與落地還原在 aid_navigation.test.js「startResume」。
-import { ReconnectResume, resumePlanFrom } from "../../src/js/reconnect_resume";
+import {
+  ReconnectResume,
+  resumePlanFrom,
+  OPEN_RESUME_DELAY_MS,
+  RECOVERY_ARRIVAL_HOLD_MS,
+  RECOVERY_DRIVE_HOLD_MS,
+  RECOVERY_PRESENT_HOLD_MS
+} from "../../src/js/reconnect_resume";
 import { ReadingRecord } from "../../src/js/reading_record";
 
 const LIST = {
@@ -107,6 +114,7 @@ const MAIN_MENU = "【主功能表】                      批踢踢實業坊";
 // 假 termBuf：row0 決定「是不是主功能表」，settle() 觸發 screenSettled。
 function harness({ pageState = 3 } = {}) {
   const listeners = [];
+  const frameListeners = [];
   const termBuf = {
     rows: 24,
     cols: 80,
@@ -117,9 +125,10 @@ function harness({ pageState = 3 } = {}) {
     },
     addEventListener(type, fn) {
       if (type === "screenSettled") listeners.push(fn);
+      if (type === "change") frameListeners.push(fn);
     }
   };
-  const view = { _articleBoard: "C_Chat", currentLineIndex: () => 37 };
+  const view = { _articleBoard: "C_Chat", currentLineIndex: () => 37, navigationEnded: vi.fn() };
   const core = {
     connectState: 1,
     autoLogin: { stop: vi.fn() },
@@ -133,7 +142,8 @@ function harness({ pageState = 3 } = {}) {
       startResume: vi.fn(() => true)
     },
     easyReading: { _enabled: true, _functionMode: false },
-    listSession: { readingPosition: () => LIST }
+    listSession: { readingPosition: () => LIST, returningFromExternal: () => false },
+    homeDashboard: { recheck: vi.fn() }
   };
   core.readingRecord = new ReadingRecord(core);
   const rr = new ReconnectResume(core, view, termBuf);
@@ -141,7 +151,20 @@ function harness({ pageState = 3 } = {}) {
     termBuf.row0 = row0;
     for (const fn of listeners) fn();
   };
-  return { rr, core, termBuf, settle };
+  // A frame arrives, before the view draws it and before the screen settles.
+  const frame = row0 => {
+    termBuf.row0 = row0;
+    for (const fn of frameListeners) fn();
+  };
+  // The run startResume began ends with this result.
+  const endRun = result => endResumeRun(core, result);
+  return { rr, core, view, termBuf, settle, frame, endRun };
+}
+
+function endResumeRun(core, result) {
+  const calls = core.aidNavigation.startResume.mock.calls;
+  core.aidNavigation.active = false;
+  calls[calls.length - 1][1](result);
 }
 
 describe("ReconnectResume（何時出發）", () => {
@@ -278,5 +301,235 @@ describe("ReconnectResume（何時出發）", () => {
     h.settle(MAIN_MENU);
     h.rr.capture(false);
     expect(h.rr.hasPending()).toBe(false);
+  });
+});
+
+// The recovery keeps the page shown while it drives PTT (#188): from the first
+// main-menu frame of the login it returns from, through the run, until the
+// destination is presented by easy reading or the recovery stops.
+describe("ReconnectResume: recovery hold", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  // Logged in, disconnected while reading an article: a plan is pending.
+  const disconnected = (opts) => {
+    const h = harness(opts);
+    h.settle(MAIN_MENU);
+    h.rr.capture(false);
+    return h;
+  };
+
+  test("holds from the first main-menu frame through the run; an article landing releases it", () => {
+    const h = disconnected();
+    expect(h.rr.holding).toBe(false);
+    // The login screens before the main menu are the reader's to see.
+    h.frame("請輸入代號，或以 guest 參觀，或以 new 註冊:");
+    expect(h.rr.holding).toBe(false);
+    h.frame(MAIN_MENU);
+    expect(h.rr.holding).toBe(true);
+    h.settle(MAIN_MENU);
+    expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
+    expect(h.rr.holding).toBe(true);
+    // Run frames pass far beyond the arrival budget while the run drives PTT.
+    vi.advanceTimersByTime(RECOVERY_ARRIVAL_HOLD_MS * 3);
+    expect(h.rr.holding).toBe(true);
+    expect(h.view.navigationEnded).not.toHaveBeenCalled();
+    h.endRun({ ok: true });
+    expect(h.rr.holding).toBe(false);
+    expect(h.view.navigationEnded).toHaveBeenCalledTimes(1);
+    expect(h.core.homeDashboard.recheck).toHaveBeenCalled();
+  });
+
+  test("a list destination stays held until the easy-reading list is presented", () => {
+    const h = disconnected();
+    h.frame(MAIN_MENU);
+    h.settle(MAIN_MENU);
+    h.core.listSession.returningFromExternal = () => true;
+    h.endRun({ ok: true });
+    expect(h.rr.holding).toBe(true);
+    // The list measures the landing and takes it over.
+    h.core.listSession.returningFromExternal = () => false;
+    h.rr.pagePresented();
+    expect(h.rr.holding).toBe(false);
+    expect(h.view.navigationEnded).toHaveBeenCalledTimes(1);
+  });
+
+  test("a list that never takes the landing over is drawn after the presentation budget", () => {
+    const h = disconnected();
+    h.frame(MAIN_MENU);
+    h.settle(MAIN_MENU);
+    h.core.listSession.returningFromExternal = () => true;
+    h.endRun({ ok: true });
+    vi.advanceTimersByTime(RECOVERY_PRESENT_HOLD_MS - 1);
+    expect(h.rr.holding).toBe(true);
+    vi.advanceTimersByTime(1);
+    expect(h.rr.holding).toBe(false);
+  });
+
+  test("a settle after the list has left its external hold releases it", () => {
+    const h = disconnected();
+    h.frame(MAIN_MENU);
+    h.settle(MAIN_MENU);
+    h.core.listSession.returningFromExternal = () => true;
+    h.endRun({ ok: true });
+    h.core.listSession.returningFromExternal = () => false;
+    h.settle("【板主：x】看板《C_Chat》");
+    expect(h.rr.holding).toBe(false);
+  });
+
+  test("a failed run releases it on the screen where it stopped", () => {
+    const h = disconnected();
+    h.frame(MAIN_MENU);
+    h.settle(MAIN_MENU);
+    h.endRun({ ok: false, error: "not found" });
+    expect(h.rr.holding).toBe(false);
+    expect(h.view.navigationEnded).toHaveBeenCalledTimes(1);
+  });
+
+  test("a run that cannot start releases it", () => {
+    const h = disconnected();
+    h.core.aidNavigation.startResume.mockReturnValue(false);
+    h.frame(MAIN_MENU);
+    h.settle(MAIN_MENU);
+    expect(h.rr.holding).toBe(false);
+  });
+
+  test("a run that never ends is drawn after the drive budget", () => {
+    const h = disconnected();
+    h.frame(MAIN_MENU);
+    h.settle(MAIN_MENU);
+    vi.advanceTimersByTime(RECOVERY_DRIVE_HOLD_MS - 1);
+    expect(h.rr.holding).toBe(true);
+    vi.advanceTimersByTime(1);
+    expect(h.rr.holding).toBe(false);
+  });
+
+  test("a disconnect during the run releases it", () => {
+    const h = disconnected();
+    h.frame(MAIN_MENU);
+    h.settle(MAIN_MENU);
+    h.settle("【板主：x】看板《C_Chat》");
+    expect(h.rr.holding).toBe(true);
+    h.rr.capture(false);
+    expect(h.rr.holding).toBe(false);
+  });
+
+  test("a main menu the recovery does not leave from is released at its settle", () => {
+    const h = disconnected();
+    h.core.deepLinkController.pending = true;
+    h.frame(MAIN_MENU);
+    expect(h.rr.holding).toBe(true);
+    h.settle(MAIN_MENU);
+    expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
+    expect(h.rr.holding).toBe(false);
+    expect(h.view.navigationEnded).toHaveBeenCalledTimes(1);
+  });
+
+  test("a main menu that never settles is drawn after the arrival budget", () => {
+    const h = disconnected();
+    h.frame(MAIN_MENU);
+    vi.advanceTimersByTime(RECOVERY_ARRIVAL_HOLD_MS);
+    expect(h.rr.holding).toBe(false);
+  });
+
+  test("nothing is held without a plan", () => {
+    const h = harness();
+    h.frame(MAIN_MENU);
+    expect(h.rr.holding).toBe(false);
+  });
+
+  test("reopening: the countdown is not held; the run after it is", () => {
+    const h = disconnected();
+    h.rr._pending = Object.assign({}, h.rr._pending, { fromOpen: true });
+    h.frame(MAIN_MENU);
+    expect(h.rr.holding).toBe(false);
+    h.settle(MAIN_MENU);
+    expect(h.rr.countingDown()).toBe(true);
+    expect(h.rr.holding).toBe(false);
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
+    expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
+    expect(h.rr.holding).toBe(true);
+    h.endRun({ ok: true });
+    expect(h.rr.holding).toBe(false);
+  });
+
+  test("reopening: an operation the reader started during the countdown supersedes it", () => {
+    const h = disconnected();
+    h.rr._pending = Object.assign({}, h.rr._pending, { fromOpen: true });
+    h.settle(MAIN_MENU);
+    h.core.commandQueue = { idle: false };
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
+    expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
+    expect(h.rr.holding).toBe(false);
+    expect(h.rr.hasPending()).toBe(false);
+  });
+
+  test("in transit only while the run drives PTT: never at the main menu it sets off from", () => {
+    // A reconnect: home covers its main menu from the first frame.
+    const h = disconnected();
+    expect(h.rr.inTransit()).toBe(false);
+    h.frame(MAIN_MENU);
+    expect(h.rr.holding).toBe(true);
+    expect(h.rr.inTransit()).toBe(false);
+    h.settle(MAIN_MENU);
+    expect(h.rr.inTransit()).toBe(true);
+    h.endRun({ ok: true });
+    expect(h.rr.inTransit()).toBe(false);
+    // A reopening: home shows under the countdown, and the run is in transit.
+    const o = disconnected();
+    o.rr._pending = Object.assign({}, o.rr._pending, { fromOpen: true });
+    expect(o.rr.inTransit()).toBe(false);
+    o.settle(MAIN_MENU);
+    expect(o.rr.inTransit()).toBe(false);
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
+    expect(o.rr.inTransit()).toBe(true);
+    o.endRun({ ok: true });
+    expect(o.rr.inTransit()).toBe(false);
+  });
+
+  test("a reconnect awaits its main menu until the run sets off; a reopening never does", () => {
+    const h = disconnected();
+    expect(h.rr.awaitsReconnectMenu()).toBe(true);
+    h.frame(MAIN_MENU);
+    expect(h.rr.awaitsReconnectMenu()).toBe(true);
+    h.settle(MAIN_MENU);
+    expect(h.rr.awaitsReconnectMenu()).toBe(false);
+    const o = disconnected();
+    o.rr._pending = Object.assign({}, o.rr._pending, { fromOpen: true });
+    expect(o.rr.awaitsReconnectMenu()).toBe(false);
+  });
+
+  test("a reconnect has home judge its main menu before the run's hold, so home covers the run", () => {
+    const h = disconnected();
+    h.frame(MAIN_MENU);
+    const judged = [];
+    h.core.homeDashboard.recheck.mockImplementation(() => judged.push({ transit: h.rr.inTransit(), started: h.core.aidNavigation.startResume.mock.calls.length }));
+    h.settle(MAIN_MENU);
+    expect(judged[0]).toEqual({ transit: false, started: 0 });
+    expect(h.rr.holding).toBe(true);
+    expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
+  });
+
+  test("a reopening's run does not judge home again at dispatch (home is already under its countdown)", () => {
+    const h = disconnected();
+    h.rr._pending = Object.assign({}, h.rr._pending, { fromOpen: true });
+    h.settle(MAIN_MENU);
+    h.core.homeDashboard.recheck.mockClear();
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
+    expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
+    expect(h.core.homeDashboard.recheck).not.toHaveBeenCalled();
+  });
+
+  describe("easy reading off", () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    test("nothing is held", () => {
+      const h = disconnected();
+      vi.stubGlobal("window", {
+        localStorage: { getItem: () => JSON.stringify({ values: { enableEasyReading: false } }), setItem() {} }
+      });
+      h.frame(MAIN_MENU);
+      expect(h.rr.holding).toBe(false);
+    });
   });
 });

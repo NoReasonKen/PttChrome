@@ -474,7 +474,11 @@ HomeDashboard.prototype = {
 
   // 線路上有沒有別人的事（AID 跳文、搜尋、deep link／斷線回到原處還在排程…）。
   _wireBusy: function() {
-    if (this._core.commandQueue && !this._core.commandQueue.idle) return true;
+    const core = this._core;
+    if (core.commandQueue && !core.commandQueue.idle) return true;
+    // A reopening's countdown shows home, but the wire stays the recovery's.
+    const rr = core.reconnectResume;
+    if (rr && rr.hasPending && rr.hasPending()) return true;
     return this._inTransit();
   },
 
@@ -487,8 +491,16 @@ HomeDashboard.prototype = {
     const dl = core.deepLinkController;
     if (dl && dl.hasPending && dl.hasPending()) return true;
     const rr = core.reconnectResume;
-    if (rr && rr.hasPending && rr.hasPending()) return true;
+    if (rr && rr.inTransit && rr.inTransit()) return true;
     return false;
+  },
+
+  // The recovery holds the page while it drives PTT (#188): a dashboard on
+  // screen is that page until the recovery releases it (recheck).
+  _recoveryHeld: function() {
+    const core = this._core;
+    const rr = core.reconnectResume;
+    return !!(rr && rr.holding);
   },
 
   // A board search's hold ended (#190): look at the screen it left.
@@ -501,16 +513,33 @@ HomeDashboard.prototype = {
   // dashboard shows and the hold ends together, so the main menu is first
   // drawn under the dashboard; anything else ⇒ the frame is drawn as before.
   // Only the title row is read here; the settle reads the rest.
+  //
+  // After a reconnect the page before the main menu is a login screen, not the
+  // reader's (#188): home is judged on each held frame instead, and covers the
+  // menu from the first frame that shows it whole.
   _onFrame: function() {
-    if (this.holding || this._state.visible) return;
+    if (this._state.visible) return;
+    const reconnect = this._reconnectMenu();
+    if (this.holding && !reconnect) return;
     const buf = this._core.buf;
     if (!buf || typeof buf.getRowText !== 'function') return;
     if (!rowHasTitle(buf.getRowText(0, 0, buf.cols), MAIN_MENU) || !enabled()) return;
-    this.holding = true;
-    this._holdTimer = setTimeout(() => {
-      this._holdTimer = null;
-      this._releaseHold();
-    }, ARRIVAL_HOLD_MS);
+    if (!this.holding) {
+      this.holding = true;
+      this._holdTimer = setTimeout(() => {
+        this._holdTimer = null;
+        this._releaseHold();
+      }, ARRIVAL_HOLD_MS);
+    }
+    if (!reconnect) return;
+    this._judge();
+    if (this._state.visible) this._releaseHold();
+  },
+
+  _reconnectMenu: function() {
+    const core = this._core;
+    const rr = core.reconnectResume;
+    return !!(rr && rr.awaitsReconnectMenu && rr.awaitsReconnectMenu());
   },
 
   _releaseHold: function() {
@@ -572,8 +601,9 @@ HomeDashboard.prototype = {
     this._transitTimer = null;
     const transit = home && navigating;
     // Help asked from home: the dashboard is the page under the help menu sheet
-    // for the whole visit, and stays up until the hold ends (#191).
-    const held = !home && this._state.visible && this._helpHeld();
+    // for the whole visit, and stays up until the hold ends (#191). A recovery
+    // leaving from home after its countdown keeps it up the same way (#188).
+    const held = this._state.visible && ((!home && this._helpHeld()) || this._recoveryHeld());
     if (!home || transit) {
       this._clearAutoTimer();
       if (!held) this._set({ visible: false });
@@ -785,6 +815,13 @@ HomeDashboard.prototype = {
   openBoard: function(name) {
     const core = this._core;
     if (!name || this._state.fetching) return false;
+    // Another operation drives PTT (a recovery under home, say): the card waits
+    // for it, and no board layer starts over home.
+    const busy = serializedOpHint(core);
+    if (busy) {
+      this._hint(busy);
+      return false;
+    }
     // The dashboard stays alive under the board's article list (#31).
     core.articleGestures?.captureHomeLayer(name);
     const sent = submitSearch(core, 'board', name, {
