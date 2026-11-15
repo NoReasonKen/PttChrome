@@ -21,6 +21,10 @@
 //     SECOND full hard window (worst case 2×hard ≈ 20s of frozen list render,
 //     the 「畫面停住十幾秒才切原生」 report). The probe gets its own short
 //     window instead (probeTimeoutMs).
+//   - received frames still awaiting notify/settle are not a silent link.
+//     Opt-in embedders can defer the soft expiry while those frames drain.
+//     The original hard timer is unchanged; if processing is still pending
+//     when it fires, one separate 500ms timer bounds the final processing wait.
 // v5 deterministic-transaction contract (protocol §6):
 //   - cmd.fullRepaint: append \f (Ctrl+L) to the sent keys — igetch's global
 //     hotkey forces ONE full-frame repaint after the command's response, so
@@ -51,6 +55,8 @@
 // unsatisfying settle is taken as the verdict regardless (see _concludes).
 // 1 = worst case two probe windows on top of the soft window.
 const MAX_PROBE_EXTENSIONS = 1;
+const PROCESSING_RECHECK_MS = 50;
+const PROCESSING_GRACE_MS = 500;
 
 export function CommandQueue(opts) {
   this._send = opts.send;
@@ -95,10 +101,14 @@ export function CommandQueue(opts) {
   // or a settle held back by local repaints past the send). Likewise only data
   // received after the probe went out may end a probed command as 'miss'.
   this._serverWrites = opts.serverWrites || null;
+  // Read-only processing state for server data newer than the last frame
+  // evaluated by this command. Local repaints must not count as a response.
+  this._hasPendingServerFrame = opts.hasPendingServerFrame || null;
   this._inFlight = null;
   this._pending = [];
   this._softTimer = null;
   this._hardTimer = null;
+  this._processingTimer = null;
 }
 
 CommandQueue.prototype = {
@@ -156,6 +166,8 @@ CommandQueue.prototype = {
       this._emit('stale', cmd);
       return null;
     }
+    if (snapshot && typeof snapshot.serverWrites === 'number')
+      cmd._evaluatedWrites = Math.max(cmd._evaluatedWrites ?? 0, snapshot.serverWrites);
     const result = cmd.expect(snapshot, facts);
     if (result) {
       this._emit('done', cmd);
@@ -185,7 +197,8 @@ CommandQueue.prototype = {
     // window here would hand a wedged command a fresh budget, which is exactly
     // what the hard timer exists to prevent.
     this._emit('settle-pending', cmd);
-    this._armSoft(cmd, cmd._probed ? cmd.probeTimeoutMs || 2000 : undefined);
+    if (!cmd._processingGrace)
+      this._armSoft(cmd, cmd._probed ? cmd.probeTimeoutMs || 2000 : undefined);
     return null;
   },
 
@@ -291,6 +304,9 @@ CommandQueue.prototype = {
     cmd._probeExtensions = 0;
     cmd._sentAt = Date.now();
     cmd._sentWrites = this._serverWrites ? this._serverWrites() : null;
+    cmd._evaluatedWrites = cmd._sentWrites;
+    cmd._processingGrace = false;
+    cmd._processingWait = false;
     cmd._probeWrites = null;
     this._armBoth(cmd);
     this._emit('send', cmd);
@@ -315,7 +331,7 @@ CommandQueue.prototype = {
     this._armSoft(cmd);
     this._clearTimeout(this._hardTimer);
     this._hardTimer = this._setTimeout(() => {
-      this._timedOut(cmd);
+      this._timedOut(cmd, true);
     }, cmd.hardTimeoutMs || 10000);
   },
 
@@ -329,8 +345,31 @@ CommandQueue.prototype = {
 
   // Quiet link. First time (probe allowed): force a full frame with a bare \f
   // and let onSettle's expect judge it. Second time / probe opted out: fail.
-  _timedOut: function(cmd) {
+  _timedOut: function(cmd, hard) {
     if (this._inFlight !== cmd) return; // already completed/flushed
+    if (cmd._processingGrace) return;
+    if (this._hasPendingServerFrame && cmd._evaluatedWrites != null &&
+        this._hasPendingServerFrame(cmd._evaluatedWrites)) {
+      if (hard) {
+        cmd._processingGrace = true;
+        this._clearTimeout(this._softTimer);
+        this._emit('processing-grace', cmd);
+        this._processingTimer = this._setTimeout(() => {
+          if (this._inFlight !== cmd) return;
+          this._emit('processing-exhausted', cmd);
+          this._emit('fail', cmd);
+          this._finish();
+          if (cmd.onFail) cmd.onFail('timeout');
+          this._maybeSendNext();
+          this._maybeIdle();
+        }, PROCESSING_GRACE_MS);
+      } else {
+        if (!cmd._processingWait) this._emit('processing-wait', cmd);
+        cmd._processingWait = true;
+        this._armSoft(cmd, PROCESSING_RECHECK_MS);
+      }
+      return;
+    }
     if (cmd.probe !== false && !cmd._probed) {
       cmd._probed = true;
       cmd._probeWrites = this._serverWrites ? this._serverWrites() : null;
@@ -379,8 +418,10 @@ CommandQueue.prototype = {
   _finish: function() {
     this._clearTimeout(this._softTimer);
     this._clearTimeout(this._hardTimer);
+    this._clearTimeout(this._processingTimer);
     this._softTimer = null;
     this._hardTimer = null;
+    this._processingTimer = null;
     this._inFlight = null;
   }
 };
