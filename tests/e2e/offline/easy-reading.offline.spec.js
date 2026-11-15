@@ -7,6 +7,7 @@
 // cassette 由 `yarn record:cassette` 录一次产出 tests/e2e/cassettes/<name>.json。
 // 没录过 → skip（非失败）。这里遍历所有 article cassette，逐卷守门。
 const { test, expect } = require('@playwright/test');
+const fs = require('node:fs/promises');
 const ptt = require('../helpers/ptt');
 const {
   findCassettes,
@@ -566,8 +567,10 @@ test.describe('长文连续累积（离线重放）', () => {
       }
       const duplicates = [...perPage].filter(([, count]) => count > 1);
       if (duplicates.length) {
+        const artifact = testInfo.outputPath('duplicate-paging-requests.json');
+        await fs.writeFile(artifact, JSON.stringify({ fed: state.fed, total: state.total, duplicates, sends: state.sends }, null, 2));
         await testInfo.attach('duplicate-paging-requests', {
-          body: Buffer.from(JSON.stringify({ fed: state.fed, total: state.total, duplicates, sends: state.sends }, null, 2)),
+          path: artifact,
           contentType: 'application/json',
         });
       }
