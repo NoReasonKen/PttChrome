@@ -464,18 +464,60 @@ describe("ReconnectResume: recovery hold", () => {
     expect(h.rr.hasPending()).toBe(false);
   });
 
-  test("in transit while a reconnect's plan waits or the hold is on, not while a reopening arrives home or counts down", () => {
+  test("in transit only while the run drives PTT: never at the main menu it sets off from", () => {
+    // A reconnect: home covers its main menu from the first frame.
     const h = disconnected();
-    expect(h.rr.inTransit()).toBe(true);
-    // A reopening arrives at home: the dashboard shows from its first frame.
-    h.rr._pending = Object.assign({}, h.rr._pending, { fromOpen: true });
+    expect(h.rr.inTransit()).toBe(false);
+    h.frame(MAIN_MENU);
+    expect(h.rr.holding).toBe(true);
     expect(h.rr.inTransit()).toBe(false);
     h.settle(MAIN_MENU);
-    expect(h.rr.inTransit()).toBe(false);
-    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
     expect(h.rr.inTransit()).toBe(true);
     h.endRun({ ok: true });
     expect(h.rr.inTransit()).toBe(false);
+    // A reopening: home shows under the countdown, and the run is in transit.
+    const o = disconnected();
+    o.rr._pending = Object.assign({}, o.rr._pending, { fromOpen: true });
+    expect(o.rr.inTransit()).toBe(false);
+    o.settle(MAIN_MENU);
+    expect(o.rr.inTransit()).toBe(false);
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
+    expect(o.rr.inTransit()).toBe(true);
+    o.endRun({ ok: true });
+    expect(o.rr.inTransit()).toBe(false);
+  });
+
+  test("a reconnect awaits its main menu until the run sets off; a reopening never does", () => {
+    const h = disconnected();
+    expect(h.rr.awaitsReconnectMenu()).toBe(true);
+    h.frame(MAIN_MENU);
+    expect(h.rr.awaitsReconnectMenu()).toBe(true);
+    h.settle(MAIN_MENU);
+    expect(h.rr.awaitsReconnectMenu()).toBe(false);
+    const o = disconnected();
+    o.rr._pending = Object.assign({}, o.rr._pending, { fromOpen: true });
+    expect(o.rr.awaitsReconnectMenu()).toBe(false);
+  });
+
+  test("a reconnect has home judge its main menu before the run's hold, so home covers the run", () => {
+    const h = disconnected();
+    h.frame(MAIN_MENU);
+    const judged = [];
+    h.core.homeDashboard.recheck.mockImplementation(() => judged.push({ transit: h.rr.inTransit(), started: h.core.aidNavigation.startResume.mock.calls.length }));
+    h.settle(MAIN_MENU);
+    expect(judged[0]).toEqual({ transit: false, started: 0 });
+    expect(h.rr.holding).toBe(true);
+    expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
+  });
+
+  test("a reopening's run does not judge home again at dispatch (home is already under its countdown)", () => {
+    const h = disconnected();
+    h.rr._pending = Object.assign({}, h.rr._pending, { fromOpen: true });
+    h.settle(MAIN_MENU);
+    h.core.homeDashboard.recheck.mockClear();
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
+    expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
+    expect(h.core.homeDashboard.recheck).not.toHaveBeenCalled();
   });
 
   describe("easy reading off", () => {

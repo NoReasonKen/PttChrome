@@ -513,16 +513,33 @@ HomeDashboard.prototype = {
   // dashboard shows and the hold ends together, so the main menu is first
   // drawn under the dashboard; anything else ⇒ the frame is drawn as before.
   // Only the title row is read here; the settle reads the rest.
+  //
+  // After a reconnect the page before the main menu is a login screen, not the
+  // reader's (#188): home is judged on each held frame instead, and covers the
+  // menu from the first frame that shows it whole.
   _onFrame: function() {
-    if (this.holding || this._state.visible) return;
+    if (this._state.visible) return;
+    const reconnect = this._reconnectMenu();
+    if (this.holding && !reconnect) return;
     const buf = this._core.buf;
     if (!buf || typeof buf.getRowText !== 'function') return;
     if (!rowHasTitle(buf.getRowText(0, 0, buf.cols), MAIN_MENU) || !enabled()) return;
-    this.holding = true;
-    this._holdTimer = setTimeout(() => {
-      this._holdTimer = null;
-      this._releaseHold();
-    }, ARRIVAL_HOLD_MS);
+    if (!this.holding) {
+      this.holding = true;
+      this._holdTimer = setTimeout(() => {
+        this._holdTimer = null;
+        this._releaseHold();
+      }, ARRIVAL_HOLD_MS);
+    }
+    if (!reconnect) return;
+    this._judge();
+    if (this._state.visible) this._releaseHold();
+  },
+
+  _reconnectMenu: function() {
+    const core = this._core;
+    const rr = core.reconnectResume;
+    return !!(rr && rr.awaitsReconnectMenu && rr.awaitsReconnectMenu());
   },
 
   _releaseHold: function() {
@@ -798,6 +815,13 @@ HomeDashboard.prototype = {
   openBoard: function(name) {
     const core = this._core;
     if (!name || this._state.fetching) return false;
+    // Another operation drives PTT (a recovery under home, say): the card waits
+    // for it, and no board layer starts over home.
+    const busy = serializedOpHint(core);
+    if (busy) {
+      this._hint(busy);
+      return false;
+    }
     // The dashboard stays alive under the board's article list (#31).
     core.articleGestures?.captureHomeLayer(name);
     const sent = submitSearch(core, 'board', name, {

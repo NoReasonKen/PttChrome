@@ -147,7 +147,8 @@ N1 本身沒有變：探針仍然不碰 external，只有序列的擁有者能�
 
 - 握住：等待中的計畫（不是開站接回的倒數）遇到登入後主功能表的第一幀（`change`，比畫面重畫早）就握，到那一幀 settle 為止（`RECOVERY_ARRIVAL_HOLD_MS`）；出發（`_dispatch`）時改握整趟（`RECOVERY_DRIVE_HOLD_MS`，含 `resumeSearchResults`）；結束時停在文章列表（或看板列表）、列表還在外部 hold 或等靜置探針接手 ⇒ 再握到列表好讀畫出第一頁（`pagePresented`，`RECOVERY_PRESENT_HOLD_MS`）。
 - 放開：落地（文章本來就由好讀畫）、列表好讀接手、失敗或找不到（停在哪就照使用者自己走到那裡的樣子畫：列表好讀接手的照樣接手，其餘照舊）、作廢（deep link、使用者先走開、好讀關掉）、取消、斷線、各階段逾時。放開時通知首頁儀表板重新判定，並讓 view 畫出現在的畫面。
-- 斷線重連：登入流程的畫面照舊畫（使用者可能要自己輸入），從主功能表第一幀起畫面停在登入流程最後一幀，直到回到原處。
+- 斷線重連：登入流程的畫面照舊畫（使用者可能要自己輸入，例如重複登入的詢問）。登入後主功能表那一幀前面畫著的是登入畫面，不是使用者原本那頁，所以和開站接回一樣由首頁儀表板蓋住：計畫還在等主功能表（`awaitsReconnectMenu`）時，儀表板每一幀都判定一次（`home_dashboard._onFrame`，不等 settle），主功能表一完整（有「我的最愛」）就出現並放開自己的 hold，主功能表第一次畫出來就在儀表板底下；出發時 `_dispatch` 先讓儀表板判定一次再握整趟，儀表板一直蓋著直到落地。和開站接回只差沒有倒數，主功能表一 settle 就出發。不分「斷線後有沒有畫過登入畫面」：真 PTT 重連一定經過登入畫面，一律蓋。主功能表沒有「我的最愛」時（測試站）沒有儀表板，照舊停在主功能表前的那一幀直到回到原處。
+- 蓋著時的提示與點擊：途中照常閃「回到斷線前的位置：<板>…」（`aidNavigation.startResume` 的進度提示），儀表板不抓我的最愛（線路留給回到原處）。點看板卡片、信箱等動作一律被擋下並閃 `serializedOpHint`（「回到斷線前的位置，請稍候…」／「回到上次的地方，請稍候…」），回到原處照走，不被取代；點卡片時連返回堆疊的看板層也不先開。
 - 開站接回：等待中的計畫不算路過，主功能表第一幀就由首頁儀表板蓋著（#187 的 arrival hold），倒數期間儀表板照常出現在提示底下（主功能表有「我的最愛」時；沒有時照舊是原生主功能表）；出發後儀表板一直蓋著，直到落地。
 - 回到文章：途中會進那個看板的文章列表，列表好讀卡片會短暫出現再換成文章，與任何跳文相同（列表不是原生畫面，這裡不擋）。
 - 好讀關著不握。
@@ -208,7 +209,7 @@ failed; a non-null plan alone does not prove a successful write.
 | unit（真 Chromium） | `tests/unit/reading_record_board_list.test.js` | 看板列表：重新整理後還原、說明選單離開後還原、認不出、使用者按鍵作廢、外部 hold 出口 |
 | unit | `tests/unit/aid_navigation.test.js`「閱讀紀錄」各條、`deep_link_controller.test.js`「原生 pmore 讀文」 | 返回錨帶列表、看板錨返回還原、失敗交回 hold、deep link 從列表或原生 pager 出發 |
 | unit | `tests/unit/reconnect_resume.test.js`、`aid_navigation.test.js`「startResume」「currentPostAid」 | 斷線重連：去哪、何時出發、收手條件、鍵序列與落地還原、途中握住畫面的每個放開條件 |
-| offline e2e（手機） | `mobile_recovery_hold.offline.spec.js` | 斷線重連與開站接回逐幀都沒有原生畫面：文章、列表、重建的搜尋結果；開站倒數時是首頁儀表板 |
+| offline e2e（手機） | `mobile_recovery_hold.offline.spec.js` | 斷線重連與開站接回逐幀都沒有原生畫面：文章、列表、重建的搜尋結果；開站倒數時是首頁儀表板；斷線重連經過重複登入詢問等登入畫面時，主功能表起每一幀都是儀表板或好讀（不是留著的登入畫面），途中點卡片只得到忙碌提示 |
 | unit（真 Chromium） | `tests/unit/reconnect_resume_open.test.js`、`reconnect_resume_renderer.test.js` | 開站接回：存檔時機與清除、開機模式、倒數與取消、走開／deep link／斷線作廢；APK 回收重建 |
 | unit（真 Chromium） | `tests/unit/list_mark_read_viewport.test.js` | 前已讀後未讀（遷移後行為不變） |
 | offline e2e | `scenario_navigation.offline.spec.js`「跳文 → 返回之後，閱讀紀錄記著開文前的列表視野」 | 真 boot 鏈上身後列表的交接 |

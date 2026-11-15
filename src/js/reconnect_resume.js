@@ -412,12 +412,20 @@ ReconnectResume.prototype = {
     return !!this._countdown;
   },
 
-  // The recovery is passing through screens: a reconnect's plan waits for its
-  // main menu, or the hold is on. A reopening's plan and its countdown are not:
-  // the reader arrives home and is free to stay, so home shows from the first
-  // main-menu frame.
+  // A reconnect waits for its main menu to set off from. The login screens
+  // painted since the disconnect have replaced the reader's page, so home
+  // covers that menu from its first frame (home_dashboard._onFrame).
+  awaitsReconnectMenu: function() {
+    return !!(this._pending && !this._pending.fromOpen && !this.inTransit());
+  },
+
+  // The recovery is passing through screens: it is driving PTT, or presenting
+  // the list it stopped on. The main menu it sets off from is not passed
+  // through: a reopening's countdown shows home there, and a reconnect is
+  // covered by home from that menu's first frame as well, since the login
+  // screens painted since the disconnect have replaced the reader's page.
   inTransit: function() {
-    return !!(this._pending && !this._pending.fromOpen) || this.holding;
+    return this.holding && this._holdPhase !== 'arrival';
   },
 
   _hold: function(phase, ms) {
@@ -559,7 +567,13 @@ ReconnectResume.prototype = {
     if (core.autoLogin && core.autoLogin.stop) core.autoLogin.stop();
     this._diag('dispatch', { kind: plan.kind, board: plan.board, fromOpen: !!plan.fromOpen });
     const self = this;
-    if (enabled()) this._hold('driving', RECOVERY_DRIVE_HOLD_MS);
+    if (enabled()) {
+      // A reconnect sets off at the settle of its main menu: home covers that
+      // menu before the run's hold, as it does under a reopening's countdown,
+      // and stays up while the run drives PTT.
+      if (!plan.fromOpen) core.homeDashboard?.recheck?.();
+      this._hold('driving', RECOVERY_DRIVE_HOLD_MS);
+    }
     const started = nav.startResume(plan, function(result) {
       const ended = outcome => {
         const notice = self._core?.articleShortcutSearch?.recoveryEnded(plan, outcome);
