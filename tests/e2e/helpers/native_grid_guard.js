@@ -239,8 +239,6 @@ const ALLOWED = [
   ].map(([issue, title]) => ({ issue, why: `easy-reading gap: ${title}`, match: (hit) => hit.title.includes(title) })),
   { issue: 209, why: "native screen under an open article: help, reply (#208) and PttChrome's own operations",
     match: (hit) => hit.functionMode },
-  { issue: 206, why: "the native list shown while PttChrome's own list operation runs",
-    match: (hit) => hit.listState === 'functionMode' },
   // A fixture's frame, not real PTT: no issue removes it. The dashboard covers
   // only a main menu that offers My Favorites (home_dashboard.isHomeScreen,
   // #187) and leaves any other native by design. Real PTT shows the item to

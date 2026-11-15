@@ -23,7 +23,8 @@ import {
   shouldStopListPrefetch,
   moveListSelection,
   visibleListIndices,
-  isWaterballSettle,
+  messageSpans,
+  messageOnSettle,
 } from "../../src/js/list_session";
 import { LIST_HEADER_ROWS } from "../../src/js/list_window";
 import { LIST_CARD_ROWS } from "../../src/js/mobile_layout";
@@ -350,56 +351,47 @@ describe("classifyListBurst", () => {
   });
 });
 
-// v5/M4 T4：水球/廣播指紋（protocol §9 outmsg：只寫底列（msg_occupied>0 時
-// 上移一列），該列以反白 ◆ 起頭）。caller 先排除 in-flight 交易再問。
-describe("isWaterballSettle (T4 非請自來指紋)", () => {
+// T4 messages PTT writes on its own (protocol §9, #206). A waterball is
+// `ESC[1;33;46m★id ESC[0;1;37;45m msg`: a cyan run holding ★id, then a
+// magenta run holding the message. A broadcast is a magenta run alone. A vmsg
+// banner (" ◆ … [按任意鍵繼續]", blue) is neither.
+describe("messageSpans (T4 waterball / broadcast colours)", () => {
+  const bgs = (runs) => runs.flatMap(([bg, n]) => new Array(n).fill(bg));
+  test("cyan ★id run then magenta message run → waterball", () => {
+    expect(messageSpans(bgs([[6, 10], [5, 12], [0, 58]]))).toEqual({
+      from: [0, 10],
+      text: [10, 22],
+    });
+  });
+  test("magenta run alone → broadcast", () => {
+    expect(messageSpans(bgs([[0, 4], [4, 20], [5, 30], [0, 26]]))).toEqual({
+      from: null,
+      text: [24, 54],
+    });
+  });
+  test("no magenta run → none (footer, vmsg, pause)", () => {
+    expect(messageSpans(bgs([[4, 20], [6, 40], [0, 20]]))).toBe(null);
+    expect(messageSpans(bgs([[0, 80]]))).toBe(null);
+    expect(messageSpans([])).toBe(null);
+  });
+});
+
+describe("messageOnSettle (T4 non-solicited message settle)", () => {
   const rows = 24;
-  const texts = msgRow => {
-    const t = new Array(rows).fill("");
-    Object.keys(msgRow).forEach(r => (t[r] = msgRow[r]));
-    return t;
-  };
-  test("底列 ◆userid 訊息 → true", () => {
-    expect(
-      isWaterballSettle({
-        changedRows: new Set([23]),
-        rowTexts: texts({ 23: " ◆someuser 安安你好" }),
-        rows,
-      })
-    ).toBe(true);
+  const facts = (changed, messageRows) => ({ changedRows: new Set(changed), rows, messageRows });
+  const wb = { kind: "waterball", from: "friend01", text: "hi" };
+  test("the message row is the only row written → the message", () => {
+    expect(messageOnSettle(facts([23], { 23: wb }))).toEqual(wb);
+    // msg_occupied > 0: one row up
+    expect(messageOnSettle(facts([22], { 22: wb }))).toEqual(wb);
   });
-  test("msg_occupied 上移一列（rows-2）也認", () => {
-    expect(
-      isWaterballSettle({
-        changedRows: new Set([22, 23]),
-        rowTexts: texts({ 22: "◆other 第二顆", 23: " ◆someuser 第一顆" }),
-        rows,
-      })
-    ).toBe(true);
+  test("rows above the bottom two written → a page repaint, not a message", () => {
+    expect(messageOnSettle(facts([5, 23], { 23: wb }))).toBe(null);
   });
-  test("髒列超出底部兩列 → false（頁面重繪不是水球）", () => {
-    expect(
-      isWaterballSettle({
-        changedRows: new Set([5, 23]),
-        rowTexts: texts({ 23: "◆someuser hi" }),
-        rows,
-      })
-    ).toBe(false);
-  });
-  test("底列非 ◆ 起頭 → false（一般 vmsg 訊息列）", () => {
-    expect(
-      isWaterballSettle({
-        changedRows: new Set([23]),
-        rowTexts: texts({ 23: "【功能鍵】按任意鍵繼續" }),
-        rows,
-      })
-    ).toBe(false);
-    expect(
-      isWaterballSettle({ changedRows: new Set(), rowTexts: texts({}), rows })
-    ).toBe(false);
-    expect(isWaterballSettle({ changedRows: null, rowTexts: texts({}), rows })).toBe(
-      false
-    );
+  test("no message row written → null", () => {
+    expect(messageOnSettle(facts([23], {}))).toBe(null);
+    expect(messageOnSettle({ changedRows: null, rows, messageRows: { 23: wb } })).toBe(null);
+    expect(messageOnSettle(facts([], { 23: wb }))).toBe(null);
   });
 });
 
@@ -451,6 +443,10 @@ describe("transitionListSession (full table)", () => {
     // 靜止的選單畫面永遠不會再 settle → 卡死 —— live soak 回歸）:
     T("active", settle("menu"), "idle", ["cleanup"]);
     T("active", settle("transient"), "functionMode", ["enter-function-mode"]);
+    // #206: a waterball / broadcast PTT wrote on its own is presented over the
+    // list, never by the native mirror.
+    T("active", settle("transient", { message: true }), "active", []);
+    T("active", settle("prompt", { message: true }), "active", []);
     // ... but a half-settled frame is EXPECTED while a command is in flight:
     T("active", settle("transient", { inFlightKind: "prefetch-up" }), "active", []);
     T("active", settle("prompt", { inFlightKind: "prefetch-up" }), "active", []);
