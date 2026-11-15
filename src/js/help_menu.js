@@ -157,14 +157,28 @@ const NAMED_KEYS = {
 // the help menu again.
 export const HELP_KEYS = ['h', 'H', '?'];
 
-// The item's first key, as { key, ctrlKey } for view.sendKeyAsUser; null when
-// it names no single key.
-export function helpItemKey(item) {
-  const name = item && item.keys && item.keys[0];
+// One key name the help screen prints, as { key, ctrlKey } for
+// view.sendKeyAsUser; null when it names no single key ("1-9").
+function helpKeyOf(name) {
   if (typeof name !== 'string' || !name) return null;
   if (/^\^[A-Za-z]$/.test(name)) return { key: name.charAt(1).toLowerCase(), ctrlKey: true };
   if (Object.prototype.hasOwnProperty.call(NAMED_KEYS, name)) return { key: NAMED_KEYS[name], ctrlKey: false };
   if (name.length === 1) return { key: name, ctrlKey: false };
+  return null;
+}
+
+const isHelpKey = (k) => !k.ctrlKey && HELP_KEYS.indexOf(k.key) >= 0;
+const isDigitKey = (k) => !k.ctrlKey && /^[0-9]$/.test(k.key);
+
+// The key a pick of this item types (#222): of the item's keys, the first one
+// the page does not refuse (`refuses(key)`, optional), trying the non-digit
+// keys before the digits, since a digit on a list starts a number jump
+// ("0/Home" types Home). The help keys would only ask for the help menu
+// again. null when every key is refused or names no single key.
+export function helpItemKey(item, refuses) {
+  const keys = ((item && item.keys) || []).map(helpKeyOf).filter((k) => k && !isHelpKey(k));
+  const ordered = keys.filter((k) => !isDigitKey(k)).concat(keys.filter(isDigitKey));
+  for (const k of ordered) if (!(refuses && refuses(k))) return k;
   return null;
 }
 
@@ -330,11 +344,15 @@ HelpMenuController.prototype = {
   // keeps PTT's help screen (not detachable) runs there, so it is available.
   _rowOf: function(item) {
     if (!this._detachable) return Object.assign({}, item, { available: true });
-    const key = helpItemKey(item);
+    return Object.assign({}, item, { available: !!this._keyOf(item) });
+  },
+
+  // The key a pick of this row types on the page that asked for help; null
+  // when the page would refuse every key the row lists.
+  _keyOf: function(item) {
     const page = this._requester;
-    const available = !!key && !(!key.ctrlKey && HELP_KEYS.indexOf(key.key) >= 0) &&
-      !(page && typeof page.wouldRefuse === 'function' && page.wouldRefuse(key));
-    return Object.assign({}, item, { available: available });
+    const refuses = page && typeof page.wouldRefuse === 'function' ? (k) => page.wouldRefuse(k) : null;
+    return helpItemKey(item, refuses);
   },
 
   snapshot: function() {
@@ -595,8 +613,9 @@ HelpMenuController.prototype = {
     const items = mergeHelpPages(this._pages, this._totalPages);
     if (!(index >= 0 && index < items.length)) return false;
     if (this._detachable) {
-      if (!this._rowOf(items[index]).available) return false;
-      return this._putAway(helpItemKey(items[index]));
+      const key = this._keyOf(items[index]);
+      if (!key) return false;
+      return this._putAway(key);
     }
     return this._leave(helpSelectKeys(index, this._pageSize, this._totalPages), 'select');
   },

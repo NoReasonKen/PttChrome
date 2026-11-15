@@ -68,13 +68,14 @@ bottom sheet（手機）一次列出**全部頁**的指令，點一下＝執行�
   畫面離開說明選單 ⇒ phase `detached`：解除 hold（`navigationEnded` 補畫）、把同一幀交給要求者的 `resumeAfterHelp(true)`、閱讀紀錄書籤以「離開」交回。
   整段好讀頁都留在畫面上，原生的說明幀一張都不畫；hold 一路涵蓋 `q` 的來回與頁面接回。
   `q` 之後還是說明畫面且超過 `LEAVE_TIMEOUT_MS` ⇒ `_toNative`（彈窗收起、交給原生）。
-- **點一項**：彈窗收起，把該項的**第一個鍵**（`helpItemKey`：`^X`→Ctrl+X、`←`／`Enter`／`PgDn`…→ 同名鍵、單一字元→ 本身）
+- **點一項**：彈窗收起，把該項**第一個這一頁不擋的鍵**（`helpItemKey(item, refuses)`：`^X`→Ctrl+X、`←`／`Enter`／`PgDn`…→ 同名鍵、單一字元→ 本身；
+  有非數字鍵就先試非數字鍵，所以 `0/Home` 在兩種列表都送 Home，因為文章列表的 `0` 會開始數字跳號）
   經 `view.sendKeyAsUser` 交給這一頁自己的按鍵處理，與實體鍵盤同一條分派（搜尋鍵會開搜尋彈窗、列表鍵走列表…）。
   分離完成之前點的：彈窗先收起、`q` 立刻送出（補頁中也一樣），那個鍵等 PTT 離開說明畫面、頁面接回之後（`setTimeout 0`）才打；
   中途掉進 `_toNative` 等退路 ⇒ 這個鍵丟掉。
 - **關閉**：已分離的彈窗關掉什麼都不送；分離之前關 ⇒ 收起並立刻送 `q`。
 - **不可用的項目**：每一頁提供 `wouldRefuse(key)`，沿用自己的分類表（`ListSession`／`BoardListSession` 的 `_classifyKey`＋搜尋鍵、
-  文章的 `articleWouldRefuse`、首頁的 `homeKeyAction`）。這一頁會擋下的鍵、說明鍵本身（`h`／`H`／`?`，顯示為不可用而不是拿掉）、
+  文章的 `articleWouldRefuse`、首頁的 `homeKeyAction`）。所有鍵都被這一頁擋下的項目、說明鍵本身（`h`／`H`／`?`，顯示為不可用而不是拿掉）、
   沒有單一鍵的項目（如 `1-9`）都是不可用：變暗、不能聚焦、`disabled`＋`aria-disabled`，鍵盤 ↑↓ 跳過。小天使在這種造訪裡不給（snapshot `angel` 為假）。
 - **列表的選取不動**：`ListSession` 在 `_beginHelp` 記下讀者的選取（`_helpSelection`），`resumeAfterHelp` 接回後還原，PTT 的游標只當同步起點；
   看板列表的 `_resumeHeldList` 本來就從 `_helpList` 還原選取。

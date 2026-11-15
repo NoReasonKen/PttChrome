@@ -694,16 +694,20 @@ test.describe('文章列表好读模式（离线）', () => {
       expectListHeld(await listFrames(page));
       await page.locator('[data-help-item]', { hasText: '向下移動' }).click();
       await expect(page.locator('[data-help-item]')).toHaveCount(0);
-      // ↓ moves the selection locally. The list may then fill the rows around
-      // the new selection with its own jumps (`<num>\r\f`, timing-dependent);
-      // nothing else reaches PTT: no help key, no PgDn, no second `q`.
+      // ↓ moves the selection locally. The list's window demand may then fill
+      // rows above with its own prefetch (PgUp, anchored by a number jump
+      // `<num>\r\f` when PTT's cursor is not at the buffer's edge), on a scroll
+      // frame's timing, as the same ↓ typed without help does (a command the
+      // queue gives up on adds its `\f` redraw under load); nothing else
+      // reaches PTT: no help key, no second `q`.
       await expect
         .poll(() => page.evaluate(() => window.__app.listSession._selectedNum))
         .toBe(sel0 + 1);
       await waitState(page, (x) => x.queueIdle);
       const after = await sentSince();
       expect(after.slice(0, bytes.length)).toBe(bytes);
-      expect(after.slice(bytes.length)).toMatch(/^(\d+\r\f)*$/);
+      const rest = after.slice(bytes.length);
+      expect(rest, JSON.stringify(rest)).toMatch(/^(\d+\r|\f|\x1b\[5~)*$/);
     } catch (e) {
       console.log('--- console tail ---');
       for (const l of logs.slice(-25)) console.log(l);

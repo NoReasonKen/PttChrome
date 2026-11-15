@@ -8,6 +8,7 @@
 // list, and a closed sheet gives the list back as the reader left it.
 // PttChrome's own sequences (_beginPassthroughBytes) are unchanged.
 import { BoardListSession } from "../../src/js/board_list_session";
+import { helpItemKey, splitHelpKeys } from "../../src/js/help_menu";
 import { BRD_CMD_PREFIX } from "../../src/js/list_render_owner";
 import { UNSUPPORTED_KEY_HINT, unsupportedPasteHint, unsupportedTextHint } from "../../src/js/unsupported_hint";
 
@@ -462,6 +463,20 @@ describe("help (`h`) is presented by the help menu sheet over the board list", (
     // Refused (#192): editing the favorites, other searches, PTT's own screens.
     for (const k of ["a", "d", "g", "M", "/", "c", "S", "y", "*"]) expect(refused(k)).toBe(true);
     for (const k of ["d", "s", "u", "z"]) expect(refused(k, true)).toBe(true);
+  });
+
+  // #222: a row lists several keys; its pick types the first one the list
+  // keeps, the non-digit keys first (a digit starts a number jump).
+  test("a help row's pick is the first key the board list keeps, non-digits first", () => {
+    const h = engaged();
+    const pick = (keysText) => helpItemKey({ keys: splitHelpKeys(keysText) }, (k) => h.s.wouldRefuse(k));
+    expect(pick("0/Home")).toEqual({ key: "Home", ctrlKey: false });
+    expect(pick("PgUp/P/b/^B")).toEqual({ key: "PageUp", ctrlKey: false });
+    expect(pick("S/s")).toEqual({ key: "s", ctrlKey: false }); // S refused, s kept
+    expect(pick("^S/1")).toEqual({ key: "1", ctrlKey: false }); // only the digit is kept
+    expect(pick("a/i")).toBeNull(); // every key refused: unavailable
+    expect(pick("h/H")).toBeNull(); // the help keys
+    expect(pick("1-9")).toBeNull();
   });
 
   test("the footer's help button takes the same route", () => {

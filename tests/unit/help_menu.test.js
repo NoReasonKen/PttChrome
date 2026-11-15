@@ -610,9 +610,15 @@ describe("the detached sheet (#222)", () => {
     expect(h.ctrl.phase).toBe("open");
   });
 
-  test("helpItemKey: the item's first key as the key a reader types", () => {
-    const key = (keysText) => helpItemKey({ keys: splitHelpKeys(keysText) });
+  test("helpItemKey: the first key the page keeps, as the key a reader types", () => {
+    const key = (keysText, refuses) => helpItemKey({ keys: splitHelpKeys(keysText) }, refuses);
     expect(key("→/Enter/r/l")).toEqual({ key: "ArrowRight", ctrlKey: false });
+    expect(key("→/Enter/r/l", (k) => k.key !== "r")).toEqual({ key: "r", ctrlKey: false });
+    // Digits come last: "0/Home" types Home.
+    expect(key("0/Home")).toEqual({ key: "Home", ctrlKey: false });
+    expect(key("0/Home", (k) => k.key === "Home")).toEqual({ key: "0", ctrlKey: false });
+    expect(key("0/Home", () => true)).toBeNull();
+    expect(key("h/H")).toBeNull();
     expect(key("PgUp/P/b/^B")).toEqual({ key: "PageUp", ctrlKey: false });
     expect(key("^Z")).toEqual({ key: "z", ctrlKey: true });
     expect(key("Space")).toEqual({ key: " ", ctrlKey: false });

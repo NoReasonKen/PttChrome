@@ -135,13 +135,13 @@ test("a detachable visit: unavailable rows cannot be picked; the keyboard skips 
     navigationEnded() {},
     sendKeyAsUser: (key) => typed.push(key),
   };
-  pttchrome.helpMenu.expect({ wouldRefuse: (k) => k.key === "a" });
+  pttchrome.helpMenu.expect({ wouldRefuse: (k) => k.key === "a" || k.key === "i" });
   feed(HELP_FAV_PAGE1);
   feed(HELP_FAV_PAGE2);
   await waitItems(35);
   act(() => pttchrome.helpMenu.noteScreen(null)); // PTT left its help screen
   const help = items()[0]; // (h/H) 說明
-  const add = items()[1]; // (a/i) 增加看板, refused by this page
+  const add = items()[1]; // (a/i) 增加看板: both keys refused by this page
   expect(help.disabled).toBe(true);
   expect(add.getAttribute("aria-disabled")).toBe("true");
   expect(add.hasAttribute("data-unavailable")).toBe(true);
