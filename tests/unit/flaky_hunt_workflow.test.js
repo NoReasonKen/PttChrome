@@ -125,6 +125,9 @@ describe("android-repeat（每週一次的模擬器重複輪）", () => {
     const groups = /group: \[([^\]]*)\]/.exec(job)[1].split(",").map((g) => g.trim());
     expect(groups.sort()).toEqual(Object.keys(ANDROID_E2E_GROUPS).sort());
     expect(job).toContain("ANDROID_E2E_TEST_APK");
+    expect(job).toContain("if: matrix.group != 'chrome'");
+    expect(job).toContain("matrix.group == 'apk' && 'assembleDebugAndroidTest'");
+    expect(job).toContain("android/app/build/outputs/androidTest-results/");
     // 同 test.yml：沒開 KVM 的模擬器開機 13–20 分鐘、adb 動不動 offline。
     expect(job).toContain("Enable KVM");
     expect(job).toContain("ANDROID_E2E_APK");

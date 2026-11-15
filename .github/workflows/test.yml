@@ -100,10 +100,9 @@ jobs:
   # omits but kill:dev requires for checked process cleanup. Unit jobs keep UID 1001.
   # --ipc=host avoids Chromium exhausting Docker's default 64 MB shared memory.
   #
-  # 拆 4 個 shard 平行跑（fullyParallel ⇒ 以 test 為單位切，各約四分之一）。每個 job 固定付
-  # ~50s（拉 image ~30s＋checkout／setup-node／yarn install），所以 shard 數跟著測試量調：
-  # 2026-10 兩個 shard 時每片 ~215 條、測試本體 200–350s，是整輪的關鍵路徑（量測與取捨見
-  # docs/ci-troubleshooting.md「CI 耗時」）。
+  # Independent scopes keep failures local to desktop reading, mobile controls or
+  # stacked navigation. Shard within each scope using the ordinary projects and
+  # worker policy; timing evidence and the setup tradeoff are in docs/ci-test-splitting.md.
   test-e2e-offline-shard:
     needs: playwright-version
     runs-on: ubuntu-latest
@@ -111,7 +110,34 @@ jobs:
       # 一個 shard 紅不砍另一個：要看到整輪所有失敗，而不是修一條才冒下一條。
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        include:
+          - group: desktop
+            shard: 1
+            shards: 4
+          - group: desktop
+            shard: 2
+            shards: 4
+          - group: desktop
+            shard: 3
+            shards: 4
+          - group: desktop
+            shard: 4
+            shards: 4
+          - group: mobile-ui
+            shard: 1
+            shards: 3
+          - group: mobile-ui
+            shard: 2
+            shards: 3
+          - group: mobile-ui
+            shard: 3
+            shards: 3
+          - group: mobile-stack
+            shard: 1
+            shards: 2
+          - group: mobile-stack
+            shard: 2
+            shards: 2
     # 卡住保險：預設 360 分鐘，而 deploy.yml 的 concurrency 不取消舊 run ⇒ 一個卡住的 job
     # 會讓之後所有 push 排隊（2026-10-01：dev server 沒起來、子進程撐住 node 不退出）。
     # 數值＝串行時代的實測耗時（14／17 分）再放兩倍多，正常不可能碰到。
@@ -132,10 +158,10 @@ jobs:
       # firefox 是 offline-firefox project 用的（tests/e2e/offline/selection.offline.spec.js）：
       # issue #22 的選取／複製症狀只在 Firefox 出現，Chromium 永遠綠。image 已內建。
       # Yarn v4 把多出的參數接在 script 尾端 ⇒ --shard 落在 playwright 指令上。
-      - name: Offline E2E tests (Playwright replay, shard ${{ matrix.shard }}/4)
+      - name: Offline E2E tests (${{ matrix.group }}, shard ${{ matrix.shard }}/${{ matrix.shards }})
         run: |
           yarn install --immutable
-          yarn test:e2e:offline --shard=${{ matrix.shard }}/4
+          yarn test:e2e:offline:group --group=${{ matrix.group }} --shard=${{ matrix.shard }}/${{ matrix.shards }}
 
       - name: Runner resources report
         if: always()
@@ -147,7 +173,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-offline-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          name: e2e-offline-${{ matrix.group }}-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
           path: |
             test-results/
             ci-diagnostics/
@@ -251,11 +277,12 @@ jobs:
   #（失敗全帶 [android-env]）—— 2 也是紅，判讀見 docs/ci-troubleshooting.md。
   # 不重試：斷言紅一次都不能吞；環境類的已知源（ANR／GPU 當機對話框）fixture 已處理。
   #
-  # Two emulators in parallel, one per ANDROID_E2E_GROUPS entry in scripts/run-android-e2e.mjs.
+  # One emulator per ANDROID_E2E_GROUPS entry in scripts/run-android-e2e.mjs.
   # On one emulator the job took 11–12.5 min after #93/#94 (the credentials spec alone is
   # ~4.4 min), the slowest check by ~4 min. Measured before the split: setup and APK build
   # ~1.5 min, emulator boot ~40 s, the Chrome specs ~2.7 min, the APK specs ~5.5 min.
-  #   - apk: the WebView shell and credential specs, then the instrumented tests.
+  #   - apk: the WebView shell and updater specs, then the instrumented tests.
+  #   - credentials-privacy and credentials-lifecycle: separate credential specs.
   #   - chrome: the emulator's Chrome only, so it skips Java and the APK build.
   test-e2e-android-group:
     runs-on: ubuntu-latest
@@ -263,7 +290,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [apk, chrome]
+        group: [apk, credentials-privacy, credentials-lifecycle, chrome]
     steps:
       - uses: actions/checkout@v7
 
@@ -285,18 +312,18 @@ jobs:
       # Playwright needs; android.yml builds the signed release, and only when android/ changes).
       # The instrumented tests install the same APK plus the androidTest APK built here.
       - uses: actions/setup-java@v6
-        if: matrix.group == 'apk'
+        if: matrix.group != 'chrome'
         with:
           distribution: temurin
           java-version: 21
 
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
-        if: matrix.group == 'apk'
+        if: matrix.group != 'chrome'
 
       - name: Build debug APK
-        if: matrix.group == 'apk'
+        if: matrix.group != 'chrome'
         working-directory: android
-        run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+        run: ./gradlew --no-daemon assembleDebug ${{ matrix.group == 'apk' && 'assembleDebugAndroidTest' || '' }}
 
       # 沒有 KVM 的模擬器開機 13–20 分鐘、adb 動不動 offline；ubuntu runner 有 /dev/kvm 但要開權限。
       - name: Enable KVM

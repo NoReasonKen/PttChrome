@@ -18,6 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { playwrightVersionFromLock } from "../../scripts/playwright-version.mjs";
 import { ADVERSE_PROJECTS } from "../../scripts/run-adverse-e2e.mjs";
+import { OFFLINE_E2E_GROUPS } from "../../scripts/run-offline-e2e-group.mjs";
 
 const ROOT = path.join(__dirname, "..", "..");
 const YAML = fs.readFileSync(path.join(ROOT, ".github", "workflows", "test.yml"), "utf8");
@@ -144,14 +145,23 @@ describe("test.yml：e2e job 跑在 Playwright 官方 image", () => {
     expect(Number(m[1])).toBeLessThanOrEqual(60);
   });
 
-  test("offline 拆 shard：matrix 的每個 shard 都傳進 --shard，分母等於 shard 數", () => {
+  test("offline scopes run every shard exactly once and retain distinct failure artifacts", () => {
     const job = jobs().find((j) => j.name === "test-e2e-offline-shard");
-    const shards = /^\s*shard: \[([\d, ]+)\]\s*$/m.exec(job.body);
-    expect(shards, "沒有 matrix.shard").not.toBeNull();
-    const n = shards[1].split(",").length;
-    expect(shards[1].split(",").map(Number)).toEqual(Array.from({ length: n }, (_, i) => i + 1));
-    const lines = job.body.split("\n").map((l) => l.trim());
-    expect(lines).toContain(`yarn test:e2e:offline --shard=\${{ matrix.shard }}/${n}`);
+    const cells = job.body.split(/^\s*- group: /m).slice(1).map((cell) => ({
+      group: cell.split("\n")[0].trim(),
+      shard: Number(/^\s*shard: (\d+)/m.exec(cell)[1]),
+      shards: Number(/^\s*shards: (\d+)/m.exec(cell)[1]),
+    }));
+    expect([...new Set(cells.map((cell) => cell.group))].sort())
+      .toEqual(Object.keys(OFFLINE_E2E_GROUPS).sort());
+    for (const group of Object.keys(OFFLINE_E2E_GROUPS)) {
+      const selected = cells.filter((cell) => cell.group === group);
+      expect(new Set(selected.map((cell) => cell.shards)).size).toBe(1);
+      expect(selected.map((cell) => cell.shard).sort((a, b) => a - b))
+        .toEqual(Array.from({ length: selected[0].shards }, (_, i) => i + 1));
+    }
+    expect(job.body).toContain("yarn test:e2e:offline:group --group=${{ matrix.group }} --shard=${{ matrix.shard }}/${{ matrix.shards }}");
+    expect(job.body).toContain("e2e-offline-${{ matrix.group }}-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}");
   });
 
   // matrix.include 切成一格一格（每格以 `- bucket:` 開頭，後面縮排的 key 屬於它）。
