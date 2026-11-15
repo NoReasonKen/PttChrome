@@ -7,6 +7,7 @@ const { beginArticleTouch } = require('../helpers/article_gestures');
 const { waitScrollStable, installPaintedFrameProbe } = require('../helpers/layout');
 const ptt = require('../helpers/ptt');
 const { loadCassette, waitFed, bootScenario } = require('../helpers/replay');
+const { installNativeGridGuard, flushNativeGridDiagnostics } = require('../helpers/native_grid_guard');
 const {
   fedBefore, openNextArticle, holdBackReply, heldBack, homeBoard, boardList, listActive, dashboardVisible, bootDashboard, boardOpened,
   MAIN, boardListEngaged, bootBoardList, watchReveals, revealedSinceWatch, recordHints, recordedHints
@@ -106,16 +107,21 @@ const sentSince = (page, n) => page.evaluate(n => window.__replay.sent.slice(n),
 const sentCount = page => page.evaluate(() => window.__replay.sent.length);
 
 test('a board reached by search reveals no lower page', async ({ page }) => {
-  await bootDashboard(page);
-  await page.locator('[data-key="__search"]').tap();
-  const input = page.locator('input[name="searchKeyword"]');
-  await input.fill('C_Chat');
-  await input.press('Enter');
-  await boardOpened(page);
-  await watchReveals(page);
-  await ptt.sendKey(page, 'ArrowLeft');
-  await dashboardVisible(page);
-  expect(await revealedSinceWatch(page)).toBe(false);
+  await installNativeGridGuard(page, { diagnostics: true });
+  try {
+    await bootDashboard(page);
+    await page.locator('[data-key="__search"]').tap();
+    const input = page.locator('input[name="searchKeyword"]');
+    await input.fill('C_Chat');
+    await input.press('Enter');
+    await boardOpened(page);
+    await watchReveals(page);
+    await ptt.sendKey(page, 'ArrowLeft');
+    await dashboardVisible(page);
+    expect(await revealedSinceWatch(page)).toBe(false);
+  } finally {
+    await flushNativeGridDiagnostics(page);
+  }
 });
 
 test('a board tapped on the revealed dashboard opens after the swap', async ({ page }) => {
