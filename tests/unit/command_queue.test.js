@@ -3,6 +3,133 @@
 // silent flush. All timing via vitest fake timers.
 import { CommandQueue } from "../../src/js/command_queue";
 
+describe('pending server frame deadlines', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+  test('waits for a received frame before probing', () => {
+    let writes = 0;
+    const sent = [], done = vi.fn();
+    const q = new CommandQueue({ send: k => sent.push(k), serverWrites: () => writes,
+      hasPendingServerFrame: after => writes > after });
+    q.enqueue({ keys: 'A', expect: (s, f) => f.ok, timeoutMs: 250, hardTimeoutMs: 1200, onDone: done });
+    writes++;
+    vi.advanceTimersByTime(950);
+    expect(sent).toEqual(['A']);
+    q.onSettle({ serverWrites: writes }, { ok: true });
+    expect(done).toHaveBeenCalledOnce();
+  });
+  test('hard deadline grants one bounded processing grace', () => {
+    let writes = 0;
+    const fail = vi.fn();
+    const q = new CommandQueue({ send: () => {}, serverWrites: () => writes,
+      hasPendingServerFrame: after => writes > after });
+    q.enqueue({ keys: 'A', expect: () => false, timeoutMs: 250, hardTimeoutMs: 1200, onFail: fail });
+    writes++;
+    vi.advanceTimersByTime(1699);
+    q.expedite(1);
+    expect(fail).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(fail).toHaveBeenCalledWith('timeout');
+  });
+  test('a frame can settle during hard grace and cancels the deadline', () => {
+    let writes = 0;
+    const done = vi.fn(), fail = vi.fn();
+    const q = new CommandQueue({ send: () => {}, serverWrites: () => writes,
+      hasPendingServerFrame: after => writes > after });
+    q.enqueue({ keys: 'A', expect: (s, f) => f.ok, timeoutMs: 250, hardTimeoutMs: 1200, onDone: done, onFail: fail });
+    writes++;
+    vi.advanceTimersByTime(1350);
+    q.onSettle({ serverWrites: writes }, { ok: true });
+    vi.advanceTimersByTime(500);
+    expect(done).toHaveBeenCalledOnce();
+    expect(fail).not.toHaveBeenCalled();
+  });
+  test('evaluated data does not delay a probe', () => {
+    let writes = 0;
+    const sent = [];
+    const q = new CommandQueue({ send: k => sent.push(k), serverWrites: () => writes,
+      hasPendingServerFrame: after => writes > after });
+    q.enqueue({ keys: 'A', expect: () => false, timeoutMs: 250 });
+    writes++;
+    q.onSettle({ serverWrites: writes }, {});
+    vi.advanceTimersByTime(250);
+    expect(sent).toEqual(['A', '\f']);
+  });
+  test('a flushed processing wait cannot fail the next command', () => {
+    let writes = 0;
+    const fail = vi.fn();
+    const q = new CommandQueue({ send: () => {}, serverWrites: () => writes,
+      hasPendingServerFrame: after => writes > after });
+    q.enqueue({ keys: 'A', expect: () => false, timeoutMs: 250, hardTimeoutMs: 1200 });
+    writes++;
+    vi.advanceTimersByTime(1250);
+    q.flush();
+    q.enqueue({ keys: 'B', expect: () => false, timeoutMs: 3000, onFail: fail });
+    vi.advanceTimersByTime(500);
+    expect(fail).not.toHaveBeenCalled();
+    expect(q.idle).toBe(false);
+  });
+  test('a response pending after a probe completes without another key', () => {
+    let writes = 0;
+    const sent = [], done = vi.fn();
+    const q = new CommandQueue({ send: k => sent.push(k), serverWrites: () => writes,
+      hasPendingServerFrame: after => writes > after });
+    q.enqueue({ keys: 'A', expect: (s, f) => f.ok, timeoutMs: 250, probeTimeoutMs: 600, hardTimeoutMs: 1200, onDone: done });
+    vi.advanceTimersByTime(250);
+    writes++;
+    vi.advanceTimersByTime(700);
+    expect(sent).toEqual(['A', '\f']);
+    q.onSettle({ serverWrites: writes }, { ok: true });
+    expect(done).toHaveBeenCalledOnce();
+  });
+  test('continuous unsatisfied frames cannot extend hard grace', () => {
+    let writes = 0;
+    const fail = vi.fn();
+    const q = new CommandQueue({ send: () => {}, serverWrites: () => writes,
+      hasPendingServerFrame: after => writes > after });
+    q.enqueue({ keys: 'A', expect: () => false, timeoutMs: 250, hardTimeoutMs: 1200, onFail: fail });
+    writes++;
+    vi.advanceTimersByTime(1250);
+    q.onSettle({ serverWrites: writes }, {});
+    writes++;
+    vi.advanceTimersByTime(450);
+    expect(fail).toHaveBeenCalledWith('timeout');
+  });
+  test('a silent server keeps the ordinary probe and timeout budget', () => {
+    const sent = [], fail = vi.fn();
+    const q = new CommandQueue({ send: k => sent.push(k), serverWrites: () => 0,
+      hasPendingServerFrame: () => false });
+    q.enqueue({ keys: 'A', expect: () => false, timeoutMs: 250, probeTimeoutMs: 600, hardTimeoutMs: 1200, onFail: fail });
+    vi.advanceTimersByTime(250);
+    expect(sent).toEqual(['A', '\f']);
+    vi.advanceTimersByTime(600);
+    expect(fail).toHaveBeenCalledWith('timeout');
+  });
+  test('a processed unsatisfied probe response still produces a miss', () => {
+    let writes = 0;
+    const fail = vi.fn();
+    const q = new CommandQueue({ send: () => {}, serverWrites: () => writes,
+      hasPendingServerFrame: after => writes > after });
+    q.enqueue({ keys: 'A', expect: () => false, timeoutMs: 250, onFail: fail });
+    vi.advanceTimersByTime(250);
+    writes++;
+    expect(q.onSettle({ serverWrites: writes }, {})).toBe('miss');
+    expect(fail).toHaveBeenCalledWith('miss', {});
+  });
+  test('an older snapshot cannot make evaluated data pending again', () => {
+    let writes = 0;
+    const sent = [];
+    const q = new CommandQueue({ send: k => sent.push(k), serverWrites: () => writes,
+      hasPendingServerFrame: after => writes > after });
+    q.enqueue({ keys: 'A', expect: () => false, timeoutMs: 250 });
+    writes = 2;
+    q.onSettle({ serverWrites: 2 }, {});
+    q.onSettle({ serverWrites: 1 }, {});
+    vi.advanceTimersByTime(250);
+    expect(sent).toEqual(['A', '\f']);
+  });
+});
+
 function makeQueue() {
   const sent = [];
   const q = new CommandQueue({ send: k => sent.push(k) });

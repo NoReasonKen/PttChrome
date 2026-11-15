@@ -88,6 +88,42 @@ const settledOn = async (page, num) => {
   expect(await server(page)).toMatchObject({ surface: 'article', open: num, filter: null });
 };
 
+for (const delay of [950, 1350]) {
+  test(`opening a headerless article waits for its received list frame for ${delay}ms`, async ({ page }) => {
+    const thread = FAR_BOARD.map(article => article.num === 600 ? { ...article, headerless: true, lines: 60 } : article);
+    await bootThreadBoard(page, { open: 600, fromList: true, thread, delay: 20 });
+    await expect.poll(() => bar(page)).toEqual(CAROL);
+    await settledOn(page, 600);
+    await backToList(page);
+    await expect.poll(() => page.evaluate(() => !window.__app.articleGestures.holdsInput())).toBe(true);
+    await page.evaluate(() => {
+      const app = window.__app, buf = app.buf;
+      const original = buf.notify;
+      let delayed = false;
+      buf.notify = function(...args) {
+        if (delayed) return;
+        if (!delayed && app.commandQueue.inFlightKind === 'open-jump') {
+          delayed = true;
+          window.__delayedOpenFrame = true;
+          window.__releaseOpenFrame = () => { buf.notify = original; original.apply(buf, args); };
+          return;
+        }
+        return original.apply(buf, args);
+      };
+      window.__openKeysBefore = window.__threadSent.length;
+    });
+    await ptt.sendKey(page, 'ArrowRight');
+    await expect.poll(() => page.evaluate(() => window.__delayedOpenFrame)).toBe(true);
+    await page.waitForTimeout(delay); // sleep-ok: keep a received frame pending across the command deadline
+    expect(await server(page)).toMatchObject({ surface: 'list', open: 600 });
+    expect(await page.evaluate(() => window.__app.commandQueue.inFlightKind)).toBe('open-jump');
+    expect((await sent(page)).slice(await page.evaluate(() => window.__openKeysBefore))).toEqual(['600\r\f']);
+    await page.evaluate(() => window.__releaseOpenFrame());
+    await expect.poll(() => bar(page)).toEqual(CAROL);
+    await settledOn(page, 600);
+  });
+}
+
 // PTT moves to the next article in the thread without showing a list: the
 // first article's row is not the second one's identity, which comes from a
 // return to the list out of sight.
