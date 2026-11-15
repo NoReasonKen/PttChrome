@@ -346,6 +346,13 @@ export class Handoff {
   screenAnswered() {
     const core = this.core;
     if (this.ended || this.presentedAt != null) return;
+    // A pause PTT answered Back with, or the answer to the key dismissing it
+    // (#189, back_pause_hold.js): the revealed page stays while PTT goes on to
+    // the list. PTT left the route the stack describes on the way.
+    if (core.backPause?.absorbs()) {
+      this.detoured = true;
+      return;
+    }
     const pageState = core.buf.pageState;
     if (!this.target) {
       // The page being left until a session presents its page; any other

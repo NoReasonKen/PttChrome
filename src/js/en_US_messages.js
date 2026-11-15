@@ -1422,6 +1422,7 @@ export const en_US = {
   "articleShortcutSearch_threadResults": { "message": "Same-thread search results. Back returns to the source article." },
   "articleShortcutSearch_busy": { "message": "Searching or returning to the source article…" },
   "threadJump_busy": { "message": "Going to the same-thread article…" },
+  "backPause_busy": { "message": "Returning to the list…" },
   "threadJump_failed": { "message": "Could not go to the same-thread article. Pull down to refresh and retry." },
   "headerlessReopen_busy": { "message": "Reading the article's details…" },
   "headerlessReopen_failed": { "message": "Could not read the article's details. Pull down to refresh and retry." },

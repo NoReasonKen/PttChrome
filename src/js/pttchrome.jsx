@@ -28,6 +28,7 @@ import { installPullNextArticle, installWheelNextArticle } from './pull_next_art
 import { LongPushSession } from './long_push_session';
 import { LogoutSession } from './logout_session';
 import { BoardNoteSkip } from './board_note_skip';
+import { BackPauseHold } from './back_pause_hold';
 import { HelpMenuController } from './help_menu';
 import { installToolbarDiagnostics, logToolbarContext } from './toolbar_diag';
 import { DeepLinkController } from './deep_link_controller';
@@ -242,6 +243,8 @@ export const App = function() {
   // 之後 ⇒ 開板命令（brd-open-board）已在同一個 settle 完成，我們的鍵才排得上線。
   // arm 由送出出口觸發（_attachConn 的 conn.onDataSent）。
   this.boardNoteSkip = new BoardNoteSkip(this, this.view, this.buf, this.commandQueue);
+  // A pause screen after Back is dismissed behind the page being left (#189).
+  this.backPause = new BackPauseHold(this, this.view, this.buf, this.commandQueue);
   // 說明選單好讀（h 的新版游標選單 → 彈窗／bottom sheet 列出全部頁，見 help_menu.js）。
   // listener 排在列表 session 之後：同一個 settle 裡佇列的命令先完成，補頁的 PgDn 才排得上線。
   this.helpMenu = new HelpMenuController(this, this.buf);
@@ -583,6 +586,7 @@ App.prototype._attachConn = function(conn) {
       : null;
   conn.onDataSent = function(bytes) {
     self.boardNoteSkip.noteSent(bytes);
+    self.backPause.noteSent(bytes);
     // 手機等待進度條：只有「我們的 UI 剛被按」之後的送出才算（mobile_busy.js）。
     if (self.mobile) self._busyEvent({ type: 'sent' });
   };
@@ -679,6 +683,7 @@ App.prototype.onClose = function() {
   this.headerlessReopen.reset();
   this.articleHold.reset();
   this.boardNoteSkip.reset();
+  this.backPause.reset();
   this.helpMenu.reset();
   // 長推文的探路成果同理：錨點是這條連線的列表游標（pttbbs getkeep），斷線就失效。
   // 不丟掉的話，重連後按下「送出」會拿舊錨點去比對新畫面。

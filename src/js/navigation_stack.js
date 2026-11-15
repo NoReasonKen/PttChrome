@@ -650,8 +650,9 @@ export class NavigationStack {
     this.captured.length = Math.max(0, this.stack.pages.length - 2);
     this.stack = popPage(this.stack).stack;
     // PTT left the route the stack describes, or never confirmed it: nothing
-    // below is known to be the way back.
-    if (how === 'unexpected' || how === 'timeout' || gone) this._discard();
+    // below is known to be the way back. A pause on the way (#189) is such a
+    // detour too.
+    if (how === 'unexpected' || how === 'timeout' || gone || h.detoured) this._discard();
     h.finish();
     if (gone) this.gone = new KeptSource(h);
     core._refreshScreenContext?.();

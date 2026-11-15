@@ -225,6 +225,9 @@ async function installNestedServer(page, session) {
     const state = {
       surface: session.surface, board: 'Test', filter: null, cursor: 0, open: articles[0], line: 1,
       deleted: new Set(session.deleted || []), prompt: null, promptless: false, squeezedFooter: false,
+      // backPause: { kind: 'pause' | 'vmsg', message }: the next Back from an
+      // article answers with that pause first (#189).
+      backPause: null, pausing: null,
       terminalRows: session.dynamicRows ? app.buf.rows : 24,
       applicationRows: session.dynamicRows ? app.buf.rows : 24, sizeChanges: [],
       replyDelayMs: 90, holdResponses: false, queuedResponses: 0
@@ -308,6 +311,18 @@ async function installNestedServer(page, session) {
       } else if (state.surface === 'boardPause') {
         rows = { 0: 'Board entry notice', [termRows - 1]: '                         請按任意鍵繼續' };
         inverse = [termRows - 1];
+      } else if (state.surface === 'backPause') {
+        // PTT answers Back from an article with a pause (#189): a message on a
+        // cleared screen over pressanykey, or a vmsg banner over the article.
+        const pause = state.pausing;
+        if (pause.kind === 'vmsg') {
+          rows = articleRows(state.open, termRows);
+          rows[termRows - 1] = ` ◆ ${pause.message}                    [按任意鍵繼續]`;
+        } else {
+          rows = { [termRows - 1]: '                         請按任意鍵繼續' };
+          if (pause.message) rows[Math.floor(termRows / 2)] = '  ' + pause.message;
+        }
+        inverse = [termRows - 1];
       } else if (state.surface === 'boardPager') {
         // PMORE_AUTO_EXIT leaves a multi-page note's footer blank.
         rows = { 0: 'Board entry notice', 1: 'Long notice content' };
@@ -384,8 +399,9 @@ async function installNestedServer(page, session) {
           : session.boardEntry === 'movie' ? 'boardMovie' : 'list';
     };
     const step = rest => {
-      if (state.surface === 'boardPause') {
+      if (state.surface === 'boardPause' || state.surface === 'backPause') {
         state.surface = 'list';
+        state.pausing = null;
         return rest.slice(1);
       }
       if (state.surface === 'boardPager') {
@@ -431,7 +447,12 @@ async function installNestedServer(page, session) {
         return rest.slice(end + 1);
       }
       if (rest.startsWith('\x1b[D')) {
-        if (state.surface === 'article') state.surface = 'list';
+        if (state.surface === 'article' && state.backPause) {
+          // One pause, then Back answers as usual again.
+          state.pausing = state.backPause;
+          state.backPause = null;
+          state.surface = 'backPause';
+        } else if (state.surface === 'article') state.surface = 'list';
         else if (state.filter) leaveFilter();
         else state.surface = 'main';
         return rest.slice(3);

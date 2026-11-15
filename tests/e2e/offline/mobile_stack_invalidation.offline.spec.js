@@ -63,7 +63,8 @@ test('Back from an article reopened by search backtracking reveals its list, not
 
 test('after a Back that lands somewhere unexpected, the next Back reveals nothing from before', async ({ page }) => {
   await openAlphaFromDashboard(page);
-  // PTT answers the Back from Alpha with a prompt; a key then shows the list.
+  // PTT answers the Back from Alpha with a pause; a key then shows the list.
+  // The app dismisses the pause itself, behind the revealed list (#189).
   await page.evaluate(() => {
     const send = window.__stubWSSent;
     let answered = false;
@@ -75,9 +76,6 @@ test('after a Back that lands somewhere unexpected, the next Back reveals nothin
     };
   });
   await pressBack(page);
-  await page.waitForFunction(() => window.__app.buf.pageState !== 3);
-  await expect(page.locator('[data-article-exit-underlay]')).toHaveCount(0, { timeout: 1000 });
-  await ptt.sendKey(page, 'Space');
   await waitList(page, BOARD);
   await watchReveals(page);
   await pressBack(page);

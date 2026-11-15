@@ -1437,6 +1437,7 @@
   "articleShortcutSearch_threadResults": { "message": "同主題搜尋結果；返回可回到原文章。" },
   "articleShortcutSearch_busy": { "message": "搜尋或返回原文章中，請稍候…" },
   "threadJump_busy": { "message": "正在前往同主題文章，請稍候…" },
+  "backPause_busy": { "message": "正在返回列表，請稍候…" },
   "threadJump_failed": { "message": "無法前往同主題文章，下拉重新整理以重試。" },
   "headerlessReopen_busy": { "message": "正在讀取文章資訊，請稍候…" },
   "headerlessReopen_failed": { "message": "無法讀取文章資訊，下拉重新整理以重試。" },
