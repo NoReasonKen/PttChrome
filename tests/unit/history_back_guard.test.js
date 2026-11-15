@@ -13,6 +13,7 @@ import {
   ESCAPE_HINT,
 } from "../../src/js/history_back_guard";
 import { isSelfNavigating, resetSelfNavigation } from "../../src/js/self_navigation";
+import { navKeyAllowed, navKeyBlockReason } from "../../src/js/nav_key_gate";
 
 function makeWin() {
   const listeners = {};
@@ -631,6 +632,85 @@ describe("手機 bottom sheet", () => {
     t.activate();
     t.back();
     expect(t.keys).toEqual(["ArrowLeft"]);
+  });
+});
+
+// The home dashboard refuses PTT's own keys over the main menu, so a synthesized
+// ← there only flashed its unsupported-key hint. The shared gate now blocks it
+// ('home'), and Back takes the escape branch like any other unusable Back.
+describe("home dashboard", () => {
+  function atHome(opts) {
+    const t = setup(opts);
+    const dashboard = { owns: true, ownsInput: () => dashboard.owns };
+    Object.assign(t.app, {
+      modalShown: false,
+      conn: { isConnected: true },
+      buf: { pageState: 1, isCursorOnInputField: () => false },
+      homeDashboard: dashboard,
+    });
+    // App.sendNavKeyAsUser: the real gate in front of the key.
+    t.app.sendNavKeyAsUser = (k) => {
+      if (!navKeyAllowed(t.app)) return false;
+      t.keys.push(k);
+      return true;
+    };
+    return { ...t, dashboard };
+  }
+
+  test("Back at home sends no ← and shows the escape hint; a second Back leaves", () => {
+    const t = atHome();
+    t.activate();
+    t.back();
+    expect(t.keys).toEqual([]);
+    expect(t.hints).toEqual([ESCAPE_HINT]);
+    t.settleForward(1);
+    t.tick(DOUBLE_BACK_MS - 1);
+    t.back();
+    expect(t.hints).toEqual([ESCAPE_HINT]);
+    expect(t.win.calls.filter((c) => c[0] === "forward")).toHaveLength(1);
+  });
+
+  test("APK host Back at home: hint first, then hands Back to the app", () => {
+    const t = atHome({ android: true });
+    expect(t.win.pttHostBack()).toBe(true);
+    expect(t.hints).toEqual([ESCAPE_HINT]);
+    t.tick(DOUBLE_BACK_MS - 1);
+    expect(t.win.pttHostBack()).toBe(false);
+    expect(t.keys).toEqual([]);
+  });
+
+  test("a sheet open at home is dismissed first, with no hint", () => {
+    const t = atHome();
+    let open = true;
+    t.app.dismissTopSheet = () => {
+      if (!open) return false;
+      open = false;
+      return true;
+    };
+    t.activate();
+    t.back();
+    expect(t.hints).toEqual([]);
+    expect(t.keys).toEqual([]);
+  });
+
+  test("once the dashboard gives up input, Back sends ← again", () => {
+    const t = atHome();
+    t.dashboard.owns = false;
+    t.activate();
+    t.back();
+    expect(t.keys).toEqual(["ArrowLeft"]);
+    expect(t.hints).toEqual([]);
+  });
+
+  test("the debug log names the home block", () => {
+    const t = atHome();
+    const logs = [];
+    t.app.debugRecorder = { log: (name, data) => logs.push([name, data]) };
+    t.app.navKeyBlockReason = () => navKeyBlockReason(t.app);
+    t.activate();
+    t.back();
+    expect(logs[0][0]).toBe("backGuard.blocked");
+    expect(logs[0][1].reason).toBe("home");
   });
 });
 

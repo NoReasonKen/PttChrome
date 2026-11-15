@@ -85,3 +85,27 @@ describe("navKeyBlockReason（debug log 用：擋下時說得出是哪一道）"
     expect(navKeyBlockReason(core())).toBe(null);
   });
 });
+
+describe("home dashboard", () => {
+  const home = (owns) => ({ ownsInput: () => owns });
+
+  test("blocks with 'home' while the dashboard owns input over the main menu", () => {
+    const c = core({
+      buf: { pageState: 1, isCursorOnInputField: () => false },
+      homeDashboard: home(true),
+    });
+    expect(navKeyAllowed(c)).toBe(false);
+    expect(navKeyBlockReason(c)).toBe("home");
+  });
+
+  test("a sheet open at home reports 'modal' first", () => {
+    expect(navKeyBlockReason(core({ modalShown: true, homeDashboard: home(true) }))).toBe(
+      "modal",
+    );
+  });
+
+  test("a dashboard that does not own input changes nothing", () => {
+    expect(navKeyBlockReason(core({ homeDashboard: home(false) }))).toBe(null);
+    expect(navKeyBlockReason(core({ homeDashboard: {} }))).toBe(null);
+  });
+});

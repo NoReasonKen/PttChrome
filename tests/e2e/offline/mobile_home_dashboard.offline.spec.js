@@ -156,6 +156,28 @@ test.describe('手機首頁儀表板（離線重放）', () => {
     expect(frames.filter((f) => f.uncovered)).toEqual([]);
   });
 
+  // The dashboard refuses PTT's own keys, so system Back at home sends no ← and
+  // says how to leave, not that the key is unsupported.
+  test('system Back at home sends nothing and shows the leave hint', async ({ page }) => {
+    await bootHome(page);
+    await drawMainMenu(page);
+    await answerFetch(page);
+    // A real tap is the user activation the history guard waits for.
+    await page.locator('#mobileAppBar [data-key="__title"]').tap();
+    await page.waitForFunction(() => !!window.history.state?.pttchromeBackGuard);
+    await page.evaluate(() => {
+      window.__sameDocument = true;
+      window.__hints = [];
+      const flash = window.__app.view.flashListHint.bind(window.__app.view);
+      window.__app.view.flashListHint = (text, ...rest) => { window.__hints.push(text); return flash(text, ...rest); };
+    });
+    await page.goBack();
+    await expect.poll(() => page.evaluate(() => window.__hints)).toEqual(['再按一次「上一頁」可離開本站']);
+    expect(await page.evaluate(() => window.__sameDocument)).toBe(true);
+    await expect(dashboard(page)).toBeVisible();
+    expect(await peekCapture(page)).toBe('');
+  });
+
   test('下拉重整：在卡片上往下拉過門檻放手 ⇒ 重抓我的最愛，不會點進看板', async ({ page }) => {
     await bootHome(page);
     await drawMainMenu(page);
