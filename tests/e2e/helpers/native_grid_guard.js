@@ -243,8 +243,6 @@ const ALLOWED = [
     match: (hit) => hit.resume != null },
   { issue: 206, why: "the native list shown while PttChrome's own list operation runs",
     match: (hit) => hit.listState === 'functionMode' },
-  { issue: 189, why: 'unexpected pause screen after Back, and the list after it',
-    match: (hit) => hit.listState === 'suspended' },
   // A fixture's frame, not real PTT: no issue removes it. The dashboard covers
   // only a main menu that offers My Favorites (home_dashboard.isHomeScreen,
   // #187) and leaves any other native by design. Real PTT shows the item to

@@ -174,8 +174,10 @@ test('an unexpected reply ends the handoff at once and shows what PTT shows', as
     const send = window.__stubWSSent;
     window.__stubWSSent = (data) => {
       if (data.indexOf('\x1b[D') < 0) return send(data);
-      // PTT answers with a prompt instead of the article list.
-      setTimeout(() => window.__app.onData('\x1b[H\x1b[2J\x1b[24;1H\x1b[1;37;44m 請按任意鍵繼續 \x1b[m'), 300);
+      // PTT answers with the main menu instead of the article list. Not a
+      // pause: a pause after Back is dismissed behind the revealed list
+      // (#189, mobile_back_pause.offline.spec.js).
+      setTimeout(() => window.__app.onData('\x1b[H\x1b[2J\x1b[1;37;44m【主功能表】' + ' '.repeat(68) + '\x1b[m'), 300);
     };
   });
   const contact = await swipeOut(page);

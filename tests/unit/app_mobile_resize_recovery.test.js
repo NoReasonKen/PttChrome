@@ -40,6 +40,7 @@ function makeReader() {
     aidNavigation: { active: false, reset: vi.fn() },
     articleShortcutSearch: { reset: vi.fn() }, threadJump: { reset: vi.fn() }, headerlessReopen: { reset: vi.fn() }, articleHold: { reset: vi.fn() }, helpMenu: { reset: vi.fn() },
     boardNoteSkip: { noteRecv: vi.fn(), reset: vi.fn() },
+    backPause: { reset: vi.fn() },
     longPush: { busy: false, disarm: vi.fn() }, deepLinkController: { reset: vi.fn() },
     messageInbox: { noteData: vi.fn(), reset: vi.fn() },
   });

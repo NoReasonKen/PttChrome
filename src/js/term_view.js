@@ -2038,6 +2038,7 @@ TermView.prototype = {
       (app.boardNoteSkip && app.boardNoteSkip.active) ||
       (app.helpMenu && app.helpMenu.holding) ||
       (app.boardSearchHold && app.boardSearchHold.holding) ||
+      (app.backPause && app.backPause.holding) ||
       (app.homeDashboard && app.homeDashboard.holding)));
   },
 
