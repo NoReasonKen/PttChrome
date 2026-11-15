@@ -64,6 +64,13 @@ function ensureSheetDarkVars(theme) {
 // 與 MobileSheet.css .mobileSheet 的 max-height 同一式（inline maxHeight 要跟它取 min）。
 const SHEET_CSS_MAX_HEIGHT = "calc(100dvh - 48px - var(--vv-kb-inset, 0px))";
 
+function RestoreTerminalFocus({ pttchrome }) {
+  // Passive cleanup follows removal of the animated contents. A close callback
+  // still sees their focused input; the core correctly preserves that focus.
+  useEffect(() => () => pttchrome?.setInputAreaFocus?.(), [pttchrome]);
+  return null;
+}
+
 export const MobileSheet = ({
   pttchrome,
   opened,
@@ -269,6 +276,7 @@ export const MobileSheet = ({
             : null),
         }}
       >
+        <RestoreTerminalFocus pttchrome={pttchrome} />
         {float ? null : handle}
         {title ? <div className="mobileSheetTitle">{title}</div> : null}
         <div className="mobileSheetScroll">{children}</div>

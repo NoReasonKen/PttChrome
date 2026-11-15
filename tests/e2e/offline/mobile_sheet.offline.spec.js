@@ -79,6 +79,20 @@ test.describe('手機 bottom sheet', () => {
       .toBe(true);
   });
 
+  for (const reducedMotion of ['no-preference', 'reduce']) {
+    test(`closing search restores terminal focus without pointer movement (${reducedMotion})`, async ({ page }) => {
+      await page.emulateMedia({ reducedMotion });
+      await bootMenu(page);
+      await byKey(page, '__search').tap();
+      await expect(sheet(page, 'search').locator('input[name="searchKeyword"]')).toBeFocused();
+      // Keep a later mouseover from incidentally restoring terminal focus.
+      await page.mouse.move(-10, -10);
+      await page.keyboard.press('Escape');
+      await expect(sheet(page, 'search')).toHaveCount(0);
+      await expect(page.locator('#t')).toBeFocused();
+    });
+  }
+
   // 焦點從隱藏 input #t（文字輸入框恆為 :focus-visible）被 focus trap 搬進 sheet ⇒ Chromium
   // 讓新焦點繼承 :focus-visible ⇒ 觸控打開就有一圈焦點框，「選取模式」看起來像被選中。
   // 焦點框只該在鍵盤操作時出現（src/js/focus_ring.js）。

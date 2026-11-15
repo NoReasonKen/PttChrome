@@ -447,17 +447,22 @@ async function replayCassette(page, cassette, opts = {}) {
         // t：送键的 wall clock。重放的门控就在这里（送键 → 喂下一页），所以相邻两次
         // 送键的间隔 ≈「收到一页 → 重绘整份累积页 → 送下一个 PageDown」的成本，正是
         // 使用者回报「越读越慢」量到的那条曲线（实录 55ms → 1196ms）。
-        window.__replay.sends.push({
+        const request = {
           data,
           sig: er._currentPageSignature(),
           t: performance.now(),
-        });
+          inFlightSig: er._inFlightSig,
+          inFlightSentAt: er._inFlightSentAt,
+          retries: er._pageDownRetries,
+        };
+        window.__replay.sends.push(request);
         // **必须 return**（2026-09-20）：easy_reading._send 现在回传「bytes 有没有
         // 真的上线」，_maybeSendPageDown 靠它决定要不要写交易状态
         // （stamp-after-send）。这个 override 吞掉回传值 ⇒ 好读判成「送不出去」
         // ⇒ 永远不建立 in-flight ⇒ 同一页重复送 PageDown（P4）⇒ 整批文章重放变成
         // 无意义的红。下面的 Home/goto 分支照旧在 origSend 之后跑，所以先存起来。
         const ok = origSend(data); // 进 stub WS，无副作用
+        request.accepted = ok;
         // 掉页自癒送的 Home（pmore KEY_HOME → mf_goTop）：回到文章第一页，从头再翻。
         if (answerHome && data.indexOf('\x1b[1~') >= 0) {
           window.__replay.home = (window.__replay.home || 0) + 1;

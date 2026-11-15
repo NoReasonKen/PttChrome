@@ -475,6 +475,11 @@ fresh. It never activates on pointerup, so native scrolling and long-press suppr
 remain in charge. Mouse, keyboard, editable fields and non-menu buttons keep their
 existing behavior. Real-input coverage lives in `mobile_sheet_tap.offline.spec.js`.
 
+Sheet contents restore terminal focus after they unmount, including after an exit
+animation. Restoring on close alone can leave focus on the outgoing input until
+it disappears. The core focus gate still preserves another open modal or an
+explicitly focused keyboard control; restoration does not depend on mouseover.
+
 - 用在：「更多」（`MobileToolbar` 自己持有，`panel==='more'`）、長按選單（`ContextMenu` 在 `useMobile` 時畫 `ContextSheet`，
   項目清單 `ContextMenu/context_menu_entries.js` 與桌機 `DropdownMenu` 共用）、搜尋（`SearchModal` 的 `mobile` prop 換外殼）、
   長推文（`LongPushModal` 的 `mobile` prop）。

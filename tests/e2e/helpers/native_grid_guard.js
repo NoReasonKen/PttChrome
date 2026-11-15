@@ -22,13 +22,69 @@ const fs = require('fs');
 
 const TAG = '[native-grid] ';
 
-function pageGuard({ tag, log }) {
+function pageGuard({ tag, log, diagnostics }) {
   if (window.__nativeGridGuard) return;
   const seen = new Set();
   // hits: since the last reset(), which forgets them for a spec that checks the
   // guard itself. log: every hit, never reset, indexed by the console line.
   const state = { loggedIn: false, hits: [], log: [], reset: () => { state.hits.length = 0; seen.clear(); } };
   window.__nativeGridGuard = state;
+  const timeline = [];
+  let previousEntry;
+  const record = (event, details = {}) => {
+    if (!diagnostics) return;
+    const identity = JSON.stringify({ event, ...details });
+    if (identity === previousEntry) return;
+    previousEntry = identity;
+    timeline.push({ t: performance.now(), event, ...details });
+    if (timeline.length > 80) timeline.shift();
+  };
+  if (diagnostics) {
+    document.addEventListener('keydown', (event) => {
+      if (event.isTrusted && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(event.key))
+        record('key', { key: event.key });
+    }, true);
+    document.addEventListener('pointerdown', (event) => {
+      if (event.isTrusted) record('pointer', { target: describe(event.target) });
+    }, true);
+  }
+
+  function describe(el) {
+    if (!(el instanceof Element)) return null;
+    return { tag: el.tagName, id: el.id || null, classes: [...el.classList].slice(0, 8) };
+  }
+
+  function geometry(el) {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { element: describe(el), rect: { x: r.x, y: r.y, width: r.width, height: r.height },
+      visible: el.checkVisibility({ visibilityProperty: true, opacityProperty: true }) };
+  }
+
+  function snapshot(app, view, overrides) {
+    const main = document.querySelector('.main:not([data-stack-layer])');
+    const rect = main?.getBoundingClientRect();
+    const bar = document.getElementById('mobileAppBar');
+    const toolbar = document.querySelector('.mobileToolbarBar');
+    const left = rect && Math.max(0, rect.left), right = rect && Math.min(innerWidth, rect.right);
+    const top = rect && Math.max(0, rect.top, bar ? bar.getBoundingClientRect().bottom : 0);
+    const bottom = rect && Math.min(innerHeight, rect.bottom, toolbar ? toolbar.getBoundingClientRect().top : innerHeight);
+    const targets = rect && right > left && bottom > top
+      ? [0.25, 0.5, 0.75].map(f => describe(document.elementFromPoint((left + right) / 2, top + (bottom - top) * f))) : [];
+    const nav = app.navigationStack;
+    return {
+      pageState: app.buf.pageState, surface: view._frameSurface(overrides),
+      listRenderMode: app.buf.listRenderMode, grid: !!view._gridRender,
+      listScroll: !!overrides?.listScroll, functionMode: !!app.buf.easyReadingFunctionMode,
+      listState: app.listSession?.state ?? null, boardListState: app.boardListSession?.state ?? null,
+      queue: { idle: app.commandQueue?.idle ?? null, inFlightKind: app.commandQueue?.inFlightKind ?? null },
+      stack: { pages: nav?.stack?.pages?.map(p => p.kind) || [], pending: nav?.pending?.kind ?? null,
+        handoff: !!nav?.handoff, captured: nav?.captured?.filter(Boolean).length ?? 0 },
+      homeVisible: app.homeDashboard?.state?.visible ?? null, modalShown: !!app.modalShown,
+      main: geometry(main), content: geometry(main?.querySelector('#mainContainer')),
+      covers: [...document.querySelectorAll('#homeDashboard, [data-stack-layer]')].map(geometry), targets,
+    };
+  }
 
   function hook(app) {
     const view = app && app.view;
@@ -55,6 +111,7 @@ function pageGuard({ tag, log }) {
         else if (state.loggedIn && loginPrompt(buf)) state.loggedIn = false;
         latest = overrides;
         onGrid = this._gridRender && !(overrides && overrides.listScroll);
+        if (diagnostics) record('render', snapshot(app, view, overrides));
         if (onGrid) schedule();
       } catch (e) {
         report({ guardError: String(e) });
@@ -84,6 +141,7 @@ function pageGuard({ tag, log }) {
 
     function check(overrides) {
       const buf = app.buf;
+      if (diagnostics) record('paint', snapshot(app, view, overrides));
       const prefs = window.__readPrefs ? window.__readPrefs() : null;
       // Done (true) unless the frame is covered: a pref change or login redraws.
       if (!state.loggedIn || !prefs || !prefs.enableEasyReading) return true;
@@ -101,6 +159,7 @@ function pageGuard({ tag, log }) {
         // Whether a main menu offers My Favorites: only such a menu is the
         // home screen the dashboard covers (home_dashboard.isHomeScreen).
         favorites: hasFavoritesItem(buf),
+        ...(diagnostics ? { diagnostics: { timeline: [...timeline] } } : {}),
       });
       return true;
     }
@@ -141,7 +200,9 @@ function pageGuard({ tag, log }) {
   }
 
   function report(hit) {
-    const key = JSON.stringify(hit);
+    const identity = { ...hit };
+    delete identity.diagnostics;
+    const key = JSON.stringify(identity);
     if (seen.has(key)) return;
     seen.add(key);
     state.hits.push(hit);
@@ -209,6 +270,12 @@ function nativeGridJudged(page, match) {
 }
 
 const guardedPages = new WeakSet();
+const diagnosticWrites = new WeakMap();
+
+async function flushNativeGridDiagnostics(page) {
+  await page.evaluate(() => true).catch(() => {});
+  await diagnosticWrites.get(page);
+}
 
 // opts.mode overrides the default and the environment (the guard's own spec records only).
 async function installNativeGridGuard(page, opts = {}) {
@@ -222,40 +289,58 @@ async function installNativeGridGuard(page, opts = {}) {
   if (mode === 'report' && !out) throw new Error('NATIVE_GRID_GUARD=report needs NATIVE_GRID_REPORT=<file.jsonl>');
   if (guardedPages.has(page)) return;
   guardedPages.add(page);
+  let pending = Promise.resolve();
+  let saved = false;
   if (mode === 'fail' || mode === 'report') {
-    page.on('console', async (msg) => {
+    page.on('console', (msg) => {
       const text = msg.text();
       if (!text.startsWith(TAG)) return;
-      let info;
-      try {
-        info = test.info();
-      } catch {
-        return; // after the test ended
-      }
-      const index = Number(text.slice(TAG.length));
-      const hit = await page.evaluate((i) => window.__nativeGridGuard.log[i], index).catch(() => null);
-      if (!hit) return; // the page closed or navigated away
-      const where = { spec: info.file.replace(/^.*\/tests\/e2e\//, ''), test: info.title };
-      const issue = hit.guardError ? null : allowedIssue(hit, where);
-      if (mode === 'report') {
-        fs.appendFileSync(out, JSON.stringify({ ...where, allowed: issue, hit }) + '\n');
-      } else if (issue == null) {
+      const judge = async () => {
+        let info;
         try {
-          expect
-            .soft(hit, 'native grid painted under easy reading (tests/e2e/helpers/native_grid_guard.js)')
-            .toBeUndefined();
+          info = test.info();
         } catch {
-          // the test ended while the hit was read
+          return; // after the test ended
         }
-      }
-      const waiters = judgedWaiters.get(page) || [];
-      for (const waiter of waiters.filter((w) => w.match(hit))) {
-        waiters.splice(waiters.indexOf(waiter), 1);
-        waiter.resolve(hit);
+        const index = Number(text.slice(TAG.length));
+        const hit = await page.evaluate((i) => window.__nativeGridGuard.log[i], index).catch(() => null);
+        if (!hit) return; // the page closed or navigated away
+        const where = { spec: info.file.replace(/^.*\/tests\/e2e\//, ''), test: info.title };
+        const issue = hit.guardError ? null : allowedIssue(hit, where);
+        if (mode === 'report') {
+          fs.appendFileSync(out, JSON.stringify({ ...where, allowed: issue, hit }) + '\n');
+        } else if (issue == null) {
+          try {
+            const assertionHit = { ...hit };
+            delete assertionHit.diagnostics;
+            expect
+              .soft(assertionHit, 'native grid painted under easy reading (tests/e2e/helpers/native_grid_guard.js)')
+              .toBeUndefined();
+          } catch {
+            // the test ended while the hit was read
+          }
+          if (opts.diagnostics && !saved) {
+            saved = true;
+            const artifact = info.outputPath('native-grid-diagnostics.json');
+            fs.writeFileSync(artifact, JSON.stringify(hit, null, 2));
+            await info.attach('native-grid-diagnostics', { path: artifact, contentType: 'application/json' });
+          }
+        }
+        const waiters = judgedWaiters.get(page) || [];
+        for (const waiter of waiters.filter((w) => w.match(hit))) {
+          waiters.splice(waiters.indexOf(waiter), 1);
+          waiter.resolve(hit);
+        }
+      };
+      if (opts.diagnostics) {
+        pending = pending.then(judge);
+        diagnosticWrites.set(page, pending);
+      } else {
+        void judge();
       }
     });
   }
-  await page.addInitScript(pageGuard, { tag: TAG, log: mode === 'fail' || mode === 'report' });
+  await page.addInitScript(pageGuard, { tag: TAG, log: mode === 'fail' || mode === 'report', diagnostics: !!opts.diagnostics });
 }
 
-module.exports = { installNativeGridGuard, allowedIssue, nativeGridJudged };
+module.exports = { installNativeGridGuard, allowedIssue, nativeGridJudged, flushNativeGridDiagnostics };
