@@ -175,6 +175,24 @@ export class NavigationStack {
     this._capture(PAGE.HOME, board, () => StackHomeLayer.capture(this.core));
   }
 
+  // The home search sheet opens over the shown dashboard (#224): the dashboard
+  // is copied now, before the sheet's board search replaces the main menu
+  // under it with PTT's prompt, and the board is named once it is chosen
+  // (nameHome). Returns the captured page, or null.
+  holdHome() {
+    if (!this.core.homeDashboard?.state.visible || !this._stacksBoards()) return null;
+    this._capture(PAGE.HOME, null, () => StackHomeLayer.capture(this.core, true));
+    return this.pending;
+  }
+
+  // `board` was chosen from the dashboard copied by holdHome, `held`. False
+  // when that copy is no longer the pending page.
+  nameHome(held, board) {
+    if (!held || this.pending !== held || !board) return false;
+    held.board = board;
+    return true;
+  }
+
   // `board` is about to be opened from the shown board list.
   captureBoardList(board) {
     if (!this._stacksBoard(board)) return this.dropPending();
@@ -182,7 +200,12 @@ export class NavigationStack {
   }
 
   _stacksBoard(board) {
-    return !!(this.core.mobile && board && easyReadingOn(readValuesWithDefault()));
+    return !!board && this._stacksBoards();
+  }
+
+  // A board's article list stacks over the page it is opened from.
+  _stacksBoards() {
+    return !!(this.core.mobile && easyReadingOn(readValuesWithDefault()));
   }
 
   // The open was abandoned: the captured page is no lower page of anything.

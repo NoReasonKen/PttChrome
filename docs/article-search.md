@@ -137,6 +137,7 @@ ordinary search-sheet input keeps the prompt-verified sequence. See
 - 握住＝`core.boardSearchHold`（`article_search.js` 的 `beginBoardSearchHold`）：`term_view._navigationHeld()` 多認這一項，握著時 held 分支不畫 PTT 的幀（同說明選單 #157，[help-menu.md](help-menu.md)）；首頁面板握著時不因 prompt 幀收起（`home_dashboard._onSettled`）。
 - 收尾：prompt 消失後**等好讀把落點顯示出來**才放開——列表進到 buffer 模式、回到主功能表（面板 `recheck` 再蓋上）、或 AID 選板接手的 `aidNavigation` 跑起來。停在原生鏡像的列表 session 當場收回這一幀（`list_session.resumeNow`／`board_list_session.resumeNow`，不等靜置探針）：取消時 PTT 還回的是同一份列表，文章列表留著手上的列（同說明選單關掉，[easy-reading-list.md](easy-reading-list.md) 不變量 15），閱讀紀錄的還原在列表收回之後才跑；沒有停在原生鏡像的列表時（AID 選板的文章），取消的收尾（`reopenPicked`）照舊在 prompt 消失的那一個 settle 裡當場跑。
 - 放開時 `view.navigationEnded()` 讓 held 分支補畫被擋下的那一幀。保底：prompt 一直沒開出來 `BOARD_SEARCH_HOLD_MS`（5 秒）、prompt 收掉後落點一直沒顯示 `BOARD_SEARCH_LANDING_MS`（6 秒）就放開；prompt 開不出來、命令被 flush、收尾失敗都當場放開。
+- 首頁開的彈窗（#224）：彈窗一開、送出 `s` 之前，先把首頁面板複製成待用的下層頁（`ArticleGestures.holdHomeLayer`）。送出且 prompt 消失時，以 PTT 會進的板名（`resolvedBoardName`，查詢結論未知時用輸入的板名）讓看板從右滑進、蓋在副本上（`enterHomeLayer`），握住隨即放開、交給這段進場，不再兩者一起握；PTT 已表示進不了的板名、取消、prompt 開不出來或途中丟失都丟掉副本。之後在看板裡按返回，露出的就是首頁面板，同點卡片進板（[article-swipe-drawer-spec.md](article-swipe-drawer-spec.md)）。
 - 看板列表的取消：`_beginPassthroughBytes` 進原生時就丟掉了 buffer，收回時從 PTT 的那一頁重建（不經過原生幀，但捲動位置交給閱讀紀錄）。
 
 ### 彈窗版面

@@ -500,6 +500,119 @@ describe("BoardSearchBridge: the page under the sheet is held (#190)", () => {
   });
 });
 
+describe("BoardSearchBridge at home: the dashboard is the board's lower page (#224)", () => {
+  // The page stack's side, as ArticleGestures offers it: a dashboard copy held
+  // as the pending lower page, then entered or dropped.
+  function homeSetup(opts) {
+    const o = opts || {};
+    const copy = { kind: "home" };
+    const t = holdSetup({
+      ...o,
+      setupCore: (core, ctx) => {
+        core.articleGestures = {
+          holdHomeLayer: vi.fn(() => {
+            // Whether PTT was already sent anything (`s`) when it was copied.
+            ctx.log.push(`holdHome:${ctx.queue.idle ? "idle" : "busy"}`);
+            return o.notHome ? null : copy;
+          }),
+          enterHomeLayer: vi.fn((layer, board) => {
+            ctx.log.push(`enterHome:${board}:${!!core.boardSearchHold?.holding}`);
+            return layer === copy;
+          }),
+          dropHomeLayer: vi.fn((layer) => {
+            ctx.log.push("dropHome");
+            expect(layer).toBe(copy);
+          }),
+        };
+      },
+    });
+    return { ...t, copy, gestures: t.core.articleGestures };
+  }
+
+  test("the dashboard is copied as the sheet opens, before PTT is sent `s`", () => {
+    const t = homeSetup();
+    expect(t.log).toEqual(["holdHome:idle"]);
+    expect(t.sent).toEqual(["s\f"]);
+    expect(t.gestures.enterHomeLayer).not.toHaveBeenCalled();
+  });
+
+  test("a submit enters the board over the copy only once PTT's prompt is gone, and the hold hands the page over", async () => {
+    const t = homeSetup();
+    await t.settle(promptFrame("", null));
+    t.bridge.query("C_Chat");
+    await t.settle(promptFrame("C_Chat", [["C_Chat"]]));
+    t.bridge.submit("c_chat");
+    // The prompt is still up: the copy stays pending, the hold keeps the page.
+    expect(t.gestures.enterHomeLayer).not.toHaveBeenCalled();
+    expect(t.held()).toBe(true);
+    await t.settle(listFrame());
+    // The board PTT's Enter opens, named as PTT lists it.
+    expect(t.gestures.enterHomeLayer).toHaveBeenCalledWith(t.copy, "C_Chat");
+    // The entry holds the screen from here; the hold does not wait for the list.
+    expect(t.held()).toBe(false);
+    expect(t.gestures.dropHomeLayer).not.toHaveBeenCalled();
+    expect(t.log).toEqual(["holdHome:idle", "enterHome:C_Chat:true", "homeRecheck", "navigationEnded"]);
+  });
+
+  test("a submit with no answered query enters the board by the name typed", async () => {
+    const t = homeSetup();
+    await t.settle(promptFrame("", null));
+    t.bridge.submit("Test");
+    await t.settle(listFrame());
+    expect(t.gestures.enterHomeLayer).toHaveBeenCalledWith(t.copy, "Test");
+  });
+
+  test("a name PTT refused opens no board: the copy is dropped and the hold lands as before", async () => {
+    const t = homeSetup();
+    await t.settle(promptFrame("", null));
+    t.bridge.query("Nope");
+    await t.settle(promptFrame("No", [["Notes"]]));
+    t.bridge.submit("Nope");
+    await t.settle(homeFrame());
+    expect(t.gestures.enterHomeLayer).not.toHaveBeenCalled();
+    expect(t.gestures.dropHomeLayer).toHaveBeenCalledTimes(1);
+    expect(t.held()).toBe(false);
+  });
+
+  test("a cancel drops the copy", async () => {
+    const t = homeSetup();
+    await t.settle(promptFrame("", null));
+    t.bridge.cancel();
+    await t.settle(homeFrame());
+    expect(t.gestures.dropHomeLayer).toHaveBeenCalledTimes(1);
+    expect(t.gestures.enterHomeLayer).not.toHaveBeenCalled();
+  });
+
+  test("a prompt that never opens drops the copy", async () => {
+    const t = homeSetup();
+    vi.advanceTimersByTime(3000); // soft timeout → \f probe
+    await t.settle(homeFrame());
+    expect(t.bridge.status).toBe("unavailable");
+    expect(t.gestures.dropHomeLayer).toHaveBeenCalledTimes(1);
+    t.bridge.cancel();
+    expect(t.gestures.dropHomeLayer).toHaveBeenCalledTimes(1);
+  });
+
+  test("a submit lost on the way drops the copy", async () => {
+    const t = homeSetup();
+    await t.settle(promptFrame("", null));
+    const onFail = vi.fn();
+    t.bridge.submit("Test", { onFail });
+    t.queue.flush();
+    expect(onFail).toHaveBeenCalled();
+    expect(t.gestures.dropHomeLayer).toHaveBeenCalledTimes(1);
+    expect(t.gestures.enterHomeLayer).not.toHaveBeenCalled();
+  });
+
+  test("away from home nothing is copied or dropped", async () => {
+    const t = homeSetup({ notHome: true });
+    await t.settle(promptFrame("", null));
+    t.bridge.cancel();
+    await t.settle(homeFrame());
+    expect(t.gestures.dropHomeLayer).not.toHaveBeenCalled();
+  });
+});
+
 describe("submitSearch for a board: the page stays until the destination is presented (#190)", () => {
   test("the typed route from home holds every frame of the prompt and the landing", async () => {
     const t = holdSetup({ noBridge: true });

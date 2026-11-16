@@ -40,7 +40,10 @@ async function watchFrames(page) {
       window.__frames.push({
         surface: app.view.mobileSurface,
         shown,
-        dashboard: visible(document.getElementById('homeDashboard')),
+        // The real dashboard, or its copy under a board sliding in (#224).
+        dashboard: visible(document.getElementById('homeDashboard')) ||
+          visible(document.querySelector('[data-stack-layer="home"]')),
+        entry: app.articleGestures.entry?.state || null,
         prompt: shown && (content.textContent || '').includes(PROMPT),
         cards: visible(listView),
         scrollTop: listView ? Math.round(listView.scrollTop) : null,
@@ -107,6 +110,9 @@ test.describe('手機：看板搜尋留住原畫面 (#190)', () => {
     // The dashboard covers the main menu until the board is shown.
     const firstList = frames.findIndex((f) => f.cards && f.shown);
     expect(frames.slice(0, firstList).filter((f) => !f.dashboard)).toEqual([]);
+    // The board slides in over the dashboard's copy, its lower page (#224),
+    // and that entry holds the screen once the hold handed it over.
+    expect(frames.some((f) => f.entry && !f.holding)).toBe(true);
   });
 
   for (const key of ['s', 'S']) {
@@ -160,6 +166,9 @@ test.describe('手機：看板搜尋留住原畫面 (#190)', () => {
     await drawMainMenu(page);
     await dashboardVisible(page);
     await expect.poll(() => page.evaluate(() => !window.__app.boardSearchHold)).toBe(true);
+    // The dashboard copied for a board's lower page (#224) is gone with the sheet.
+    expect(await page.evaluate(() => window.__app.navigationStack.pending)).toBeNull();
+    await expect(page.locator('[data-stack-layer]')).toHaveCount(0);
     const frames = await stopFrames(page);
     expect(frames.some((f) => f.holding)).toBe(true);
     expect(nativeFrames(frames)).toEqual([]);
