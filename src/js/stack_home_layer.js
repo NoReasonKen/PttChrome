@@ -19,14 +19,16 @@ function boardOf(entry) {
 
 export class StackHomeLayer {
   // Render the shown dashboard as a layer, or null when it is not shown.
-  static capture(core) {
+  // `deferred`: called from a React effect (the search sheet opening, #224),
+  // where React cannot render it at once; it renders in a later task.
+  static capture(core, deferred = false) {
     const home = core.homeDashboard;
     const real = home?.rootElement();
     if (!home?.state.visible || !real) return null;
-    return new StackHomeLayer(core, home, real);
+    return new StackHomeLayer(core, home, real, deferred);
   }
 
-  constructor(core, home, real) {
+  constructor(core, home, real, deferred) {
     this.parent = core.view.mainDisplay.parentNode;
     // Beside the terminal's surfaces, under the page that slides away from it.
     // The real dashboard sits above the terminal, so it is held hidden while
@@ -46,10 +48,21 @@ export class StackHomeLayer {
     };
     const host = { homeDashboard: view, mobile: core.mobile, onMobileChange: fn => core.onMobileChange(fn) };
     this.reactRoot = createRoot(this.el);
-    flushSync(() => this.reactRoot.render(createElement(HomeDashboardView, { pttchrome: host, layer: true })));
-    this.root = this.el.querySelector('.homeDashboard');
-    this.root?.setAttribute('data-stack-layer', PAGE.HOME);
+    const render = () => this.reactRoot.render(createElement(HomeDashboardView, { pttchrome: host, layer: true }));
+    if (deferred) render();
+    else flushSync(render);
+    this._root = null;
     this.anchor = homeAnchorOf(real);
+  }
+
+  // The copy's dashboard root, once React has rendered it (a deferred copy
+  // renders before anything can reveal it: PTT has not answered yet).
+  get root() {
+    if (!this._root) {
+      this._root = this.el.querySelector('.homeDashboard');
+      this._root?.setAttribute('data-stack-layer', PAGE.HOME);
+    }
+    return this._root;
   }
 
   // The dashboard is a live view laid out by CSS: it follows a width change by

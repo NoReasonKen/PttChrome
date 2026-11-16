@@ -157,6 +157,11 @@ export function BoardSearchBridge(core, onUpdate, opts) {
   // 閱讀紀錄（決策表 'board-search'）：prompt 一開，列表就切到原生鏡像；取消／開不
   // 出來時要把視野還回去，送出（換板）則不還原。
   this._bookmark = core ? recordFor(core).begin('board-search') : null;
+  // At home the dashboard becomes the chosen board's lower page, as for a
+  // card (#224): it is copied before PTT's prompt replaces the main menu
+  // under it, and the board slides in over it once the prompt is gone.
+  const gestures = core && core.articleGestures;
+  this._homeLayer = gestures && gestures.holdHomeLayer ? gestures.holdHomeLayer() : null;
   // The page under the sheet stays on screen while this bridge owns PTT's
   // prompt (#190; docs/article-search.md).
   this._hold = core ? beginBoardSearchHold(core) : null;
@@ -359,13 +364,20 @@ BoardSearchBridge.prototype = {
         const hold = self._hold;
         self._hold = null;
         if (isSubmit) {
+          // The board slides in over the dashboard copied at home: from here
+          // that entry keeps PTT's frames off screen, so the hold hands the
+          // page over to it instead of both holding it.
+          const entered = self._enterHome(fin.text);
           self._endRecord('done');
           if (fin.cb.onDone) fin.cb.onDone(result);
+          if (!hold) return;
+          if (entered) hold.release();
           // Held until easy reading presents the board (or the AID run that
           // the caller just started takes the page over).
-          if (hold) hold.land({});
+          else hold.land({});
           return;
         }
+        self._dropHome();
         // PTT gave the page back: the list owner takes it again before the
         // reading record restores the view onto it.
         const back = function() {
@@ -397,8 +409,41 @@ BoardSearchBridge.prototype = {
     endInFlight(this._core);
   },
 
+  // Where PTT's Enter on `text` leads: the board PTT listed for it, the name
+  // itself while PTT's answer for it is unknown, or '' for a name PTT has
+  // shown it would not open.
+  _chosenBoard: function(text) {
+    if (!text) return '';
+    const result = this._result;
+    const resolved = resolvedBoardName(result, text);
+    if (resolved) return resolved;
+    if (result && !result.unknown && result.query.toLowerCase() === text.toLowerCase()) return '';
+    return text;
+  },
+
+  // The board was chosen: it slides in over the dashboard copied at home.
+  // Returns whether that entry holds the screen now.
+  _enterHome: function(text) {
+    const held = this._homeLayer;
+    this._homeLayer = null;
+    if (!held) return false;
+    const gestures = this._core.articleGestures;
+    const board = this._chosenBoard(text);
+    if (board) return gestures.enterHomeLayer(held, board);
+    gestures.dropHomeLayer(held);
+    return false;
+  },
+
+  // The search ended without a board: the dashboard copy goes.
+  _dropHome: function() {
+    const held = this._homeLayer;
+    this._homeLayer = null;
+    if (held) this._core.articleGestures.dropHomeLayer(held);
+  },
+
   // The search is lost or never started: the view draws PTT's frame again.
   _release: function() {
+    this._dropHome();
     const hold = this._hold;
     this._hold = null;
     if (hold) hold.release();

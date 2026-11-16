@@ -10,7 +10,7 @@ const { loadCassette, waitFed, bootScenario } = require('../helpers/replay');
 const { installNativeGridGuard, flushNativeGridDiagnostics } = require('../helpers/native_grid_guard');
 const {
   fedBefore, openNextArticle, holdBackReply, heldBack, homeBoard, boardList, listActive, dashboardVisible, bootDashboard, boardOpened,
-  MAIN, boardListEngaged, bootBoardList, watchReveals, revealedSinceWatch, recordHints, recordedHints
+  MAIN, boardListEngaged, bootBoardList, recordHints, recordedHints
 } = require('../helpers/stack_routes');
 
 const HOME_LAYER = '[data-stack-layer="home"]';
@@ -106,19 +106,30 @@ test('Back from a board entered from a board list reveals that board list at onc
 const sentSince = (page, n) => page.evaluate(n => window.__replay.sent.slice(n), n);
 const sentCount = page => page.evaluate(() => window.__replay.sent.length);
 
-test('a board reached by search reveals no lower page', async ({ page }) => {
+// The home search sheet: the dashboard is copied as it opens (#224).
+async function openHomeSearch(page) {
+  await bootDashboard(page);
+  await page.locator('[data-key="__search"]').tap();
+  await expect(page.locator('[data-sheet="search"] [data-board-suggest="ready"]')).toHaveCount(1);
+}
+
+test('a board reached by the home search reveals the dashboard at once, like a card', async ({ page }) => {
   await installNativeGridGuard(page, { diagnostics: true });
   try {
-    await bootDashboard(page);
-    await page.locator('[data-key="__search"]').tap();
+    await openHomeSearch(page);
     const input = page.locator('input[name="searchKeyword"]');
     await input.fill('C_Chat');
     await input.press('Enter');
     await boardOpened(page);
-    await watchReveals(page);
+    const release = await holdBackReply(page);
     await ptt.sendKey(page, 'ArrowLeft');
+    await heldBack(page);
+    await expect(page.locator(HOME_LAYER)).toBeVisible();
+    await expect(page.locator(`${HOME_LAYER} [data-home-board="C_Chat"]`)).toBeVisible();
+    await release();
     await dashboardVisible(page);
-    expect(await revealedSinceWatch(page)).toBe(false);
+    await expect(page.locator(HOME_LAYER)).toHaveCount(0, { timeout: 10000 });
+    await expect(page.locator(UNDERLAY)).toHaveCount(0);
   } finally {
     await flushNativeGridDiagnostics(page);
   }

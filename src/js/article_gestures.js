@@ -373,6 +373,26 @@ export class ArticleGestures {
     this._beginEntry();
   }
 
+  // The home search sheet opens over the dashboard (#224): the dashboard is
+  // copied as the pending lower page, and nothing slides until a board is
+  // chosen and PTT's prompt is gone (enterHomeLayer). Returns the copy, or null.
+  holdHomeLayer() {
+    return this.stack.holdHome();
+  }
+
+  // `board` was chosen from the copy `held`: the board slides in over it.
+  // Returns whether that entry now holds the screen.
+  enterHomeLayer(held, board) {
+    if (!this.stack.nameHome(held, board)) return false;
+    this._beginEntry();
+    return !!this.entry;
+  }
+
+  // The search ended without a board: the copy `held` is no lower page.
+  dropHomeLayer(held) {
+    if (held && this.stack.pending === held) this.dropPendingLayer();
+  }
+
   captureBoardListLayer(board) {
     this.stack.captureBoardList(board);
     this._beginEntry();
