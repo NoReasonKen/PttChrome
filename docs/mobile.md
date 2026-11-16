@@ -428,6 +428,12 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
     on that settle. The native screen never shows.
   - Guarded by `tests/e2e/offline/mobile_headerless_article.offline.spec.js`, `tests/unit/headerless_reopen.test.js` and
     `tests/unit/article_hold.test.js`.
+- **Operations over the article** (#209): copying the article's link (`Q`), a long comment, a jump by article code and
+  logging out drive PTT through native screens. `ArticleHold.run(source)` keeps the article on screen meanwhile (every
+  grid frame, the list on the way included, is held) with the App Bar locked; `done` lands back at the reading position,
+  `fail` holds the article with the cause, as above. A failed logout keeps the article with 「登出失敗：…，下拉重新整理以重試。」.
+  Reply stays native (#208). Guarded by `tests/e2e/offline/mobile_article_operations.offline.spec.js` and
+  `tests/unit/article_hold.test.js`.
 - **無返回鍵**（使用者定案）。AID 跳文的「返回原文」不屬 App Bar：是浮在 App Bar 正下方置中的 `components/AidBackButton`（桌機共用，見 `docs/easy-reading.md`「返回原文」UI）；**不可放底部**（會被工具列蓋掉，回歸守 `mobile_app_bar.offline.spec.js`）。事件規則同工具列（mousedown preventDefault＋stopPropagation）。z-index 150（低於 Mantine overlay 200）。
 - **點標題捲回頂端**（pref `mobileAppBarScrollTop`，預設開）：`app_bar_scroll_top.scrollContentToTop`，只綁在標題塊
   （新信徽章、收件匣不算）。捲動對象：首頁儀表板開著 ⇒ 它的容器；卡片列表視口在 DOM 上 ⇒ `screen.scrollListTo(0)`

@@ -84,7 +84,7 @@ test.describe('好讀模式停在 prompt 上（離線重放）', () => {
     expect(text).toContain('testuser:');
   });
 
-  test(`REGRESSION：IME 路徑送出的 X（不經 keydown）也要切成原生鏡像 [${cassette.__file}]`, async ({
+  test(`REGRESSION：IME 路徑送出的 X（不經 keydown）也進長推文的原生鏡像，畫面留在文章 [${cassette.__file}]`, async ({
     page,
   }) => {
     test.setTimeout(90000);
@@ -98,7 +98,11 @@ test.describe('好讀模式停在 prompt 上（離線重放）', () => {
     await waitScreenSettled(page);
 
     expect(await functionMode(page)).toBe(true);
+    // The X is the long comment's, as from the keyboard: PTT's prompt is
+    // mirrored but not shown, the article stays on screen (#209).
+    expect(await page.evaluate(() => window.__app.longPush.active || !!window.__app.articleHold.running)).toBe(true);
     const text = await page.evaluate(() => document.querySelector('#mainContainer').textContent);
-    expect(text).toContain('testuser:');
+    expect(text).not.toContain('testuser:');
+    expect(text).toContain('jason050117');
   });
 });

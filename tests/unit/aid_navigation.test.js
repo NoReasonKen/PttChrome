@@ -2701,3 +2701,56 @@ describe("AidNavigation.startSubNum：搜尋結果裡的第 N 篇", () => {
     expect(h.sent).toEqual(["\x1b[D\f"]);
   });
 });
+
+// A run started over an easy-reading article leaves the reader on it when it
+// fails: the article is held with a message offering a pull, never "stopped on
+// the native screen" (#209). Elsewhere PTT's screen is shown, as it says.
+describe("failure over an easy-reading article", () => {
+  const overArticle = (h, { presented = true } = {}) => {
+    h.core.view = h.view;
+    h.core.buf = h.termBuf;
+    h.view.useEasyReadingMode = presented;
+    h.termBuf.easyReadingFunctionMode = false;
+    h.core.articleHold = { hold: vi.fn() };
+    return h.core.articleHold;
+  };
+
+  const failRefresh = (h) => {
+    h.nav.refresh();
+    answerOriginInfo(h.queue, "1gKF7GO4");
+    settle(h.queue, facts("clean-list", { boardName: "C_Chat" }));
+    settle(h.queue, facts("prompt"));
+    vi.advanceTimersByTime(STEP_PROBE_AFTER_MS);
+    settle(h.queue, facts("prompt"));
+  };
+
+  test("a failed refresh holds the article", () => {
+    const h = makeHarness({ pageState: 3, articleBoard: "C_Chat" });
+    const hold = overArticle(h);
+    failRefresh(h);
+    expect(h.nav.active).toBe(false);
+    expect(hold.hold).toHaveBeenCalledTimes(1);
+    const { source, text } = hold.hold.mock.calls[0][0];
+    expect(source).toBe("aidNavigation");
+    expect(text).toMatch(/^重新整理失敗：找不到文章 #1gKF7GO4.*，下拉重新整理以重試。$/);
+    expect(text).not.toMatch(/原生/);
+    expect(h.hints.some(m => m.includes("原生"))).toBe(false);
+  });
+
+  test("a failed jump by article code holds the article", () => {
+    const h = makeHarness({ pageState: 3, articleBoard: "C_Chat" });
+    const hold = overArticle(h);
+    h.nav.start("1gIeu-3A", "Android");
+    h.queue.flush();
+    expect(h.nav.active).toBe(false);
+    expect(hold.hold.mock.calls[0][0].text).toMatch(/^AID 跳文失敗：.*，下拉重新整理以重試。$/);
+  });
+
+  test("without an easy-reading article the failure names the native screen", () => {
+    const h = makeHarness({ pageState: 3, articleBoard: "C_Chat" });
+    const hold = overArticle(h, { presented: false });
+    failRefresh(h);
+    expect(hold.hold).not.toHaveBeenCalled();
+    expect(h.hints.at(-1)).toMatch(/^重新整理失敗：.*（已停在原生畫面）$/);
+  });
+});

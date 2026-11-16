@@ -1446,6 +1446,8 @@
   "articleHold_keys": { "message": "文章操作失敗：下拉重新整理以重試。" },
   "articleHold_unknownScreen": { "message": "無法辨識 PTT 目前的畫面，未重試。" },
   "articleHold_retryTimeout": { "message": "重新整理逾時，下拉重新整理以重試。" },
+  "articleHold_unpresented": { "message": "PTT 停在無法以好讀呈現的畫面：下拉重新整理以重試。" },
+  "longPush_held": { "message": "長推文未完成：下拉重新整理以重試。" },
   "listResize_failed": { "message": "文章列表未能適應新的畫面尺寸，下拉重新整理以重試。" },
   "articleShortcutSearch_results": { "message": "同作者搜尋結果；返回可回到原文章。" },
   "articleShortcutSearch_empty": { "message": "找不到符合條件的文章，已返回原文。" },

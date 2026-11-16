@@ -71,6 +71,7 @@ import { MAIN_MENU, boardNameFromKey, parseBoardKey, parseBoardName, rowHasTitle
 import { isSubListFooter } from './screen_captions';
 import { HINT_ERROR } from './status_hint';
 import { recordFor } from './reading_record';
+import { articlePresented } from './article_hold';
 import { clearSearchResultsContext } from './search_results_context';
 
 // AID search rejected: pttbbs answers with a press-any-key message instead of
@@ -334,6 +335,8 @@ export function AidNavigation(core, view, termBuf, queue, history) {
   // The startResume() run under way (resuming after a disconnect): { quiet },
   // or false.
   this._resuming = false;
+  // The run started over an easy-reading article (see _fail).
+  this._overArticle = false;
   // One-shot: swallow the leaveCurrentPost our own landing causes (noteLeftPost).
   this._ownedLeave = false;
   // 指定看板挑板中的 token（preparePicked → continuePicked／reopenPicked／endPicked）：
@@ -359,12 +362,24 @@ AidNavigation.prototype = {
     // 停在哪裡都一樣：把列表 session 的外部 hold 交回靜置探針（否則列表好讀會
     // 卡在原生鏡像直到下一次開文）。身後的列表紀錄留著，回到同一份列表時還原。
     recordFor(this._core).releaseExternal();
+    // A run started over an easy-reading article leaves the reader on it, held
+    // (#209): the frames it held still show that article. Elsewhere PTT's
+    // screen is shown as it is.
+    const overArticle = this._overArticle;
+    this._overArticle = false;
+    const failed = (what) => {
+      if (overArticle) {
+        this._core.articleHold.hold({ source: 'aidNavigation', reason: msg, text: what + msg + '，下拉重新整理以重試。' });
+      } else {
+        this._hint(what + msg + '（已停在原生畫面）', 0, HINT_ERROR);
+      }
+    };
     if (this._refreshing) {
-      // 重新整理失敗：同一套「停在原生畫面、看得到」的降級，只是措辭不同。
+      // 重新整理失敗：同一套降級，只是措辭不同。
       this._refreshing = false;
       this._history.abort();
       this._updateBackButton();
-      this._hint('重新整理失敗：' + msg + '（已停在原生畫面）', 0, HINT_ERROR);
+      failed('重新整理失敗：');
       return;
     }
     if (this._resuming) {
@@ -372,7 +387,7 @@ AidNavigation.prototype = {
       this._resuming = false;
       this._history.abort();
       this._updateBackButton();
-      if (!quiet) this._hint('回到斷線前的位置失敗：' + msg + '（已停在原生畫面）', 0, HINT_ERROR);
+      if (!quiet || overArticle) failed('回到斷線前的位置失敗：');
       this._endRun({ ok: false, error: msg });
       return;
     }
@@ -380,7 +395,7 @@ AidNavigation.prototype = {
     // whole stack rather than offer a back that lands somewhere wrong.
     this._history.abort();
     this._updateBackButton();
-    this._hint('AID 跳文失敗：' + msg + '（已停在原生畫面）', 0, HINT_ERROR);
+    failed('AID 跳文失敗：');
     this._endRun({ ok: false, error: msg });
   },
 
@@ -976,6 +991,8 @@ AidNavigation.prototype = {
     // External navigation leaves the result set; its query no longer owns
     // the server list, even if a legacy footer still looks identical.
     clearSearchResultsContext(this._core);
+    // Read before the native mirror below: a failure holds this article (#209).
+    this._overArticle = !!this._core.articleHold && articlePresented(this._core);
     this.active = true;
     this._updateBackButton(); // active → hidden: no second run mid-flight
     // Claim the leaveCurrentPost that our own landing will produce — see

@@ -914,13 +914,15 @@ TermView.prototype = {
       } else if (held && easyReadingOn(readValuesWithDefault()) && this.bbscore?.connectedUrl?.easyReadingSupported &&
         ((!this.useEasyReadingMode && !this._listBufferFrame()) || this.buf.easyReadingFunctionMode ||
         (!this._listBufferFrame() && this.buf.pageState != 3 &&
-          !(this.buf.settledPageState === 3 && this.buf.pageLines.length)))) {
+          !(this.buf.settledPageState === 3 && this.buf.pageLines.length)) ||
+        (this.buf.pageState != 3 && this.bbscore.articleHold && this.bbscore.articleHold.running))) {
         // App-driven navigation (a jump by article code, a shortcut search)
         // drives PTT through screens between two pages. With easy reading on,
         // those screens are data: the page shown stays, at its geometry (#157).
         // Only frames that would draw the terminal grid are held; the list's
         // buffer and the article (which accumulates even before it has rows
-        // to show) take their branches below. A screen off the article still
+        // to show) take their branches below; under an operation over an
+        // article (#209), the list's buffer is held too. A screen off the article still
         // ends its accumulation, as the native branch does, so the next
         // article starts afresh.
         if (!this.buf.easyReadingFunctionMode) this._dropAccumulation();
@@ -2040,6 +2042,7 @@ TermView.prototype = {
       (app.helpMenu && app.helpMenu.holding) ||
       (app.boardSearchHold && app.boardSearchHold.holding) ||
       (app.backPause && app.backPause.holding) ||
+      (app.articleHold && app.articleHold.holding) ||
       (app.homeDashboard && app.homeDashboard.holding)));
   },
 

@@ -677,3 +677,58 @@ describe("網址列自動同步", () => {
     ]);
   });
 });
+
+// Over an easy-reading article the article stays on screen while Q is asked
+// and the article reopened, and a failure holds it (#209).
+describe("copying the link over an easy-reading article", () => {
+  function overArticle(h, { holds = true } = {}) {
+    h.ctl._locationHref = () => "https://example.github.io/pttchrome/";
+    h.ctl._clipboard = () => ({ writeText: () => Promise.resolve() });
+    const order = [];
+    h.easyReading._enterFunctionMode = () => order.push("mirror");
+    h.core.articleHold = {
+      run: vi.fn(() => { order.push("hold"); return holds; }),
+      done: vi.fn(),
+      fail: vi.fn(() => holds),
+    };
+    const reopens = [];
+    h.nav.reopenAfterPostInfo = (lineIndex, handlers) => reopens.push(handlers);
+    return { hold: h.core.articleHold, order, reopens };
+  }
+
+  test("holds the article before Q and lets it go once it is reopened", () => {
+    const h = makeHarness({ lastRow: STATUS_ROW });
+    const { hold, order, reopens } = overArticle(h);
+    h.ctl.copyCurrentPostLink();
+    expect(order).toEqual(["hold", "mirror"]);
+    h.nav.queries[0].onDone({ aid: "1gIeu-3A", board: "movie" });
+    expect(hold.done).not.toHaveBeenCalled();
+    reopens[0].onDone();
+    expect(hold.done).toHaveBeenCalledWith("deepLinkCopy");
+  });
+
+  test.each([
+    ["Q never answers", h => h.nav.queries[0].onFail()],
+    ["the reopen fails", (h, reopens) => { h.nav.queries[0].onDone({ aid: "1gIeu-3A", board: "movie" }); reopens[0].onFail(); }],
+  ])("%s: the article is held with a message offering a pull", (name, fail) => {
+    const h = makeHarness({ lastRow: STATUS_ROW });
+    const { hold, reopens } = overArticle(h);
+    h.ctl.copyCurrentPostLink();
+    fail(h, reopens);
+    expect(hold.fail).toHaveBeenCalledWith("deepLinkCopy", expect.objectContaining({
+      text: expect.stringMatching(/^複製連結失敗：.*，下拉重新整理以重試。$/),
+    }));
+    expect(h.hints.some(m => m.startsWith("複製連結失敗"))).toBe(false);
+  });
+
+  test("with nothing held the copy goes as before", () => {
+    const h = makeHarness({ lastRow: STATUS_ROW });
+    const { hold, reopens } = overArticle(h, { holds: false });
+    h.ctl.copyCurrentPostLink();
+    h.nav.queries[0].onFail();
+    expect(h.hints).toContain("複製連結失敗：讀不到文章代碼");
+    h.nav.queries[0].onDone({ aid: "1gIeu-3A", board: "movie" });
+    expect(reopens).toEqual([undefined]);
+    expect(hold.fail).not.toHaveBeenCalled();
+  });
+});

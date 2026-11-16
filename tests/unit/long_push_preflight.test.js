@@ -383,3 +383,41 @@ describe("探路階段不會誤清草稿", () => {
     expect(calls).toEqual([]);
   });
 });
+
+// Over an easy-reading article the probe keeps the article on screen (#209).
+describe("over an easy-reading article", () => {
+  const withHold = (h) => {
+    h.core.articleHold = { run: vi.fn(() => true), done: vi.fn(), fail: vi.fn(() => true) };
+    return h.core.articleHold;
+  };
+
+  test("a probe that can comment ends the hold back on the article", () => {
+    const h = pre();
+    const hold = withHold(h);
+    probe(h, TYPE_MENU);
+    expect(hold.run).toHaveBeenCalledWith("longPush");
+    h.settle(PROMPT);
+    leaveToArticle(h);
+    expect(hold.done).toHaveBeenCalledWith("longPush");
+    expect(hold.fail).not.toHaveBeenCalled();
+  });
+
+  test("PTT's refusal is read back on the article: the hold ends, not held", () => {
+    const h = pre();
+    const hold = withHold(h);
+    probe(h, vmsg("抱歉, 禁止推薦"));
+    leaveToArticle(h);
+    expect(hold.done).toHaveBeenCalledWith("longPush");
+    expect(hold.fail).not.toHaveBeenCalled();
+    expect(h.preflight[0]).toMatchObject({ blocked: true, source: "ptt" });
+  });
+
+  test("a probe PTT stops answering holds the article", () => {
+    const h = pre();
+    const hold = withHold(h);
+    probe(h, TYPE_MENU);
+    h.queue.flush();
+    expect(hold.fail).toHaveBeenCalledWith("longPush", expect.objectContaining({ message: "longPush_held" }));
+    expect(hold.done).not.toHaveBeenCalled();
+  });
+});

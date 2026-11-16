@@ -131,21 +131,36 @@ DeepLinkController.prototype = {
       bm.article && bm.article.lineIndex != null ? bm.article.lineIndex : this._currentLineIndex();
     // 按 Q 會蓋出一個原生資訊框：對好讀模式來說跟「r 回應」「X 推文」是同一類
     // 事件，先進 functionMode 停掉它的累積／翻頁，畫面才不會在交易途中被動。
+    // Over an easy-reading article the article stays on screen meanwhile (#209).
+    const hold = this._core.articleHold;
+    const held = !!(hold && hold.run('deepLinkCopy'));
     const er = this._core.easyReading;
     if (er && er._enterFunctionMode) er._enterFunctionMode();
     const self = this;
+    const failed = function(reason) {
+      const text = '複製連結失敗：' + reason;
+      if (held && hold.fail('deepLinkCopy', { reason: reason, text: text + '，下拉重新整理以重試。' })) return;
+      self._hint(text, 3000, HINT_ERROR);
+    };
+    const landed = function() {
+      hold.done('deepLinkCopy');
+    };
     nav.queryPostAid({
       kind: 'deeplink-copy-info',
       onFlushed: function() {
-        self._hint('複製連結失敗：畫面已變更', 3000, HINT_ERROR);
+        failed('畫面已變更');
       },
       onDone: function(info) {
         // 回原處永遠要做，就算沒問到 AID —— 不然使用者被丟在列表上。
-        nav.reopenAfterPostInfo(lineIndex);
+        nav.reopenAfterPostInfo(lineIndex, held ? {
+          onDone: landed,
+          onFail: function() { failed('回不到文章'); },
+          onFlushed: function() { failed('畫面已變更'); }
+        } : undefined);
         self._deliverLink(info, deliverOpts);
       },
       onFail: function() {
-        self._hint('複製連結失敗：讀不到文章代碼', 3000, HINT_ERROR);
+        failed('讀不到文章代碼');
       }
     });
     return true;
