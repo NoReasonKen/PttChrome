@@ -18,6 +18,9 @@ import { HINT_ERROR } from './status_hint';
 import { i18n } from './i18n';
 
 const NOTICE_MS = 4000;
+// How long easy reading may still mirror PTT's screen after an operation over
+// the article has ended, before the article is held there.
+export const LANDING_MS = 5000;
 
 // An article the refresh cannot name (one without a header has no board):
 // easy reading presents it as PTT shows it, which reads its identity again.
@@ -28,20 +31,108 @@ function articleShown(core) {
   return atPagerStatusRow(last) && parsePagerFooterContext(last) === 'reading' ? { kind: 'article-shown' } : null;
 }
 
+// Whether easy reading presents an article now, outside its native mirror.
+export function articlePresented(core) {
+  const { view, buf } = core;
+  return !!(view?.useEasyReadingMode && buf?.startedEasyReading && buf.pageState === 3 &&
+    !buf.easyReadingFunctionMode);
+}
+
 export class ArticleHold {
   constructor(core) {
     this.core = core;
     this.held = false;
     this.cover = null;
     this.appBar = null;
+    // The operation PttChrome runs over the article now (#209), or null.
+    this.running = null;
+    // The operation has ended while easy reading still mirrors PTT's screen.
+    this._landing = null;
+  }
+
+  // An operation PttChrome runs itself over an easy-reading article (a long
+  // comment, a jump by article code, logging out, ...) drives PTT through
+  // native screens. The article stays on screen while it runs: term_view
+  // holds every frame that would draw the terminal grid (_navigationHeld),
+  // and the App Bar stays the article's, locked. Call before the operation
+  // enters easy reading's native mirror. Returns false, holding nothing, when
+  // no easy-reading article is shown (easy reading off, a list, a prompt).
+  run(source) {
+    const core = this.core;
+    if (this.held || this.running || !articlePresented(core)) return false;
+    this._clearLanding();
+    this.running = source;
+    this.appBar = core._screenContext?.appBar || null;
+    core._refreshScreenContext?.();
+    return true;
+  }
+
+  // The operation `source` has ended. The page shown next is easy reading's
+  // own (the article again, another article, a list), drawn once easy reading
+  // has left its native mirror; a mirror that outlasts LANDING_MS is a screen
+  // easy reading cannot present, and the article is held there.
+  done(source) {
+    if (!source || this.running !== source) return;
+    this.running = null;
+    const buf = this.core.buf;
+    if (buf.easyReadingFunctionMode) this.core.easyReading?.settleFunctionMode();
+    if (buf.easyReadingFunctionMode) {
+      this._landing = { source, timer: setTimeout(() => this._landed(), LANDING_MS) };
+    } else {
+      this._released();
+    }
+  }
+
+  // The operation `source` failed: the article stays shown, held (see hold),
+  // with `text`, the message itself, or the message key `message`. `parked`:
+  // the operation's sessions are still parked (see hold).
+  fail(source, { reason, message, text, parked = false }) {
+    if (!source || this.running !== source) return false;
+    this.hold({ source, reason, message, text, appBar: this.appBar, parked });
+    this.core.view.navigationEnded?.();
+    return true;
+  }
+
+  // Whether term_view holds the grid frames (_navigationHeld): for an
+  // operation, and under a held article, so that the page under the cover is
+  // still the article when the hold is released.
+  get holding() {
+    return this.held || !!this.running || !!(this._landing && this.core.buf.easyReadingFunctionMode);
+  }
+
+  _landed() {
+    const landing = this._landing;
+    this._landing = null;
+    if (!landing) return;
+    if (!this.core.buf.easyReadingFunctionMode) {
+      this._released();
+      return;
+    }
+    this.hold({ source: landing.source, reason: 'unpresented', message: 'articleHold_unpresented',
+      appBar: this.appBar, parked: true });
+    this.core.view.navigationEnded?.();
+  }
+
+  _clearLanding() {
+    if (this._landing) clearTimeout(this._landing.timer);
+    this._landing = null;
+  }
+
+  _released() {
+    if (!this.held) this.appBar = null;
+    this.core._refreshScreenContext?.();
+    this.core.view.navigationEnded?.();
   }
 
   // `source`, `reason`: the bug event; `message`: the message key naming the
-  // cause; `cover`: the copy of the article already on screen, or none to copy
-  // the article shown now; `parked`: the caller already parked the sessions.
-  hold({ source, reason, message, cover, appBar, parked = false }) {
+  // cause, or `text`: the message itself; `cover`: the copy of the article
+  // already on screen, or none to copy the article shown now; `parked`: the
+  // caller already parked the sessions and entered the native mirror.
+  hold({ source, reason, message, text, cover, appBar, parked = false }) {
     const core = this.core;
     reportBug(core, source, reason, {});
+    this.running = null;
+    this._clearLanding();
     if (this.held) {
       cover?.destroy();
     } else {
@@ -55,11 +146,15 @@ export class ArticleHold {
       }
       core._refreshScreenContext?.();
     }
-    core.view.flashListHint?.(i18n(message), NOTICE_MS, HINT_ERROR);
+    core.view.flashListHint?.(text || i18n(message), NOTICE_MS, HINT_ERROR);
   }
 
-  // The App Bar stays the article's; only refresh runs.
+  // The App Bar stays the article's: locked while an operation runs; once
+  // held, only refresh runs.
   toolbarContext() {
+    if (this.running && !this.held) {
+      return { ...EMPTY_TOOLBAR_CONTEXT, appBar: this.appBar || EMPTY_TOOLBAR_CONTEXT.appBar, locked: true };
+    }
     if (!this.held) return null;
     return {
       ...EMPTY_TOOLBAR_CONTEXT, appBar: this.appBar || EMPTY_TOOLBAR_CONTEXT.appBar, refresh: true, locked: true
@@ -108,9 +203,13 @@ export class ArticleHold {
     });
   }
 
-  // Disconnection.
+  // Disconnection: an operation still running goes on without the hold.
   reset() {
+    this._clearLanding();
+    const running = this.running;
+    this.running = null;
     if (this.held) this._release();
+    else if (running) this._released();
   }
 
   _release() {
@@ -119,5 +218,6 @@ export class ArticleHold {
     this.cover = null;
     this.appBar = null;
     this.core._refreshScreenContext?.();
+    this.core.view.navigationEnded?.();
   }
 }

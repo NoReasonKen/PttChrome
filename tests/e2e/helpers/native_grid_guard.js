@@ -102,8 +102,19 @@ function pageGuard({ tag, log, diagnostics }) {
       state.loggedIn = false;
       return onClose.apply(this, arguments);
     };
+    // The reader's own key that opened easy reading's native mirror over an
+    // article (help or reply), until the mirror ends: a hit's `nativeKey`.
+    const er = app.easyReading;
+    if (er && er.enterNativeRoute) {
+      const enterNativeRoute = er.enterNativeRoute;
+      er.enterNativeRoute = function(ch) {
+        if (!app.buf.easyReadingFunctionMode) state.nativeKey = ch;
+        return enterNativeRoute.apply(this, arguments);
+      };
+    }
     const render = view._renderScreenLines;
     view._renderScreenLines = function(lines, dropHidden, inlinePreview, hoverPreview, overrides) {
+      if (!app.buf.easyReadingFunctionMode) state.nativeKey = null;
       const result = render.apply(this, arguments);
       try {
         const buf = app.buf;
@@ -150,6 +161,7 @@ function pageGuard({ tag, log, diagnostics }) {
         surface: view._frameSurface(overrides),
         pageState: buf.pageState,
         functionMode: !!buf.easyReadingFunctionMode,
+        nativeKey: (buf.easyReadingFunctionMode && state.nativeKey) || null,
         listRenderMode: buf.listRenderMode,
         title: buf.getRowText(0, 0, buf.cols).trim().replace(/\s+/g, ' ').slice(0, 40),
         // Context for classifying a hit: a reconnect resume in flight, the
@@ -237,8 +249,11 @@ const ALLOWED = [
     [198, '網路遊樂場'],
     [197, '編特別名單'],
   ].map(([issue, title]) => ({ issue, why: `easy-reading gap: ${title}`, match: (hit) => hit.title.includes(title) })),
-  { issue: 209, why: "native screen under an open article: help, reply (#208) and PttChrome's own operations",
-    match: (hit) => hit.functionMode },
+  // A reply key over an article opens PTT's reply flow natively. A help key
+  // opens the help sheet (#222), and PttChrome's own operations hold the
+  // article (#209): neither is allowed.
+  { issue: 208, why: 'native reply flow under an open article',
+    match: (hit) => hit.functionMode && !!hit.nativeKey && !'hH?'.includes(hit.nativeKey) },
   // A fixture's frame, not real PTT: no issue removes it. The dashboard covers
   // only a main menu that offers My Favorites (home_dashboard.isHomeScreen,
   // #187) and leaves any other native by design. Real PTT shows the item to

@@ -2,7 +2,7 @@
 // at the reading position with a message, the failure is a bug event, keys
 // wait, and pull-to-refresh retries from what PTT shows.
 // real-input: tests/e2e/offline/mobile_thread_jump.offline.spec.js
-import { ArticleHold } from '../../src/js/article_hold';
+import { ArticleHold, LANDING_MS } from '../../src/js/article_hold';
 import { HiddenArticleRoute } from '../../src/js/hidden_article_route';
 import { HeaderlessReopen } from '../../src/js/headerless_reopen';
 import { ScreenRefresh } from '../../src/js/screen_refresh';
@@ -30,8 +30,13 @@ function makeCore() {
       get pageState() { return screen.pageState; },
       getRowText: row => screen.rows[row] || '',
       addEventListener: vi.fn(),
+      startedEasyReading: true,
+      easyReadingFunctionMode: false,
     },
-    view: { flashListHint: (text, ms, level) => hints.push({ text, level }), _articleBoard: 'Test' },
+    view: {
+      flashListHint: (text, ms, level) => hints.push({ text, level }), _articleBoard: 'Test',
+      useEasyReadingMode: true, navigationEnded: vi.fn()
+    },
     debugRecorder: { log: (tag, info) => logs.push({ tag, info }) },
     commandQueue: { idle: true, enqueue: vi.fn(), flush: vi.fn() },
     aidNavigation: { active: false, refresh: vi.fn(() => true) },
@@ -211,8 +216,132 @@ describe('Headerless reopen failure', () => {
   });
 });
 
+// PttChrome's own operations over an article (a long comment, a jump by
+// article code, logging out) keep the article on screen while they drive PTT
+// through native screens (#209).
+describe('Operation over the article', () => {
+  afterEach(() => vi.useRealTimers());
+
+  test('holds the grid frames under the article App Bar while it runs', () => {
+    const { core } = makeCore();
+    expect(core.articleHold.run('longPush')).toBe(true);
+    expect(core.articleHold.holding).toBe(true);
+    expect(core.articleHold.held).toBe(false);
+    core.buf.easyReadingFunctionMode = true;
+    const context = mobileToolbarContext(core);
+    expect(context.appBar).toEqual({ kind: 'article', title: 'Source' });
+    expect(context.locked).toBe(true);
+    expect(context.refresh).toBe(false);
+  });
+
+  test('holds nothing unless easy reading presents an article', () => {
+    for (const change of [
+      core => { core.view.useEasyReadingMode = false; },
+      core => { core.buf.startedEasyReading = false; },
+      core => { core.buf.easyReadingFunctionMode = true; },
+      (core, show) => show(LIST, 2),
+    ]) {
+      const { core, show } = makeCore();
+      change(core, show);
+      expect(core.articleHold.run('longPush')).toBe(false);
+      expect(core.articleHold.holding).toBe(false);
+      expect(mobileToolbarContext(core)?.locked).not.toBe(true);
+    }
+  });
+
+  test('ends when easy reading presents its page again', () => {
+    const { core } = makeCore();
+    core.articleHold.run('longPush');
+    core.buf.easyReadingFunctionMode = true;
+    core.easyReading.settleFunctionMode = vi.fn(() => { core.buf.easyReadingFunctionMode = false; });
+    core.articleHold.done('longPush');
+    expect(core.easyReading.settleFunctionMode).toHaveBeenCalled();
+    expect(core.articleHold.holding).toBe(false);
+    expect(core.articleHold.held).toBe(false);
+    expect(core.view.navigationEnded).toHaveBeenCalled();
+    expect(core.articleHold.toolbarContext()).toBe(null);
+  });
+
+  test('keeps holding until the native mirror settles away, then lets the page draw', () => {
+    vi.useFakeTimers();
+    const { core } = makeCore();
+    core.articleHold.run('logout');
+    core.buf.easyReadingFunctionMode = true;
+    core.articleHold.done('logout');
+    expect(core.articleHold.holding).toBe(true);
+    core.buf.easyReadingFunctionMode = false;
+    expect(core.articleHold.holding).toBe(false);
+    vi.advanceTimersByTime(LANDING_MS);
+    expect(core.articleHold.held).toBe(false);
+  });
+
+  test('a native screen easy reading never leaves holds the article', () => {
+    vi.useFakeTimers();
+    const { core, hints, logs } = makeCore();
+    core.articleHold.run('longPush');
+    core.buf.easyReadingFunctionMode = true;
+    core.articleHold.done('longPush');
+    vi.advanceTimersByTime(LANDING_MS);
+    expect(core.articleHold.held).toBe(true);
+    expect(logs.at(-1).info).toEqual(expect.objectContaining({ source: 'longPush', reason: 'unpresented' }));
+    expect(hints.at(-1)).toEqual({ text: i18n('articleHold_unpresented'), level: HINT_ERROR });
+  });
+
+  test('a failure holds the article with the operation\'s message, without parking twice', () => {
+    const { core, hints, logs } = makeCore();
+    core.articleHold.run('longPush');
+    core.buf.easyReadingFunctionMode = true;
+    expect(core.articleHold.fail('longPush', { reason: 'timeout', text: 'Failed: timeout.', parked: true })).toBe(true);
+    expect(core.articleHold.running).toBe(null);
+    expect(core.articleHold.held).toBe(true);
+    expect(hints).toEqual([{ text: 'Failed: timeout.', level: HINT_ERROR }]);
+    expect(logs).toEqual([{ tag: BUG_TAG, info: expect.objectContaining({ source: 'longPush', reason: 'timeout' }) }]);
+    expect(core.easyReading._enterFunctionMode).not.toHaveBeenCalled();
+    expect(core.listSession.beginExternalNavigation).not.toHaveBeenCalled();
+    expect(mobileToolbarContext(core)).toEqual(expect.objectContaining({ refresh: true, locked: true }));
+    expect(core.view.navigationEnded).toHaveBeenCalled();
+  });
+
+  test('a held article keeps holding the grid frames under its cover until released', () => {
+    const { core } = makeCore();
+    core.articleHold.run('longPush');
+    core.articleHold.fail('longPush', { reason: 'timeout', message: 'longPush_held' });
+    expect(core.articleHold.holding).toBe(true);
+    core.view.navigationEnded.mockClear();
+    core.articleHold.reset();
+    expect(core.articleHold.holding).toBe(false);
+    expect(core.view.navigationEnded).toHaveBeenCalled();
+  });
+
+  test('a failure after the operation handed its sessions back parks them again', () => {
+    const { core } = makeCore();
+    core.articleHold.run('longPush');
+    core.articleHold.fail('longPush', { reason: 'timeout', message: 'longPush_held' });
+    expect(core.listSession.beginExternalNavigation).toHaveBeenCalledWith({ fromIdle: true });
+    expect(core.boardListSession.beginExternalNavigation).toHaveBeenCalled();
+  });
+
+  test('another operation\'s end or failure leaves it running', () => {
+    const { core } = makeCore();
+    core.articleHold.run('longPush');
+    core.articleHold.done('logout');
+    expect(core.articleHold.fail('logout', { reason: 'x', text: 'x' })).toBe(false);
+    expect(core.articleHold.running).toBe('longPush');
+  });
+
+  test('disconnection lets the operation go on without the hold', () => {
+    const { core } = makeCore();
+    core.articleHold.run('logout');
+    core.articleHold.reset();
+    expect(core.articleHold.holding).toBe(false);
+    expect(core.articleHold.held).toBe(false);
+    expect(core.view.navigationEnded).toHaveBeenCalled();
+  });
+});
+
 describe('Failure messages', () => {
-  test.each(['threadJump_failed', 'headerlessReopen_failed', 'articleResize_failed', 'articleHold_keys', 'articleHold_retryTimeout'])(
+  test.each(['threadJump_failed', 'headerlessReopen_failed', 'articleResize_failed', 'articleHold_keys', 'articleHold_retryTimeout',
+    'articleHold_unpresented'])(
     '%s offers pull-to-refresh and never the native screen', key => {
       expect(zh_TW[key].message).not.toMatch(/原生/);
       expect(zh_TW[key].message).toMatch(/下拉重新整理以重試/);

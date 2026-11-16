@@ -220,3 +220,47 @@ describe("停手條件（不盲送）", () => {
     expect(h.hints.some((m) => m.indexOf("登出失敗") === 0)).toBe(false);
   });
 });
+
+// Over an easy-reading article the article stays on screen while logging out,
+// and a failure holds it (#209).
+describe("over an easy-reading article", () => {
+  function withHold(h, { holds = true } = {}) {
+    const order = [];
+    h.core.easyReading._enterFunctionMode = vi.fn(() => order.push("mirror"));
+    h.core.articleHold = {
+      run: vi.fn(() => { order.push("hold"); return holds; }),
+      fail: vi.fn(() => holds),
+    };
+    return order;
+  }
+
+  test("holds the article before PTT's screens are mirrored", () => {
+    const h = makeHarness(ARTICLE);
+    const order = withHold(h);
+    h.session.start();
+    expect(h.core.articleHold.run).toHaveBeenCalledWith("logout");
+    expect(order).toEqual(["hold", "mirror"]);
+  });
+
+  test("a failure holds the article with a message offering a pull, not the native screen", () => {
+    const h = makeHarness(MAIN_MENU);
+    withHold(h);
+    h.session.start();
+    h.respond(MAIN_MENU);
+    h.miss();
+    expect(h.core.articleHold.fail).toHaveBeenCalledWith("logout", expect.objectContaining({
+      text: expect.stringMatching(/^登出失敗：.*下拉重新整理以重試。$/), parked: true,
+    }));
+    expect(h.core.articleHold.fail.mock.calls[0][1].text).not.toMatch(/原生/);
+    expect(h.hints.some((m) => m.indexOf("登出失敗") === 0)).toBe(false);
+  });
+
+  test("with nothing held, a failure still says PTT's screen is shown", () => {
+    const h = makeHarness(MAIN_MENU);
+    withHold(h, { holds: false });
+    h.session.start();
+    h.respond(MAIN_MENU);
+    h.miss();
+    expect(h.hints.some((m) => /^登出失敗：.*（已停在原生畫面，可手動操作）$/.test(m))).toBe(true);
+  });
+});

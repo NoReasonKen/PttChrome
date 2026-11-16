@@ -1431,6 +1431,8 @@ export const en_US = {
   "articleHold_keys": { "message": "The article operation failed. Pull down to refresh and retry." },
   "articleHold_unknownScreen": { "message": "PTT's current screen could not be recognized; nothing was retried." },
   "articleHold_retryTimeout": { "message": "The refresh timed out. Pull down to refresh and retry." },
+  "articleHold_unpresented": { "message": "PTT stopped on a screen easy reading cannot show. Pull down to refresh and retry." },
+  "longPush_held": { "message": "The long comment did not finish. Pull down to refresh and retry." },
   "listResize_failed": { "message": "The article list could not adapt to the new screen size. Pull down to refresh and retry." },
   "articleShortcutSearch_results": { "message": "Same-author search results. Back returns to the source article." },
   "articleShortcutSearch_empty": { "message": "No matching articles. Returned to the source article." },

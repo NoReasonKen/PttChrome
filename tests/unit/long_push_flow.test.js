@@ -663,3 +663,47 @@ describe("onSent 只在整段成功送完時響一次", () => {
     expect(calls).toEqual([]);
   });
 });
+
+// Over an easy-reading article the article stays on screen while the comment
+// goes out, and a failure holds it (#209).
+describe("over an easy-reading article", () => {
+  const withHold = (h) => {
+    h.core.articleHold = { run: vi.fn(() => true), done: vi.fn(), fail: vi.fn(() => true) };
+    return h.core.articleHold;
+  };
+
+  test("holds the article from the first key until PTT shows the article again", () => {
+    const h = harness();
+    const hold = withHold(h);
+    h.session.start({ text: "安安你好", type: "push" });
+    expect(hold.run).toHaveBeenCalledWith("longPush");
+    runOne(h);
+    expect(h.session.active).toBe(false);
+    expect(hold.done).toHaveBeenCalledWith("longPush");
+    expect(hold.fail).not.toHaveBeenCalled();
+  });
+
+  test("a failure holds the article with its message and keeps the error sheet", () => {
+    const h = harness();
+    const hold = withHold(h);
+    h.session.start({ text: "第一段\n第二段", type: "push" });
+    h.settle(vmsg("本文已刪除"));
+    expect(hold.fail).toHaveBeenCalledWith("longPush", expect.objectContaining({ message: "longPush_held" }));
+    expect(hold.done).not.toHaveBeenCalled();
+    expect(h.results[0]).toMatchObject({ source: "ptt", message: "本文已刪除" });
+  });
+
+  test("a cancel ends the hold wherever PTT stops", () => {
+    const h = harness();
+    const hold = withHold(h);
+    h.session.start({ text: "第一段\n第二段", type: "push" });
+    h.settle(TYPE_MENU);
+    h.settle(PROMPT);
+    h.session.cancel();
+    // Ctrl-C leaves the comment flow back to the article.
+    h.settle(ARTICLE_FOOTER);
+    expect(h.session.active).toBe(false);
+    expect(hold.done).toHaveBeenCalledWith("longPush");
+    expect(hold.fail).not.toHaveBeenCalled();
+  });
+});

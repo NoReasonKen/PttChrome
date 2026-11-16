@@ -119,7 +119,10 @@ LogoutSession.prototype = {
     this.awaitingClose = false;
     this._clearCloseTimer();
     this.opHint = '';
-    this._hint('登出失敗：' + msg + '（已停在原生畫面，可手動操作）', 6000, HINT_ERROR);
+    // Over an easy-reading article the article stays, held (#209).
+    const text = '登出失敗：' + msg;
+    if (this._core?.articleHold?.fail('logout', { reason: msg, text: text + '，下拉重新整理以重試。', parked: true })) return;
+    this._hint(text + '（已停在原生畫面，可手動操作）', 6000, HINT_ERROR);
   },
 
   _clearCloseTimer: function() {
@@ -142,6 +145,9 @@ LogoutSession.prototype = {
     if (core.autoLogin && core.autoLogin.stop) core.autoLogin.stop();
     // 讓原生畫面上場，並把列表 session 停到 functionMode（佇列清空、它的 reducer 吸收
     // 我們的中間畫面）—— 與 aid_navigation._begin 同一組前置，順序同理：先於 enqueue。
+    // Over an easy-reading article the article stays until the connection
+    // closes (#209).
+    core.articleHold?.run('logout');
     if (core.easyReading && core.easyReading._enterFunctionMode) core.easyReading._enterFunctionMode();
     if (core.listSession && core.listSession.beginExternalNavigation)
       core.listSession.beginExternalNavigation();

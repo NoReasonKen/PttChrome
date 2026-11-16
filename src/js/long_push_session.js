@@ -258,6 +258,10 @@ LongPushSession.prototype = {
     this.disarm();
     this._phase = 'idle';
     this._reset();
+    // A failure leaves PTT on a screen easy reading cannot present: the article
+    // is held there (#209). Done or cancelled, PTT shows a page again.
+    if (o.kind === 'fail') this._holdArticle(o.reason || o.message);
+    else this._landArticle();
     if (o.kind === 'done') {
       if (o.message) this._hint(o.message);
       // 唯一的「整段都送出去了」出口 ⇒ 草稿到這裡才可以清（見建構式的 onSent）。
@@ -313,6 +317,7 @@ LongPushSession.prototype = {
     this._phase = 'armed';
     this.active = false;
     this._clearTimer();
+    this._landArticle();
     // 遮罩收掉與輸入框打開必須落在 React 的**同一次 update**，否則 modalShown 會
     // true→false→true，終端機會把焦點搶回隱藏 input #t（見 ContextMenu 的掛接）。
     this._emit(null);
@@ -332,6 +337,11 @@ LongPushSession.prototype = {
     this.disarm();
     this._phase = 'idle';
     this._reset();
+    // PTT's own refusal is read after the article was reopened, and a cancel
+    // leaves the comment flow: PTT shows a page again. Any other failure
+    // leaves it on a screen easy reading cannot present (#209).
+    if (p.source === 'ptt' || p.message === MSG.cancelled) this._landArticle();
+    else this._holdArticle(p.reason || p.message);
     if (this.onPreflight)
       this.onPreflight({
         blocked: true,
@@ -442,12 +452,22 @@ LongPushSession.prototype = {
     // 把**真的**原生畫面放到台面上再開始驅動它：文章好讀的 functionMode 是既有的
     // 即時鏡像機制（先例 deep_link_controller / aid_navigation），列表好讀則停到
     // 它自己的 functionMode，讓共用 queue 淨空、reducer 不來搶我們的 settle。
+    // The article stays on screen meanwhile (#209).
+    this._core.articleHold?.run('longPush');
     const er = this._core.easyReading;
     if (er && er._enterFunctionMode) er._enterFunctionMode();
     if (this._core.listSession && this._core.listSession.beginExternalNavigation)
       this._core.listSession.beginExternalNavigation();
     if (this._core.boardListSession && this._core.boardListSession.beginExternalNavigation)
       this._core.boardListSession.beginExternalNavigation();
+  },
+
+  _landArticle: function() {
+    this._core.articleHold?.done('longPush');
+  },
+
+  _holdArticle: function(reason) {
+    this._core.articleHold?.fail('longPush', { reason: String(reason || 'fail'), message: 'longPush_held' });
   },
 
   // 領閱讀紀錄的書籤（決策表 'long-push'）。書籤量不到文章時（unit 的假畫面）退回

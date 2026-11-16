@@ -449,6 +449,9 @@ export class ArticleShortcutSearch {
       this.trail = fullBoardList(searchGateFacts(this.core), this.trail.board) ? transition(this.trail) : null;
     }
     this._finish();
+    // Still on the article (PTT never left it): easy reading presents it
+    // again now, as no settle follows to leave the native mirror (#209).
+    if (this.core.buf.pageState === 3) this.core.easyReading?.settleFunctionMode();
     this._hint(notice);
   }
 
