@@ -297,6 +297,8 @@ describe("v5 closed interaction: keyClass whitelist enumeration", () => {
     // Help: the help key goes out at once, with no cursor sync before it (#222);
     // the help menu sheet presents PTT's help screen.
     ["h", "functionMode", "help"],
+    // `H` is the alias PTT's help screen lists for it.
+    ["H", "functionMode", "help"],
   ];
   test.each(WHITELIST_BEHAVIOR)("白名單 %s → state=%s", (key, state, kind) => {
     const { s, enqueued } = makeSession();

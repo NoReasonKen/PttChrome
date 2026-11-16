@@ -2236,7 +2236,9 @@ ListSession.prototype = {
       case '\r':
         return { class: this._selectedNum == null ? 'open-pinned' : 'open' };
       case LEFT_ARROW: return { class: 'leave' };
-      case 'h': return { class: 'help' };
+      case 'h':
+      case 'H':
+        return { class: 'help' };
       default: return { class: 'unsupported' };
     }
   },
@@ -2941,8 +2943,10 @@ ListSession.prototype = {
         )
           return { class: 'native-inplace', bytes: keyEventToBytes(e) };
         // Help is a feature easy reading presents: the help menu sheet lists
-        // PTT's help screen (docs/help-menu.md).
-        if (e.key === 'h') return { class: 'help' };
+        // PTT's help screen (docs/help-menu.md). `H` is the alias that screen
+        // lists. `?` is not one here: on the article list it searches titles
+        // (the search sheet takes it), and `Q` is PTT's article information.
+        if (e.key === 'h' || e.key === 'H') return { class: 'help' };
         return { class: 'unsupported' };
     }
   },
