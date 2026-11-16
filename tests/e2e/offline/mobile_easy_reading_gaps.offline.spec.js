@@ -1,9 +1,14 @@
-// Easy-reading gaps (#161): the main-menu areas easy reading does not present
-// yet. Until a gap is filled it must look the same on every visit with easy
-// reading on, so each area is reached from the home dashboard twice and must
-// show PTT's native screen both times. The native grid guard allows each area
-// under its gap issue (tests/e2e/helpers/native_grid_guard.js); filling a gap
-// removes its entry here and there.
+// Easy-reading gaps (#161): the main-menu areas easy reading presents but does
+// not show as its own pages yet. Until a gap is filled it must look the same
+// on every visit with easy reading on, so each area is reached from the home
+// dashboard twice and must show PTT's native screen both times. The native
+// grid guard allows each area under its gap issue
+// (tests/e2e/helpers/native_grid_guard.js); filling a gap removes its entry
+// here and there.
+//
+// The areas easy reading does not present at all (#231, docs/easy-reading.md)
+// have no entrance: at home their main-menu keys are refused with the "not
+// supported" hint, PTT receives nothing and no native grid is painted.
 //
 // Screens are synthetic: a submenu laid out like mbbsd/menu.c#domenu (title
 // from the menu's description), a list with the title redraw_title prints.
@@ -11,6 +16,7 @@ const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { bootOffline, waitScreenSettled } = require('../helpers/replay');
 const { drawMainMenu, drawMenu, MAIN_MENU } = require('../helpers/main_menu');
+const { startCapture, expectOnlyFence } = require('../helpers/capture');
 
 // The main menu with PTT's new-mail notice in its title row (menu.c#redraw_title):
 // the only state in which the mobile home dashboard shows its mail button.
@@ -46,7 +52,6 @@ async function drawList(page, title) {
 }
 
 const GAPS = [
-  { issue: 195, area: 'announcement area', key: 'a', title: '精華文章', draw: (page) => drawList(page, '精華文章') },
   {
     issue: 196, area: 'mail', key: 'm', title: '私人信件區',
     draw: (page) => drawMenu(page, submenu('私人信件區', ['(R)ead          我的信箱', '(S)end          站內寄信'], '電子郵件')),
@@ -57,22 +62,17 @@ const GAPS = [
     issue: 199, area: 'chat area', key: 't', title: '休閒聊天區',
     draw: (page) => drawMenu(page, submenu('休閒聊天區', ['(U)sers         線上使用者列表', '(Q)uery         查詢網友'], '聊天說話')),
   },
-  {
-    issue: 200, area: 'personal settings', key: 'u', title: '個人設定區',
-    draw: (page) => drawMenu(page, submenu('個人設定區', ['(U)Customize    個人化設定', '(I)nfo          設定個人資料與密碼'], '個人設定')),
-  },
-  {
-    issue: 201, area: 'system information area', key: 'x', title: '系統資訊區',
-    draw: (page) => drawMenu(page, submenu('系統資訊區', ['(T)Hot Topics   【熱門話題與看板】', '(A)greement     《本站使用者條款》'], '工具程式')),
-  },
-  {
-    issue: 198, area: 'entertainment area', key: 'p', title: '網路遊樂場',
-    draw: (page) => drawMenu(page, submenu('網路遊樂場', ['(P)ay         【 量販店 】', '(C)hicken        養雞場'], '休閒遊樂')),
-  },
-  {
-    issue: 197, area: 'special lists', key: 'n', title: '編特別名單',
-    draw: (page) => drawMenu(page, submenu('編特別名單', ['(O)verRide      好友名單', '(B)lack         壞人名單'], '名單編輯')),
-  },
+];
+
+// Main-menu areas easy reading does not present (#231), by the item letter
+// the main menu shows for each (helpers/main_menu.js MAIN_MENU).
+const UNSUPPORTED = [
+  { area: '精華公佈欄', key: 'a' },
+  { area: '個人設定區', key: 'u' },
+  { area: '系統資訊區', key: 'x' },
+  { area: '娛樂與休閒', key: 'p' },
+  { area: '編特別名單', key: 'n' },
+  { area: '離開，再見', key: 'g' },
 ];
 
 // One visit: home dashboard on the main menu, the reader's key or tap, then
@@ -105,6 +105,32 @@ test.describe('easy-reading gaps look the same on every visit', () => {
       const second = await visit(page, gap);
       expect(second).toEqual(first);
       expect(await page.evaluate(() => window.__app.homeDashboard.state.visible)).toBe(false);
+    });
+  }
+});
+
+test.describe('main-menu areas easy reading does not present have no entrance', () => {
+  for (const { area, key } of UNSUPPORTED) {
+    test(`at home the ${area} key is refused and PTT receives nothing (#231)`, async ({ page }) => {
+      await bootOffline(page, ptt);
+      await ptt.applyPrefs(page, { enableEasyReading: true });
+      // Favorites fetched just now: home sends nothing of its own while the keys are typed.
+      await page.evaluate(() => { window.__app.homeDashboard._state.fetchedAt = Date.now(); });
+      await drawMainMenu(page);
+      await expect.poll(() => page.evaluate(() => window.__app.homeDashboard.state.visible)).toBe(true);
+      await page.evaluate(() => window.__nativeGridGuard.reset());
+      await page.focus('#t');
+      await startCapture(page);
+      // A hardware key, its upper case, and the soft keyboard's typed character.
+      await page.keyboard.press(key);
+      await expect(page.locator('.ListHint')).toContainText('好讀模式目前不支援這個按鍵');
+      await page.keyboard.press('Shift+' + key.toUpperCase());
+      await page.keyboard.insertText(key);
+      // The help key goes out through the same keyboard path, so anything the
+      // refused keys sent would show up before it.
+      await expectOnlyFence(page, () => page.keyboard.press('h'), 'h', area);
+      expect(await page.evaluate(() => window.__nativeGridGuard.hits)).toEqual([]);
+      await expect(page.locator('#homeDashboard')).toBeVisible();
     });
   }
 });
