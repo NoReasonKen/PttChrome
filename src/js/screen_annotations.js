@@ -14,6 +14,7 @@ import {
   isDeletedListRow,
   isListShapedRow,
   isListRowRead,
+  isMailRowRead,
   blacklistNoticeText,
   FloorCounter,
   ModernCommentThread,
@@ -329,6 +330,7 @@ export function computeAnnotations(
     onPixivClick,
     inListContext,
     listEasyReading,
+    mailList,
     onAidClick,
   } = enhance;
   const hasBlacklist = blacklist && blacklist.size > 0;
@@ -987,7 +989,12 @@ export function computeAnnotations(
     //     no invert); blacklisted rows render a deleted-style「（本文已被黑名單）」notice
     //     line instead of being hidden. (User rule 2026-07: 原生模式刪除文不動、黑名單
     //     改被刪除樣式；好讀暫時切回原生也走此路 → 不再變回反黑.)
-    for (let row = 0; row < lines.length; ++row) {
+    // The mailbox (mailList, #196) has its own columns: no row is hidden or
+    // carries an author/title for the blacklist menu, only the read mark.
+    for (let row = 0; mailList && row < lines.length; ++row) {
+      if (isMailRowRead(lines[row])) result[row] = { listRead: true };
+    }
+    for (let row = 0; !mailList && row < lines.length; ++row) {
       const text = rowToText(lines[row]);
       // 這一列必須先「長得像列表列」才准跑黑名單／才准掛 data-list-*。
       // 上面那兩個輸入（pageState、inListContext）都是**黏的**，從列表叫出來的

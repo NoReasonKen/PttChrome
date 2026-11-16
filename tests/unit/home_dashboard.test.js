@@ -95,6 +95,25 @@ const ARTICLE_LIST = (board = "C_Chat") => {
   return { rowTexts, rows: ROWS, curX: 0, curY: 3 };
 };
 
+// mail.c#mailtitle and maildoent (#196).
+const MAIL_LIST = () => {
+  const rowTexts = Array.from({ length: ROWS }, () => "");
+  rowTexts[0] = "【郵件選單】          批踢踢實業坊          看板《C_Chat》";
+  rowTexts[2] = "  編號   日 期 作 者          信  件  標  題";
+  rowTexts[3] = ">    1 + 11/02 alice          ◇ 你好";
+  rowTexts[ROWS - 1] = " 信件列表  (R)回信 (x)站內轉寄 (d)刪信            (h)說明";
+  return { rowTexts, rows: ROWS, curX: 0, curY: 3 };
+};
+
+// mail.c#m_read on an empty mailbox: vmsg over the main menu.
+const NO_MAIL = () => {
+  const f = mainMenu();
+  f.rowTexts[ROWS - 1] = " ◆ 您沒有來信                                                  [按任意鍵繼續] ";
+  f.curY = ROWS - 1;
+  f.curX = 79;
+  return f;
+};
+
 // ── 文章列表（bbs.c#readdoent：%7d 序號、空白、type（cell 8）、推文數、日期、作者、標題）──
 // entries 由舊到新排在 rows 3..；[num, mark] 或 { pinned, mark }；author "-" ＝刪除文。
 const LIST_FOOT = " 文章選讀  (y)回應(X)推文(^X)轉錄 (=[]<>)相關主題(/?a)找標題/作者 (b)進板畫面 ";
@@ -371,7 +390,10 @@ function makeCore(start = mainMenu()) {
       pageState: 1,
       getRowText: (r) => frame.rowTexts[r],
       isCursorOnInputField: () => !!frame.inputField,
-      addEventListener: (name, fn) => (listeners[name] = fn),
+      addEventListener: (name, fn) => (listeners[name] = listeners[name] || []).push(fn),
+      removeEventListener: (name, fn) => {
+        listeners[name] = (listeners[name] || []).filter((f) => f !== fn);
+      },
     },
     // help_menu.HelpMenuController's hold (expect → holding until the visit ends).
     helpMenu: {
@@ -394,21 +416,23 @@ function makeCore(start = mainMenu()) {
     },
   };
   const home = new HomeDashboard(core);
+  const fire = (name) => (listeners[name] || []).slice().forEach((fn) => fn());
   const show = (f) => {
     frame = f;
-    listeners.screenSettled();
+    fire("screenSettled");
   };
   // A frame arrives, before the screen settles (term_buf.notify's 'change').
   const arrive = (f) => {
     frame = f;
-    listeners.change();
+    fire("change");
   };
   // 第 i 個命令落地在 f 上：expect 必須認得它，然後 onDone（佇列的 settle 先於 screenSettled）。
   const land = (cmd, f) => {
     frame = f;
-    expect(cmd.expect(null, f)).toBeTruthy();
-    cmd.onDone(true);
-    listeners.screenSettled();
+    const result = cmd.expect(null, f);
+    expect(result).toBeTruthy();
+    cmd.onDone(result);
+    fire("screenSettled");
   };
   // term_view.onKeyDown asks the dashboard about each key; true ＝ refused
   // (the caller prevents it and nothing reaches PTT).
@@ -1108,13 +1132,192 @@ describe("HomeDashboard：動作都接到原生鍵", () => {
     expect(home.readingPosition()).toBeNull();
   });
 
-  test("開信箱 ＝ Ctrl+Z m，落地離開主功能表才算完成", () => {
+  test("開信箱 ＝ Ctrl+Z m, done once PTT shows the mail list", () => {
     const { home, enqueued, show } = makeCore();
     show(mainMenu({ mail: true }));
     expect(home.openMail()).toBe(true);
     expect(enqueued[0].keys).toBe(ZA_MAIL);
     expect(enqueued[0].expect(null, mainMenu())).toBe(false);
-    expect(enqueued[0].expect(null, ARTICLE_LIST())).toBe(true);
+    expect(enqueued[0].expect(null, MAIL_LIST())).toBe(true);
+    // Any other screen is not the mailbox: the step misses and fails fast.
+    expect(enqueued[0].expect(null, ARTICLE_LIST())).toBe(false);
+  });
+
+  // A mail list easy reading does not present (one it cannot read) must not
+  // sit behind the hold until the hold's own bound: it fails at once.
+  test("開信箱 whose mail list easy reading does not present fails fast with the hint", async () => {
+    vi.useFakeTimers();
+    try {
+      const { core, home, enqueued, hints, show, land } = makeCore();
+      show(mainMenu());
+      home.openMail();
+      land(enqueued[0], MAIL_LIST());
+      await Promise.resolve();
+      expect(core.boardSearchHold && core.boardSearchHold.holding).toBe(true);
+      vi.advanceTimersByTime(1500);
+      expect(core.boardSearchHold).toBe(null);
+      expect(hints.map((h) => h.m)).toContain("開不了信箱");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // The page stack (#224's pattern): the dashboard is copied before PTT
+  // leaves the main menu, the mail list slides in over it once PTT shows the
+  // list, and the copy goes when no list comes.
+  describe("開信箱 in the page stack", () => {
+    const withGestures = (core, { entered = true } = {}) => {
+      const held = { kind: "home" };
+      core.articleGestures = {
+        holdHomeLayer: vi.fn(() => held),
+        enterHomeLayer: vi.fn(() => entered),
+        dropHomeLayer: vi.fn(),
+      };
+      return held;
+    };
+
+    test("the mail list slides in over the dashboard copied before it", () => {
+      vi.useFakeTimers();
+      try {
+        const { core, home, enqueued, show, land } = makeCore();
+        show(mainMenu());
+        const held = withGestures(core);
+        home.openMail();
+        expect(core.articleGestures.holdHomeLayer).toHaveBeenCalled();
+        land(enqueued[0], MAIL_LIST());
+        expect(core.articleGestures.enterHomeLayer).toHaveBeenCalledWith(held, "【郵件選單】");
+        // The entry holds the screen now; the hold lets go.
+        expect(core.boardSearchHold).toBe(null);
+        expect(core.articleGestures.dropHomeLayer).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("an empty mailbox drops the copy and slides nothing", async () => {
+      vi.useFakeTimers();
+      try {
+        const { core, home, enqueued, show, land } = makeCore();
+        show(mainMenu());
+        const held = withGestures(core);
+        home.openMail();
+        land(enqueued[0], NO_MAIL());
+        expect(core.articleGestures.dropHomeLayer).toHaveBeenCalledWith(held);
+        expect(core.articleGestures.enterHomeLayer).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("a mailbox PTT does not open drops the copy", () => {
+      vi.useFakeTimers();
+      try {
+        const { core, home, enqueued, show } = makeCore();
+        show(mainMenu());
+        const held = withGestures(core);
+        home.openMail();
+        enqueued[0].onFail("timeout");
+        expect(core.articleGestures.dropHomeLayer).toHaveBeenCalledWith(held);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("a mail list that does not present drops the copy it slid over", async () => {
+      vi.useFakeTimers();
+      try {
+        const { core, home, enqueued, hints, show, land } = makeCore();
+        show(mainMenu());
+        const held = withGestures(core);
+        home.openMail();
+        land(enqueued[0], MAIL_LIST());
+        await Promise.resolve();
+        vi.advanceTimersByTime(1500);
+        expect(core.articleGestures.dropHomeLayer).toHaveBeenCalledWith(held);
+        expect(hints.map((h) => h.m)).toContain("開不了信箱");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("a mail list presented at once keeps the copy", async () => {
+      vi.useFakeTimers();
+      try {
+        const { core, home, enqueued, hints, show, land } = makeCore();
+        show(mainMenu());
+        withGestures(core);
+        core.listSession = { isMailList: () => true };
+        home.openMail();
+        core.buf.listRenderMode = "buffer";
+        land(enqueued[0], MAIL_LIST());
+        await Promise.resolve();
+        vi.advanceTimersByTime(1500);
+        expect(core.articleGestures.dropHomeLayer).not.toHaveBeenCalled();
+        expect(hints.map((h) => h.m)).not.toContain("開不了信箱");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  // #196: the mailbox opens from home with or without new mail, and the page
+  // stays on screen (core.boardSearchHold, the hold term_view draws nothing
+  // under) until list easy reading presents the mail list.
+  test("開信箱 holds the page until list easy reading presents the mail list", async () => {
+    vi.useFakeTimers();
+    try {
+      const { core, home, enqueued, show, land } = makeCore();
+      show(mainMenu());
+      expect(home.openMail()).toBe(true);
+      expect(core.boardSearchHold && core.boardSearchHold.holding).toBe(true);
+      land(enqueued[0], MAIL_LIST());
+      await Promise.resolve();
+      expect(core.boardSearchHold && core.boardSearchHold.holding).toBe(true);
+      core.buf.listRenderMode = "buffer";
+      core.listSession = { isMailList: () => true };
+      show(MAIL_LIST());
+      await Promise.resolve();
+      expect(core.boardSearchHold).toBe(null);
+      expect(core.view.navigationEnded).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("開信箱 that PTT cannot open lets the held frame go", () => {
+    vi.useFakeTimers();
+    try {
+      const { core, home, enqueued, show } = makeCore();
+      show(mainMenu());
+      home.openMail();
+      enqueued[0].onFail();
+      expect(core.boardSearchHold).toBe(null);
+      expect(core.view.navigationEnded).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // mail.c#m_read: an empty mailbox answers vmsg("您沒有來信") over the main
+  // menu and waits for any key.
+  test("開信箱 on an empty mailbox clears PTT's notice, says so, and stays home", async () => {
+    vi.useFakeTimers();
+    try {
+      const { core, home, enqueued, hints, show, land } = makeCore();
+      show(mainMenu());
+      home.openMail();
+      land(enqueued[0], NO_MAIL());
+      expect(enqueued).toHaveLength(2);
+      expect(enqueued[1].keys).toBe(" ");
+      expect(enqueued[1].expect(null, NO_MAIL())).toBe(false);
+      land(enqueued[1], mainMenu());
+      await Promise.resolve();
+      expect(core.boardSearchHold).toBe(null);
+      expect(hints.map((h) => h.m)).toContain("信箱裡沒有信");
+      expect(home.state.visible).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // #229: the board groups are PTT's class root (Ctrl+Z c, menu.c za_cmds →

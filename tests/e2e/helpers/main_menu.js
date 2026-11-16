@@ -142,6 +142,7 @@ module.exports = {
   MAIN_MENU,
   USER_MENU,
   FIRST_ITEM_ROW,
+  ART,
   ART_ROWS,
   CURSOR_ROW: FIRST_ITEM_ROW + MAIN_MENU.cursor,
   ITEMS: MAIN_MENU.items,

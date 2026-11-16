@@ -34,6 +34,7 @@
 // Covered by tests/unit/back_pause_hold.test.js and the offline specs
 // mobile_stack_invalidation / back_pause (desktop).
 import { classifyListScreen } from './list_session';
+import { listHeaderReversed } from './screen_titles';
 import { resolveDismiss, DISMISS_ANY_KEY, KEY_DISMISS } from './screen_dismiss';
 import { parseVmsgText } from './push_screen';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
@@ -226,7 +227,7 @@ export class BackPauseHold {
       curX: snap ? snap.curX : buf.cur_x,
       curY: snap ? snap.curY : buf.cur_y,
       row0Reversed: buf.isUnicolor ? buf.isUnicolor(0, 0, 29) : false,
-      row2Reversed: buf.isUnicolor ? buf.isUnicolor(2, 0, buf.cols - 10) : false,
+      row2Reversed: buf.isUnicolor ? listHeaderReversed(buf) : false,
       cursorOnInputField: typeof buf.isCursorOnInputField === 'function' ? buf.isCursorOnInputField() : false
     };
   }

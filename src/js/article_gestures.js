@@ -105,9 +105,18 @@ export class ArticleGestures {
     return [PAGE.ARTICLE_LIST, PAGE.BOARD_LIST].find(level => this._leaveable(level)) || null;
   }
 
+  // A mail in article easy reading (#196) swipes right to go back like an
+  // article, but has no drawer: its shortcuts are an article's (push, thread,
+  // author), which a mail refuses.
+  mailSwipeable() {
+    const core = this.core;
+    return !!(easyReadingOn(readValuesWithDefault()) && this._articleLeaveable() &&
+      mobileToolbarContext(core).mail);
+  }
+
   // The kind of page a contact starting now would swipe, or null.
   _swipeLevel() {
-    return this.available() ? PAGE.ARTICLE : this.listSwipeLevel();
+    return this.available() || this.mailSwipeable() ? PAGE.ARTICLE : this.listSwipeLevel();
   }
 
   update() {
@@ -115,7 +124,7 @@ export class ArticleGestures {
     // Resize events already adapt an open panel or cancel its active drag.
     // A temporary PTT footer mismatch must not dismiss that open panel.
     if (this.core.buf.easyReadingResizeInFlight && this.root && !this.track) return;
-    const available = this.available();
+    const available = this.available() || this.mailSwipeable();
     const swipeable = available || !!this.listSwipeLevel();
     this.core.view.mainDisplay.classList.toggle('articleHorizontalGestures', swipeable);
     this._setNativeTouchMove(swipeable);
@@ -171,7 +180,7 @@ export class ArticleGestures {
       id: event.pointerId,
       level,
       gesture: new ArticleHorizontalGesture({
-        width, opened: this.opened, allowExit: true, allowOpen: level === PAGE.ARTICLE, x: event.clientX, y: event.clientY, t: event.timeStamp
+        width, opened: this.opened, allowExit: true, allowOpen: level === PAGE.ARTICLE && this.available(), x: event.clientX, y: event.clientY, t: event.timeStamp
       })
     };
   }

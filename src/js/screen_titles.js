@@ -91,6 +91,31 @@ export function isArticleListTitleRow(row0Text) {
   return parseBoardKey(row0Text) != null;
 }
 
+// The mail list (mbbsd/mail.c#mailtitle → redraw_title("郵件選單")): a
+// three-part header like the menus, whose right part can still name the
+// board last visited (currboard stays set), so the title is checked before
+// any 《board》 is read. List easy reading keeps it under MAIL_LIST_KEY, which
+// starts with 【 and so never reads as a board name (#196).
+export const MAIL_LIST = '郵件選單';
+export const MAIL_LIST_KEY = '【' + MAIL_LIST + '】';
+
+export function isMailListTitleRow(row0Text) {
+  return rowHasTitle(row0Text, MAIL_LIST);
+}
+
+// Row 2 of an i_read list is one coloured header bar (pttbbs-screen-protocol
+// §3): `buf` (a TermBuf) shows it when the row has one background up to
+// cols-10. The mailbox's bar ends in mail.c's capacity tag 「(容量:n/m篇) 」
+// (「(大小:n篇) 」 without a limit), which real PTT shows on a background of
+// its own (green), so under the mail title only the bar before the widest tag
+// counts (#196).
+const MAIL_CAPACITY_TAG_CELLS = 20;
+export function listHeaderReversed(buf) {
+  const cols = buf.cols;
+  if (buf.isUnicolor(2, 0, cols - 10)) return true;
+  return isMailListTitleRow(buf.getRowText(0, 0, cols)) && buf.isUnicolor(2, 0, cols - MAIL_CAPACITY_TAG_CELLS);
+}
+
 export function boardNameFromKey(key) {
   return key != null && key.charAt(0) !== '【' ? key : null;
 }

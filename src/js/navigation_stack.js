@@ -24,7 +24,7 @@ import { commentBarEnabled } from './comment_bar';
 import { i18n } from './i18n';
 import { STACK_NOTICE_MS } from './stack_layer';
 import { searchGateFacts } from './article_search';
-import { Handoff, listBoard, openArticleKey } from './stack_handoff';
+import { Handoff, articleBoard, listBoard, openArticleKey } from './stack_handoff';
 import { KeptSource } from './stack_kept_source';
 import { isSearchResultsFrame, isFullBoardListFrame } from './search_results_screen';
 import { readSearchResultsContext } from './search_results_context';
@@ -293,7 +293,7 @@ export class NavigationStack {
   }
 
   _articlePage() {
-    return { kind: PAGE.ARTICLE, board: this.core.view._articleBoard, id: openArticleKey(this.core) };
+    return { kind: PAGE.ARTICLE, board: articleBoard(this.core), id: openArticleKey(this.core) };
   }
 
   // An article list is presented outside a handoff. A board opened from the
@@ -651,7 +651,7 @@ export class NavigationStack {
   begin({ level = PAGE.ARTICLE, send, follow, reveal, finish, cancel, hint }) {
     const revealed = this._revealed();
     const h = this.handoff = new Handoff(this.core, revealed, {
-      level, board: this._top()?.board || this.core.view._articleBoard,
+      level, board: this._top()?.board || articleBoard(this.core),
       end: how => this.handoff === h && this._end(how), follow, reveal, finish, hint
     });
     let sent = false;

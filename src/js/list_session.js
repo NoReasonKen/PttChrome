@@ -68,13 +68,16 @@ import { parseVmsgText } from './push_screen';
 import {
   BOARD_LIST,
   FAVOURITE,
+  MAIL_LIST_KEY,
   MENU_TITLES,
   boardNameFromKey,
+  isMailListTitleRow,
+  listHeaderReversed,
   parseBoardKey,
   rowHasAnyTitle,
   rowHasTitle
 } from './screen_titles';
-import { isArticleListFooter, isSubListFooter } from './screen_captions';
+import { isArticleListFooter, isMailListFooter, isSubListFooter } from './screen_captions';
 import { recordFor, listRecordMatches } from './reading_record';
 import { markReadPromptShown } from './mark_read_prompt';
 import { readSearchResultsContext, recordSearchResults } from './search_results_context';
@@ -139,21 +142,26 @@ export { parseBoardName, parseBoardKey, boardNameFromKey } from './screen_titles
 //   vs_footer(" 鴻雁往返 ", " (R/y)回信 (x)站內轉寄 …")     currstat == RMAIL
 // 新版（CONFIRMED 讀碼 @ piaip.newui read.c#i_read_caption）拆成 文章列表／系列文章／
 // 文摘列表 與 信件列表；
-// caption 集合收在 screen_captions.js。只認文章列表 caption 正好把信箱擋在外面
-// （信箱不得 engage 列表好讀）。
+// caption 集合收在 screen_captions.js。
+// The mail list (#196) is the same i_read list under another title
+// (mail.c#mailtitle → 【郵件選單】) and the mail caption: it is a clean list
+// under MAIL_LIST_KEY, and only with both, since its title row can still name
+// the board last visited and a board's title never comes with the mail caption.
 // row2 表頭來自 bbs.c 的 vbarf(ANSI_REVERSE "   編號    %s 作  者       文  章  標  題\t人氣:%d ")，
-// 其中 %s 是 日 期／價 格（LISTMODE），所以只認「編號」最穩。
+// 其中 %s 是 日 期／價 格（LISTMODE），所以只認「編號」最穩；信箱的表頭
+// （mail.c#mail_coldefs）一樣有「編號」。
 export function classifyListScreen(facts) {
   const { rowTexts, curX, curY, rows, row0Reversed, row2Reversed } = facts;
   const lastRowText = rowTexts[rows - 1] || '';
-  const boardName = parseBoardKey(rowTexts[0]);
+  const mail = isMailListTitleRow(rowTexts[0]);
+  const boardName = mail ? MAIL_LIST_KEY : parseBoardKey(rowTexts[0]);
 
   if (
     row0Reversed &&
     boardName != null &&
     row2Reversed &&
     (rowTexts[2] || '').indexOf('編號') >= 0 &&
-    isArticleListFooter(lastRowText) &&
+    (mail ? isMailListFooter(lastRowText) : isArticleListFooter(lastRowText)) &&
     curY >= 3 &&
     curY <= rows - 2 &&
     curX <= 1
@@ -226,7 +234,7 @@ export function classifyListScreen(facts) {
 export function isJumpParkedListScreen(facts) {
   const { rowTexts, curX, curY, rows, row0Reversed, row2Reversed } = facts;
   if (!row0Reversed || !row2Reversed) return false;
-  if (parseBoardKey(rowTexts[0]) == null) return false;
+  if (parseBoardKey(rowTexts[0]) == null && !isMailListTitleRow(rowTexts[0])) return false;
   if ((rowTexts[2] || '').indexOf('編號') < 0) return false;
   if ((rowTexts[rows - 1] || '').trim()) return false;
   if (curY < 3 || curY > rows - 2 || curX > 1) return false;
@@ -1152,7 +1160,7 @@ ListSession.prototype = {
       curY: snap ? snap.curY : buf.cur_y,
       rows: buf.rows,
       row0Reversed: buf.isUnicolor(0, 0, 29),
-      row2Reversed: buf.isUnicolor(2, 0, buf.cols - 10)
+      row2Reversed: listHeaderReversed(buf)
     };
     facts.messageRows = this._messageRows();
     // A message over the footer row (#206): PTT's list is unchanged beneath it
@@ -1562,7 +1570,8 @@ ListSession.prototype = {
   // list sees them (term_view.onKeyDown); the rest is the list's own table.
   wouldRefuse: function(k) {
     const ctrl = !!(k && k.ctrlKey);
-    if (!ctrl && searchKeyOpensSheet(k.key, OWNER_ARTICLE_LIST)) return false;
+    // The mailbox opens no search sheet (article_search.availableSearchKinds).
+    if (!ctrl && !this.isMailList() && searchKeyOpensSheet(k.key, OWNER_ARTICLE_LIST)) return false;
     const c = this._classifyKey({ key: k.key, ctrlKey: ctrl, altKey: false, metaKey: false, shiftKey: false });
     return c.class === 'unsupported' || c.class === 'ignore';
   },
@@ -1579,6 +1588,15 @@ ListSession.prototype = {
     // Not back on the list (PTT shows something else): the native excursion
     // rule holds again, and whatever brings the list back rebuilds it.
     if (this.state === 'functionMode') this._boardName = null;
+  },
+
+  // The list held is the mailbox (#196): its rows have mail.c#maildoent's
+  // columns, the blacklist does not apply, and only the keys easy reading
+  // presents for mail are taken.
+  // While the help sheet is up the list is let go of; the board it was on is
+  // kept for resumeAfterHelp.
+  isMailList: function() {
+    return (this._boardName ?? this._helpBoard) === MAIL_LIST_KEY;
   },
 
   // 閱讀紀錄（reading_record）的列表量測：使用者現在看到的視野。
@@ -2895,6 +2913,11 @@ ListSession.prototype = {
     // reading has the same guard as `e.key.length === 1` (easy_reading.js).
     if (keyEventToBytes(e) == null) return { class: 'ignore' };
     if (e.ctrlKey) return { class: 'unsupported' }; // Ctrl-P 發文 etc.
+    // The mailbox (#196) reads a mail with every key mail.c#mail_comms gives
+    // mail_cmd_read (→ Enter r l L); its other commands (reply, forward,
+    // delete, marks…) and the article list's in-place keys are refused below.
+    const mail = this.isMailList();
+    if (mail && (e.key === 'r' || e.key === 'l' || e.key === 'L')) return { class: 'open' };
     // Navigation synonyms follow pttbbs read.c:858-902 (' ' / 'N' / KEY_PGDN /
     // Ctrl-F = next page, 'P' / KEY_PGUP / Ctrl-B = prev page, 'p'/'k'/KEY_UP,
     // 'n'/'j'/KEY_DOWN, '$'/KEY_END). Ctrl-F/Ctrl-B deliberately stay out:
@@ -2937,6 +2960,7 @@ ListSession.prototype = {
         // 編號空間都不變 ⇒ 走凍結交易，**全程不切原生**。好讀關掉時 session 不
         // 運作；這裡的檢查只防關掉途中的殘留呼叫。
         if (
+          !mail &&
           e.key.length === 1 &&
           INPLACE_KEYS.indexOf(e.key) !== -1 &&
           this._autoResumeEnabled()
@@ -5160,6 +5184,8 @@ ListSession.prototype = {
     const lines = this._termBuf.listLines || [];
     const texts = [];
     for (let i = 0; i < lines.length; ++i) texts.push(rowToText(lines[i]));
+    // Mail rows are never hidden: the filter reads article columns.
+    if (this.isMailList()) return texts.map((t, i) => i);
     return visibleListIndices(texts, this._view.blacklist, this._view.titleBlacklist);
   },
 

@@ -1328,7 +1328,7 @@ server 的頁指標被移走而長頁不知道（症狀：翻頁跳格／重複�
 | 畫面 | 舊（CONFIRMED @ 03cdf5eb） | 新（CONFIRMED） | 本專案用途 |
 |---|---|---|---|
 | 文章列表（非信箱） | ` 文章選讀 `（read.c:1237） | `read.c#i_read_caption`：MODE_DIGEST→` 文摘列表 `、MODE_SELECT→` 系列文章 `、其餘→` 文章列表 ` | 列表好讀 clean-list、footer 快取、看板列表情境 `article-list` |
-| 信箱 | ` 鴻雁往返 `（read.c:1234） | RMAIL→` 信件列表 ` | **排除**（信箱不得 engage 列表好讀） |
+| 信箱 | ` 鴻雁往返 `（read.c:1234） | RMAIL→` 信件列表 ` | 列表好讀 clean-list（#196；標題 `【郵件選單】`＋這個 caption 才算，身分 `MAIL_LIST_KEY`；不是 article-list，搜尋鍵不開。實機：row 2 表頭是 `30;47`，但右端 `(容量:n/m篇) ` 是 `42` 綠底，表頭不是整列同色，見 `screen_titles.listHeaderReversed`） |
 | 看板列表 | `  選擇看板  `（board.c:1285，三變體共用） | `board.c#brdlist_caption`：IN_CLASSROOT→` 分類看板 `、IN_FAVORITE（`class_bid==0`）→` 我的最愛 `、其餘→` 看板列表 ` | 平滑捲動指紋；變體見下 |
 | 編輯器 | ` 編輯文章 `＋`\t%s│%c%c%c%c%3d:%3d` | `edit.c#edit_msg`：caption 與狀態框**不變**（公告範例 `||插入|5ipr||` 是錯的），中段 ` (^X)存檔 (^C)色碼 …` 塞得下才印 | pageState 6（圖片上傳 `send` 路徑） |
 

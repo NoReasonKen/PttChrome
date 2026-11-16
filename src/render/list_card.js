@@ -84,6 +84,29 @@ export const CARD_LAYOUT = {
       endClass: "listCardInfo",
     },
   },
+  mail: {
+    // The mail list (#196), mail.c#maildoent under mail_coldefs: cursor cell
+    // [0,1), "%5d %c " number [1,6) and read mark [7], date [9,15), sender
+    // [15,30), ◇/R:/轉 title from 30. Laid out like an article card, without
+    // the recommendation count mail does not have.
+    title: {
+      lead: null,
+      main: [[30, 80, "listCardTitleText"]],
+      end: [],
+    },
+    meta: {
+      lead: null,
+      main: [
+        [0, 6, "listCardNum"],
+        [15, 30, "listCardAuthor"],
+      ],
+      end: [
+        [6, 9, "listCardMark"],
+        [9, 15, "listCardDate"],
+      ],
+      endClass: "listCardInfo",
+    },
+  },
   board: {
     // 第一行：未讀 ˇ [8,10)｜板名・類別……人氣；第二行：◎中文敘述……板主・序號。
     title: {
@@ -152,6 +175,13 @@ export function articleCardMark(chars) {
   return undefined;
 }
 
+// A mail card's unread mark (mail.c#maildoent's type character in cell 7):
+// '+' unread, 'M' marked unread, 'R' replied unread.
+export function mailCardMark(chars) {
+  const ch = chars && chars[7] ? chars[7].ch : "";
+  return ch === "+" || ch === "M" || ch === "R" ? "unread" : undefined;
+}
+
 // 一行裡用到的全部 cell 範圍（測試檢查不重疊用）。
 export function layoutSpans(line) {
   return [line.lead, ...line.main, ...line.end].filter(Boolean);
@@ -209,7 +239,11 @@ export function buildListCard({
         "data-list-board": boardCardIdentity(chars, layout),
         "data-list-read": listRead ? "" : undefined,
         "data-list-mark":
-          layout === CARD_LAYOUT.article ? articleCardMark(chars) : undefined,
+          layout === CARD_LAYOUT.article
+            ? articleCardMark(chars)
+            : layout === CARD_LAYOUT.mail
+              ? mailCardMark(chars)
+              : undefined,
       },
       el(
         "span",

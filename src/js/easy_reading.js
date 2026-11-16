@@ -11,6 +11,7 @@ import { findShortcutLabel } from './platform';
 import { offsetTopWithin } from './scroll_anchor';
 import { renderChunksAround } from '../render/screen_chunk';
 import { isJumpParkedListScreen } from './list_session';
+import { listHeaderReversed } from './screen_titles';
 import { createBottomStick } from './bottom_stick';
 import { followScrollRestore } from './scroll_restore_follow';
 import { recordFor } from './reading_record';
@@ -555,7 +556,7 @@ EasyReading.prototype._isJumpParkedListNow = function() {
     curY: buf.cur_y,
     rows: buf.rows,
     row0Reversed: buf.isUnicolor(0, 0, 29),
-    row2Reversed: buf.isUnicolor(2, 0, buf.cols - 10)
+    row2Reversed: listHeaderReversed(buf)
   });
 };
 
@@ -1573,16 +1574,26 @@ const UNSUPPORTED_TEXT_HINT = unsupportedTextHint('文章');
 
 // What a key the reading keys did not take means: 'native' (keeps the native
 // route), 'refuse', or null (not a PTT key: the browser or the app owns it).
-export function articleLeftoverKey(e) {
+// opts.mail: a mail is open (#196). Easy reading presents reading a mail, not
+// answering it (sending is #230), so only help keeps the native route.
+export function articleLeftoverKey(e, opts) {
+  const nativeKeys = opts?.mail ? ARTICLE_HELP_KEYS : ARTICLE_NATIVE_KEYS;
   // Copy, select all, paste and the browser's own Meta/Alt shortcuts.
   if (isBrowserClipboardEvent(e) || e.metaKey) return null;
   if (isAltRemapEvent(e)) return 'refuse';
   if (e.altKey) return null;
   // A key that sends PTT nothing (CapsLock, F-keys) is not a command.
   if (keyEventToBytes(e) == null) return null;
-  if (!e.ctrlKey && e.key.length === 1 && ARTICLE_NATIVE_KEYS.indexOf(e.key) >= 0) return 'native';
+  if (!e.ctrlKey && e.key.length === 1 && nativeKeys.indexOf(e.key) >= 0) return 'native';
   return 'refuse';
 }
+
+// The article on screen is a mail (#196): it was opened from the mailbox's
+// list, which waits suspended while it is read.
+EasyReading.prototype._readingMail = function() {
+  const ls = this._core?.listSession;
+  return !!(ls && ls.state === 'suspended' && ls.isMailList && ls.isMailList());
+};
 
 EasyReading.prototype._refuseUnsupported = function(what) {
   if (!this._view.flashListHint) return;
@@ -1598,7 +1609,7 @@ EasyReading.prototype.refuseText = function(text, what) {
   if (!this._enabled || !this.startedEasyReading || this._functionMode)
     return false;
   if (what !== 'paste' && typeof text === 'string' && text.length === 1 &&
-      ARTICLE_NATIVE_KEYS.indexOf(text) >= 0)
+      (this._readingMail() ? ARTICLE_HELP_KEYS : ARTICLE_NATIVE_KEYS).indexOf(text) >= 0)
     return false;
   this._refuseUnsupported(what);
   return true;
@@ -2509,19 +2520,23 @@ export function articleReadingKey(e) {
 // A key the help menu sheet offers (#222), as { key, ctrlKey }: whether the
 // article refuses it when typed. Push keys open the long-comment sheet before
 // the article sees them (term_view.onKeyDown); the find keys only point to the
-// browser's own find; reply and help keep the native route.
-export function articleWouldRefuse(k, prefs) {
+// browser's own find; reply and help keep the native route. opts.mail: over a
+// mail (#196) there is nothing to push, and reply and the same-thread jumps are
+// refused.
+export function articleWouldRefuse(k, prefs, opts) {
+  const mail = !!opts?.mail;
   const e = { key: k.key, ctrlKey: !!k.ctrlKey, altKey: false, metaKey: false, shiftKey: false };
-  if (!e.ctrlKey && isPushKey(e.key)) return false;
+  if (!mail && !e.ctrlKey && isPushKey(e.key)) return false;
   if (easyReadingFindKeyAction(e, prefs)) return true;
   const reading = articleReadingKey(e);
+  if (mail && reading === 'threadJump') return true;
   // A swallowed key does nothing in the article: a row for it would do nothing.
   if (reading) return reading === 'swallow';
-  return articleLeftoverKey(e) !== 'native';
+  return articleLeftoverKey(e, opts) !== 'native';
 }
 
 EasyReading.prototype.wouldRefuse = function(k) {
-  return articleWouldRefuse(k, readValuesWithDefault());
+  return articleWouldRefuse(k, readValuesWithDefault(), { mail: this._readingMail() });
 };
 
 EasyReading.prototype._onKeyDownProcessUI = function(e) {
@@ -2601,6 +2616,12 @@ EasyReading.prototype._onKeyDownProcessUI = function(e) {
       stop = true;
       break;
     case 'threadJump':
+      // A mail has no thread easy reading presents (#196).
+      if (this._readingMail()) {
+        this._refuseUnsupported('key');
+        stop = true;
+        break;
+      }
       this.leaveCurrentPost();
       // Same-thread keys land however far their target is (#65).
       stop = !!this._core.threadJump?.start(e.key);
@@ -2624,7 +2645,7 @@ EasyReading.prototype.enterNativeRoute = function(ch) {
 // A key none of the reading keys took. Returns true when it was refused (the
 // caller prevents it); a help or reply key opens the native mirror and still goes out.
 EasyReading.prototype._leftoverKey = function(e) {
-  const what = articleLeftoverKey(e);
+  const what = articleLeftoverKey(e, { mail: this._readingMail() });
   if (what === 'native') {
     this.enterNativeRoute(e.key);
     // The help sheet opens at this keypress (help_menu.expect, #222) and is a

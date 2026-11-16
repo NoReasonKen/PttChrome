@@ -240,9 +240,8 @@ const ALLOWED = [
   // Easy-reading gaps (#161): main-menu areas shown natively on every visit
   // (mobile_easy_reading_gaps.offline.spec.js). The areas easy reading does
   // not present have no entrance and no entry (#231, docs/easy-reading.md).
+  // The mailbox is shown by easy reading (#196) and has no entry either.
   ...[
-    [196, '私人信件區'],
-    [196, '郵件選單'],
     [199, '休閒聊天區'],
   ].map(([issue, title]) => ({ issue, why: `easy-reading gap: ${title}`, match: (hit) => hit.title.includes(title) })),
   // A reply key over an article opens PTT's reply flow natively. A help key
