@@ -2703,7 +2703,16 @@ ListSession.prototype = {
     if (this._layerResultsLeft(facts, layer)) return false;
     const newest = layer?.listPage.newestNum();
     if (newest == null) return false;
-    for (let r = 3; r <= facts.rows - 2; ++r) if (facts.nums[r] != null && facts.nums[r] > newest) return true;
+    // A row the list hides (deleted, locked, blacklisted) is no new article
+    // to the reader (#238).
+    const view = this._view;
+    for (let r = 3; r <= facts.rows - 2; ++r)
+      if (
+        facts.nums[r] != null &&
+        facts.nums[r] > newest &&
+        !isHiddenListText(facts.rowTexts[r], view.blacklist, view.titleBlacklist)
+      )
+        return true;
     return false;
   },
 

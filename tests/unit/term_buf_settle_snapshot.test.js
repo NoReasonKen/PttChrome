@@ -45,6 +45,30 @@ describe("TermBuf settle snapshot", () => {
     vi.useRealTimers();
   });
 
+  test('pending server frame follows notify and settle, excluding old data and local repaint', () => {
+    const buf = makeBuf();
+    const parser = new AnsiParser(buf);
+    parser.feed(decodeRecv(cassette.steps[0].recv));
+    expect(buf.hasPendingServerFrame(0)).toBe(true);
+    vi.advanceTimersByTime(30);
+    expect(buf.hasPendingServerFrame(0)).toBe(true);
+    settle();
+    expect(buf.hasPendingServerFrame(0)).toBe(false);
+    buf.queueUpdate();
+    expect(buf.hasPendingServerFrame(buf.serverWrites)).toBe(false);
+    parser.feed('\u001b[?2026h\u001b[?2026l');
+    expect(buf.hasPendingServerFrame(buf.serverWrites - 1)).toBe(false);
+  });
+
+  test('synchronized server output stays pending until its safety flush settles', () => {
+    const buf = makeBuf();
+    const parser = new AnsiParser(buf);
+    parser.feed('\u001b[?2026hHello');
+    expect(buf.hasPendingServerFrame(0)).toBe(true);
+    vi.advanceTimersByTime(1000);
+    expect(buf.hasPendingServerFrame(0)).toBe(false);
+  });
+
   test("board-list paint settles into a snapshot with cursor parked in the entry area", () => {
     const buf = makeBuf();
     const parser = new AnsiParser(buf);

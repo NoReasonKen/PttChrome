@@ -1127,6 +1127,13 @@ TermBuf.prototype = {
     this.mouseReport.handleDECRST(mode);
   },
 
+  // Only server data newer than the last evaluated frame can delay a command.
+  hasPendingServerFrame: function(afterWrites) {
+    return this.serverWrites > afterWrites &&
+      !!(this._serverActivity || this.posChanged ||
+        this._settleTimer || this.inSyncUpdate);
+  },
+
   queueUpdate: function(directupdate) {
     // BSU 期間不排重繪。注意這道閘門刻意放在 queueUpdate 而**不是** notify：
     // queueUpdate 是所有 server 寫入路徑的共同出口，而 notify() 另有本地重繪的
