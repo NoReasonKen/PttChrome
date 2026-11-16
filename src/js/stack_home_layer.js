@@ -43,6 +43,7 @@ export class StackHomeLayer {
       onChange: fn => home.onChange(state => fn({ ...state, visible: true })),
       openBoard: () => false,
       openMail: () => false,
+      openBoardGroups: () => false,
       dismiss: () => {},
       refresh: () => false
     };

@@ -19,6 +19,7 @@ import {
   boardListFetchVerdict,
   BRD_HEADER_ROWS,
   parseBoardListName,
+  classRootRowName,
 } from "../../src/js/board_list_parse";
 
 const pad7 = (n) => String(n).padStart(7, " ");
@@ -401,5 +402,100 @@ describe("classifyBoardListScreen — 新版 caption（brdlist_caption / vs_cmd_
     expect(boardListContextKind({ rowTexts, curX: 0, curY: 3, rows: 24 })).not.toBe(
       "article-list"
     );
+  });
+});
+
+// ─── 分類看板根（#229）────────────────────────────────────────────────────────
+// Rows shaped as the real class root frame in tests/e2e/cassettes/scn-stack-boardlist-folder.json
+// (its last step), BM ids invented. Rows 12 and 13 are boards (ˇ: unread), row
+// 14 a link. board.c#choose_board IN_CLASSROOT: header_lines 7 (row 0 title,
+// rows 1-6 art), each row printed as "          %s%s" ⇒ the `%7d%c%s` number sits
+// at cells [10,17), then the 40-cell description and BM. Footer only, caption
+// 分類看板. No ASCII board name anywhere on a row.
+describe("分類看板根（#229）", () => {
+  const CLASS_ROOT_ROWS = [
+    "     1   市民廣場     報告站長 PTT咬我",
+    "     2   臺灣大學     臺大, 臺大, 臺大            bmAlpha",
+    "     3   政治大學     政大, 政大, 政大            bmBravo",
+    "     4   青蘋果樹     校園, 班板, 社團            bmCee",
+    "     5   活動中心     社團, 聚會, 團體",
+    "     6   視聽劇場     偶像, 音樂, 廣電            [徵求中]",
+    "     7   戰略高手     遊戲, 數位, 程設            [bmDelta]",
+    "     8   卡漫夢工廠   卡通, 漫畫, 動畫            [bmEchoFoxtr",
+    "     9   生活娛樂館   生活, 娛樂, 心情            [bmGolf/hote",
+    "    10   國家研究院   政治, 文學, 學術            [bmIndia]",
+    "    11   國家體育場   汗水, 鬥志, 膽識            [bmJuliet]",
+    "    12 ˇ10/31～11/13 達卡青奧                    bmKilo/bmLim",
+    "    13   [推廣] 看板資訊公佈欄                    bmMike/bmNov",
+    "    14       --> 即時熱門看板 <--",
+  ];
+  const ROOT_FOOT =
+    " 分類看板  (m)加入最愛 (v)已讀/未讀 (t)標記 (y)只列最愛     (←)回上層 (h)說明";
+  const PREFIX = " ".repeat(10);
+  function classRoot({ cursor = 1, curX = 10, rows = CLASS_ROOT_ROWS, foot = ROOT_FOOT } = {}) {
+    const rowTexts = new Array(24).fill("");
+    rowTexts[0] = "【分類看板】                     批踢踢實業坊              看板《Olympics_ISG》";
+    rowTexts[3] = "     ︿︿︿︿︿︿︿︿                               ║ ◣◢███▼▼▼║";
+    rows.forEach((text, i) => {
+      const own = i + 1 === cursor ? ">" + text.slice(1) : text;
+      rowTexts[7 + i] = PREFIX + own;
+    });
+    rowTexts[23] = foot;
+    return { rowTexts, curX, curY: 6 + cursor, rows: 24 };
+  }
+
+  test("is the engageable board list variant 'classroot' with its own geometry", () => {
+    const c = classifyBoardListScreen(classRoot({ cursor: 3 }));
+    expect(c.variant).toBe("classroot");
+    expect(c.geometry).toEqual({ headerRows: 7, colOffset: 10 });
+    expect(c.engageable).toBe(true);
+    expect(c.parked).toBe(true);
+    expect(c.cursorNum).toBe(3);
+    expect(c.topNum).toBe(1);
+    expect(c.nums.slice(7, 21)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+    // The art rows above the body carry no numbers.
+    expect(c.nums.slice(0, 7).every((n) => n == null)).toBe(true);
+  });
+
+  test("standard board lists report the standard geometry", () => {
+    expect(classifyBoardListScreen(brdScreen()).geometry).toEqual({ headerRows: 3, colOffset: 0 });
+  });
+
+  test("a cursor off the number column (a prompt) is not parked", () => {
+    const c = classifyBoardListScreen(classRoot({ curX: 30 }));
+    expect(c.parked).toBe(false);
+    expect(c.engageable).toBe(false);
+  });
+
+  test("boardListContextKind: the class root is now an engageable board list", () => {
+    expect(boardListContextKind(classRoot())).toBe("brdlist");
+  });
+
+  test("a class root title without its board-list footer is still the menu", () => {
+    expect(boardListContextKind(classRoot({ foot: "" }))).toBe("menu");
+  });
+
+  test("boardListRowNums reads the class root's rows under its geometry", () => {
+    const { rowTexts } = classRoot();
+    const nums = boardListRowNums(rowTexts, 24, { headerRows: 7, colOffset: 10 });
+    expect(nums[7]).toBe(1);
+    expect(nums[20]).toBe(14);
+    expect(nums[3]).toBeNull();
+  });
+
+  test("class root rows have no board name to mark read or compare", () => {
+    // parseBoardListName would read "PTT" out of 市民廣場's description.
+    for (const text of CLASS_ROOT_ROWS) expect(classRootRowName(text)).not.toBe("");
+    expect(classRootRowName(CLASS_ROOT_ROWS[0])).toBe("市民廣場 報告站長 PTT咬我");
+    // Shown with PTT's cursor and margin, or read or unread, a row keeps its name.
+    expect(classRootRowName(PREFIX + ">" + CLASS_ROOT_ROWS[1].slice(1))).toBe(
+      classRootRowName(CLASS_ROOT_ROWS[1])
+    );
+    expect(classRootRowName(CLASS_ROOT_ROWS[11])).toBe("10/31～11/13 達卡青奧 bmKilo/bmLim");
+    // A board row read (no ˇ) keeps the name it had unread.
+    expect(classRootRowName(CLASS_ROOT_ROWS[11].replace("ˇ", "  "))).toBe(classRootRowName(CLASS_ROOT_ROWS[11]));
+    expect(classRootRowName(CLASS_ROOT_ROWS[12])).toBe("[推廣] 看板資訊公佈欄 bmMike/bmNov");
+    expect(classRootRowName(CLASS_ROOT_ROWS[13])).toBe("--> 即時熱門看板 <--");
+    expect(classRootRowName("")).toBe("");
   });
 });

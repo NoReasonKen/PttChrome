@@ -199,6 +199,20 @@ export const HomeDashboard = ({ pttchrome, layer = false }) => {
             </div>
           </section>
         )}
+        <section className="homeSection">
+          <div className="homeSectionHead">
+            <h3>{i18n("home_browse")}</h3>
+          </div>
+          <div className="homeChips">
+            <Button
+              className="homeChip"
+              data-home-board-groups
+              onClick={() => home.openBoardGroups()}
+            >
+              {i18n("home_boardGroups")}
+            </Button>
+          </div>
+        </section>
         {!mobile && <p className="homeHint">{i18n("home_hint")}</p>}
       </div>
     </div>

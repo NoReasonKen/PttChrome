@@ -175,6 +175,20 @@ export class NavigationStack {
     this._capture(PAGE.HOME, board, () => StackHomeLayer.capture(this.core));
   }
 
+  // The shown dashboard opens a board list, the board groups' class root
+  // (#229): it stays under that list as under a board's article list.
+  // `title` names the list's page.
+  captureHomeList(title) {
+    if (!this._stacksBoards()) return this.dropPending();
+    this._capture(PAGE.HOME, title, () => StackHomeLayer.capture(this.core));
+    if (this.pending) this.pending.opensList = true;
+  }
+
+  // Whether the captured page waits for a board list to be opened over it.
+  opensList() {
+    return !!this.pending?.opensList;
+  }
+
   // The home search sheet opens over the shown dashboard (#224): the dashboard
   // is copied now, before the sheet's board search replaces the main menu
   // under it with PTT's prompt, and the board is named once it is chosen
@@ -193,10 +207,13 @@ export class NavigationStack {
     return true;
   }
 
-  // `board` is about to be opened from the shown board list.
-  captureBoardList(board) {
+  // `board` is about to be opened from the shown board list. `namesBoard`
+  // false: the row opened names no board (a class root row shows only its
+  // description, #229), so whichever board PTT opens from it stacks over it.
+  captureBoardList(board, namesBoard = true) {
     if (!this._stacksBoard(board)) return this.dropPending();
     this._capture(PAGE.BOARD_LIST, board, () => StackListLayer.capture(this.core.view, 'board'));
+    if (this.pending && !namesBoard) this.pending.anyBoard = true;
   }
 
   _stacksBoard(board) {
@@ -266,11 +283,13 @@ export class NavigationStack {
       pending => pending.kind === PAGE.ARTICLE_LIST && !!page.id && sameBoard(pending.board, page.board));
   }
 
-  // A board list opened from a board list's row was entered: it keeps that
-  // list as its lower page. `folder` is the row it was opened from.
+  // A board list opened from a board list's row, or from the dashboard (the
+  // class root, #229), was entered: it keeps that page as its lower page.
+  // `folder` is the row it was opened from.
   enterBoardList() {
     const folder = this.pending?.board;
-    this._enter({ kind: PAGE.BOARD_LIST, board: folder, folder }, pending => pending.kind === PAGE.BOARD_LIST);
+    this._enter({ kind: PAGE.BOARD_LIST, board: folder, folder },
+      pending => pending.kind === PAGE.BOARD_LIST || !!pending.opensList);
   }
 
   _articlePage() {
@@ -290,6 +309,9 @@ export class NavigationStack {
       return;
     }
     if (this.pending) {
+      // A row that names no board (a class root row, #229) is named after the
+      // board it opened, which a Back from that board reveals it under.
+      if (this.pending.anyBoard) this.pending.board = board;
       return this._enter(shown,
         pending => (pending.kind === PAGE.HOME || pending.kind === PAGE.BOARD_LIST) && sameBoard(pending.board, board));
     }

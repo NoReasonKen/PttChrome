@@ -23,12 +23,31 @@ The variant is decided by `class_bid`/`yank_flag`. The old version (03cdf5eb) re
 | 熱門看板 (popular boards) | `TopBoards()` / the `BRD_TOP` group → `class_bid=-1` | `(m)加入/移出最愛` + `(y)只列最愛` | caption `看板列表` (**indistinguishable from a category subcategory**) | old ❌ `all` / new ✅ `class` (the owner's decision; the order is dynamic, so stitching pages may duplicate or miss boards) |
 | 全部看板 (all boards) | `y` on favorites → `class_bid=0` + `LIST_BRD()` | Same as popular boards | caption **still** `我的最愛` + `(m)加入最愛` / row 1 `[y]只列最愛` | ❌ `all` (tens of thousands of rows; how evict feels is unverified) |
 | 「新文章」 (new articles) mode | `c` on any board list | One of the above | One of the above | ❌ `newflag` (row 2 「總數」, total) |
-| Category board **root** | Main menu `C` (`class_bid==1`) | No footer | caption `分類看板` | ❌ fingerprint does not match (row 0 is 【分類看板】) |
+| Category board **root** (分組討論區) | Main menu `C`, or `Ctrl+Z c` from the home dashboard (`class_bid==1`) | No footer (the menu's status line) | row 0 `【分類看板】` + caption `分類看板` | old ❌ / new ✅ `classroot` (#229, see below) |
 
 Preconditions: row 0 starts with `【看板列表】` (`src/js/screen_titles.js#rowHasTitle`, **accepting both the `【X】` and ` X ` shapes**, for reasons in
 protocol §11.9) **and** the footer caption is a board list (`src/js/screen_captions.js#isBoardListFooter`) → whether row 2 is 「編號」 (number)
 or 「總數」 (total) (`board.c:1338`; the screen itself tells newflag apart, so there is no need to intercept the `c` key) → variant → the cursor rests in the body on a row with a number.
 In the old version, **`(y)只列最愛` must be checked before `(m)加入/移出最愛`**, since both start with `(m)`.
+
+**The class root (`classroot`, #229)** is recognized before those preconditions: row 0 is `【分類看板】` and the footer caption is `分類看板`
+(`board_list_parse.js#isClassRootScreen`). Its geometry differs (`board.c#choose_board` IN_CLASSROOT, `#brdlist_renderer`): `header_lines` is 7
+(the title and six rows of art, no hint row and no column header), each row is printed as `"          %s%s"` (the `%7d%c%s` number ten cells to
+the right, then the description in 40 cells and the BM), and PTT's cursor sits at col 10. `classifyBoardListScreen` returns that geometry
+(`{ headerRows: 7, colOffset: 10 }`; every other list `{ 3, 0 }`) and reads the numbers and the parked cursor under it.
+`term_view.accumulateBoardListLines` stores the rows shifted ten cells left, so the buffer, the cursor mark and the window are those of any other
+board list; the window shows the title over two blank rows instead of the art. No row shows an ASCII board name: the session compares rows by
+`classRootRowName` (description and BM), the phone card shows the description and BM (`list_card.js` `boardClass`) with the number as its
+identity (`#<n>`), and no row offers "設為已讀". The old version's class root, whose footer is the menu status line, still does not match and
+stays native. Class rows open the class's `看板列表` (stacked over the class root on a phone, like any board list opened from a board list's row);
+a board row (an unread one shows `ˇ` in the mark cells) opens the board, and its article list is stacked over the class root too: the row names
+no board, so the pending layer is named after the board that opens (`NavigationStack.captureBoardList(name, false)`), and Back from that board
+reveals the class root. A class whose group announcement (a pause screen) shows before its list is entered from the `suspended` state once the
+board note skip answers the pause, and still slides in as a list opened from the class root. The link row `--> 即時熱門看板 <--` opens the hot
+boards list, whose screen is a class list's (caption `看板列表`), so it is read as `class` and stacks over the class root like one. ← on the class root returns to the main menu, or to the home dashboard's layer when the
+class root was opened from it. `term_buf` gives the class root `pageState` 1 (a menu title), so the gestures ask the session
+(`BoardListSession.showsClassRoot`) whether a menu-state screen is a list they may swipe. A one-page class root still costs one end probe when the
+fill asks for rows past its end (the shared end probe: PTT clamps and sends nothing, so the `\f` repaint answers).
 
 **The terminal is not limited to 24 rows**: the engage condition (`board_list_session._engageEligible`) only requires
 `buf.rows >= 24` (the lower bound is the server's clamp, `mbbsd/term.c:55`). **Never hard-code `=== 24`**:

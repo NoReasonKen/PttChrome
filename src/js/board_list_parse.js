@@ -13,10 +13,12 @@
 //   3. 變體（我的最愛／分類子分類／全部看板）的指紋，新舊兩版不同 —— 見 boardListVariant。
 //
 // 本期只 engage 我的最愛（fav）與分類看板子分類（class）；全部看板／熱門看板
-// （all）與分類看板根（row0 是【分類看板】，這裡直接不命中）不做。
+// （all）不做。The class root (【分類看板】, 'classroot', #229) engages with its own
+// geometry (CLASS_ROOT_GEOMETRY).
 
 import {
   BOARD_LIST,
+  CLASS_LIST,
   MENU_TITLES,
   isArticleListTitleRow,
   rowHasAnyTitle,
@@ -32,6 +34,27 @@ import {
 // 與文章列表好讀的 LIST_HEADER_ROWS 同值但**語意不同**（那是 bbs.c 的表頭），
 // 刻意各自宣告，日後其中一邊改版才不會靜默連坐。
 export const BRD_HEADER_ROWS = 3;
+
+// Where a board list's numbered rows sit on PTT's screen. Every list but one
+// starts its body at row 3 with the number in cells [0,7). The class root
+// (【分類看板】, board.c#choose_board IN_CLASSROOT, #229) has header_lines 7
+// (title and six rows of art) and prints each row as `"          %s%s"`, so its
+// number sits ten cells to the right. Its cursor sits at col 10
+// (brdlist_cursor).
+export const STANDARD_GEOMETRY = Object.freeze({ headerRows: BRD_HEADER_ROWS, colOffset: 0 });
+export const CLASS_ROOT_GEOMETRY = Object.freeze({ headerRows: 7, colOffset: 10 });
+
+export function boardListGeometry(variant) {
+  return variant === 'classroot' ? CLASS_ROOT_GEOMETRY : STANDARD_GEOMETRY;
+}
+
+// Whether the screen is the class root shown as a board list: its title row
+// and the choose_board footer with the class root's caption (brdlist_caption).
+export function isClassRootScreen(rowTexts, rows) {
+  const texts = rowTexts || [];
+  const n = rows || texts.length;
+  return rowHasTitle(texts[0] || '', CLASS_LIST) && footerCaption(texts[n - 1] || '') === CLASS_LIST;
+}
 
 // `%7d` 欄寬：序號右對齊塞在 cells [0,7)。游標 `>` 只蓋 cell 0（半形，
 // pttbbs b9a5029f），而看板數量遠小於 10^6 ⇒ 永遠不會蓋到數字。
@@ -146,12 +169,22 @@ export function boardListRowUnread(text) {
 // 整頁逐列編號。與 comment_parse.pageArticleNums **刻意不共用**：那支為文章列表
 // 寫了「游標蓋住高位數字→從鄰居回推」與「單調修復」兩段補救，而看板列表的
 // `%7d` 是右對齊、`>` 只蓋前置空白 ⇒ 那些補救在這裡只會是憑空修改的風險。
-export function boardListRowNums(rowTexts, rows) {
+// `geometry` (boardListGeometry) places the rows; the standard one by default.
+export function boardListRowNums(rowTexts, rows, geometry = STANDARD_GEOMETRY) {
   const n = rows == null ? rowTexts.length : rows;
   const out = new Array(n).fill(null);
-  for (let r = BRD_HEADER_ROWS; r <= n - 2; ++r)
-    out[r] = parseBoardListNum(rowTexts[r] || '');
+  for (let r = geometry.headerRows; r <= n - 2; ++r)
+    out[r] = parseBoardListNum((rowTexts[r] || '').slice(geometry.colOffset));
   return out;
+}
+
+// A class root row's name: its description and BM, spaces collapsed. Its rows
+// show no ASCII board name (parseBoardListName would read "PTT" out of
+// 市民廣場's description), so this is what tells two of its rows apart. It reads
+// the same with or without PTT's margin and cursor, read or unread.
+export function classRootRowName(text) {
+  const m = /^[\s>]*\d+[\sˇ]*(.*)$/.exec(text || '');
+  return m ? m[1].replace(/\s+/g, ' ').trim() : '';
 }
 
 // 看板列表變體。'unknown' ＝不 engage＝原生，安全。
@@ -188,17 +221,19 @@ function boardListVariant(foot, row1) {
 }
 
 // 一幀畫面是不是看板列表，以及是哪一種。回 null ＝根本不是（文章列表／主功能表／
-// 【分類看板】根／文章／prompt…）。
+// 文章／prompt…）。
 //
 // facts = { rowTexts, curX, curY, rows }（與 ListSession._collectFacts 同形，
 // 兩個 session 的 facts 都餵得進來）。回傳：
 //   { variant, newflag, nums, cursorNum, topNum, parked, engageable }
-// variant: 'fav' 我的最愛／'class' 分類子分類／'all' 全部看板・熱門看板／'unknown'
+// variant: 'fav' 我的最愛／'class' 分類子分類／'classroot' 分類看板根（#229）／'all' 全部看板・熱門看板／'unknown'
+// geometry: where its rows sit (boardListGeometry)
 // engageable: 只有 fav / class ＋ 非 newflag ＋ 游標停在 body ＋ 有編號才為真。
 export function classifyBoardListScreen(facts) {
   if (!facts) return null;
   const rowTexts = facts.rowTexts || [];
   const rows = facts.rows || rowTexts.length;
+  if (isClassRootScreen(rowTexts, rows)) return classifyRows(facts, 'classroot', false);
   if (!rowHasTitle(rowTexts[0] || '', BOARD_LIST)) return null;
   const foot = rowTexts[rows - 1] || '';
   if (!isBoardListFooter(foot)) return null;
@@ -208,16 +243,21 @@ export function classifyBoardListScreen(facts) {
   const newflag = header.indexOf('總數') >= 0;
   if (!newflag && header.indexOf('編號') < 0) return null;
 
-  const variant = boardListVariant(foot, rowTexts[1] || '');
+  return classifyRows(facts, boardListVariant(foot, rowTexts[1] || ''), newflag);
+}
 
-  const nums = boardListRowNums(rowTexts, rows);
+function classifyRows(facts, variant, newflag) {
+  const rowTexts = facts.rowTexts || [];
+  const rows = facts.rows || rowTexts.length;
+  const geometry = boardListGeometry(variant);
+  const nums = boardListRowNums(rowTexts, rows, geometry);
   const curY = facts.curY;
-  const curX = facts.curX;
+  const curX = (facts.curX || 0) - geometry.colOffset;
   const parked =
-    curY != null && curY >= BRD_HEADER_ROWS && curY <= rows - 2 && (curX || 0) <= 1;
+    curY != null && curY >= geometry.headerRows && curY <= rows - 2 && curX >= 0 && curX <= 1;
   const cursorNum = parked ? nums[curY] : null;
   let topNum = null;
-  for (let r = BRD_HEADER_ROWS; r <= rows - 2; ++r) {
+  for (let r = geometry.headerRows; r <= rows - 2; ++r) {
     if (nums[r] != null) {
       topNum = nums[r];
       break;
@@ -225,6 +265,7 @@ export function classifyBoardListScreen(facts) {
   }
   return {
     variant: variant,
+    geometry: geometry,
     newflag: newflag,
     nums: nums,
     cursorNum: cursorNum,
@@ -232,7 +273,7 @@ export function classifyBoardListScreen(facts) {
     parked: parked,
     engageable:
       !newflag &&
-      (variant === 'fav' || variant === 'class') &&
+      (variant === 'fav' || variant === 'class' || variant === 'classroot') &&
       parked &&
       cursorNum != null &&
       topNum != null
@@ -243,7 +284,8 @@ export function classifyBoardListScreen(facts) {
 //   'brdlist'       可 engage 的看板列表（我的最愛／分類子分類）
 //   'brdlist-other' 看板列表但不在本期範圍（全部看板／熱門／newflag）
 //   'article-list'  文章列表（《看板》＋文章列表 caption）⇒ ListSession 的地盤
-//   'menu'          主功能表／分類看板根／精華文章 ⇒ 已離開看板列表
+//   'menu'          主功能表／精華文章（and the old version's class root, whose footer
+//                   is the menu status line）⇒ 已離開看板列表
 //   'other'         prompt／半繪／說明畫面…（原生鏡像照畫即可）
 export function boardListContextKind(facts) {
   const brd = classifyBoardListScreen(facts);

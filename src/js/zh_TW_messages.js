@@ -1127,6 +1127,12 @@
   "home_favorites": {
     "message": "我的最愛"
   },
+  "home_browse": {
+    "message": "瀏覽看板"
+  },
+  "home_boardGroups": {
+    "message": "分組討論區"
+  },
   "home_recents": {
     "message": "最近看板"
   },

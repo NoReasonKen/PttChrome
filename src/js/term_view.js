@@ -15,7 +15,7 @@ import { textCellWidth, parseStatusRow, statusSignature, normalizePasteText, par
 import { rowToText, cloneRow, articleContextFromScreen, findPageOverlap, resolvePageOverlap, decideAccumulateBranch, classifyPageTransition, decideReverseBranch, resolveJoinOverlap, locateScreenInPage, pageArticleNums, isPinnedListRow, parseListArticleNumLoose, hasServerCursorMark } from './comment_parse';
 import { mergeListPage, flattenListBuffer, evictListBuffer, listGrowthDir, listNumRange, isHiddenListRow, pinnedRowKey, MAX_LIST_ROWS, MAX_LIST_TOTAL_ROWS, isLastReadStyledListRow, normalizeLastReadListRow, paintLastReadListRow, subjectOfListRow, readListRow } from './list_session';
 import { labelListCursor, pruneListToSegment, LIST_HEADER_ROWS } from './list_window';
-import { BRD_HEADER_ROWS, boardListRowNums } from './board_list_parse';
+import { BRD_HEADER_ROWS, CLASS_ROOT_GEOMETRY, STANDARD_GEOMETRY, boardListRowNums, isClassRootScreen } from './board_list_parse';
 import { BOARD_LIST, isArticleListTitleRow, rowHasTitle, parseBoardName } from './screen_titles';
 import { isArticleListFooter, isBoardListFooter } from './screen_captions';
 import { OWNER_BOARD_LIST } from './list_render_owner';
@@ -143,6 +143,15 @@ function listOwnerOf(core) {
 
 // 依樣造一列全空白（預設 attr）的 TermChar 列，給短頁補列用。兩種列表各自快取
 // 一份（來源 header 不同），造法共用這一支。
+// A copy of a board list row with its first `offset` cells dropped and as many
+// blank cells added at its end: the class root's rows (#229) in the standard
+// shape.
+function shiftedBoardListRow(src, offset) {
+  const row = cloneRow(src);
+  if (!offset) return row;
+  return row.slice(offset).concat(blankRowLike(row.slice(0, offset)));
+}
+
 function blankRowLike(src) {
   const row = cloneRow(src);
   for (let i = 0; i < row.length; ++i) {
@@ -1024,6 +1033,8 @@ TermView.prototype = {
               viewportRows: lsBodyRows,
               // 手機卡片的版型（render/list_card.js）：兩種列表的欄位完全不同。
               kind: isBrdList ? 'board' : 'article',
+              // The class root's rows (#229) have no board name: their own cards.
+              cardKind: isBrdList && this.showsClassRootList() ? 'boardClass' : undefined,
               scrollable:
                 this.buf.listRenderMode === 'buffer' && this._listWheelGates().wheelSmoothScroll
             }
@@ -1200,7 +1211,7 @@ TermView.prototype = {
       lsOv.tailPx = this.listCards
         ? Math.max(0, lsOv.viewportPx - bodyCount * listRowSpan(true) * this.chh)
         : 0;
-      enhanceOverrides.listCards = this.listCards ? lsOv.kind : undefined;
+      enhanceOverrides.listCards = this.listCards ? lsOv.cardKind || lsOv.kind : undefined;
     }
     // 這一幀實際畫出去的那一份 lines。`data-row` 的定義就是「傳給 <Screen> 的
     // lines index」（dropHidden 移除的列不位移其餘列的 data-row），所以凡是拿
@@ -3911,18 +3922,22 @@ TermView.prototype = {
     if (!this._brdNumMap) this._brdNumMap = new Map();
     var rowTexts = [];
     for (var r = 0; r < buf.rows; ++r) rowTexts.push(buf.getRowText(r, 0, buf.cols));
-    var nums = boardListRowNums(rowTexts, buf.rows);
+    // The class root (#229) places its rows elsewhere; the buffer holds them in
+    // the standard shape (shiftedBoardListRow).
+    var classRoot = isClassRootScreen(rowTexts, buf.rows);
+    var geometry = classRoot ? CLASS_ROOT_GEOMETRY : STANDARD_GEOMETRY;
+    var nums = boardListRowNums(rowTexts, buf.rows, geometry);
     var bs = listOwnerOf(this.bbscore);
     // 合併前量「緩衝往哪端長」（與文章列表同一條規則，見 evictListBuffer 註解）。
     var pageEntries = [];
-    for (var j = BRD_HEADER_ROWS; j <= buf.rows - 2; ++j)
+    for (var j = geometry.headerRows; j <= buf.rows - 2; ++j)
       if (nums[j] != null) pageEntries.push({ num: nums[j] });
     var grewDir = listGrowthDir(this._brdNumMap, pageEntries);
     // A list shown again from its live layer keeps the rows it showed (#122).
     var taken = new Set(this._heldOut('board', pageEntries, rowTexts).map(function(e) { return e.num; }));
-    for (var i = BRD_HEADER_ROWS; i <= buf.rows - 2; ++i) {
+    for (var i = geometry.headerRows; i <= buf.rows - 2; ++i) {
       if (nums[i] == null || !taken.has(nums[i])) continue;
-      var row = cloneRow(buf.lines[i]);
+      var row = shiftedBoardListRow(buf.lines[i], geometry.colOffset);
       // 把 `%7d` 序號欄由解析出的編號重寫一次：server 的游標 `>` 蓋著 cell 0，
       // 存進 map 的列必須長得跟乾淨的原生列一模一樣（游標由 render 端自己畫）。
       relabelListCursorRow(row, nums[i]);
@@ -3950,6 +3965,11 @@ TermView.prototype = {
         cloneRow(buf.lines[1]),
         cloneRow(buf.lines[2])
       ];
+      this._brdClassRoot = false;
+    } else if (classRoot) {
+      // The class root's title over two blank rows: its art rows are no header.
+      this._brdHeaderRows = [cloneRow(buf.lines[0]), blankRowLike(buf.lines[0]), blankRowLike(buf.lines[0])];
+      this._brdClassRoot = true;
     }
     if (isBoardListFooter(rowTexts[buf.rows - 1]))
       this._brdFooterRow = cloneRow(buf.lines[buf.rows - 1]);
@@ -4000,6 +4020,12 @@ TermView.prototype = {
     return !!(this.bbscore && this.bbscore.mobile);
   },
 
+  // Whether the board list window shows the class root (#229), whose rows have
+  // their own card layout.
+  showsClassRootList: function() {
+    return !!(this._brdHeaderRows && this._brdClassRoot);
+  },
+
   _blankBoardListRow: function() {
     if (!this._brdBlankRow) this._brdBlankRow = blankRowLike(this._brdHeaderRows[0]);
     return this._brdBlankRow;
@@ -4010,6 +4036,7 @@ TermView.prototype = {
     this._holdsByList().board = null;
     this._brdNumMap = null;
     this._brdHeaderRows = null;
+    this._brdClassRoot = false;
     this._brdFooterRow = null;
     this._brdBlankRow = null;
     this._listWindowLines = null;

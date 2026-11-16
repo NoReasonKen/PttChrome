@@ -85,6 +85,10 @@ export const ARRIVAL_HOLD_MS = 1000;
 
 const ZA_FAVORITE = '\x1af';
 const ZA_MAIL = '\x1am';
+// The class root, PTT's board groups (menu.c za_cmds 'c' → Class(), #229).
+const ZA_CLASS = '\x1ac';
+// The class root's page under its stacked lists (PTT's caption for it).
+const CLASS_ROOT_PAGE = '分類看板';
 const STEP_TIMEOUT_MS = 3000;
 // 整段的上限：每步最多 hardTimeout 10s，FAV_MAX_PAGES 頁＋開、回游標、離開。
 const FETCH_WATCHDOG_MS = 60000;
@@ -866,6 +870,51 @@ HomeDashboard.prototype = {
     ];
     const sent = submitSerializedSteps(core, steps, { kind: 'home-mail' });
     if (!sent) {
+      finish('cancel');
+      this._hint(serializedOpHint(core) || '指令處理中，請稍候再試');
+    }
+    return sent;
+  },
+
+  // The board groups (#229): Ctrl+Z c opens PTT's class root, which the board
+  // list's easy reading shows. Landed once the main menu is left.
+  openBoardGroups: function() {
+    const core = this._core;
+    if (this._state.fetching) return false;
+    // Another operation drives PTT: nothing starts over home (as for a card).
+    const busy = serializedOpHint(core);
+    if (busy) {
+      this._hint(busy);
+      return false;
+    }
+    // The dashboard stays alive under the class root (every page change stacks).
+    core.articleGestures?.captureHomeListLayer?.(CLASS_ROOT_PAGE);
+    let bm = recordFor(core).begin('home-board-groups');
+    const finish = function(outcome) {
+      if (bm) recordFor(core).end(bm, outcome);
+      bm = null;
+    };
+    const steps = [
+      {
+        keys: ZA_CLASS,
+        kind: 'home-board-groups',
+        timeoutMs: STEP_TIMEOUT_MS,
+        expect: function(snap, facts) {
+          return !isHomeScreen(facts);
+        },
+        onDone: function() {
+          finish('done');
+        },
+        onFail: () => {
+          finish('fail');
+          core.articleGestures?.dropPendingLayer();
+          this._hint('開不了分組討論區（已停在原生畫面）', 0, HINT_ERROR);
+        }
+      }
+    ];
+    const sent = submitSerializedSteps(core, steps, { kind: 'home-board-groups' });
+    if (!sent) {
+      core.articleGestures?.dropPendingLayer();
       finish('cancel');
       this._hint(serializedOpHint(core) || '指令處理中，請稍候再試');
     }

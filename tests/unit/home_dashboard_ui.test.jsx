@@ -46,6 +46,7 @@ function fakeHome(state) {
     },
     openBoard: vi.fn(),
     openMail: vi.fn(),
+    openBoardGroups: vi.fn(),
     refresh: vi.fn(),
     applyPendingViewport: vi.fn(),
   };
@@ -102,6 +103,16 @@ test("按鈕接到控制器：更新、新信、最近看板", () => {
   expect(home.openMail).toHaveBeenCalled();
   fireEvent.click(q('[data-home-recent="Gossiping"]'));
   expect(home.openBoard).toHaveBeenCalledWith("Gossiping");
+});
+
+// #229: one entrance to the board groups, shown whether favorites are loaded or not.
+test("分組討論區鈕 → openBoardGroups", () => {
+  const home = fakeHome();
+  render(<HomeDashboard pttchrome={{ homeDashboard: home }} />);
+  const button = q("[data-home-board-groups]");
+  expect(button.textContent).toBe(i18n("home_boardGroups"));
+  fireEvent.click(button);
+  expect(home.openBoardGroups).toHaveBeenCalled();
 });
 
 // Easy reading is one switch (#191): no control on the dashboard shows PTT's

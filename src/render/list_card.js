@@ -30,7 +30,7 @@ import {
   LIST_AUTHOR_COL_END,
   hasServerCursorMark,
 } from "../js/comment_parse";
-import { parseBoardListName } from "../js/board_list_parse";
+import { parseBoardListName, parseBoardListNum } from "../js/board_list_parse";
 
 // A board list row's number and board name (at most 12 cells) fit in these.
 const BOARD_NAME_CELLS = 32;
@@ -103,7 +103,44 @@ export const CARD_LAYOUT = {
       ],
     },
   },
+  // The class root (#229), its rows shifted to the standard number column
+  // (term_view.accumulateBoardListLines): `%7d%c%s` [0,10), then the 40-cell
+  // description and BM (board.c#choose_board IN_CLASSROOT). First line: unread
+  // mark | description. Second line: BM and number.
+  boardClass: {
+    title: {
+      lead: [8, 10, "listCardMark"],
+      main: [[10, 50, "listCardTitleText"]],
+      end: [],
+    },
+    meta: {
+      lead: null,
+      main: [],
+      end: [
+        [50, 80, "listCardBM"],
+        [0, 8, "listCardInfo"],
+      ],
+    },
+  },
 };
+
+// A board card's identity for a revealed board list (#31). Board names are
+// ASCII and come right after the number, before any DBCS cell, so the cells up
+// to the board's description hold the whole name. The class root's rows name
+// no board: their number, as fixed as the class tree, is their identity.
+function boardCardIdentity(chars, layout) {
+  const lead = chars
+    .slice(0, BOARD_NAME_CELLS)
+    .map((c) => (c && c.ch) || " ")
+    .join("");
+  if (layout === CARD_LAYOUT.boardClass) {
+    const num = parseBoardListNum(lead.slice(0, 8));
+    return num == null ? undefined : "#" + num;
+  }
+  if (layout === CARD_LAYOUT.board)
+    return parseBoardListName(lead) || undefined;
+  return undefined;
+}
 
 // 文章卡片的已讀標記分類（cell 8，pttbbs `mbbsd/bbs.c#readdoent` 的 type 字元）→
 // data-list-mark：'unread'（+、M：brc_unread == 1）／'updated'（~：讀過但有新推文）。
@@ -169,18 +206,7 @@ export function buildListCard({
         class: "listCard",
         "data-list-author": listAuthor,
         "data-list-title": listTitle,
-        // A board card's identity for a revealed board list (#31). Board names
-        // are ASCII and come right after the number, before any DBCS cell, so
-        // the cells up to the board's description hold the whole name.
-        "data-list-board":
-          layout === CARD_LAYOUT.board
-            ? parseBoardListName(
-                chars
-                  .slice(0, BOARD_NAME_CELLS)
-                  .map((c) => (c && c.ch) || " ")
-                  .join(""),
-              ) || undefined
-            : undefined,
+        "data-list-board": boardCardIdentity(chars, layout),
         "data-list-read": listRead ? "" : undefined,
         "data-list-mark":
           layout === CARD_LAYOUT.article ? articleCardMark(chars) : undefined,
