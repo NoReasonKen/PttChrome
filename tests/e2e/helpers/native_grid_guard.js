@@ -238,16 +238,12 @@ function pageGuard({ tag, log, diagnostics }) {
 // matching entry wins, so the narrower entries come first.
 const ALLOWED = [
   // Easy-reading gaps (#161): main-menu areas shown natively on every visit
-  // (mobile_easy_reading_gaps.offline.spec.js).
+  // (mobile_easy_reading_gaps.offline.spec.js). The areas easy reading does
+  // not present have no entrance and no entry (#231, docs/easy-reading.md).
   ...[
-    [195, '精華文章'],
     [196, '私人信件區'],
     [196, '郵件選單'],
     [199, '休閒聊天區'],
-    [200, '個人設定區'],
-    [201, '系統資訊區'],
-    [198, '網路遊樂場'],
-    [197, '編特別名單'],
   ].map(([issue, title]) => ({ issue, why: `easy-reading gap: ${title}`, match: (hit) => hit.title.includes(title) })),
   // A reply key over an article opens PTT's reply flow natively. A help key
   // opens the help sheet (#222), and PttChrome's own operations hold the

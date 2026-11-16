@@ -3,6 +3,25 @@
 對應 `src/js/easy_reading.js` + `src/js/term_buf.js`(settle pageState) + `src/js/term_view.js`(render) + `src/js/pttchrome.jsx`(切換/按鍵)。
 狀態旗標：CONFIRMED（已 e2e 實證）/ guess。
 
+## 呈現範圍（決策，2026-11-15，#231）
+
+好讀模式是為了閱讀：它只呈現列表形與文章形的頁面。主功能表的各區依擁有者的裁定分成兩類。**不呈現的區是決定，不是待補的缺口**：好讀開著時它們沒有入口——首頁儀表板擋下它們的主功能表按鍵並給「好讀模式目前不支援這個按鍵」錯誤提示（#191，`home_dashboard.homeKeyAction`），沒有按鈕、說明選單列、深層連結或斷線重連的恢復路徑通往它們。要用它們，關閉好讀模式改用 PTT 原生操作。
+
+| 主功能表項目 | 好讀模式 | 說明 |
+|---|---|---|
+| 我的最愛 | 呈現 | 首頁儀表板的我的最愛區塊（`docs/home-dashboard.md`） |
+| 分組討論區 | 呈現 | #229 |
+| 私人信件區（信件列表、一封信） | 呈現 | #196 |
+| 休閒聊天區（線上使用者列表、查詢網友） | 呈現 | #199 |
+| 精華公佈欄 | 不呈現 | #195 已以不實作關閉 |
+| 個人設定區 | 不呈現 | #200 已以不實作關閉 |
+| 系統資訊區 | 不呈現 | #201 已以不實作關閉 |
+| 娛樂與休閒 | 不呈現 | #198 已以不實作關閉 |
+| 編特別名單 | 不呈現 | #197 已以不實作關閉 |
+| 離開，再見 | 不呈現 | 由系統的返回（首頁按返回提示「再按一次」後離站）或關閉 App 取代；手機按鍵列的一鍵登出是 PttChrome 自己的操作 |
+
+「呈現」的區還沒做完的部分是缺口：在補上之前每次進去都顯示同樣的 PTT 原生畫面，原生畫面守門（`tests/e2e/helpers/native_grid_guard.js`）以各自的 issue 放行。「不呈現」的區在守門裡沒有放行條目。守護 `tests/e2e/offline/mobile_easy_reading_gaps.offline.spec.js`（首頁按不呈現區的鍵 ⇒ 擋下、提示、一個 byte 都不送、沒有原生畫面）。
+
 ## 機制（CONFIRMED）
 
 - 啟用條件：pref `enableEasyReading`(**預設 true**，`pref_storage.js` `DEFAULT_PREFS`) && `connectedUrl.easyReadingSupported`(`pttchrome.jsx` true)。使用者自己開，存 localStorage `pttchrome.pref.v1`。
