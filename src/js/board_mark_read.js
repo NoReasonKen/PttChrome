@@ -26,7 +26,8 @@ import { MARK_ALL_READ_FLAG } from './mark_all_read';
 // 原生畫面上某一列（buf row）的目標。newflag（編號欄印的是文章總數）時跳號會失真 ⇒ 不給。
 export function boardMarkReadTargetFromFacts(facts, row) {
   const brd = classifyBoardListScreen(facts);
-  if (!brd || brd.newflag) return null;
+  // The class root's rows (#229) name no board.
+  if (!brd || brd.newflag || brd.variant === 'classroot') return null;
   const rows = facts.rows || (facts.rowTexts || []).length;
   if (row == null || row < BRD_HEADER_ROWS || row > rows - 2) return null;
   return boardMarkReadTargetOfText((facts.rowTexts || [])[row] || '');

@@ -197,6 +197,45 @@ describe("buildListCard：看板列表（board.c#brdlist_renderer 欄位）", ()
   });
 });
 
+// The class root (#229), its rows in the standard shape (term_view shifts them
+// ten cells left): `%7d%c%s` [0,10), the 40-cell description [10,50), then BM.
+// No row names a board, so its card shows the description and BM, and its
+// identity is its number.
+describe("buildListCard：分類看板根（#229）", () => {
+  const root = (lead) =>
+    row(seg(lead), seg("臺灣大學     臺大, 臺大, 臺大" + " ".repeat(12)), seg("bmAlpha"));
+
+  test("第一行敘述，第二行板主・序號；身分是序號", () => {
+    const { node } = buildListCard({ chars: root("      2   "), row: 4, kind: "boardClass", forceWidth: 16 });
+    expect(text(node.querySelector(".listCardTitle"))).toContain("臺灣大學     臺大, 臺大, 臺大");
+    expect(text(node.querySelector(".listCardBM"))).toBe("bmAlpha");
+    expect(text(node.querySelector(".listCardInfo"))).toBe("2");
+    expect(node.getAttribute("data-list-board")).toBe("#2");
+  });
+
+  test("看板列：ˇ 落在標記格，敘述與板主照常", () => {
+    const c = row(seg("     12 ˇ"), seg("10/31～11/13 達卡青奧" + " ".repeat(19)), seg("bmKilo/bmLim"));
+    const { node } = buildListCard({ chars: c, row: 4, kind: "boardClass", forceWidth: 16 });
+    expect(text(node.querySelector(".listCardMark"))).toBe("ˇ");
+    expect(text(node.querySelector(".listCardTitle"))).toContain("10/31～11/13 達卡青奧");
+    expect(text(node.querySelector(".listCardBM"))).toBe("bmKilo/bmLim");
+    expect(node.getAttribute("data-list-board")).toBe("#12");
+  });
+
+  test("連結列：顯示連結文字，身分仍是序號", () => {
+    const c = row(seg("     14       --> 即時熱門看板 <--"));
+    const { node } = buildListCard({ chars: c, row: 4, kind: "boardClass", forceWidth: 16 });
+    expect(text(node.querySelector(".listCardTitle"))).toContain("--> 即時熱門看板 <--");
+    expect(node.getAttribute("data-list-board")).toBe("#14");
+  });
+
+  test("游標列的身分與非游標列相同", () => {
+    const { node } = buildListCard({ chars: root(">     2   "), row: 4, kind: "boardClass", forceWidth: 16 });
+    expect(node.getAttribute("data-list-board")).toBe("#2");
+    expect(text(node.querySelector(".listCardCursor"))).toBe(">");
+  });
+});
+
 describe("cardSegment：邊界落在全形字中間時擴成完整的字", () => {
   test("起點是全形字的第二格 ⇒ 往前含進 lead byte", () => {
     const chars = row(seg("ab"), seg("中文"));

@@ -1645,3 +1645,106 @@ describe("頂端保留區：到頂一定是 0（看板列表）", () => {
     expect(targets.at(-1)).toBe(0);
   });
 });
+
+// The class root (#229): board.c#choose_board IN_CLASSROOT draws its rows from
+// row 7, ten cells to the right, and no row shows an ASCII board name.
+describe("分類看板根（#229）", () => {
+  const ROOT_FOOT =
+    " 分類看板  (m)加入最愛 (v)已讀/未讀 (t)標記 (y)只列最愛     (←)回上層 (h)說明";
+  const rootRow = (num, title) => pad7(num) + "   " + title + "     報告站長 PTT咬我";
+  const TITLES = ["市民廣場", "臺灣大學", "政治大學"];
+  function rootScreen({ titles = TITLES, cursor = 1 } = {}) {
+    const rowTexts = new Array(24).fill("");
+    rowTexts[0] = "【分類看板】                     批踢踢實業坊";
+    titles.forEach((t, i) => {
+      const row = rootRow(i + 1, t);
+      rowTexts[7 + i] = " ".repeat(10) + (i + 1 === cursor ? ">" + row.slice(1) : row);
+    });
+    rowTexts[23] = ROOT_FOOT;
+    return rowTexts;
+  }
+  // The buffer holds the rows in the standard shape (term_view.accumulateBoardListLines).
+  function seedRoot(termBuf, titles = TITLES) {
+    termBuf.brdListLines = titles.map((t, i) => rowChars(rootRow(i + 1, t)));
+    termBuf.brdListLineNums = titles.map((_, i) => i + 1);
+  }
+  const feedRoot = (h, opts = {}) =>
+    h.termBuf.feed(rootScreen(opts), { curX: 10, curY: 6 + (opts.cursor || 1), changedRows: new Set([7]) });
+
+  test("engages the class root as a board list", () => {
+    const h = makeSession();
+    feedRoot(h);
+    expect(h.s.state).toBe("active");
+    expect(h.s._variant).toBe("classroot");
+    expect(h.termBuf.listRenderMode).toBe("buffer");
+    expect(h.termBuf.listRenderOwner).toBe("board-list");
+  });
+
+  test("opening a row stacks the class root under the row's name, not a word of its description", () => {
+    const h = makeSession();
+    feedRoot(h);
+    seedRoot(h.termBuf);
+    h.s.state = "active";
+    h.s._renderMode = "buffer";
+    h.s._selectedNum = 2;
+    h.s._serverNum = 2;
+    const captured = [];
+    h.core.articleGestures = {
+      captureBoardListLayer: (name, namesBoard) => captured.push([name, namesBoard]),
+      pagePresented() {}
+    };
+    h.s._beginOpen();
+    // The row names no board: whichever board it opens stacks over it.
+    expect(captured).toEqual([["臺灣大學 報告站長 PTT咬我", false]]);
+  });
+
+  // A long class list can reach the screen over several settles: the first one
+  // after Enter may not show a board list yet (ctx 'other'), so the open is
+  // taken for a board's and the session suspends. The class's list that
+  // settles next is still a list opened from the class root, and the entry
+  // stacks over it instead of sliding back.
+  test("a class list that settles after a frame of something else is presented as another list", () => {
+    const h = makeSession();
+    feedRoot(h);
+    seedRoot(h.termBuf);
+    h.s.state = "active";
+    h.s._renderMode = "buffer";
+    h.s._selectedNum = 2;
+    h.s._serverNum = 2;
+    const presented = [];
+    h.core.articleGestures = {
+      captureBoardListLayer() {},
+      dropPendingLayer() {},
+      pagePresented: (kind, opts) => presented.push(opts && opts.another)
+    };
+    h.s._beginOpen();
+    const cmd = h.enqueued.find((c) => c.kind === BRD_CMD_PREFIX + "open-board");
+    cmd.expect(null, { ctx: "other" });
+    cmd.onDone();
+    expect(h.s.state).toBe("suspended");
+    h.termBuf.feed(brdScreenRows({ count: 20 }), { curY: 3 });
+    expect(h.s.state).toBe("active");
+    expect(presented).toEqual([true]);
+  });
+
+  test("its rows offer no mark-read: they name no board", () => {
+    const h = makeSession();
+    feedRoot(h);
+    seedRoot(h.termBuf);
+    h.s.state = "active";
+    h.s._renderMode = "buffer";
+    expect(h.s.markBoardReadTargetAtRow(3)).toBe(null);
+  });
+
+  test("back on the class root, its rows name the same entries as the buffer", () => {
+    const h = makeSession();
+    feedRoot(h);
+    seedRoot(h.termBuf);
+    const facts = h.s._collectFacts({ curX: 10, curY: 8 });
+    h.termBuf._rowTexts = rootScreen({ cursor: 2 });
+    expect(h.s._landedSameList(h.s._collectFacts({ curX: 10, curY: 8 }))).toBe(true);
+    h.termBuf._rowTexts = rootScreen({ cursor: 2, titles: ["市民廣場", "OTHER", "政治大學"] });
+    expect(h.s._landedSameList(h.s._collectFacts({ curX: 10, curY: 8 }))).toBe(false);
+    expect(facts.brd.variant).toBe("classroot");
+  });
+});

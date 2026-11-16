@@ -1112,6 +1112,12 @@ export const en_US = {
   "home_favorites": {
     "message": "Favorites"
   },
+  "home_browse": {
+    "message": "Browse boards"
+  },
+  "home_boardGroups": {
+    "message": "Board groups"
+  },
   "home_recents": {
     "message": "Recent boards"
   },

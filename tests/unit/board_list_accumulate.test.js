@@ -235,3 +235,63 @@ describe("buildBoardListWindowLines", () => {
     expect(v.buildBoardListWindowLines()).toBeNull();
   });
 });
+
+// The class root (#229): seven header rows and every row ten cells to the right
+// (board.c#choose_board IN_CLASSROOT, `"          %s%s"`). The buffer holds its
+// rows in the standard shape, so the window, the cursor mark and the cards read
+// them like any other board list's.
+describe("分類看板根（#229）", () => {
+  const ROOT_FOOT = " 分類看板  (m)加入最愛 (v)已讀/未讀 (t)標記 (y)只列最愛     (←)回上層 (h)說明";
+  function rootTexts({ count = 3, cursor = 1 } = {}) {
+    const texts = new Array(24).fill("");
+    texts[0] = "【分類看板】                     批踢踢實業坊";
+    texts[3] = "     ︿︿︿︿︿︿︿︿";
+    for (let i = 0; i < count; ++i) {
+      const row = pad7(i + 1) + "   " + "群組" + (i + 1) + "     描述";
+      texts[7 + i] = " ".repeat(10) + (i + 1 === cursor ? ">" + row.slice(1) : row);
+    }
+    texts[23] = ROOT_FOOT;
+    return texts;
+  }
+
+  test("rows from row 7 enter the buffer shifted to the standard number column", () => {
+    const v = fakeView(rootTexts({ count: 3 }));
+    v.bbscore = { activeListSession: () => fakeSession(v) };
+    v.accumulateBoardListLines();
+    expect(v.buf.brdListLineNums).toEqual([1, 2, 3]);
+    const stored = textOf(v.buf.brdListLines[0]);
+    expect(stored.slice(0, 7)).toBe(pad7(1));
+    expect(stored).toContain("群組1");
+    // Rows keep the full width.
+    expect(v.buf.brdListLines[0]).toHaveLength(80);
+    expect(v.showsClassRootList()).toBe(true);
+  });
+
+  test("the window shows the title over two blank rows instead of the art", () => {
+    const v = fakeView(rootTexts({ count: 3 }));
+    v.bbscore = { activeListSession: () => fakeSession(v) };
+    v.accumulateBoardListLines();
+    const lines = v.buildBoardListWindowLines();
+    expect(lines).not.toBeNull();
+    expect(textOf(lines[0])).toContain("【分類看板】");
+    expect(textOf(lines[1])).toBe("");
+    expect(textOf(lines[2])).toBe("");
+    expect(textOf(lines[3]).startsWith(">")).toBe(true);
+    expect(textOf(lines[3])).toContain("群組1");
+    expect(textOf(lines[lines.length - 1])).toContain("分類看板");
+  });
+
+  test("a standard board list after it shows its own header again", () => {
+    const v = fakeView(rootTexts());
+    const s = fakeSession(v);
+    v.bbscore = { activeListSession: () => s };
+    v.accumulateBoardListLines();
+    v.resetBoardListAccumulation();
+    const texts = screenTexts({ count: 4 });
+    v.buf.lines = texts.map((t) => chRow(t));
+    v.buf.getRowText = (r) => texts[r];
+    v.accumulateBoardListLines();
+    expect(v.showsClassRootList()).toBe(false);
+    expect(textOf(v.buildBoardListWindowLines()[2])).toContain("編號");
+  });
+});

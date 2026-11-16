@@ -311,7 +311,11 @@ export class StackListLayer extends ScreenCopyLayer {
     if (!card || !this.el.contains(card)) return null;
     const line = this.frame.lines[Number(card.querySelector('.listCardBody')?.dataset.row)];
     const text = line ? rowToText(line) : '';
-    if (this.kind === 'board') return { kind: 'board', id: cardIdentity(card), boardMarkRead: boardMarkReadTargetOfText(text) };
+    if (this.kind === 'board') {
+      // The class root's rows (#229) name no board to mark read.
+      const markable = this.frame.enhance.listCards !== 'boardClass';
+      return { kind: 'board', id: cardIdentity(card), boardMarkRead: markable ? boardMarkReadTargetOfText(text) : null };
+    }
     const entry = listEntryOf(text);
     return { kind: 'article', id: cardIdentity(card), markRead: entry ? { num: entry.num } : null };
   }

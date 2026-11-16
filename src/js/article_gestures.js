@@ -101,7 +101,7 @@ export class ArticleGestures {
   // swipes right to go back, under the same preference; neither has a drawer.
   // The kind of list, or null.
   listSwipeLevel() {
-    if (!easyReadingOn(readValuesWithDefault()) || this.core.buf.pageState !== 2) return null;
+    if (!easyReadingOn(readValuesWithDefault()) || !this._showsList()) return null;
     return [PAGE.ARTICLE_LIST, PAGE.BOARD_LIST].find(level => this._leaveable(level)) || null;
   }
 
@@ -393,8 +393,14 @@ export class ArticleGestures {
     if (held && this.stack.pending === held) this.dropPendingLayer();
   }
 
-  captureBoardListLayer(board) {
-    this.stack.captureBoardList(board);
+  // The dashboard opens a board list (the class root, #229).
+  captureHomeListLayer(title) {
+    this.stack.captureHomeList(title);
+    this._beginEntry();
+  }
+
+  captureBoardListLayer(board, namesBoard = true) {
+    this.stack.captureBoardList(board, namesBoard);
     this._beginEntry();
   }
 
@@ -479,6 +485,10 @@ export class ArticleGestures {
       }
       // The page an open came from, presented again: nothing was entered.
       this.dropPendingLayer();
+    } else if (this.entry?.loading && kind === PAGE.BOARD_LIST && this.stack.opensList()) {
+      // The board list the dashboard opened (the class root, #229).
+      this.stack.enterBoardList();
+      return this.entry.answered();
     }
     this.stack.pagePresented(kind);
     this.entry?.answered();
@@ -494,7 +504,8 @@ export class ArticleGestures {
     const core = this.core;
     if (this._otherModalOpen()) return false;
     const level = [PAGE.ARTICLE, PAGE.ARTICLE_LIST, PAGE.BOARD_LIST].find(level => this._leaveable(level));
-    if (!level || core.buf.pageState !== (level === PAGE.ARTICLE ? 3 : 2) || !this.stack.revealable()) return false;
+    const shown = level === PAGE.ARTICLE ? core.buf.pageState === 3 : this._showsList();
+    if (!level || !shown || !this.stack.revealable()) return false;
     this.exitLevel = level;
     this._ensureExit();
     this._settleExit(true);
@@ -583,6 +594,13 @@ export class ArticleGestures {
 
   // The current page can be left now, by any Back.
   // Whether a page of kind `level` is shown and can be left.
+  // PTT shows a list. The class root (#229) is a board list drawn without a
+  // list header, which pageState takes for a menu.
+  _showsList() {
+    const core = this.core;
+    return core.buf.pageState === 2 || (core.buf.pageState === 1 && !!core.boardListSession?.showsClassRoot?.());
+  }
+
   _leaveable(level) {
     if (level === PAGE.ARTICLE) return this._articleLeaveable();
     return level === PAGE.ARTICLE_LIST ? this._listLeaveable() : this._boardListLeaveable();

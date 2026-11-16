@@ -1116,6 +1116,54 @@ describe("HomeDashboard：動作都接到原生鍵", () => {
     expect(enqueued[0].expect(null, mainMenu())).toBe(false);
     expect(enqueued[0].expect(null, ARTICLE_LIST())).toBe(true);
   });
+
+  // #229: the board groups are PTT's class root (Ctrl+Z c, menu.c za_cmds →
+  // Class()), shown through the board list's easy reading.
+  test("分組討論區 ＝ Ctrl+Z c，落地離開主功能表才算完成", () => {
+    const { home, enqueued, show } = makeCore();
+    show(mainMenu());
+    expect(home.openBoardGroups()).toBe(true);
+    expect(enqueued[0].keys).toBe("\x1ac");
+    expect(enqueued[0].kind).toBe("home-board-groups");
+    expect(enqueued[0].expect(null, mainMenu())).toBe(false);
+    expect(enqueued[0].expect(null, ARTICLE_LIST())).toBe(true);
+  });
+
+  test("分組討論區：PTT 沒有回應 ⇒ 錯誤提示", () => {
+    const { home, enqueued, hints, show } = makeCore();
+    show(mainMenu());
+    home.openBoardGroups();
+    enqueued[0].onFail();
+    expect(hints.at(-1).m).toContain("分組討論區");
+    expect(hints.at(-1).level).toBe(HINT_ERROR);
+  });
+
+  // Every page change stacks: the dashboard stays alive under the class root,
+  // copied before Ctrl+Z c goes out, and dropped when it never opens.
+  test("分組討論區：主功能表先留成首頁圖層，開不了就丟掉", () => {
+    const { core, home, enqueued, show } = makeCore();
+    show(mainMenu());
+    const calls = [];
+    core.articleGestures = {
+      captureHomeListLayer: () => calls.push(["capture", enqueued.length]),
+      dropPendingLayer: () => calls.push(["drop"])
+    };
+    home.openBoardGroups();
+    expect(calls).toEqual([["capture", 0]]);
+    enqueued[0].onFail();
+    expect(calls.at(-1)).toEqual(["drop"]);
+  });
+
+  test("分組討論區：別的操作正在驅動 PTT ⇒ 提示，不留圖層也不送鍵", () => {
+    const { core, home, show, enqueued, hints } = makeCore();
+    show(mainMenu());
+    core.aidNavigation = { active: true, opHint: "回到斷線前的位置，請稍候…" };
+    core.articleGestures = { captureHomeListLayer: vi.fn(), dropPendingLayer: vi.fn() };
+    expect(home.openBoardGroups()).toBe(false);
+    expect(enqueued).toHaveLength(0);
+    expect(core.articleGestures.captureHomeListLayer).not.toHaveBeenCalled();
+    expect(hints.at(-1).m).toBe("回到斷線前的位置，請稍候…");
+  });
 });
 
 // #187: PTT's main menu is held back from its first frame until the settle's

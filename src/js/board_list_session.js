@@ -33,6 +33,7 @@ import {
   isBoardListSeparatorRow,
   isBoardListBlockedRow,
   parseBoardListName,
+  classRootRowName,
   boardMarkReadTargetOfText,
   setBoardListRowUnread,
   boardListRowUnread,
@@ -120,6 +121,12 @@ const FILL_MAX_PAGES = 3;
 // programmatic 平滑捲動每次都從曲線起點重跑 ⇒ 按住鍵只會慢慢爬。
 const NAV_BURST_MS = 250;
 const SCROLL_ANIM_MAX_MS = 1000;
+
+// What names a row of a list of `variant`: its board, or for the class root
+// (#229), whose rows name no board, its description (classRootRowName).
+function rowName(text, variant) {
+  return variant === 'classroot' ? classRootRowName(text) : parseBoardListName(text);
+}
 
 function prefersReducedMotion() {
   return !!(
@@ -446,12 +453,12 @@ BoardListSession.prototype = {
     const brd = facts && facts.brd;
     if (!brd) return false;
     const buffered = brd.cursorNum != null ? this._rowTextOf(brd.cursorNum) : null;
-    const name = buffered ? parseBoardListName(facts.rowTexts[facts.curY] || '') : null;
+    const name = buffered ? rowName(facts.rowTexts[facts.curY] || '', brd.variant) : null;
     if (!name) {
       if (!this._core.navigationStack?.showsLayerOf?.(PAGE.BOARD_LIST)) return false;
       return !this._listContradicts(facts);
     }
-    if (name !== parseBoardListName(buffered)) return false;
+    if (name !== rowName(buffered, brd.variant)) return false;
     return !this._listContradicts(facts);
   },
 
@@ -463,8 +470,8 @@ BoardListSession.prototype = {
       if (nums[r] == null) continue;
       const bufText = this._rowTextOf(nums[r]);
       if (!bufText) continue;
-      const a = parseBoardListName(facts.rowTexts[r] || '');
-      const b = parseBoardListName(bufText);
+      const a = rowName(facts.rowTexts[r] || '', facts.brd.variant);
+      const b = rowName(bufText, facts.brd.variant);
       if (a && b && a !== b) return true;
     }
     return false;
@@ -585,6 +592,8 @@ BoardListSession.prototype = {
       case 'suspend':
         return this._suspend({ flush: true });
       case 'resume-in-place':
+        // Back on the list a board was opened from: nothing else was opened.
+        this._openedAnother = false;
         this._resumeShown(facts);
         this._presented();
         // 進板時被 flush 掉的背景填充要接回去（緩衝可能還沒填到 _fillTarget）。
@@ -607,6 +616,12 @@ BoardListSession.prototype = {
   },
 
   // ---- 外部入口 --------------------------------------------------------------
+
+  // The engaged list is the class root (#229), which PTT draws without a list
+  // header: its pageState reads as a menu.
+  showsClassRoot: function() {
+    return this.state === 'active' && this._variant === 'classroot';
+  },
 
   // pref 在畫面靜止時被打開（不會再有 settle 了）：把當下畫面當成剛 settle 評估。
   evaluateNow: function() {
@@ -1333,7 +1348,7 @@ BoardListSession.prototype = {
     if (fromLayer) this._view.holdListRows?.(null, 'board');
     else this._view.releaseListRows?.('board');
     const num = this._selectedNum;
-    if (fromLayer && visited && num != null &&
+    if (fromLayer && visited && num != null && this._variant !== 'classroot' &&
         parseBoardListName(this._rowTextOf(num)).toLowerCase() === visited.board.toLowerCase())
       this._view.editBoardListRow?.(num, cells => setBoardListRowUnread(cells, visited.unread));
     const newer = fromLayer && this._landsOtherUnreadMarks(facts, num);
@@ -1346,6 +1361,8 @@ BoardListSession.prototype = {
   // board opened from the list (`openedNum`) follows the reader's own visit.
   _landsOtherUnreadMarks: function(facts, openedNum) {
     if (!facts || !facts.rowTexts) return false;
+    // The class root's rows (#229) name no board and show no unread mark.
+    if (facts.brd && facts.brd.variant === 'classroot') return false;
     const nums = boardListRowNums(facts.rowTexts, facts.rows);
     for (let r = 0; r < nums.length; ++r) {
       const num = nums[r];
@@ -1426,7 +1443,7 @@ BoardListSession.prototype = {
     const nums = this._termBuf.brdListLineNums || [];
     if (idx >= nums.length) return null; // 短清單補到 bodyRows 的空白列
     const num = nums[idx];
-    if (num == null) return null;
+    if (num == null || this._variant === 'classroot') return null;
     return boardMarkReadTargetOfText(this._rowTextOf(num));
   },
 
@@ -1740,7 +1757,8 @@ BoardListSession.prototype = {
     if (isBoardListBlockedRow(text)) return this._abortOpen('這個看板目前無法進入');
     this._openedAnother = false;
     // This board list stays alive under the board's article list (#31).
-    this._core.articleGestures?.captureBoardListLayer(parseBoardListName(text));
+    // A class root row names no board: whichever board it opens stacks (#229).
+    this._core.articleGestures?.captureBoardListLayer(rowName(text, this._variant), this._variant !== 'classroot');
     this._freezeForTransaction();
     const self = this;
     const send = function() {
@@ -1813,11 +1831,11 @@ BoardListSession.prototype = {
           landedCtx === 'brdlist-other' ||
           landedCtx === 'menu';
         if (opts && opts.enteringBoard && !otherSpace) self._suspend();
-        else {
-          self._reset();
-          // The next seed presents that list as opened from this one.
-          self._openedAnother = !!(opts && opts.enteringBoard) && landedCtx !== 'menu';
-        }
+        else self._reset();
+        // The next seed presents a board list as opened from this one. A class
+        // reached over its group announcement (a pause screen, ctx 'other',
+        // #229) is seeded from 'suspended' once the board note skip answers it.
+        self._openedAnother = !!(opts && opts.enteringBoard) && landedCtx !== 'menu';
       },
       onFail: function() {
         if (opts && opts.enteringBoard) self._core.articleGestures?.dropPendingLayer();
