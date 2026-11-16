@@ -63,6 +63,8 @@ import { LEFT_ARROW } from './function_key_plan';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { HINT_ERROR } from './status_hint';
 import { refuseUnsupported } from './list_refusal';
+import { resolveDismiss } from './screen_dismiss';
+import { parseVmsgText } from './push_screen';
 import {
   BOARD_LIST,
   FAVOURITE,
@@ -277,22 +279,34 @@ export function classifyListBurst({ changedRows, curY, rows }) {
   return 'other';
 }
 
-// T4 non-solicited message fingerprint (v5/M4; protocol §9 CONFIRMED): a
-// waterball/broadcast is outmsg writing ONLY the bottom row (one row up when
-// msg_occupied>0), the row starting with the reversed ◆ marker. The caller
-// must already have excluded in-flight transactions — this only inspects the
-// settle's dirty-row shape and content. Used to pick the banner wording when
-// the active-state catch-all degrades to native.
-export function isWaterballSettle({ changedRows, rowTexts, rows }) {
-  if (!changedRows || changedRows.size === 0 || changedRows.size > 2)
-    return false;
-  let bottomOnly = true;
-  let marker = false;
-  changedRows.forEach(r => {
-    if (r < rows - 2) bottomOnly = false;
-    else if (((rowTexts[r] || '').trimStart()).indexOf('◆') === 0) marker = true;
-  });
-  return bottomOnly && marker;
+// T4 messages PTT writes on its own (protocol §9 CONFIRMED, #206). outmsg
+// writes one row at the bottom (one row up while msg_occupied > 0): a
+// waterball is `ESC[1;33;46m★id ESC[0;1;37;45m msg` (or 1;37;46 for the
+// angel), a broadcast a magenta run alone (doupdate). The colours tell them
+// from a vmsg banner (" ◆ …", blue), which is PTT answering a key.
+// `bgs`: one row's background colour per cell. Returns the cell spans
+// { from: [c0, c1] | null, text: [c0, c1] } or null.
+export function messageSpans(bgs) {
+  const t0 = bgs.indexOf(5);
+  if (t0 < 0) return null;
+  let t1 = t0;
+  while (t1 < bgs.length && bgs[t1] === 5) ++t1;
+  let f0 = t0;
+  while (f0 > 0 && bgs[f0 - 1] === 6) --f0;
+  return { from: f0 < t0 ? [f0, t0] : null, text: [t0, t1] };
+}
+
+// The message this settle wrote, or null: only the bottom two rows changed,
+// and one of them is a message row (facts.messageRows, ListSession._messageRows).
+// The caller excludes settles a command of its own accounts for.
+export function messageOnSettle({ changedRows, rows, messageRows }) {
+  if (!changedRows || changedRows.size === 0 || changedRows.size > 2) return null;
+  let message = null;
+  for (const r of changedRows) {
+    if (r < rows - 2) return null;
+    if (messageRows && messageRows[r]) message = messageRows[r];
+  }
+  return message;
 }
 
 // Does this frame's entry area hold at least one NUMBERED article row?
@@ -416,7 +430,9 @@ export function transitionListSession(state, event) {
             // 原生自動回到好讀的那一瞬間，server 的殘餘幀（半繪／prompt 收尾）
             // 還在路上，打到這裡就是「剛回好讀又被 banner 踢回原生」。與
             // `consumed` 的放寬（不變量 3c）同型，是必要條件不是保險。
-            return event.inFlightKind || event.consumed || event.withinResumeGrace
+            // A waterball / broadcast (event.message) is presented over the
+            // list (ListSession._presentMessage, #206), never by the mirror.
+            return event.inFlightKind || event.consumed || event.withinResumeGrace || event.message
               ? stay
               : { next: 'functionMode', actions: ['enter-function-mode'] };
         }
@@ -860,6 +876,20 @@ const INPLACE_KEYS = '=\\]+[-<,.>{}t';
 const NATIVE_RESUME_HINT = '（操作完成後自動恢復好讀）';
 const RETRY_HINT = '，下拉重新整理以重試';
 const FAILED_KEY_HINT = '列表操作失敗：下拉重新整理以重試';
+// A sequence of PttChrome's own landed on a screen that is not the list (#206).
+const LANDING_UNRECOGNISED = '列表操作的結果無法辨識';
+
+// PTT's own words on the box a sequence landed on (#206): the vmsg banner's
+// message, or what a pause row says beside its prompt. Null when it says nothing.
+export function landingBoxText(lastRowText) {
+  const vmsg = parseVmsgText(lastRowText);
+  if (vmsg) return vmsg;
+  const text = String(lastRowText || '')
+    .replace(/請按任意鍵繼續|請按 空白鍵 繼續|\[按任意鍵繼續\]/g, '')
+    .replace(/▄/g, '')
+    .trim();
+  return text || null;
+}
 // 看板列表按 `v` ＝ b_mark_read_unread（mbbsd/bbs.c:4309）：畫面下方跳出 getdata
 // prompt「設定所有文章 (U)未讀 (V)已讀 (W)前已讀後未讀 (Q)取消？[Q] 」。
 // b_lines = t_lines-1 ⇒ 24 列終端時 prompt 畫在 **row 22**（不是最後一列），所以
@@ -967,6 +997,13 @@ export function ListSession(core, view, termBuf, queue) {
   // 「在我這條序列跑完之前你不准自己彈回 buffer、不准自己排命令」）。
   this._holdReason = null;
   this._externalResumeNotice = null;
+  // An unproven landing being judged ('landing' hold, #206): { message, dismissed }.
+  this._landingHold = null;
+  this._landingTimer = null;
+  // The operation told the reader why PTT refused; PTT's own words stay unsaid.
+  this._landingExplained = false;
+  // The footer row of the last clean list, standing in while a message covers it.
+  this._footerText = null;
   // 靜置探針的 timer handle 與它的兩個時鐘來源（見 RESUME_QUIET_MS）。
   // 這幾個時刻（含 _resumedAt）都用 performance.now()：牆鐘會被校時往回跳（實測
   // 7 秒），Date.now() 算出負的靜置時間，探針就多等好幾秒才回好讀。
@@ -1095,6 +1132,9 @@ ListSession.prototype = {
     // While the layer Back revealed is still the page shown.
     noticeNewArticles(this, !this._view.holdsListRows?.('article'), this._landsNewerArticles(facts));
     this._dispatch(this._settleEvent(facts, consumed), facts);
+    const message = !this._queue.inFlightKind && !consumed && messageOnSettle(facts);
+    if (message && (this.state === 'active' || this.state === 'functionMode') && this._renderMode !== 'native')
+      this._presentMessage(message);
     this._scheduleResumeProbe();
     this._core.listResize?.pump();
   },
@@ -1114,15 +1154,56 @@ ListSession.prototype = {
       row0Reversed: buf.isUnicolor(0, 0, 29),
       row2Reversed: buf.isUnicolor(2, 0, buf.cols - 10)
     };
+    facts.messageRows = this._messageRows();
+    // A message over the footer row (#206): PTT's list is unchanged beneath it
+    // until PTT repaints the row, so the footer the list last showed stands in.
+    const covered = !!facts.messageRows[buf.rows - 1];
+    if (covered && this._footerText != null) rowTexts[buf.rows - 1] = this._footerText;
     const cls = classifyListScreen(facts);
+    if (cls.kind === 'clean-list' && !covered) this._footerText = rowTexts[buf.rows - 1];
     facts.kind = cls.kind;
     facts.boardName = cls.boardName;
-    // T4 banner wording (isWaterballSettle) reads the settle's dirty-row shape.
+    // messageOnSettle reads the settle's dirty-row shape.
     facts.changedRows = snap ? snap.changedRows : null;
     facts.nums = pageArticleNums(rowTexts, facts.curY);
     facts.cursorRowNum =
       facts.curY >= 0 && facts.curY < facts.nums.length ? facts.nums[facts.curY] : null;
     return facts;
+  },
+
+  // The bottom rows that hold a message PTT wrote on its own, by row:
+  // { kind: 'waterball' | 'broadcast', from, text } (messageSpans).
+  // Only over the list: an article's pager footer is drawn on the same
+  // magenta, so neither an article nor an open in flight is read for messages.
+  _messageRows: function() {
+    const buf = this._termBuf;
+    const out = {};
+    if (!buf.lines || buf.pageState === 3 || (this.state !== 'active' && this.state !== 'functionMode')) return out;
+    for (let r = buf.rows - 2; r < buf.rows; ++r) {
+      const line = buf.lines[r];
+      const spans = line && messageSpans(line.map((c) => c.getBg()));
+      if (!spans) continue;
+      const text = buf.getRowText(r, spans.text[0], spans.text[1]).trim();
+      const from = spans.from ? buf.getRowText(r, spans.from[0], spans.from[1]).trim() : '';
+      if (!text || (spans.from && from.indexOf('★') !== 0)) continue;
+      out[r] = { kind: from ? 'waterball' : 'broadcast', from: from.slice(1), text: text };
+    }
+    return out;
+  },
+
+  // A waterball or broadcast over the list (#206): the reader is told it on
+  // the list, which stays. The message inbox's bell keeps it too when the
+  // inbox is on; with the inbox off this hint is all there is, so it shows
+  // even with status hints off. Answering it (Ctrl+R) is a native screen the
+  // list does not present.
+  _presentMessage: function(message) {
+    if (!this._view.flashListHint) return;
+    const inbox = readValuesWithDefault().enableMessageInbox !== false;
+    this._view.flashListHint(
+      message.kind === 'waterball' ? '★' + message.from + ' ' + message.text : message.text,
+      4000,
+      inbox ? undefined : HINT_ERROR
+    );
   },
 
   _settleEvent: function(facts, consumed) {
@@ -1141,6 +1222,7 @@ ListSession.prototype = {
       boardNameMatch: facts.boardName != null && facts.boardName === board,
       inFlightKind: this._queue.inFlightKind,
       consumed: !!consumed,
+      message: !!messageOnSettle(facts),
       landedNumInBuffer:
         facts.cursorRowNum != null &&
         (this._termBuf.listLineNums || []).indexOf(facts.cursorRowNum) !== -1,
@@ -1889,6 +1971,7 @@ ListSession.prototype = {
     const r = transitionListSession(this.state, { type: 'key', keyClass: 'transact' });
     this.state = r.next; // functionMode（吸收在途 settle／吞鍵），render 是 frozen
     this._freezeForTransaction();
+    this._landingExplained = false;
     const self = this;
     const send = function() {
       self._enqueuePassthroughStep(steps, 0, function(landed) {
@@ -1917,8 +2000,10 @@ ListSession.prototype = {
 
   // 凍結序列最後一步落地。條件與靜置探針（reducer 的 resume-probe 分支）逐條相同，
   // 只差不必等靜置：合格 ⇒ resume-buffer + rebuild（已讀標記全變，累積 buffer 過時；
-  // rebuild 前先驗證閱讀紀錄留下的待還原錨，同 _runAction('rebuild')）。不合格 ⇒
-  // 停在原生鏡像（passthrough hold），之後交給靜置探針，跟沒 opt in 時一樣。
+  // rebuild 前先驗證閱讀紀錄留下的待還原錨，同 _runAction('rebuild')）。
+  // A landing the step could not prove (a refusal box, an unexpected screen, a
+  // frame that cannot vouch for the cursor) keeps the page frozen and is judged
+  // once PTT is quiet (_holdLanding, #206): the native list is never shown.
   _resumeFromLanding: function(landed) {
     // 這筆交易收尾了：它的長預算不可以留給之後不經 _freezeForTransaction 的凍結（開文）。
     this._frozenStepBudgetMs = 0;
@@ -1935,7 +2020,89 @@ ListSession.prototype = {
       this._runAction('rebuild', landed);
       return;
     }
-    this._enterFunctionMode();
+    if (!this._autoResumeEnabled()) return this._enterFunctionMode();
+    this._holdLanding();
+  },
+
+  // An unproven landing (#206). The page stays frozen under the 'landing' hold
+  // (no settle or idle probe resumes it: one response can settle twice, and its
+  // first frame may carry the old cursor) and the screen is judged once PTT has
+  // been quiet for RESUME_QUIET_MS, as the idle probe judges it:
+  //   - a list resumes and rebuilds from it, as a proven landing does;
+  //   - a box PTT waits on (a vmsg refusal, a pause, an input field left open,
+  //     screen_dismiss.resolveDismiss) is dismissed once, which brings PTT back
+  //     to its list, and the screen is judged again. PTT's words are told to
+  //     the reader at error level whatever comes next;
+  //   - anything else fails (_fail): the page stays with a message, PTT's
+  //     screen is no longer trusted, and pull-to-refresh retries from it.
+  // The frozen backstop still runs: a screen that never goes quiet fails too.
+  _holdLanding: function() {
+    this._holdReason = 'landing';
+    this._landingHold = { message: null, dismissed: false };
+    this._cancelResumeProbe();
+    this._scheduleLandingJudge();
+  },
+
+  _scheduleLandingJudge: function() {
+    if (this._landingTimer) clearTimeout(this._landingTimer);
+    const self = this;
+    const waited = performance.now() - this._lastServerActivityAt;
+    this._landingTimer = setTimeout(function() {
+      self._landingTimer = null;
+      self._judgeLanding();
+    }, waited < RESUME_QUIET_MS ? RESUME_QUIET_MS - waited : 0);
+  },
+
+  _judgeLanding: function() {
+    const hold = this._landingHold;
+    if (!hold || this.state !== 'functionMode' || this._holdReason !== 'landing' || this._renderMode !== 'frozen') {
+      this._landingHold = null;
+      return;
+    }
+    if (performance.now() - this._lastServerActivityAt < RESUME_QUIET_MS || this._queue.inFlightKind)
+      return this._scheduleLandingJudge();
+    const now = this._collectFacts(null);
+    if (now.kind === 'clean-list' && hasNumberedEntryRow(now) && this._engageEligible()) {
+      this._landingHold = null;
+      this.state = 'active';
+      this._resumeBuffer(now);
+      this._runAction('rebuild', now);
+      // An operation that explained the refusal itself keeps its own words.
+      if (hold.message && !this._landingExplained && this._view.flashListHint)
+        this._view.flashListHint(hold.message, 4000, HINT_ERROR);
+      return;
+    }
+    const last = now.rowTexts[now.rows - 1] || '';
+    const box = hold.dismissed
+      ? null
+      : resolveDismiss({ lastRowText: last, cursorOnInputField: !!this._termBuf.isCursorOnInputField?.() });
+    if (!box) {
+      this._landingHold = null;
+      this._fail(LANDING_UNRECOGNISED, hold.message ? { message: hold.message + RETRY_HINT } : undefined);
+      return;
+    }
+    hold.dismissed = true;
+    if (box.kind === 'anyKey') hold.message = landingBoxText(last);
+    const self = this;
+    this._queue.enqueue({
+      keys: box.bytes,
+      kind: 'landing-dismiss',
+      fullRepaint: true,
+      expect: function() {
+        return true;
+      },
+      timeoutMs: CMD_PROBE_AFTER_MS,
+      probeTimeoutMs: CMD_PROBE_WINDOW_MS,
+      hardTimeoutMs: CMD_HARD_MS,
+      onDone: function() {
+        self._scheduleLandingJudge();
+      },
+      onFail: function() {
+        if (self._landingHold !== hold) return;
+        self._landingHold = null;
+        self._fail('操作逾時', hold.message ? { message: hold.message + RETRY_HINT } : undefined);
+      }
+    });
   },
 
   // 送出 passthrough 序列的第 i 步，並在它落地後才排下一步（單步序列＝原本的
@@ -3035,8 +3202,9 @@ ListSession.prototype = {
             rr.end(bm, 'done');
             if (!self._view.flashListHint) return;
             const rejected = !!applyFacts && markReadRejected(applyFacts.rowTexts);
-            // 拒絕畫面（vmsg）一定停在原生；成功時只有好讀已關掉才停在原生。
-            const native = rejected || !self._autoResumeEnabled();
+            // 只有好讀已關掉才停在原生；拒絕畫面（vmsg）凍著收掉再回列表（#206）。
+            const native = !self._autoResumeEnabled();
+            if (rejected) self._landingExplained = true;
             self._view.flashListHint(
               (rejected
                 ? 'PTT 不接受這篇當參考點，已讀記錄沒有變動（請改用其它文章）。'
@@ -3869,7 +4037,7 @@ ListSession.prototype = {
     this._scheduleResumeProbe();
     if (facts && this._view.flashListHint) {
       this._view.flashListHint(
-        (isWaterballSettle(facts)
+        (messageOnSettle(facts)
           ? '收到水球／廣播，已切至原生模式'
           : '畫面偏離列表格式，已切至原生模式') + NATIVE_RESUME_HINT,
         4000,
@@ -3929,14 +4097,21 @@ ListSession.prototype = {
   // shows (no change on its side); that screen then decides the page through
   // the ordinary settle: a list rebuilds, an article opens. A screen neither
   // fails again when the frozen render times out.
+  // A box PTT still waits on (a refusal left by a failed landing, #206) takes
+  // its dismissing key instead: Ctrl-L cannot close it (screen_dismiss.js).
   retry: function() {
     if (!this.failed()) return false;
     const self = this;
+    const box = resolveDismiss({
+      lastRowText: this._termBuf.getRowText(this._termBuf.rows - 1, 0, this._termBuf.cols),
+      cursorOnInputField: !!this._termBuf.isCursorOnInputField?.()
+    });
     this._holdReason = null;
     this._setLoading(true);
     this._armFrozenWatchdog();
     this._queue.enqueue({
-      keys: '\f',
+      keys: box ? box.bytes : '\f',
+      fullRepaint: !!box,
       kind: 'list-retry',
       expect: function() {
         return true;

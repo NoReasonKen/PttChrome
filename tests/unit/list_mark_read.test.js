@@ -289,9 +289,9 @@ describe("markReadUnreadBefore 的序列", () => {
   });
 
   // 落地即回好讀的整段（真實畫面＋rebuild）在 list_mark_read_viewport.test.js；
-  // 這裡守退路：落點認不出（拒絕的 vmsg、半繪）就跟舊行為一樣停在原生鏡像，
-  // 掛可自動解除的 hold，之後交給靜置探針（tests/unit/list_native_resume.test.js）。
-  test("落點認不出 → 停在原生鏡像，hold 是 'passthrough'", () => {
+  // 這裡守退路：落點認不出（拒絕的 vmsg、半繪）不翻原生，凍著掛 'landing' hold，
+  // 靜置後再判定（#206；整段在 reading_record_list.test.js）。
+  test("落點認不出 → 凍著不翻原生，hold 是 'landing'", () => {
     const { s, enqueued, hints } = makeSession();
     s._serverNum = 103;
     s.markReadUnreadBefore(103);
@@ -299,10 +299,9 @@ describe("markReadUnreadBefore 的序列", () => {
     const w = stepOf(enqueued, "mark-read-apply");
     w.expect(null, facts({ 23: REJECT_TEXT }));
     w.onDone(true);
-    expect(s._renderMode).toBe("native");
-    expect(s._holdReason).toBe("passthrough");
-    // 停在原生 ⇒ 提示要說（成功落地回好讀時才省掉這句）。
-    expect(hints[hints.length - 1]).toContain("已切至原生");
+    expect(s._renderMode).toBe("frozen");
+    expect(s._holdReason).toBe("landing");
+    expect(hints.some((h) => String(h).includes("已切至原生"))).toBe(false);
   });
 
   test("w⏎ 沒回應（onFail）→ 停在原頁，等下拉重新整理", () => {

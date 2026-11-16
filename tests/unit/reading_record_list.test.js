@@ -179,8 +179,10 @@ describe("列表上的原生交易：做完回好讀時視野回到原處", () =
     expect(new MarkAllRead(h.core).start()).toBe(true);
     step(h, "mark-all-read-prompt").onDone(true);
     step(h, "mark-all-read-apply").onDone(true);
-    expect(h.s._renderMode).toBe("native");
+    // A landing the step did not prove is judged frozen once quiet (#206).
+    expect(h.s._renderMode).toBe("frozen");
     expectRestoredAfterFill(h, 350010);
+    expect(h.native.shown).toBe(0);
   });
 
   test("設為全部已讀：PTT 沒有回應（失敗）⇒ 停在原處，下拉重新整理後回原處", () => {
@@ -638,19 +640,156 @@ describe("落地即回好讀：重新整理／搜尋／跳到未讀不切原生�
     expect(h.s._selectMode).toBe(true); // 搜尋結果＝另一個編號空間，rebuild 有認出來
   });
 
-  test("文章搜尋：找不到（vmsg）⇒ 停在原生鏡像讓使用者看，交給靜置探針", () => {
+  // #206: an unproven landing never paints the native list. The page stays
+  // frozen until PTT is quiet; a refusal box is dismissed once, PTT's words are
+  // told at error level, and the list PTT comes back to resumes.
+  const hints = (h) => {
+    const seen = [];
+    h.core.view.flashListHint = (msg, ms, level) => seen.push({ msg, level });
+    return seen;
+  };
+
+  test("文章搜尋：找不到（vmsg）⇒ 畫面凍著不翻原生；收掉訊息框、回到列表，紅字轉述 PTT 的話", () => {
     const h = makeSession();
+    const seen = hints(h);
     submitSearch(h.core, "title", "nomatch");
     step(h, "search-open").onDone(true);
+    const list = h.screen.rows[23];
+    h.screen.rows[23] = " ◆ 找不到符合條件的文章。 [按任意鍵繼續]";
+    h.screen.curY = 23;
+    h.screen.curX = 1;
+    landOn(h, "search-submit");
+    expect(h.s._renderMode).toBe("frozen");
+    expect(h.s._holdReason).toBe("landing");
+    vi.advanceTimersByTime(300);
+    const dismiss = step(h, "landing-dismiss");
+    expect(dismiss.keys).toBe(" ");
+    expect(h.s._renderMode).toBe("frozen");
+    h.screen.rows[23] = list;
+    h.screen.curY = 5;
+    dismiss.onDone(true);
+    vi.advanceTimersByTime(300);
+    expect(h.s.state).toBe("active");
+    expect(h.s._renderMode).toBe("buffer");
+    expect(h.native.shown).toBe(0);
+    expect(seen).toContainEqual({ msg: "找不到符合條件的文章。", level: "error" });
+  });
+
+  test("舊版暫停列（沒有 ◆）一樣收掉，轉述框裡的字", () => {
+    const h = makeSession();
+    const seen = hints(h);
+    submitSearch(h.core, "title", "nomatch");
+    step(h, "search-open").onDone(true);
+    const list = h.screen.rows[23];
     h.screen.rows[23] = "            找不到符合條件的文章。      請按任意鍵繼續";
     h.screen.curY = 23;
     h.screen.curX = 60;
     landOn(h, "search-submit");
-    expect(h.s._renderMode).toBe("native");
-    expect(h.s._holdReason).toBe("passthrough");
+    vi.advanceTimersByTime(300);
+    const dismiss = step(h, "landing-dismiss");
+    h.screen.rows[23] = list;
+    h.screen.curY = 5;
+    h.screen.curX = 1;
+    dismiss.onDone(true);
+    vi.advanceTimersByTime(300);
+    expect(h.s.state).toBe("active");
+    expect(h.native.shown).toBe(0);
+    expect(seen).toContainEqual({ msg: "找不到符合條件的文章。", level: "error" });
   });
 
-  test("最後一步標 trustLanding:false（落點不能自證游標）⇒ 照舊交給探針", () => {
+  test("an operation that explained the refusal itself keeps its words: PTT's are not repeated", () => {
+    const h = makeSession();
+    const seen = hints(h);
+    submitSearch(h.core, "title", "nomatch");
+    step(h, "search-open").onDone(true);
+    const list = h.screen.rows[23];
+    h.screen.rows[23] = " ◆ 找不到符合條件的文章。 [按任意鍵繼續]";
+    h.screen.curY = 23;
+    h.screen.curX = 1;
+    landOn(h, "search-submit");
+    h.s._landingExplained = true;
+    vi.advanceTimersByTime(300);
+    const dismiss = step(h, "landing-dismiss");
+    h.screen.rows[23] = list;
+    h.screen.curY = 5;
+    dismiss.onDone(true);
+    vi.advanceTimersByTime(300);
+    expect(h.s.state).toBe("active");
+    expect(seen.map((x) => x.msg)).not.toContain("找不到符合條件的文章。");
+  });
+
+  test("收掉框之後還不是列表 ⇒ 停在原處說明失敗，下拉重新整理回到列表", () => {
+    const h = makeSession();
+    const seen = hints(h);
+    submitSearch(h.core, "title", "nomatch");
+    step(h, "search-open").onDone(true);
+    const list = { rows: h.screen.rows.slice(), curY: h.screen.curY };
+    h.screen.rows[23] = " ◆ 找不到符合條件的文章。 [按任意鍵繼續]";
+    h.screen.curY = 23;
+    landOn(h, "search-submit");
+    vi.advanceTimersByTime(300);
+    h.screen.rows = h.screen.rows.map(() => "");
+    h.screen.rows[3] = "something else";
+    h.screen.curY = 10;
+    step(h, "landing-dismiss").onDone(true);
+    vi.advanceTimersByTime(300);
+    expect(h.s.failed()).toBe(true);
+    expect(h.s._renderMode).toBe("frozen");
+    expect(h.native.shown).toBe(0);
+    expect(seen).toContainEqual({ msg: "找不到符合條件的文章。，下拉重新整理以重試", level: "error" });
+    expect(h.enqueued.filter((c) => c.kind === "landing-dismiss")).toHaveLength(1);
+    expect(h.s.retry()).toBe(true);
+    expect(step(h, "list-retry").keys).toBe("\f");
+    h.screen.rows = list.rows;
+    h.screen.curY = list.curY;
+    step(h, "list-retry").onDone(true);
+    settleOnList(h);
+    expect(h.s.state).toBe("active");
+    expect(h.native.shown).toBe(0);
+  });
+
+  test("落在認不出的畫面（沒有框）⇒ 停在原處說明失敗，不送任何鍵", () => {
+    const h = makeSession();
+    const seen = hints(h);
+    submitSearch(h.core, "title", "x");
+    step(h, "search-open").onDone(true);
+    const submit = step(h, "search-submit");
+    h.screen.rows = h.screen.rows.map(() => "");
+    h.screen.rows[3] = "something else";
+    h.screen.curY = 10;
+    submit.onDone(true);
+    vi.advanceTimersByTime(300);
+    expect(h.s.failed()).toBe(true);
+    expect(h.native.shown).toBe(0);
+    expect(h.enqueued.filter((c) => c.kind === "landing-dismiss")).toHaveLength(0);
+    expect(seen).toContainEqual({ msg: "列表操作的結果無法辨識，下拉重新整理以重試", level: "error" });
+  });
+
+  test("失敗時 PTT 還停在訊息框 ⇒ 下拉重新整理送空白收框，不送 Ctrl-L", () => {
+    const h = makeSession();
+    h.s._fail("x");
+    h.screen.rows[23] = " ◆ 請改用其它文章設定當參考點 [按任意鍵繼續]";
+    expect(h.s.retry()).toBe(true);
+    const c = step(h, "list-retry");
+    expect(c.keys).toBe(" ");
+    expect(c.fullRepaint).toBe(true);
+  });
+
+  test("落地之後畫面還在動 ⇒ 等靜置才判定；中途的列表 settle 不搶先回好讀", () => {
+    const h = makeSession();
+    h.s._beginPassthroughBytes(
+      [{ keys: "\x1b[5~", kind: "unread-pgup", trustLanding: false, expect: () => true }],
+      { kind: "unread-jump", hint: null, resumeOnLanding: true }
+    );
+    landOn(h, "unread-pgup");
+    expect(h.s._holdReason).toBe("landing");
+    const ev = h.s._settleEvent(h.s._collectFacts(null), null);
+    h.s._dispatch(ev, h.s._collectFacts(null));
+    expect(h.s.state).toBe("functionMode");
+    expect(h.s._renderMode).toBe("frozen");
+  });
+
+  test("最後一步標 trustLanding:false（落點不能自證游標）⇒ 凍著等靜置，再從當下的列表回好讀", () => {
     const h = makeSession();
     h.s._beginPassthroughBytes(
       [{ keys: "\x1b[5~", kind: "unread-pgup", trustLanding: false, expect: () => true }],
@@ -658,8 +797,11 @@ describe("落地即回好讀：重新整理／搜尋／跳到未讀不切原生�
     );
     expect(h.s._renderMode).toBe("frozen");
     landOn(h, "unread-pgup");
-    expect(h.s._renderMode).toBe("native");
-    expect(h.s._holdReason).toBe("passthrough");
+    expect(h.s._renderMode).toBe("frozen");
+    vi.advanceTimersByTime(300);
+    expect(h.s.state).toBe("active");
+    expect(h.s._renderMode).toBe("buffer");
+    expect(h.native.shown).toBe(0);
   });
 
   test("跳到第一篇未讀的跳號（numJumpLanded 自證游標）⇒ 落地即回好讀", () => {
@@ -712,5 +854,87 @@ describe("落地即回好讀：重新整理／搜尋／跳到未讀不切原生�
     expect(h.s.failed()).toBe(false);
     vi.advanceTimersByTime(200);
     expect(h.s.failed()).toBe(true);
+  });
+});
+
+// #206: a waterball or broadcast PTT writes over the list is told on the list,
+// which stays; the native mirror never shows. PTT's list is unchanged beneath
+// the message, so later frames with the message still on the footer row are
+// still the list.
+describe("PTT 自己寫的訊息（水球／廣播）蓋在列表上：列表留著，訊息照說", () => {
+  const cells = (runs) => runs.flatMap(([bg, n]) => new Array(n).fill(null).map(() => ({ getBg: () => bg })));
+  const withColours = (h) => {
+    h.termBuf.lines = new Array(24).fill(null).map(() => cells([[0, 80]]));
+    h.termBuf.getRowText = (r, c0 = 0, c1 = 80) => (h.screen.rows[r] || "").padEnd(80).slice(c0, c1);
+  };
+  const settle = (h, changed) => {
+    h.termBuf.settleSnapshot = { changedRows: new Set(changed), curX: h.screen.curX, curY: h.screen.curY, cursorMoved: false };
+    h.s._onScreenSettled();
+  };
+
+  test.each([
+    ["waterball", "★friend01 晚上吃飯嗎", [[6, 9], [5, 6], [0, 65]], "★friend01 晚上吃飯嗎", "★friend01"],
+    ["broadcast", "    系統廣播：今晚維修", [[0, 4], [5, 9], [0, 67]], "系統廣播：今晚維修", null],
+  ])("%s on the footer row", (kind, row, runs, told, from) => {
+    const h = makeSession();
+    withColours(h);
+    h.s._collectFacts(null); // the clean list's footer, remembered
+    const seen = [];
+    h.core.view.flashListHint = (msg, ms, level) => seen.push({ msg, level });
+    h.screen.rows[23] = row;
+    h.termBuf.lines[23] = cells(runs);
+    settle(h, [23]);
+    expect(h.s.state).toBe("active");
+    expect(h.s._renderMode).toBe("buffer");
+    expect(h.native.shown).toBe(0);
+    expect(seen).toEqual([{ msg: told, level: undefined }]);
+    // A cursor move afterwards: the footer is still covered, the list is still the list.
+    h.screen.curY = 6;
+    settle(h, [5, 6]);
+    expect(h.s.state).toBe("active");
+    expect(h.s._collectFacts(null).kind).toBe("clean-list");
+    expect(h.native.shown).toBe(0);
+    if (from) expect(h.s._messageRows()[23].from).toBe(from.slice(1));
+  });
+
+  test("message inbox off ⇒ the hint is all there is, so it shows at error level", () => {
+    window.localStorage.setItem(
+      PREF_KEY,
+      JSON.stringify({ values: { enableEasyReading: true, enableMessageInbox: false } })
+    );
+    const h = makeSession();
+    withColours(h);
+    h.s._collectFacts(null);
+    const seen = [];
+    h.core.view.flashListHint = (msg, ms, level) => seen.push({ msg, level });
+    h.screen.rows[23] = "★friend01 在嗎";
+    h.termBuf.lines[23] = cells([[6, 9], [5, 3], [0, 68]]);
+    settle(h, [23]);
+    expect(h.s.state).toBe("active");
+    expect(seen).toEqual([{ msg: "★friend01 在嗎", level: "error" }]);
+  });
+
+  test("a vmsg banner (blue, ◆) is no message: the catch-all still applies", () => {
+    const h = makeSession();
+    withColours(h);
+    h.s._collectFacts(null);
+    h.screen.rows[23] = " ◆ 找不到 [按任意鍵繼續]";
+    h.termBuf.lines[23] = cells([[4, 80]]);
+    expect(h.s._messageRows()).toEqual({});
+  });
+
+  // PTT's article pager footer is drawn on the same magenta as a broadcast.
+  test("an article's pager footer, or an open in flight, is no message", () => {
+    const h = makeSession();
+    withColours(h);
+    h.s._collectFacts(null);
+    h.screen.rows[23] = "  瀏覽 第 1/2 頁 ( 43%)  目前顯示: 第 01~22 行";
+    h.termBuf.lines[23] = cells([[5, 24], [0, 56]]);
+    expect(Object.keys(h.s._messageRows())).toEqual(["23"]);
+    h.s.state = "opening";
+    expect(h.s._messageRows()).toEqual({});
+    h.s.state = "active";
+    h.termBuf.pageState = 3;
+    expect(h.s._messageRows()).toEqual({});
   });
 });
