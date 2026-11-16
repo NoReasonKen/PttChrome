@@ -16,8 +16,11 @@ import {
   BOARD_LIST,
   CLASS_LIST,
   FAVOURITE,
+  MAIL_LIST_KEY,
   MAIN_MENU,
   MENU_TITLES,
+  boardNameFromKey,
+  isMailListTitleRow,
   rowHasAnyTitle,
   rowHasTitle,
   sameBoard,
@@ -117,4 +120,25 @@ test("board names compare case-insensitively and missing names never match", () 
   expect(sameBoard("C_Chat", "c_chat")).toBe(true);
   expect(sameBoard(null, null)).toBe(false);
   expect(sameBoard("Test", "")).toBe(false);
+});
+
+// mbbsd/mail.c#mailtitle: redraw_title("郵件選單", BBSNAME) — the three-part
+// header, so the title keeps its brackets; the right part still shows the
+// board the reader was last in (currboard stays set after leaving it).
+describe("mail list title row", () => {
+  test("the mail list's title row is recognised, with or without a board on the right", () => {
+    expect(isMailListTitleRow("【郵件選單】          批踢踢實業坊")).toBe(true);
+    expect(isMailListTitleRow("【郵件選單】     你有新信件     看板《C_Chat》")).toBe(true);
+    expect(isMailListTitleRow(" 郵件選單 ")).toBe(true);
+  });
+
+  test("other title rows and the words elsewhere do not count", () => {
+    expect(isMailListTitleRow("【主功能表】          批踢踢實業坊")).toBe(false);
+    expect(isMailListTitleRow("【板主:someone】   看板《郵件選單》")).toBe(false);
+    expect(isMailListTitleRow(null)).toBe(false);
+  });
+
+  test("the mail list key never reads as a board name", () => {
+    expect(boardNameFromKey(MAIL_LIST_KEY)).toBe(null);
+  });
 });

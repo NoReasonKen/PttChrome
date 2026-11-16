@@ -222,13 +222,16 @@ test.describe('手機首頁儀表板（離線重放）', () => {
     await expect(page.locator('#mobileAppBar [data-key="__title"]')).toHaveText(await label('home_title'));
     await expect(page.locator('#homeDashboard .homeTitle')).toHaveCount(0);
     await expect(page.locator('#homeDashboard [data-home-native]')).toHaveCount(0);
-    // 第一排卡片緊接在 App Bar 下面（中間不再隔一行標題）：只隔「我的最愛」那一行。
-    const gap = await page.evaluate(() => {
+    // 第一排卡片緊接在 App Bar 下面（中間不再隔一行標題）：只隔「開信箱」（#196，一直都在）
+    // 與「我的最愛」兩行。
+    const gaps = await page.evaluate(() => {
       const bar = document.getElementById('mobileAppBar').getBoundingClientRect();
+      const mail = document.querySelector('#homeDashboard .homeHeader').getBoundingClientRect();
       const card = document.querySelector('[data-home-board]').getBoundingClientRect();
-      return card.top - bar.bottom;
+      return { mail: mail.top - bar.bottom, card: card.top - mail.bottom };
     });
-    expect(gap).toBeLessThan(80);
+    expect(gaps.mail).toBeLessThan(24);
+    expect(gaps.card).toBeLessThan(80);
     await expect(page.locator('#mobileAppBar [data-key="__homeNative"]')).toHaveCount(0);
     await expect(page.locator('#mobileAppBar button')).toHaveCount(0);
     expect(await takeCapture(page)).toBe('');

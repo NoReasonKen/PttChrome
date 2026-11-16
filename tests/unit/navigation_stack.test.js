@@ -3,6 +3,7 @@
 // Also the post-time order a list layer's selection follows (#74).
 import { NavigationStack, postedBefore } from '../../src/js/navigation_stack';
 import { PAGE } from '../../src/js/page_stack';
+import { openArticleKey } from '../../src/js/stack_handoff';
 import { setupI18n, i18n } from '../../src/js/i18n';
 
 beforeAll(() => setupI18n());
@@ -133,4 +134,25 @@ test('a debug recording logs each remembered action and how it ended', () => {
   ]);
   stack.whenReady(() => {});
   expect(actions[actions.length - 1].outcome).toBe('runNow');
+});
+
+// A mail has no board (its header has no 看板 field, so the view keeps none):
+// opened from the mail list, it is that list's article, keyed under the
+// mailbox, so the list stacks under it like an article list (#196).
+test('a mail opened from the mail list is keyed under the mailbox', () => {
+  const core = { easyReading: { _articleKey: 'k' }, view: { _articleBoard: null }, listSession: { isMailList: () => true } };
+  expect(openArticleKey(core)).toBe('【郵件選單】\nk');
+  core.listSession.isMailList = () => false;
+  expect(openArticleKey(core)).toBe(null);
+  core.view._articleBoard = 'Test';
+  expect(openArticleKey(core)).toBe('Test\nk');
+});
+
+test('the article page of a mail is on the mailbox', () => {
+  const core = {
+    buf: new EventTarget(), conn: new EventTarget(),
+    easyReading: { _articleKey: 'k' }, view: { _articleBoard: null }, listSession: { isMailList: () => true }
+  };
+  const stack = new NavigationStack(core);
+  expect(stack._articlePage()).toEqual({ kind: PAGE.ARTICLE, board: '【郵件選單】', id: '【郵件選單】\nk' });
 });

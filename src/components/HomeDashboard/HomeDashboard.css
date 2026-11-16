@@ -70,7 +70,7 @@ body.stackHoldHome #homeDashboard {
   cursor: default;
 }
 
-.homeMail {
+.homeMail[data-new-mail] {
   border-color: #b33;
   background: #4a1414;
   color: #fff;

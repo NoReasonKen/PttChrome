@@ -63,6 +63,11 @@ export function isArticleListFooter(lastRowText) {
   return ARTICLE_LIST_CAPTIONS.indexOf(footerCaption(lastRowText)) >= 0;
 }
 
+// 信箱（currstat == RMAIL）的底列。
+export function isMailListFooter(lastRowText) {
+  return MAIL_LIST_CAPTIONS.indexOf(footerCaption(lastRowText)) >= 0;
+}
+
 // 看板列表（choose_board）的底列。分類看板根也算（呼叫端另以 row 0 區分）。
 export function isBoardListFooter(lastRowText) {
   return BOARD_LIST_CAPTIONS.indexOf(footerCaption(lastRowText)) >= 0;

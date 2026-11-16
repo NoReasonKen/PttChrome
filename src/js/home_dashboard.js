@@ -19,8 +19,16 @@
 // （newestArticleUnread），使用者自己開原生我的最愛時照抄那一頁的 ˇ —— 一個 byte 都不送。
 // 面板的捲動位置是閱讀紀錄的 home 紀錄（readingPosition／requestViewportRestore）。
 
-import { rowHasTitle, MAIN_MENU, BOARD_LIST, parseBoardName, isArticleListTitleRow } from './screen_titles';
-import { isArticleListFooter, isSubListFooter } from './screen_captions';
+import {
+  rowHasTitle,
+  MAIN_MENU,
+  BOARD_LIST,
+  MAIL_LIST_KEY,
+  parseBoardName,
+  isArticleListTitleRow,
+  isMailListTitleRow
+} from './screen_titles';
+import { isArticleListFooter, isMailListFooter, isSubListFooter } from './screen_captions';
 import { parseListEntry } from './agent_parse';
 import { listRowMark } from './unread_jump';
 import { parseMenuItemRow } from './menu_items';
@@ -34,7 +42,9 @@ import {
   parseBoardListNum
 } from './board_list_parse';
 import { charCells } from './string_util';
+import { parseVmsgText } from './push_screen';
 import {
+  beginBoardSearchHold,
   submitSerializedSteps,
   beginInFlight,
   endInFlight,
@@ -112,6 +122,23 @@ export function isHomeScreen(facts) {
     if (item && item.key === 'F') return true;
   }
   return false;
+}
+
+// mail.c#m_read's answer when the mailbox has mail: the mail list, under its
+// title and caption (the rest is list easy reading's to judge).
+function isMailListScreen(facts) {
+  const rowTexts = (facts && facts.rowTexts) || [];
+  return isMailListTitleRow(rowTexts[0] || '') && isMailListFooter(rowTexts[rowTexts.length - 1] || '');
+}
+
+// How long a mail list PTT showed may take to be presented by easy reading.
+const MAIL_LIST_PRESENT_MS = 1000;
+
+// mail.c#m_read on an empty mailbox: vmsg("您沒有來信") on the bottom row.
+const NO_MAIL_NOTICE = '您沒有來信';
+function isNoMailNotice(facts) {
+  const rowTexts = (facts && facts.rowTexts) || [];
+  return parseVmsgText(rowTexts[rowTexts.length - 1]) === NO_MAIL_NOTICE;
 }
 
 // menu.c#redraw_title：ISNEWMAIL 時標題列中段換成「你有新信件」。
@@ -842,7 +869,17 @@ HomeDashboard.prototype = {
     return sent;
   },
 
-  // 新信：Ctrl+Z m（ZA 的信箱，PERM_READMAIL）。落地＝離開主功能表。
+  // 開信箱（#196，有沒有新信都在）：Ctrl+Z m（ZA 的信箱，PERM_READMAIL）。落地＝PTT
+  // 畫出郵件列表，列表好讀接手信箱。The page stays on screen until then under the
+  // board search's hold (article_search.BoardSearchHold: term_view draws none of
+  // PTT's frames while it holds, and it ends once easy reading presents the
+  // list or the main menu is back). An empty mailbox answers
+  // vmsg("您沒有來信") over the main menu (mail.c#m_read): a space clears it and
+  // the dashboard stays. Any other screen fails the step at once.
+  // In the page stack the dashboard is the mail list's lower page, as for a
+  // board opened from the search sheet (#224): it is copied now, before PTT
+  // leaves the main menu, and the mail list slides in over it once PTT shows
+  // the list; an empty mailbox or a failed open drops the copy.
   openMail: function() {
     const core = this._core;
     if (this._state.fetching) return false;
@@ -851,25 +888,88 @@ HomeDashboard.prototype = {
       if (bm) recordFor(core).end(bm, outcome);
       bm = null;
     };
+    const gestures = core.articleGestures;
+    let held = gestures && gestures.holdHomeLayer ? gestures.holdHomeLayer() : null;
+    const dropHome = () => {
+      if (held) gestures.dropHomeLayer(held);
+      held = null;
+    };
+    const hold = beginBoardSearchHold(core);
+    const fail = () => {
+      dropHome();
+      hold.release();
+      finish('fail');
+      this._hint('開不了信箱', 0, HINT_ERROR);
+    };
+    const dismissEmpty = () => {
+      core.commandQueue.enqueue({
+        keys: ' ',
+        kind: 'home-mail-empty',
+        timeoutMs: STEP_TIMEOUT_MS,
+        expect: function(snap, facts) {
+          return isHomeScreen(facts) && !isNoMailNotice(facts);
+        },
+        onDone: () => {
+          hold.land({});
+          finish('done');
+          this._hint('信箱裡沒有信');
+        },
+        onFail: fail,
+        onFlushed: fail
+      });
+    };
+    // PTT shows the mail list: easy reading presents it in the settle that
+    // brought it. One it does not present fails within MAIL_LIST_PRESENT_MS
+    // instead of waiting out the hold's bound on a held native frame.
+    const listShown = () => {
+      if (core.buf.listRenderMode === 'buffer' && core.listSession?.isMailList?.()) {
+        stopWatch();
+        finish('done');
+      }
+    };
+    const onSettled = () => queueMicrotask(listShown);
+    let watch = null;
+    const stopWatch = () => {
+      clearTimeout(watch);
+      watch = null;
+      core.buf.removeEventListener?.('screenSettled', onSettled);
+    };
+    const awaitList = () => {
+      core.buf.addEventListener?.('screenSettled', onSettled);
+      watch = setTimeout(() => {
+        stopWatch();
+        fail();
+      }, MAIL_LIST_PRESENT_MS);
+      queueMicrotask(listShown);
+    };
     const steps = [
       {
         keys: ZA_MAIL,
         kind: 'home-mail',
         timeoutMs: STEP_TIMEOUT_MS,
         expect: function(snap, facts) {
-          return !isHomeScreen(facts);
+          if (isNoMailNotice(facts)) return { empty: true };
+          return isMailListScreen(facts);
         },
-        onDone: function() {
-          finish('done');
+        onDone: function(result) {
+          if (result && result.empty) {
+            dropHome();
+            return dismissEmpty();
+          }
+          // The entry over the dashboard copy holds the screen from here.
+          const entered = held && gestures.enterHomeLayer(held, MAIL_LIST_KEY);
+          if (entered) hold.release();
+          else hold.land({});
+          awaitList();
         },
-        onFail: () => {
-          finish('fail');
-          this._hint('開不了信箱（已停在原生畫面）', 0, HINT_ERROR);
-        }
+        onFail: fail,
+        onFlushed: fail
       }
     ];
     const sent = submitSerializedSteps(core, steps, { kind: 'home-mail' });
     if (!sent) {
+      dropHome();
+      hold.release();
       finish('cancel');
       this._hint(serializedOpHint(core) || '指令處理中，請稍候再試');
     }

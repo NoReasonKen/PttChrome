@@ -140,6 +140,16 @@ describe("availableSearchKinds", () => {
     expect(availableSearchKinds(f)).toEqual([]);
     expect(availableSearchKinds(null)).toEqual([]);
   });
+  // #196: the mailbox is an i_read list under list easy reading, but none of
+  // the searches is one easy reading presents there (mail.c#mail_comms has
+  // its own s/a/Z), so the keys are refused rather than opening the sheet.
+  test("the mailbox ⇒ none, natively or under list easy reading", () => {
+    const f = articleList({ listOwner: "article-list" });
+    f.rowTexts[0] = "【郵件選單】              批踢踢實業坊                看板《Test》";
+    f.rowTexts[23] = " 信件列表  (R)回信 (x)站內轉寄 (d)刪信 (^P)寄發新信";
+    expect(availableSearchKinds(f)).toEqual([]);
+    expect(availableSearchKinds({ ...f, listOwner: null })).toEqual([]);
+  });
 });
 
 describe("shouldInterceptSearchKey", () => {

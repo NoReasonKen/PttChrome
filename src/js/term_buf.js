@@ -25,6 +25,7 @@ import { EDITOR_CAPTION, footerCaption } from './screen_captions';
 import {
   BOARD_LIST,
   MENU_TITLES,
+  listHeaderReversed,
   rowHasAnyTitle,
   rowHasTitle
 } from './screen_titles';
@@ -1500,7 +1501,7 @@ TermBuf.prototype = {
         parseListRow(lastRowText)) {
         //console.log('pageState = 1 (MENU)');
         this.pageState = 1; // MENU
-      } else if (this.isUnicolor(2, 0, cols-10) && !this.isLineEmpty(1) && (this.cur_x < 19 || this.cur_y == lastRowNum)) {
+      } else if (listHeaderReversed(this) && !this.isLineEmpty(1) && (this.cur_x < 19 || this.cur_y == lastRowNum)) {
         //console.log('pageState = 2 (LIST)');
         this.pageState = 2; // LIST
       }

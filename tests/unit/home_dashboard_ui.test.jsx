@@ -170,16 +170,30 @@ test("手機：讓開 App Bar 與底部工具列，不顯示桌機打字提示",
   expect(window.innerHeight - rect.bottom).toBeGreaterThanOrEqual(48);
 });
 
-test("手機：不畫大標題（在 App Bar）；有新信才留一行放「開信箱」", () => {
+test("手機：不畫大標題（在 App Bar）；「開信箱」一直都在，有新信時加註", () => {
   const home = fakeHome({});
   const { unmount } = render(<HomeDashboard pttchrome={{ homeDashboard: home, mobile: true }} />);
   expect(root().querySelector(".homeTitle")).toBeNull();
   expect(root().querySelector("[data-home-native]")).toBeNull();
-  expect(root().querySelector(".homeHeader")).toBeNull();
+  const mail = root().querySelector(".homeHeader [data-home-mail]");
+  expect(mail).not.toBeNull();
+  expect(mail.textContent).toBe(i18n("home_openMail"));
+  expect(mail.hasAttribute("data-new-mail")).toBe(false);
+  fireEvent.click(mail);
+  expect(home.openMail).toHaveBeenCalled();
   unmount();
   render(<HomeDashboard pttchrome={{ homeDashboard: fakeHome({ newMail: true }), mobile: true }} />);
-  expect(root().querySelector(".homeHeader [data-home-mail]")).not.toBeNull();
+  const newMail = root().querySelector(".homeHeader [data-home-mail]");
+  expect(newMail.textContent).toBe(i18n("home_newMail") + " · " + i18n("home_openMail"));
+  expect(newMail.hasAttribute("data-new-mail")).toBe(true);
   expect(root().querySelector(".homeTitle")).toBeNull();
+});
+
+test("桌機：沒有新信也有「開信箱」", () => {
+  const home = fakeHome({});
+  render(<HomeDashboard pttchrome={{ homeDashboard: home }} />);
+  fireEvent.click(q(".homeHeader [data-home-mail]"));
+  expect(home.openMail).toHaveBeenCalled();
 });
 
 // ── 閱讀紀錄：真控制器＋真版面 ─────────────────────────────────────────────────

@@ -147,22 +147,21 @@ export const HomeDashboard = ({ pttchrome, layer = false }) => {
       onClick={swallow}
     >
       <div className="homeInner">
-        {/* 手機：標題「首頁」在 App Bar（MobileAppBar），這一行只在有新信時出現（放「開信箱」鈕）。
-          桌機照舊。 */}
-        {(!mobile || state.newMail) && (
-          <div className="homeHeader">
-            {!mobile && <h2 className="homeTitle">{i18n("home_title")}</h2>}
-            {state.newMail && (
-              <Button
-                className="homeMail"
-                data-home-mail
-                onClick={() => home.openMail()}
-              >
-                {i18n("home_newMail")} · {i18n("home_openMail")}
-              </Button>
-            )}
-          </div>
-        )}
+        {/* 手機：標題「首頁」在 App Bar（MobileAppBar），這一行只放「開信箱」鈕。
+          「開信箱」一直都在（#196，進列表好讀的信箱），有新信時加註並標紅。 */}
+        <div className="homeHeader">
+          {!mobile && <h2 className="homeTitle">{i18n("home_title")}</h2>}
+          <Button
+            className="homeMail"
+            data-home-mail
+            data-new-mail={state.newMail ? "" : undefined}
+            onClick={() => home.openMail()}
+          >
+            {state.newMail
+              ? i18n("home_newMail") + " · " + i18n("home_openMail")
+              : i18n("home_openMail")}
+          </Button>
+        </div>
         <section className="homeSection">
           <div className="homeSectionHead">
             <h3>{i18n("home_favorites")}</h3>

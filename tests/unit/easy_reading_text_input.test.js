@@ -32,6 +32,7 @@ function harness({ enabled = true, startedEasyReading = true } = {}) {
     _enterFunctionMode: EasyReading.prototype._enterFunctionMode,
     enterNativeRoute: EasyReading.prototype.enterNativeRoute,
     refuseText: EasyReading.prototype.refuseText,
+    _readingMail: EasyReading.prototype._readingMail,
     _refuseUnsupported: EasyReading.prototype._refuseUnsupported
   };
   Object.defineProperty(ctx, "_functionMode", {

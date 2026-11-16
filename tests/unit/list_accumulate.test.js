@@ -1009,4 +1009,19 @@ describe("held list rows (holdListRows)", () => {
   test.each([" ", "*", "m", "s", "!", "D"])("read mark %s is already read", (mark) => {
     expect(readListRow(chRowAttrs(row(12, mark, 3, "b")))).toBeNull();
   });
+
+  // A mail list row (mail.c#maildoent, #196): the read mark sits in cell 7,
+  // and only + M R are unread.
+  const mailRow = (mark) => "    12 " + mark + " 11/02 alice          ◇ 你好";
+  test.each([
+    ["+", " "], ["M", "m"], ["R", "r"],
+  ])("a mail's read mark %s reads %s once read", (unread, read) => {
+    const copy = readListRow(chRowAttrs(mailRow(unread)));
+    expect(copy[7].ch).toBe(read);
+    expect(copy[8].ch).toBe(" ");
+  });
+
+  test.each([" ", "m", "r"])("a mail's read mark %s is already read", (mark) => {
+    expect(readListRow(chRowAttrs(mailRow(mark)))).toBeNull();
+  });
 });

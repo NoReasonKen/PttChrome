@@ -16,8 +16,8 @@ import { rowToText, cloneRow, articleContextFromScreen, findPageOverlap, resolve
 import { mergeListPage, flattenListBuffer, evictListBuffer, listGrowthDir, listNumRange, isHiddenListRow, pinnedRowKey, MAX_LIST_ROWS, MAX_LIST_TOTAL_ROWS, isLastReadStyledListRow, normalizeLastReadListRow, paintLastReadListRow, subjectOfListRow, readListRow } from './list_session';
 import { labelListCursor, pruneListToSegment, LIST_HEADER_ROWS } from './list_window';
 import { BRD_HEADER_ROWS, CLASS_ROOT_GEOMETRY, STANDARD_GEOMETRY, boardListRowNums, isClassRootScreen } from './board_list_parse';
-import { BOARD_LIST, isArticleListTitleRow, rowHasTitle, parseBoardName } from './screen_titles';
-import { isArticleListFooter, isBoardListFooter } from './screen_captions';
+import { BOARD_LIST, isArticleListTitleRow, isMailListTitleRow, rowHasTitle, parseBoardName } from './screen_titles';
+import { isArticleListFooter, isBoardListFooter, isMailListFooter } from './screen_captions';
 import { OWNER_BOARD_LIST } from './list_render_owner';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { cursorOffsets, paintedRowsAreBufRows } from './cursor_anchor';
@@ -190,12 +190,16 @@ var LIST_NUM_COL_END = 7;
 //      7-wide field reproduces the native "    531" exactly, which is what the old
 //      prefix-splicing logic kept getting wrong (the "/搜尋後行首出現數字" bug).
 // Attributes are untouched (native prints the number with the row's own attrs).
-function relabelListCursorRow(row, fullNum) {
-  if (fullNum == null || row.length < LIST_NUM_COL_END) return;
+// The mailbox (#196) numbers its rows in a narrower field: mail.c#maildoent
+// prints the cursor cell and "%5d", so the number ends at cell 5 (width 6).
+var MAIL_NUM_COL_END = 6;
+function relabelListCursorRow(row, fullNum, width) {
+  var end = width || LIST_NUM_COL_END;
+  if (fullNum == null || row.length < end) return;
   var s = String(fullNum);
-  if (s.length > LIST_NUM_COL_END) return; // wider than the field: leave as painted
-  var padded = ('       ' + s).slice(-LIST_NUM_COL_END);
-  for (var c = 0; c < LIST_NUM_COL_END; ++c) {
+  if (s.length > end) return; // wider than the field: leave as painted
+  var padded = ('       ' + s).slice(-end);
+  for (var c = 0; c < end; ++c) {
     row[c].ch = padded[c];
     row[c].isLeadByte = false;
   }
@@ -984,6 +988,7 @@ TermView.prototype = {
         //（js/list_render_owner.js —— 那是唯一真相源，別在這裡自行推導）。
         var isBrdList = this.buf.listRenderOwner === OWNER_BOARD_LIST;
         var lsSession = listOwnerOf(this.bbscore);
+        var isMailList = !isBrdList && !!(lsSession && lsSession.isMailList && lsSession.isMailList());
         if (this.buf.listRenderMode === 'buffer') {
           // 重繪前先把「使用者現在看著哪一列」從 DOM 的 scrollTop 擷取成內容錨：
           // 下一行的 accumulate 會 merge/evict/prune，整段序列可能上下位移。
@@ -1034,13 +1039,14 @@ TermView.prototype = {
               // 手機卡片的版型（render/list_card.js）：兩種列表的欄位完全不同。
               kind: isBrdList ? 'board' : 'article',
               // The class root's rows (#229) have no board name: their own cards.
-              cardKind: isBrdList && this.showsClassRootList() ? 'boardClass' : undefined,
+              // The mailbox (#196) is an article-kind list with mail columns.
+              cardKind: isBrdList && this.showsClassRootList() ? 'boardClass' : isMailList ? 'mail' : undefined,
               scrollable:
                 this.buf.listRenderMode === 'buffer' && this._listWheelGates().wheelSmoothScroll
             }
           }, isBrdList
             ? { pageState: 1, inListContext: false }
-            : { pageState: 2, listEasyReading: true }));
+            : { pageState: 2, listEasyReading: true, mailList: isMailList || undefined }));
           // 捲動事件的接線（ScreenController 只在建立視口節點時掛一次 listener，
           // 這裡給它 callback）。hook 是常駐閉包，不必每幀重建。
           if (this.componentScreen) {
@@ -1067,7 +1073,7 @@ TermView.prototype = {
             { changedRows: changedRows },
             isBrdList
               ? { pageState: 1, inListContext: false }
-              : { pageState: 2, listEasyReading: true }));
+              : { pageState: 2, listEasyReading: true, mailList: isMailList || undefined }));
         }
       } else if (this.useEasyReadingMode && this.buf.pageState == 3) {
         // Easy-reading article: accumulate the long page into buf.pageLines (pure
@@ -3558,6 +3564,7 @@ TermView.prototype = {
     for (var r = 0; r < buf.rows; ++r) rowTexts.push(buf.getRowText(r, 0, buf.cols));
     var nums = pageArticleNums(rowTexts, buf.cur_y);
     var ls = this.bbscore && this.bbscore.listSession;
+    var mail = isMailListTitleRow(rowTexts[0]) || !!(ls && ls.isMailList && ls.isMailList());
     var entries = [];
     // 只掃 entry 區 [LIST_HEADER_ROWS, rows-2]（與 accumulateBoardListLines、
     // list_session 各掃描點同範圍）。標題列會通過 isPinnedListRow：PttCurrent 的
@@ -3571,7 +3578,7 @@ TermView.prototype = {
         // row, not just the cursor row: besides the cursor mark, a partial redraw can
         // blank the leading digit cell of any row (see relabelListCursorRow). The map
         // must always hold a row that renders like a clean native one.
-        relabelListCursorRow(row, nums[i]);
+        relabelListCursorRow(row, nums[i], mail ? MAIL_NUM_COL_END : LIST_NUM_COL_END);
         // Server-painted last-read styling = title-match highlight (pttbbs
         // readdoent: every row whose subject equals currtitle, in the row's own
         // mark color — see list_session's styling block). Store the CLEAN row
@@ -3652,7 +3659,8 @@ TermView.prototype = {
       grewDir,
       {
         isHidden: function(row) {
-          return isHiddenListRow(row, self.blacklist, self.titleBlacklist);
+          // Mail rows are never hidden (ListSession#_visibleIndices).
+          return !mail && isHiddenListRow(row, self.blacklist, self.titleBlacklist);
         },
         hardCap: MAX_LIST_TOTAL_ROWS
       }
@@ -3671,7 +3679,7 @@ TermView.prototype = {
     // live frames only (a jump response blanks the bottom row — protocol §4 ✚ —
     // and must not poison the footer cache).
     if (
-      isArticleListTitleRow(rowTexts[0]) &&
+      (mail || isArticleListTitleRow(rowTexts[0])) &&
       (rowTexts[2] || '').indexOf('編號') >= 0
     ) {
       this._listHeaderRows = [
@@ -3680,7 +3688,7 @@ TermView.prototype = {
         cloneRow(buf.lines[2])
       ];
     }
-    if (isArticleListFooter(rowTexts[buf.rows - 1])) {
+    if (mail ? isMailListFooter(rowTexts[buf.rows - 1]) : isArticleListFooter(rowTexts[buf.rows - 1])) {
       this._listFooterRow = cloneRow(buf.lines[buf.rows - 1]);
     }
   },

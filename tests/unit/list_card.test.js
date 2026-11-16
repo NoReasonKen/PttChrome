@@ -236,6 +236,40 @@ describe("buildListCard：分類看板根（#229）", () => {
   });
 });
 
+// #196: mail.c#maildoent under mail_coldefs — cursor cell [0,1), "%5d %c "
+// number [1,6) and read mark [7], date [9,15), sender [15,30), ◇/R: title from 30.
+describe("buildListCard：信箱（mail.c#maildoent 欄位）", () => {
+  const mail = (mark, cursor = " ") =>
+    row(seg(cursor + "   12 "), seg(mark), seg(" "), seg("11/05 "), seg("carol          "), seg("◇ 聚會時間"));
+
+  test("第一行信件標題；第二行序號・寄件人，靠右已讀標記・日期", () => {
+    const { node } = buildListCard({ chars: mail("+"), row: 3, kind: "mail", forceWidth: 16 });
+    expect(text(node.querySelector(".listCardTitle .listCardTitleText"))).toBe("◇ 聚會時間");
+    const main = node.querySelector(".listCardMeta > .listCardMain");
+    expect(text(main.querySelector(".listCardNum"))).toBe("12");
+    expect(text(main.querySelector(".listCardAuthor"))).toBe("carol");
+    expect(text(node.querySelector(".listCardMeta .listCardMark"))).toBe("+");
+    expect(text(node.querySelector(".listCardMeta .listCardDate"))).toBe("11/05");
+  });
+
+  test("data-list-mark：+／M／R（未讀）＝ unread，讀過的不帶", () => {
+    const mark = (m) =>
+      buildListCard({ chars: mail(m), row: 3, kind: "mail", forceWidth: 16 }).node.getAttribute("data-list-mark");
+    expect(mark("+")).toBe("unread");
+    expect(mark("M")).toBe("unread");
+    expect(mark("R")).toBe("unread");
+    expect(mark(" ")).toBe(null);
+    expect(mark("m")).toBe(null);
+    expect(mark("r")).toBe(null);
+  });
+
+  test("游標列：記號進游標欄，序號照常", () => {
+    const { node } = buildListCard({ chars: mail(" ", ">"), row: 3, kind: "mail", forceWidth: 16 });
+    expect(text(node.querySelector(".listCardCursor"))).toBe(">");
+    expect(text(node.querySelector(".listCardNum"))).toBe("12");
+  });
+});
+
 describe("cardSegment：邊界落在全形字中間時擴成完整的字", () => {
   test("起點是全形字的第二格 ⇒ 往前含進 lead byte", () => {
     const chars = row(seg("ab"), seg("中文"));

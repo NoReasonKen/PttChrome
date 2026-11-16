@@ -9,6 +9,7 @@ import {
   footerCaption,
   isArticleListFooter,
   isBoardListFooter,
+  isMailListFooter,
 } from "../../src/js/screen_captions";
 
 // read.c:1237-1238（CONFIRMED）
@@ -84,5 +85,19 @@ describe("footerCaption — 只認行首", () => {
     expect(footerCaption(" ".repeat(80))).toBe(null);
     expect(footerCaption("")).toBe(null);
     expect(footerCaption(null)).toBe(null);
+  });
+});
+
+describe("isMailListFooter — 信箱（mbbsd/read.c#i_read_caption RMAIL）", () => {
+  test("舊格式「鴻雁往返」與新格式「信件列表」都命中", () => {
+    expect(isMailListFooter(OLD_MAIL)).toBe(true);
+    expect(isMailListFooter(newFooter("信件列表", " (R)回信 (x)站內轉寄"))).toBe(true);
+  });
+
+  test("文章列表、看板列表與空值不命中", () => {
+    expect(isMailListFooter(OLD_ARTICLE)).toBe(false);
+    expect(isMailListFooter(newFooter("文章列表"))).toBe(false);
+    expect(isMailListFooter(OLD_BOARD)).toBe(false);
+    expect(isMailListFooter(null)).toBe(false);
   });
 });

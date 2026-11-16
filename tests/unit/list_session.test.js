@@ -27,6 +27,7 @@ import {
   messageOnSettle,
 } from "../../src/js/list_session";
 import { LIST_HEADER_ROWS } from "../../src/js/list_window";
+import { MAIL_LIST_KEY } from "../../src/js/screen_titles";
 import { LIST_CARD_ROWS } from "../../src/js/mobile_layout";
 
 
@@ -185,19 +186,43 @@ describe("classifyListScreen", () => {
     }
   });
 
-  test("mail list (郵件選讀 feeter) never engages as clean-list", () => {
-    const rows = listRows.slice();
-    rows[0] = "【 郵件選單 】"; // no 《board》
-    rows[rows.length - 1] =
-      " 郵件選讀  (y)回信(X)站內尋人(^X)站長信箱 (b)進板畫面";
-    const r = classifyListScreen(facts({ rowTexts: rows }));
+  // The mail list (#196), laid out as mbbsd/mail.c draws it: mailtitle's
+  // redraw_title("郵件選單") (the board last visited stays on the right),
+  // maildoent's rows ("%5d %c " number and read mark, date, sender, ◇/R:
+  // title) and i_read's mail caption.
+  const mailScreen = (footer) => {
+    const rows = listRows.map(() => "");
+    rows[0] = "【郵件選單】          批踢踢實業坊          看板《C_Chat》";
+    rows[1] = "[←]離開 [→]閱讀 [R]回信 [x]轉寄 [d]刪除 [h]說明";
+    rows[2] = "  編號   日 期 作 者          信  件  標  題          [外信:開] (容量:3/200篇)";
+    rows[3] = ">    1   11/02 alice          ◇ 你好";
+    rows[4] = "     2 r 11/03 bob            R: 你好";
+    rows[5] = "     3 + 11/05 carol          ◇ 聚會時間";
+    rows[rows.length - 1] = footer;
+    return facts({ rowTexts: rows, curY: 3, curX: 0 });
+  };
+
+  test.each([
+    " 鴻雁往返  (R/y)回信 (x)站內轉寄 (d/D)刪信 (^P)寄發新信       (←/q)離開",
+    " 信件列表  (R)回信 (x)站內轉寄 (d)刪信            (h)說明",
+  ])("the mail list is a clean list under the mail key (%s)", (footer) => {
+    expect(classifyListScreen(mailScreen(footer))).toEqual({
+      kind: "clean-list",
+      boardName: MAIL_LIST_KEY,
+    });
+  });
+
+  test("a mail-titled screen with an article-list footer is not a clean list", () => {
+    const r = classifyListScreen(
+      mailScreen(" 文章列表  (y)回應 (X)推文 (^X)轉錄            (h)說明")
+    );
     expect(r.kind).not.toBe("clean-list");
   });
 
   // ─── PTT 動態指令列改版（PTT1 10/18 預定）───
   // CONFIRMED（讀碼 @ piaip.newui read.c#i_read_caption）：舊版 read.c:1237 對非信箱的
   // 所有列表一律印「文章選讀」；新版拆成三種 caption，集合一對一。信箱（鴻雁往返 →
-  // 信件列表）照舊不 engage。底列由 read_footer → vs_cmd_bar(VS_SUB_HEADER|VS_FOOTER)
+  // 信件列表）只配郵件選單的標題列（上面那組）。底列由 read_footer → vs_cmd_bar(VS_SUB_HEADER|VS_FOOTER)
   // 組：HIGH 以上的 " (k)名" 進底列、右端 "(h)說明"；[←] 放在 row 1。
   const newFeeter = (caption) =>
     " " + caption + "  (y)回應 (X)推文 (^X)轉錄 (/)搜尋標題            (h)說明";
@@ -214,7 +239,7 @@ describe("classifyListScreen", () => {
     }
   );
 
-  test("新版信箱 feeter「信件列表」never engages as clean-list", () => {
+  test("a board's title with the mail caption「信件列表」is not a clean list", () => {
     const rows = listRows.slice();
     rows[rows.length - 1] = " 信件列表  (R)回信 (x)站內轉寄 (d)刪信            (h)說明";
     expect(classifyListScreen(facts({ rowTexts: rows })).kind).not.toBe(

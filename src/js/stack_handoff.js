@@ -6,7 +6,7 @@
 // the end does to the stack stays with the stack (navigation_stack.js).
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { OWNER_ARTICLE_LIST, OWNER_BOARD_LIST } from './list_render_owner';
-import { sameBoard } from './screen_titles';
+import { MAIL_LIST_KEY, sameBoard } from './screen_titles';
 import { handoffStep, PAGE, HANDOFF_TIMEOUT_MS, HANDOFF_REACH_POLL_MS } from './page_stack';
 import { i18n } from './i18n';
 import { STACK_NOTICE_MS, LOCAL_INPUT, stopLocal } from './stack_layer';
@@ -17,10 +17,17 @@ const PENDING_OWNER = 'stackPending';
 // The board the article list session reads, or null before it has read one.
 export const listBoard = core => core.listSession?._boardName || null;
 
+// The board of the article open in PTT, or null. A mail names no board (its
+// header has no 看板 field): opened from the mail list, it is that list's
+// article, under the mailbox's key (#196).
+export function articleBoard(core) {
+  return core.view._articleBoard || (core.listSession?.isMailList?.() ? MAIL_LIST_KEY : null);
+}
+
 // The board and key of the article open in PTT, or null.
 export function openArticleKey(core) {
   const key = core.easyReading?._articleKey;
-  const board = core.view._articleBoard;
+  const board = articleBoard(core);
   return key && board ? board + '\n' + key : null;
 }
 

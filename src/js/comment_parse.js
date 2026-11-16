@@ -672,6 +672,21 @@ export function isListRowRead(chars) {
   return LIST_READ_TYPES.has(chars[LIST_TYPE_COL].ch);
 }
 
+// A mailbox row (#196), read by cell. pttbbs `mbbsd/mail.c#maildoent` under
+// mail_coldefs: cursor cell 0, "%5d %c " → number in cells 1-5, a space, the
+// type in cell 7, a space, then the date from cell 9.
+//   read: ' ', m (marked), r (replied); unread: +, M, R. D (tagged) hides it.
+const MAIL_TYPE_COL = 7;
+const MAIL_READ_TYPES = new Set([' ', 'm', 'r']);
+export function isMailListRow(chars) {
+  if (!chars || chars.length <= MAIL_TYPE_COL + 1) return false;
+  const num = rowToText(chars.slice(1, MAIL_TYPE_COL - 1));
+  return /^ *\d+$/.test(num) && chars[MAIL_TYPE_COL - 1].ch === ' ' && chars[MAIL_TYPE_COL + 1].ch === ' ';
+}
+export function isMailRowRead(chars) {
+  return isMailListRow(chars) && MAIL_READ_TYPES.has(chars[MAIL_TYPE_COL].ch);
+}
+
 // Native-mode blacklisted list row → a deleted-article-style notice line, structured
 // to match the way pttbbs paints a deleted row so it lines up in the grid:
 //   "  62349 + 6 7/09 -            □ （本文已被黑名單） someone"
@@ -1323,14 +1338,19 @@ export function cloneRow(row) {
 // readdoent prints the type in default colours, except a gray `+`.
 const LIST_MARK_COL = 8;
 const READ_LIST_MARK = { '+': ' ', '~': ' ', '#': '*', M: 'm', '=': 'm', S: 's' };
+// A mail list row's mark (mail.c#maildoent, #196) sits in cell 7: unread `+`,
+// unread marked `M` and unread reply `R`.
+const READ_MAIL_MARK = { '+': ' ', M: 'm', R: 'r' };
 
 // A copy of `row` (TermChar[]) as PTT lists it once read, or null when it
 // already reads as read. Stored rows are never changed in place.
 export function readListRow(row) {
-  const cell = row && row[LIST_MARK_COL];
-  const read = cell && READ_LIST_MARK[cell.ch];
+  const mail = isMailListRow(row);
+  const col = mail ? MAIL_TYPE_COL : LIST_MARK_COL;
+  const cell = row && row[col];
+  const read = cell && (mail ? READ_MAIL_MARK : READ_LIST_MARK)[cell.ch];
   if (read == null || cell.isLeadByte) return null;
   const copy = cloneRow(row);
-  Object.assign(copy[LIST_MARK_COL], { ch: read, fg: 7, bg: 0, bright: false });
+  Object.assign(copy[col], { ch: read, fg: 7, bg: 0, bright: false });
   return copy;
 }

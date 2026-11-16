@@ -6,6 +6,7 @@
 // kept for PttChrome's own operations (search, mark read, refresh) and is
 // exercised directly here.
 import { ListSession, transitionListSession } from "../../src/js/list_session";
+import { MAIL_LIST_KEY } from "../../src/js/screen_titles";
 
 function makeSession() {
   const sent = [];
@@ -934,5 +935,76 @@ describe("Alt remap, all 26 letters (list easy reading)", () => {
       ctx.s.onKeyDown(e);
       expectRefused(ctx, e);
     }
+  });
+});
+
+// The mailbox (#196): easy reading presents reading mail, not answering or
+// managing it (sending is #230). It keeps the list's navigation, leaving,
+// number jump and help, opens a mail with every key mail.c#mail_comms reads
+// with (→ Enter r l L), and refuses the rest of mail_comms — the in-place
+// article-list keys and the searches included.
+describe("ListSession on the mailbox keeps only the keys easy reading presents (#196)", () => {
+  function mailSession() {
+    const ctx = activeRefusalSession();
+    ctx.s._boardName = MAIL_LIST_KEY;
+    return ctx;
+  }
+  const classOf = (ctx, key, mods = {}) => ctx.s._classifyKey(keyEvent(key, mods)).class;
+
+  test.each(["ArrowRight", "Enter", "r", "l", "L"])("%s opens the selected mail", (key) => {
+    expect(classOf(mailSession(), key)).toBe("open");
+  });
+
+  test.each([
+    ["ArrowUp", "nav"], ["k", "nav"], ["ArrowDown", "nav"], ["j", "nav"],
+    ["PageUp", "nav"], ["PageDown", "nav"], [" ", "nav"], ["Home", "nav"], ["End", "nav"], ["$", "nav"],
+    ["ArrowLeft", "leave"], ["q", "leave"], ["e", "leave"],
+    ["7", "jump-digit"], ["h", "help"],
+  ])("%s stays %s", (key, cls) => {
+    expect(classOf(mailSession(), key)).toBe(cls);
+  });
+
+  const REFUSED = [
+    ["y", {}], ["Y", {}], ["R", {}], // reply
+    ["x", {}], ["X", {}], ["F", {}], // forward
+    ["d", {}], ["D", {}], // delete
+    ["m", {}], ["M", {}], ["v", {}], ["V", {}], // marks
+    ["z", {}], ["~", {}], ["c", {}], ["s", {}], ["u", {}], ["w", {}], ["O", {}],
+    ["Tab", {}], ["p", { ctrlKey: true }], ["x", { ctrlKey: true }],
+    ["=", {}], ["[", {}], ["]", {}], ["t", {}], ["-", {}], // in-place article-list keys
+    ["/", {}], ["?", {}], ["a", {}], ["Z", {}], // searches
+  ];
+  test.each(REFUSED)("%s %j is refused: nothing is sent and the reader is told", (key, mods) => {
+    const ctx = mailSession();
+    const e = keyEvent(key, mods);
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(ctx.sent).toEqual([]);
+    expect(ctx.enqueued).toEqual([]);
+    expect(ctx.s.state).toBe("active");
+    expect(ctx.s._boardName).toBe(MAIL_LIST_KEY);
+    expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
+  });
+
+  test("the help sheet's rows follow the mailbox's keys (wouldRefuse)", () => {
+    const ctx = mailSession();
+    for (const key of ["y", "d", "x", "/", "a", "s", "Z", "="]) expect([key, ctx.s.wouldRefuse({ key })]).toEqual([key, true]);
+    expect(ctx.s.wouldRefuse({ key: "p", ctrlKey: true })).toBe(true);
+    for (const key of ["r", "ArrowRight", "q", "h", "$"]) expect([key, ctx.s.wouldRefuse({ key })]).toEqual([key, false]);
+  });
+
+  test("while the help sheet is up the session still knows it is the mailbox", () => {
+    const ctx = mailSession();
+    ctx.s._helpBoard = MAIL_LIST_KEY;
+    ctx.s._boardName = null;
+    expect(ctx.s.wouldRefuse({ key: "y" })).toBe(true);
+    expect(ctx.s.wouldRefuse({ key: "/" })).toBe(true);
+  });
+
+  test("an article list keeps its own keys", () => {
+    const ctx = activeRefusalSession();
+    expect(classOf(ctx, "r")).toBe("unsupported");
+    expect(classOf(ctx, "=")).toBe("native-inplace");
+    expect(ctx.s.wouldRefuse({ key: "/" })).toBe(false);
   });
 });

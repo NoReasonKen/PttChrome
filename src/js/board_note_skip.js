@@ -54,6 +54,7 @@ import {
   CLASS_LIST,
   FAVOURITE,
   MAIN_MENU,
+  listHeaderReversed,
   rowHasAnyTitle
 } from './screen_titles';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
@@ -294,7 +295,7 @@ BoardNoteSkip.prototype = {
       curX: snap ? snap.curX : buf.cur_x,
       curY: snap ? snap.curY : buf.cur_y,
       row0Reversed: buf.isUnicolor ? buf.isUnicolor(0, 0, 29) : false,
-      row2Reversed: buf.isUnicolor ? buf.isUnicolor(2, 0, buf.cols - 10) : false
+      row2Reversed: buf.isUnicolor ? listHeaderReversed(buf) : false
     });
     if (d.action === 'landed') this._disarm('landed');
     else if (d.action === 'skip') this._enqueueSkip(d);

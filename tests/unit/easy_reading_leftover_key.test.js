@@ -101,3 +101,41 @@ describe("the help key while the help sheet opens", () => {
     expect(reply.sent).toEqual([]);
   });
 });
+
+// #196: a mail read in easy reading. Easy reading presents reading it, not
+// answering it (sending is #230): the reply keys of mail.c#mail_read_cmds
+// (y Y r R) are refused, and so are the same-thread jumps, which easy reading
+// presents for a board's articles only. Help keeps the native route.
+describe("a mail open in easy reading", () => {
+  const mail = { mail: true };
+  test("reply keys are refused, help keeps the native route", () => {
+    for (const k of ["y", "Y", "r", "R"]) expect([k, articleLeftoverKey(ev(k), mail)]).toEqual([k, "refuse"]);
+    for (const k of ["h", "H", "?"]) expect(articleLeftoverKey(ev(k), mail)).toBe("native");
+  });
+
+  test("the help sheet's rows follow (articleWouldRefuse)", () => {
+    for (const key of ["y", "r", "=", "[", "a", "f"]) expect([key, articleWouldRefuse({ key }, {}, mail)]).toEqual([key, true]);
+    for (const key of ["ArrowDown", "PageDown", " ", "ArrowLeft", "End", "h"])
+      expect([key, articleWouldRefuse({ key }, {}, mail)]).toEqual([key, false]);
+  });
+
+  test("the reader knows a mail by the list it was opened from", () => {
+    const er = Object.create(EasyReading.prototype);
+    er._core = { listSession: { state: "suspended", isMailList: () => true } };
+    expect(er._readingMail()).toBe(true);
+    er._core.listSession.isMailList = () => false;
+    expect(er._readingMail()).toBe(false);
+    er._core = { listSession: { state: "idle", isMailList: () => true } };
+    expect(er._readingMail()).toBe(false);
+  });
+
+  test("a reply key or a thread jump over a mail is refused with the hint", () => {
+    const hints = [];
+    const er = Object.create(EasyReading.prototype);
+    er._core = { listSession: { state: "suspended", isMailList: () => true } };
+    er._view = { flashListHint: (...a) => hints.push(a) };
+    er.enterNativeRoute = () => { throw new Error("no native route for a mail reply"); };
+    expect(er._leftoverKey(ev("y"))).toBe(true);
+    expect(hints).toHaveLength(1);
+  });
+});
