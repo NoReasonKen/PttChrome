@@ -98,6 +98,12 @@ export function buildContextMenuEntries(p) {
     item("userListToggle", i18n(userListToggleLabel(userListToggle)), (e) =>
       p.onMenuSelect("userListToggle", e),
     );
+  // 「查詢網友」：線上使用者列表（判定在 user_query.available）。手機同樣在「更多」。
+  const userQuery = p.normalEnabled && p.userQueryEnabled && !p.mobile;
+  if (userQuery)
+    item("userQuery", i18n("userQuery_title"), (e) =>
+      p.onMenuSelect("userQuery", e),
+    );
   if (
     p.normalEnabled &&
     (p.authorBlacklistId ||
@@ -106,7 +112,8 @@ export function buildContextMenuEntries(p) {
       p.boardMarkReadTarget ||
       markAllRead ||
       boardToggles ||
-      userListToggle)
+      userListToggle ||
+      userQuery)
   )
     divider("d-blacklist");
   // 回覆這則推文（推文列預填 → 與帳號）：放在推文那一段的最前面。出現條件在 index.jsx

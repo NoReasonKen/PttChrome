@@ -30,6 +30,7 @@ import { LogoutSession } from './logout_session';
 import { BoardNoteSkip } from './board_note_skip';
 import { BackPauseHold } from './back_pause_hold';
 import { HelpMenuController } from './help_menu';
+import { UserQuery } from './user_query';
 import { installToolbarDiagnostics, logToolbarContext } from './toolbar_diag';
 import { DeepLinkController } from './deep_link_controller';
 import { AutoLogin } from './auto_login';
@@ -249,6 +250,7 @@ export const App = function() {
   // 說明選單好讀（h 的新版游標選單 → 彈窗／bottom sheet 列出全部頁，見 help_menu.js）。
   // listener 排在列表 session 之後：同一個 settle 裡佇列的命令先完成，補頁的 PgDn 才排得上線。
   this.helpMenu = new HelpMenuController(this, this.buf);
+  this.userQuery = new UserQuery(this);
   // 搜尋彈窗送出的兩步在途（article_search.submitSearch 寫、serialized_op_gate 讀）。
   this.searchInFlight = false;
   this.view.onAidClick = (aid, board) => this.onAidClick(aid, board);
@@ -343,6 +345,7 @@ export const App = function() {
   // 最後一個 modal 關閉的時間（performance.now() 基準）。term_view 用它擋掉「關框
   // 的那一下」按鍵（modal_key_gate.js）。
   this.modalClosedAt = -Infinity;
+  this.anyModalClosedAt = -Infinity;
 
   this.imageViewer = new ImageViewer(this);
 
@@ -686,6 +689,8 @@ App.prototype.onClose = function() {
   this.boardNoteSkip.reset();
   this.backPause.reset();
   this.helpMenu.reset();
+  // A user query mid-run (#199) belongs to the connection that closed too.
+  this.userQuery?.reset();
   // 長推文的探路成果同理：錨點是這條連線的列表游標（pttbbs getkeep），斷線就失效。
   // 不丟掉的話，重連後按下「送出」會拿舊錨點去比對新畫面。
   this.longPush.disarm();
@@ -1013,7 +1018,8 @@ App.prototype.setMobileSelectMode = function(on) {
 // 即時生效（鍵盤不會自己彈出／收起），所以切換後 blur→focus 讓瀏覽器重新判斷。
 // 回傳新狀態。
 App.prototype.toggleSoftKeyboard = function() {
-  if (!this.mobile || this.modalShown) return this.softKeyboard;
+  // The user query page (#199) is a modal that takes the soft keyboard's text.
+  if (!this.mobile || (this.modalShown && !this.userQuery?.ownsInput())) return this.softKeyboard;
   this.softKeyboard = !this.softKeyboard;
   this._keyboardSeen = false;
   this._applyInputMode();
@@ -1108,6 +1114,10 @@ App.prototype._readSafeInsets = function() {
 //     結構上不可能失同步。
 //   - 關掉最後一個 modal 時才把焦點還給終端機。
 App.prototype.setModalOpen = function(source, open) {
+  // Any source closing, not only the last: a key that closed a sheet over the
+  // user query page belongs to that sheet (UserQuery.takeKey).
+  if (!open && this._openModals.has(source) && typeof performance !== 'undefined')
+    this.anyModalClosedAt = performance.now();
   if (open)
     this._openModals.add(source);
   else

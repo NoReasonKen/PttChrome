@@ -29,6 +29,10 @@
 //   userListToggle：好讀拿著線上使用者列表時，`f` 會切到的視圖（'friends'／'all'，
 //            user_list.userListToggleTarget），否則 null；「更多」裡的「只看好友」／
 //            「顯示全部使用者」送 f（#199）。使用者列表沒有 post／unreadJump／markAllRead。
+//   userQuery：列表好讀呈現線上使用者列表且閒置（user_query.UserQuery.available，與右鍵選單、
+//            指令面板同一個判準），「更多」裡的「查詢網友」（#199）。
+//   queryPage：使用者查詢頁（user_query）顯示中：按鍵與「更多」可用（頁面接手按鍵），
+//            其餘動作都針對頁面底下被拿著的列表，一律關掉；「更多」裡的登出（PTT 被查詢佔線，送不出去）反灰。
 //   help   ：底列寫著 `(h)說明`／`(h)按鍵說明`（看板列表／文章列表／主功能表 footer、
 //            pager 狀態列；vs_footer 與 pmore.c 的提示都在 b_lines），「更多」裡的「操作說明」送 h
 //            ⇒ 新版說明選單（好讀開著時是 help_menu.js 的 bottom sheet）。手機上這些畫面的底列
@@ -53,7 +57,7 @@ import { userListToggleTarget } from './user_list';
 export const EMPTY_TOOLBAR_CONTEXT = Object.freeze({
   push: false, reply: false, mail: false, share: false, threadNav: false, post: false,
   unreadJump: false, markAllRead: false, boardCountsSwitch: false, boardCounts: false, boardSort: false, boardSortFavorites: false, help: false, contentTools: false, refresh: false, end: false,
-  userListToggle: null, search: [], appBar: EMPTY_APP_BAR, locked: false
+  userListToggle: null, userQuery: false, queryPage: false, search: [], appBar: EMPTY_APP_BAR, locked: false
 });
 
 // 送鍵表：key 是 term_view.sendKeyAsUser 的 keyName（單字元或 KeyMap 裡的具名鍵），
@@ -158,11 +162,20 @@ export function mobileToolbarContext(core) {
     (core.headerlessReopen && core.headerlessReopen.toolbarContext()) ||
     (core.articleShortcutSearch && core.articleShortcutSearch.toolbarContext()));
   if (covered) return covered;
+  // A user query (#199): the list's App Bar until its page shows, then the page's.
+  const queryBar = core && core.userQuery && core.userQuery.appBar();
+  // While the page shows, Keys and More work over it (its keys go to the page,
+  // UserQuery.takeKey), and every entry that acts on the list held under it
+  // stays off (the empty context). Until then the whole bar is locked.
+  if (queryBar) {
+    const shown = core.userQuery.phase === 'shown';
+    return { ...EMPTY_TOOLBAR_CONTEXT, appBar: queryBar, locked: !shown, queryPage: shown };
+  }
   const facts = searchGateFacts(core);
   const view = (core && core.view) || {};
   const prev = core && core._screenContext && core._screenContext.appBar;
   const ls = core && core.listSession;
-  return toolbarContextFromFacts(facts, core && core.buf ? core.buf.pageState : null, {
+  const ctx = toolbarContextFromFacts(facts, core && core.buf ? core.buf.pageState : null, {
     articleTitle: view._articleTitle,
     articleBoard: view._articleBoard,
     articleTime: view._articleTime,
@@ -174,11 +187,12 @@ export function mobileToolbarContext(core) {
     boardToggles: (core && core.boardListSession && core.boardListSession.listToggles &&
       core.boardListSession.listToggles()) || null
   });
+  return core && core.userQuery && core.userQuery.available() ? { ...ctx, userQuery: true } : ctx;
 }
 
 const FLAGS = [
   'push', 'reply', 'mail', 'share', 'threadNav', 'post', 'unreadJump', 'markAllRead', 'boardCountsSwitch', 'boardCounts', 'boardSort', 'boardSortFavorites', 'help', 'contentTools', 'refresh', 'end',
-  'locked'
+  'userQuery', 'queryPage', 'locked'
 ];
 
 export function sameToolbarContext(a, b) {

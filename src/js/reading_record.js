@@ -138,6 +138,13 @@ export const RESTORE_TABLE = {
     cancel: cell(null, 'origin', 'origin'),
     fail: cell(null, 'origin', 'origin')
   },
+  // A user query over the user list (user_query.js, #199): the list under the
+  // query page is the same list, kept, whatever came of the query.
+  'user-query': {
+    done: cell(null, 'origin'),
+    cancel: cell(null, 'origin'),
+    fail: cell(null, 'origin')
+  },
   // 跳到第一篇未讀：目的就是移動；找不到時停在翻到的那頁（使用者拍板）。
   'unread-jump': { done: NONE, cancel: NONE, fail: NONE },
   // 首頁儀表板（home_dashboard.js）：抓我的最愛＝Ctrl+Z f → 讀頁 → q 回主功能表，清單

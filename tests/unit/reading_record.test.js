@@ -82,6 +82,10 @@ describe("決策表", () => {
     ["help-menu", "cancel", "none", "origin", "origin"],
     ["help-menu", "fail", "none", "origin", "origin"],
     ["help-menu", "done", "none", "none", "none"],
+    // 查詢網友（#199）：查詢頁底下就是同一份使用者列表，不論結果都回原處。
+    ["user-query", "done", "none", "origin", "none"],
+    ["user-query", "cancel", "none", "origin", "none"],
+    ["user-query", "fail", "none", "origin", "none"],
     // 使用者拍板：找不到第一篇未讀時停在翻到的那頁。
     ["unread-jump", "done", "none", "none", "none"],
     ["unread-jump", "fail", "none", "none", "none"],

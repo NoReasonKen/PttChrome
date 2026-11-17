@@ -137,3 +137,117 @@ export function isUserQueryPrompt(buf) {
     buf.getRowText(1, 0, buf.cols).indexOf(QUERY_PROMPT) === 0
   );
 }
+
+// ---- The query screen read into fields (phase 2) ----
+// talk.c#my_query clears from row 1 and prints, one row each:
+//   《ＩＤ暱稱》id (nickname)…《經濟狀況》level[ ($n)]
+//   《登入次數》n 次 (…)        at col 40 《有效文章》n 篇[ (退:n)]
+//   《目前動態》activity        《私人信箱》mail state
+//   《上次上站》date            《上次故鄉》host   (left out for some users)
+//   《 五子棋 》n 勝 n 敗 n 和  《象棋戰績》n 勝 n 敗 n 和
+// then the plan (名片, user.c#showplans_userec: the user's plan file from
+// row 7, or 「《個人名片》id 目前沒有名片」), and the 請按任意鍵繼續 bar on
+// PTT's last row. A label is 《…》, its value runs to the next label on the
+// row; the columns are not relied on.
+const QUERY_LABEL_RE = /《([^《》]{1,8})》/g;
+const NO_PLAN_LABEL = '個人名片';
+const NO_PLAN_RE = /目前沒有名片\s*$/;
+// Label (spaces removed) ⇒ field.
+const QUERY_FIELDS = {
+  'ＩＤ暱稱': 'idNick',
+  '經濟狀況': 'money',
+  '登入次數': 'logins',
+  '有效文章': 'posts',
+  '目前動態': 'activity',
+  '私人信箱': 'mail',
+  '上次上站': 'lastLogin',
+  '上次故鄉': 'lastHost',
+  '五子棋': 'five',
+  '象棋戰績': 'chess'
+};
+const squash = (s) => s.replace(/\s+/g, ' ').trim();
+
+// One row's labelled values: { field: value }, or null when the row has no
+// label of the query screen.
+function queryRowFields(text) {
+  const marks = [];
+  QUERY_LABEL_RE.lastIndex = 0;
+  let m;
+  while ((m = QUERY_LABEL_RE.exec(text))) {
+    const field = QUERY_FIELDS[m[1].replace(/\s+/g, '')];
+    if (field) marks.push({ field: field, start: m.index, end: m.index + m[0].length });
+  }
+  if (!marks.length) return null;
+  const out = {};
+  marks.forEach((mark, i) => {
+    out[mark.field] = squash(text.slice(mark.end, i + 1 < marks.length ? marks[i + 1].start : text.length));
+  });
+  return out;
+}
+
+// The query screen's rows (texts, row 0 first) read into fields, or null
+// when they are not a query screen. A field PTT left out (上次上站 and
+// 上次故鄉 for some users) is ''. `plan` holds the plan's rows with blank rows
+// at either end dropped; it is empty for a user without a plan. PTT's last
+// row (the bar) is never read.
+//   { id, nick, money, logins, posts, activity, mail, lastLogin, lastHost,
+//     five, chess, plan: [] }
+export function parseUserQueryScreen(rowTexts) {
+  const texts = rowTexts || [];
+  const last = texts.length - 1;
+  let first = -1;
+  for (let r = 0; r < last; ++r) {
+    if ((texts[r] || '').indexOf('《ＩＤ暱稱》') === 0) {
+      first = r;
+      break;
+    }
+  }
+  if (first < 0) return null;
+  const fields = {};
+  let end = first;
+  for (let r = first; r < last; ++r) {
+    const f = queryRowFields(texts[r] || '');
+    if (!f) {
+      if ((texts[r] || '').trim()) break;
+      continue;
+    }
+    Object.assign(fields, f);
+    end = r + 1;
+    if ('five' in f || 'chess' in f) break;
+  }
+  const idNick = /^(\S+)(?: \((.*)\))?$/.exec(fields.idNick || '');
+  if (!idNick) return null;
+  let plan = texts.slice(end, last).map((t) => (t || '').replace(/\s+$/, ''));
+  while (plan.length && !plan[0]) plan.shift();
+  while (plan.length && !plan[plan.length - 1]) plan.pop();
+  if (plan.length === 1 && plan[0].indexOf('《' + NO_PLAN_LABEL + '》') === 0 && NO_PLAN_RE.test(plan[0])) plan = [];
+  return {
+    id: idNick[1],
+    nick: idNick[2] || '',
+    money: fields.money || '',
+    logins: fields.logins || '',
+    posts: fields.posts || '',
+    activity: fields.activity || '',
+    mail: fields.mail || '',
+    lastLogin: fields.lastLogin || '',
+    lastHost: fields.lastHost || '',
+    five: fields.five || '',
+    chess: fields.chess || '',
+    plan: plan
+  };
+}
+
+// PTT's usage-limit alert over a query (contentcheck.c#activity_alert, the
+// anti-flood rule): row 0 carries 「 使用限制 」 and the status, the reason
+// in the rows under it, 請按任意鍵繼續 on the last row. Status 「 查詢 」 is a
+// denial (the query is not made, the list comes back); 「 限速中 」 slows the
+// query down, which is made once the alert is dismissed.
+//   { status: 'denied' | 'slowed', reason } or null.
+export function userQueryAlert(rowTexts) {
+  const texts = rowTexts || [];
+  const head = texts[0] || '';
+  if (head.indexOf('使用限制') < 0) return null;
+  let reason = '';
+  for (let r = 1; r < texts.length - 1 && !reason; ++r) reason = (texts[r] || '').trim();
+  return { status: head.indexOf('限速中') >= 0 ? 'slowed' : 'denied', reason: reason };
+}

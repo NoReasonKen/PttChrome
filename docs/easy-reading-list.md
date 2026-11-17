@@ -46,7 +46,7 @@ PTT's user list in its two views, `【休閒聊天】` (all users) and `【好�
 - Numbers run from 1 without gaps, so number 1 is the top edge: the upward prefetch stops there instead of probing.
 - Each view is a list of its own: switching views is a board switch, and the buffer is rebuilt.
 - A view with no user (the friends view with no friend online) is a clean list without a numbered row (`emptyList`, invariant 17a). The window then holds a single empty-state row (`term_view._emptyListRow`, rendered by `list_card.buildListEmptyRow`).
-- Keys: the article list's table, unchanged in phase 1 (phase 3 adds the user list's own policy). The details for the other phases are in [easy-reading.md](easy-reading.md) 「線上使用者（#199）」.
+- Keys: the article list's table plus the user list's own key classes (`list_session.userListKeyClass`: query, number jump, view toggle, refused keys); the key table is in [easy-reading.md](easy-reading.md) 「線上使用者（#199）」.
 
 Runs whenever easy reading is on (`enableEasyReading`); off = pure native 24 rows. Both A-class frozen transactions and the
 automatic resume after PttChrome's own native excursions are part of it and have no switch of their own. `easyReadingListPrefetchCount` (default 200, 0 = stop background fill)

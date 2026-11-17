@@ -1477,7 +1477,8 @@ TermView.prototype = {
   },
 
   onInput: function(e) {
-    if (this.bbscore.modalShown || this.bbscore.contextMenuShown)
+    // The user query page (#199) is a modal that takes the soft keyboard's text.
+    if ((this.bbscore.modalShown && !this.bbscore.userQuery?.ownsInput()) || this.bbscore.contextMenuShown)
       return;
     // 第三道防線：組字若被某些瀏覽器搶在 keydown 之前開起來，它 commit 出來的重音
     // 字元（é/î/ñ/ü）絕不可以當成使用者打的字送進 PTT —— 那是 ⌥E/⌥I/⌥N/⌥U 這幾顆
@@ -1507,6 +1508,21 @@ TermView.prototype = {
   },
 
   onTextInput: function(text, isPasting) {
+    // Over the user query page (#199) a typed character is a key the page
+    // answers (q leaves, any other is refused); other text is refused. Ahead
+    // of the busy gate: the query holds the wire while the page shows.
+    var queryPage = this.bbscore.userQuery;
+    if (queryPage && queryPage.ownsInput()) {
+      if (!isPasting && isTypedKey(text)) this.sendKeyAsUser(text);
+      else queryPage.refuseText(text, isPasting ? 'paste' : 'text');
+      return;
+    }
+    // A key the soft keyboard typed into #t while the list's number or keyword
+    // input is open is the input's (sendKeyAsUser), never the list's (#199).
+    if (!isPasting && this._listInputWrap && isTypedKey(text)) {
+      this.sendKeyAsUser(text);
+      return;
+    }
     // 序列化操作（AID 跳文／長推文）在途時一律吞掉，理由與 onKeyDown 那道相同。
     // **排在列表好讀分派之前**：noteTextInput 自己會 _enterFunctionMode() 並排
     // native-input，在途時那本身就是競態。isPasting 也擋（App.onPasteDone 已擋過
@@ -1606,6 +1622,27 @@ TermView.prototype = {
   sendKeyAsUser: function(keyName, mods) {
     var ctrl = !!(mods && mods.ctrlKey);
     var alt = !!(mods && mods.altKey);
+    // The list's number or keyword input (promptListInput) owns the keys while
+    // it is open. A toolbar or keypad key, or a key the soft keyboard typed
+    // into #t, is never a keydown the input sees: it edits or closes the input
+    // here and never reaches the list under it (#199: the keypad's Enter
+    // queried the selected user and left the input open).
+    if (this._listInputWrap && this._listInputKey) {
+      this._listInputKey(keyName, ctrl || alt);
+      toolbarDiag(this.bbscore, 'key', {
+        key: keyName.length > 1 ? keyName : 'char', ctrl: ctrl, alt: alt, outcome: 'listInput'
+      });
+      return;
+    }
+    // A page over the terminal that takes its own keys (the user query page,
+    // #199): its window listener never sees a key that does not come from the
+    // keyboard.
+    if (this.bbscore?.userQuery?.takeKey({ key: keyName, ctrlKey: ctrl, altKey: alt, metaKey: false }, true)) {
+      toolbarDiag(this.bbscore, 'key', {
+        key: keyName.length > 1 ? keyName : 'char', ctrl: ctrl, alt: alt, outcome: 'userQueryPage'
+      });
+      return;
+    }
     var down = new KeyboardEvent('keydown', {
       key: keyName, ctrlKey: ctrl, altKey: alt, cancelable: true
     });
@@ -2072,7 +2109,8 @@ TermView.prototype = {
       (app.boardSearchHold && app.boardSearchHold.holding) ||
       (app.backPause && app.backPause.holding) ||
       (app.articleHold && app.articleHold.holding) ||
-      (app.homeDashboard && app.homeDashboard.holding)));
+      (app.homeDashboard && app.homeDashboard.holding) ||
+      (app.userQuery && app.userQuery.holding)));
   },
 
   // The list easy-reading branch of redraw owns this frame. Article frames
@@ -2538,10 +2576,7 @@ TermView.prototype = {
 
   hideListOverlay: function() {
     if (this._listOverlayEl) this._listOverlayEl.style.display = 'none';
-    if (this._listInputWrap) {
-      this._listInputWrap.remove();
-      this._listInputWrap = null;
-    }
+    if (this._listInputClose) this._listInputClose();
   },
 
   // "返回原文" for the AID back stack (aid_navigation.js). Shown exactly while a
@@ -2574,7 +2609,7 @@ TermView.prototype = {
   // Esc → cb(null). Focus returns to the hidden terminal input afterwards.
   promptListInput: function(label, initial, cb) {
     var self = this;
-    if (this._listInputWrap) this._listInputWrap.remove();
+    if (this._listInputClose) this._listInputClose();
     var wrap = document.createElement('div');
     wrap.style.cssText =
       'position:fixed;left:50%;' + aboveBottomInset(88) + 'transform:translateX(-50%);' +
@@ -2594,11 +2629,20 @@ TermView.prototype = {
     wrap.appendChild(input);
     document.body.appendChild(wrap);
     this._listInputWrap = wrap;
-    var finish = function(val) {
-      if (self._listInputWrap !== wrap) return; // already closed
+    var offBack = null;
+    // Closing without an answer (hideListOverlay) also lets go of the keys and of Back.
+    var close = function() {
       window.removeEventListener('keydown', onWindowKey, true);
+      if (offBack) offBack();
       wrap.remove();
       self._listInputWrap = null;
+      self._listInputKey = null;
+      self._listInputClose = null;
+    };
+    this._listInputClose = close;
+    var finish = function(val) {
+      if (self._listInputWrap !== wrap) return; // already closed
+      close();
       if (self.bbscore && self.bbscore.setInputAreaFocus)
         self.bbscore.setInputAreaFocus();
       cb(val);
@@ -2643,6 +2687,34 @@ TermView.prototype = {
         input.focus();
     };
     window.addEventListener('keydown', onWindowKey, true);
+    // System Back cancels the input (history_back_guard asks the sheets first).
+    if (this.bbscore && this.bbscore.registerSheetDismiss)
+      offBack = this.bbscore.registerSheetDismiss(function() { finish(null); });
+    // Keys that are no keydown here (sendKeyAsUser: the toolbar and keypad
+    // keys, and a key the soft keyboard typed into #t): Enter commits, Esc
+    // cancels, ⌫ / Del / ← / → / Home / End edit, a character is typed in.
+    // Any other key is the input's too, and does nothing.
+    this._listInputKey = function(key, modified) {
+      if (key === 'Enter') return finish(input.value.trim() || null);
+      if (key === 'Escape') return finish(null);
+      var start = input.selectionStart == null ? input.value.length : input.selectionStart;
+      var end = input.selectionEnd == null ? start : input.selectionEnd;
+      var len = input.value.length;
+      if (key === 'Backspace' || key === 'Delete') {
+        if (start === end) {
+          if (key === 'Backspace') start = Math.max(0, start - 1);
+          else end = Math.min(len, end + 1);
+        }
+        input.setRangeText('', start, end, 'end');
+      } else if (key === 'ArrowLeft' || key === 'ArrowRight' || key === 'Home' || key === 'End') {
+        var at = key === 'Home' ? 0 : key === 'End' ? len :
+          key === 'ArrowLeft' ? Math.max(0, start - 1) : Math.min(len, end + 1);
+        input.setSelectionRange(at, at);
+      } else if (!modified && key.length === 1) {
+        input.setRangeText(key, start, end, 'end');
+      }
+      input.focus();
+    };
     setTimeout(function() {
       input.focus();
       input.setSelectionRange(input.value.length, input.value.length);

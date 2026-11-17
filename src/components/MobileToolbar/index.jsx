@@ -18,6 +18,7 @@ import {
 } from "@tabler/icons-react";
 import { i18n } from "../../js/i18n";
 import { readValuesWithDefault } from "../../js/pref_storage";
+import { promptUserQuery } from "../../js/user_query";
 import {
   normalizeExternalSearchQuery,
   visibleExternalSearchItems,
@@ -494,6 +495,17 @@ export const MobileToolbar = ({
   }, [pttchrome, whenReady]);
 
   // 設為全部已讀：與桌機右鍵選單同一個入口（mark_all_read.js）。
+  // 查詢網友（#199）：開 app 自己的輸入 sheet，送出才送 Q、代號、Enter（user_query.js）。
+  const onUserQuery = useCallback(() => {
+    setPanel(null);
+    setConfirmLogout(false);
+    whenReady(() => {
+      if (typeof pttchrome.noteUserAction === "function")
+        pttchrome.noteUserAction();
+      promptUserQuery(pttchrome);
+    });
+  }, [pttchrome, whenReady]);
+
   const onMarkAllRead = useCallback(() => {
     setPanel(null);
     setConfirmLogout(false);
@@ -837,6 +849,16 @@ export const MobileToolbar = ({
             {i18n("mobileToolbar_unreadJump")}
           </button>
         ) : null}
+        {context.userQuery ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__userQuery"
+            onClick={onUserQuery}
+          >
+            {i18n("userQuery_title")}
+          </button>
+        ) : null}
         {context.markAllRead ? (
           <button
             type="button"
@@ -1001,6 +1023,7 @@ export const MobileToolbar = ({
             type="button"
             className="nomouse_command mobileSheetItem mobileSheetDanger pttRipple"
             data-key="__logout"
+            disabled={!!context.queryPage}
             onClick={() => setConfirmLogout(true)}
           >
             {i18n("mobileKeypad_logout")}

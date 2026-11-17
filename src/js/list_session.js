@@ -83,6 +83,7 @@ import {
 } from './screen_titles';
 import { isArticleListFooter, isMailListFooter, isSubListFooter, userListFooterRow } from './screen_captions';
 import { recordFor, listRecordMatches } from './reading_record';
+import { parseUserListRow } from './user_list';
 import { markReadPromptShown } from './mark_read_prompt';
 import { readSearchResultsContext, recordSearchResults } from './search_results_context';
 import { repeatSearch } from './repeat_search';
@@ -2117,6 +2118,25 @@ ListSession.prototype = {
     this._beginPassthroughBytes('h', { kind: 'help', hint: null, noSync: true });
   },
 
+  // A user query over the user list (#199, user_query.js): `steps` go out as
+  // the help's `h` does, without moving PTT's cursor (`Q` names the user), and
+  // the list is let go of for the native excursion while the query holds it on
+  // screen; resumeAfterHelp gives it the frame back with its rows and selection.
+  beginUserQuery: function(steps) {
+    this._spendLayer('nativePassthrough');
+    this._helpBoard = this._boardName;
+    this._helpSelection = { num: this._selectedNum, pinnedKey: this._selectedPinnedKey };
+    this._beginPassthroughBytes(steps, { kind: 'user-query', hint: null, noSync: true });
+  },
+
+  // One more step of that query (the space over PTT's alert or its
+  // 請按任意鍵繼續), while the list is still let go of. Returns whether it went out.
+  continueUserQuery: function(step) {
+    if (this.state !== 'functionMode' || this._helpBoard == null) return false;
+    this._enqueuePassthroughStep([step], 0);
+    return true;
+  },
+
   // The serialized sequence behind PttChrome's own list operations (search,
   // mark read, refresh, help): no other user key reaches it (#159).
   //
@@ -3336,6 +3356,17 @@ ListSession.prototype = {
     if (abs == null) return;
 
     const nums = this._termBuf.listLineNums || [];
+    // A user card (#199) queries that user; a user who logged off has no ID
+    // to ask for, and the tap does nothing.
+    if (this.isUserList()) {
+      const user = parseUserListRow((this._termBuf.listLines || [])[abs]);
+      if (!user || !user.id || nums[abs] == null) return;
+      this._selectedNum = nums[abs];
+      this._selectedPinnedKey = null;
+      this._forceRedraw();
+      queryUser(this._core, user.id);
+      return;
+    }
     this._selectedNum = nums[abs];
     this._selectedPinnedKey =
       this._selectedNum == null ? this._pinnedKeyAt(abs) : null;

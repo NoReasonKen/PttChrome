@@ -90,6 +90,45 @@ test.describe('the online user list in easy reading', () => {
     expect(await guardHits(page)).toEqual([]);
   });
 
+  // On a phone the digits come from the soft keyboard (text typed into the
+  // terminal, which easy reading takes as keys) and Enter, ⌫ and Esc from the
+  // toolbar's keypad (view.sendKeyAsUser); neither is a keydown the input sees.
+  // While the number input is open they are its keys, never the list's: on
+  // the user list Enter would query the selected user under the input.
+  test('a number jump typed on a phone: the keypad edits, closes and commits the input', async ({ page }) => {
+    await bootUserList(page, { count: 60 });
+    await enterUserList(page);
+    const input = page.locator('[data-list-input]');
+    const keypad = (key) => page.locator(`#mobileKeypad [data-key="${key}"]`).tap();
+    await page.locator('[data-key="__keys"]').tap();
+    await page.focus('#t');
+    await page.keyboard.insertText('5');
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue('5');
+    // A character the soft keyboard still types into the terminal goes to the input.
+    await page.focus('#t');
+    await page.keyboard.insertText('0');
+    await expect(input).toHaveValue('50');
+    await input.focus();
+    await page.keyboard.insertText('9');
+    await keypad('Backspace');
+    await expect(input).toHaveValue('50');
+    await keypad('Enter');
+    await expect(input).toHaveCount(0);
+    await expect.poll(async () => (await selected(page))?.num).toBe('50');
+    await userListActive(page);
+    expect(await page.evaluate(() => window.__app.userQuery.phase)).toBe('idle');
+    await expect(page.locator('[data-user-query-page]')).toHaveCount(0);
+
+    await page.focus('#t');
+    await page.keyboard.insertText('7');
+    await expect(input).toHaveValue('7');
+    await keypad('Escape');
+    await expect(input).toHaveCount(0);
+    expect((await selected(page)).num).toBe('50');
+    expect(await guardHits(page)).toEqual([]);
+  });
+
   test('f shows the friends view, an empty one as an empty-state row, and f again all users', async ({ page }) => {
     await bootUserList(page, { count: 30 });
     await enterUserList(page);

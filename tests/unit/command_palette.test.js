@@ -86,6 +86,12 @@ describe("buildPaletteItems", () => {
     expect(got).not.toContain("action:easyReadingOn");
   });
 
+  test("查詢網友 only on the online user list (#199)", () => {
+    expect(ids(buildPaletteItems("", {}))).not.toContain("action:userQuery");
+    expect(ids(buildPaletteItems("", { userQuery: true }))).toContain("action:userQuery");
+    expect(ids(buildPaletteItems("查詢網友", { userQuery: true }))[0]).toBe("action:userQuery");
+  });
+
   test("文章網址 ⇒ 第一項是開文，不列搜尋／設定", () => {
     const items = buildPaletteItems(`https://www.ptt.cc/bbs/Gossiping/${FN}.html`, LIST);
     expect(items[0]).toMatchObject({ kind: "article", target: { board: "Gossiping", aid: AID } });

@@ -94,6 +94,7 @@ import {
 } from "../../js/article_search";
 import { userListToggleTarget } from "../../js/user_list";
 import { rememberSearch } from "../../js/search_history";
+import { promptUserQuery } from "../../js/user_query";
 import { BoardSearchBridge } from "../../js/board_search_bridge";
 import { readSelectionText } from "../../render/screen_chunk";
 import { commentCardCopyText } from "../../render/comment_card";
@@ -171,6 +172,8 @@ const menuHandlerByEventKey = {
   boardSort: (pttchrome) => pttchrome.boardListSession?.toggleSort(),
   // 線上使用者列表的好友／全部切換（#199）：送 f，與實體鍵盤同一條分派。
   userListToggle: (pttchrome) => pttchrome.view.sendKeyAsUser("f"),
+  // 查詢網友（線上使用者列表，#199）：開輸入 sheet，送出才問 PTT（js/user_query.js）。
+  userQuery: (pttchrome) => promptUserQuery(pttchrome),
   // 看板列表：把右鍵那一列的看板設為已讀（跳號 → v）。目標在開選單當下就算好了。
   boardMarkRead: (pttchrome, { boardMarkReadTarget }) =>
     pttchrome.boardMarkRead.start(boardMarkReadTarget),
@@ -264,6 +267,8 @@ const initialState = {
   boardToggles: null,
   // 線上使用者列表上 `f` 會切到的視圖（'friends'／'all'），其他畫面 null（#199）。
   userListToggle: null,
+  // 「查詢網友」出不出現（線上使用者列表才有，userQuery.available）。
+  userQueryEnabled: false,
   // 看板列表右鍵那一列的看板（{ num, name } / null），boardMarkRead.targetAtRow。
   boardMarkReadTarget: null,
   // The live layer's entry the menu was opened on (#124; NavigationStack
@@ -727,6 +732,11 @@ export const ContextMenu = ({ pttchrome }) => {
           onScreen && normalEnabled
             ? userListToggleTarget(searchGateFacts(pttchrome))
             : null,
+        userQueryEnabled:
+          onScreen &&
+          !!normalEnabled &&
+          !!pttchrome.userQuery &&
+          pttchrome.userQuery.available(),
         menuTarget:
           normalEnabled && prefs.highlightMenuTarget
             ? menuTargetFromElement(target)
@@ -785,6 +795,7 @@ export const ContextMenu = ({ pttchrome }) => {
         markAllReadEnabled: false,
         boardToggles: null,
         userListToggle: null,
+        userQueryEnabled: false,
         boardMarkReadTarget: null,
         layerEntry: null,
         menuTarget: null,
@@ -1086,6 +1097,23 @@ export const ContextMenu = ({ pttchrome }) => {
     },
     [pttchrome, update],
   );
+  // 查詢網友的輸入 sheet（user_query.promptUserQuery 經 pttchrome.openUserQuerySheet）：
+  // 同一個搜尋外殼，種類 user。合約同 openSearch：true ＝開了。
+  const openUserQuerySheet = useCallback(() => {
+    update({
+      ...initialState,
+      showsSearch: true,
+      searchKind: "user",
+      searchKinds: ["user"],
+    });
+    return true;
+  }, [update]);
+  useEffect(() => {
+    pttchrome.openUserQuerySheet = openUserQuerySheet;
+    return () => {
+      pttchrome.openUserQuerySheet = noop;
+    };
+  }, [pttchrome, openUserQuerySheet]);
   const onSearchHide = useCallback(
     () => update({ showsSearch: false }),
     [update],
@@ -1116,6 +1144,7 @@ export const ContextMenu = ({ pttchrome }) => {
         userListToggle: busy
           ? null
           : userListToggleTarget(searchGateFacts(pttchrome)),
+        userQuery: !!pttchrome.userQuery?.available?.(),
         copyLink:
           !!pttchrome.deepLinkController && pttchrome.buf?.pageState === 3,
         back: !!pttchrome.aidNavigation?.canGoBack?.(),
@@ -1174,6 +1203,11 @@ export const ContextMenu = ({ pttchrome }) => {
   const onSearchConfirm = useCallback(
     ({ kind, text, bridge, aidTarget }) => {
       update({ showsSearch: false });
+      // 查詢網友：沒有搜尋紀錄，送出就問 PTT（不行時 user_query 自己給提示）。
+      if (kind === "user") {
+        if (text) pttchrome.userQuery?.query(text);
+        return;
+      }
       const value = normalizeSearchText(kind, text);
       if (!value) return;
       rememberSearch(kind, value);
@@ -1273,6 +1307,9 @@ export const ContextMenu = ({ pttchrome }) => {
         case "userListFriends":
         case "userListAll":
           pttchrome.view.sendKeyAsUser("f");
+          return;
+        case "userQuery":
+          promptUserQuery(pttchrome);
           return;
         case "copyLink":
           pttchrome.deepLinkController?.copyCurrentPostLink();
@@ -1538,6 +1575,7 @@ export const ContextMenu = ({ pttchrome }) => {
     markAllReadEnabled,
     boardToggles,
     userListToggle,
+    userQueryEnabled,
     boardMarkReadTarget,
     layerEntry,
     replyCommentTarget,
@@ -1601,6 +1639,7 @@ export const ContextMenu = ({ pttchrome }) => {
         markAllReadEnabled={markAllReadEnabled}
         boardToggles={boardToggles}
         userListToggle={userListToggle}
+        userQueryEnabled={userQueryEnabled}
         boardMarkReadTarget={boardMarkReadTarget}
         menuAnchor={menuAnchor}
         articleLinkEnabled={articleLinkEnabled}

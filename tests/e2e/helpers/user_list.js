@@ -20,12 +20,21 @@
 //               of the page), Home/End, digits⏎ jump (clamped), `f`/`F` toggle
 //               the view (back to user 1), `q` the query screen of the user
 //               under the cursor (any key back), `Q` the 【查詢網友】 prompt (an
-//               ID⏎ shows its query screen, an empty ⏎ goes back), ← / e / E
-//               the main menu. Every key sequence ending in `\f` repaints the
-//               whole screen. The view is an account flag (UF_FRIEND): Ctrl+Z u
-//               shows the view the list was left in, from user 1.
+//               ID⏎ shows its query screen, an empty ⏎ or an ID nobody online
+//               has goes back), ← / e / E the main menu. Every key sequence
+//               ending in `\f` repaints the whole screen. The view is an
+//               account flag (UF_FRIEND): Ctrl+Z u shows the view the list was
+//               left in, from user 1.
 //               `window.__userListServer.refuseUsers = true` plays a guest
 //               (no PERM_LOGINOK): Ctrl+Z u redraws the main menu.
+//   query       (#199 phase 2) the fields from row 1, the plan of a user from
+//               row 7 (`plans`) or the 「目前沒有名片」 line, the 請按任意鍵繼續
+//               bar on the last row. The key leaving it is answered after
+//               `sleepMs` more (PTT sleeps before it draws the list again).
+//   alert       `state.flood` ('denied' or 'slowed', one query): ID⏎ draws the
+//               usage-limit alert ( 使用限制 , the status, a reason) instead;
+//               its key goes back to the list (denied) or on to the query
+//               screen (slowed).
 // Not observed, built from the layout notes alone: the number jump, the
 // arrows and PgUp/PgDn at the list's ends (clamped here), where PTT parks
 // the cursor on an empty view (row 3 here) and the form of a `< 離站中..>`
@@ -38,11 +47,13 @@ const { ART, MAIN_MENU, FIRST_ITEM_ROW } = require('./main_menu');
 // `friends`: the numbers (in the all-users view) of the users who are friends,
 // bright cyan there and the only users of the friends view; none by default,
 // so the friends view is empty. `gone`: the number of a user who logged off.
-// `delay`: how long the server takes to answer.
-async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 40, prefs = {} } = {}) {
+// `delay`: how long the server takes to answer. `plans`: { number: lines } of
+// the users with a plan. `sleepMs`: PTT's sleep after the key on the query
+// screen, before the list.
+async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 40, plans = {}, sleepMs = 0, prefs = {} } = {}) {
   await bootOffline(page, ptt);
   await ptt.applyPrefs(page, { enableEasyReading: true, ...prefs });
-  await page.evaluate(({ count, friends, gone, delay, ART, MAIN_MENU, FIRST_ITEM_ROW }) => {
+  await page.evaluate(({ count, friends, gone, delay, plans, sleepMs, ART, MAIN_MENU, FIRST_ITEM_ROW }) => {
     const app = window.__app;
     const encode = text => [...text].map(ch => {
       const c = ch.charCodeAt(0);
@@ -66,11 +77,12 @@ async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 
         pager: n % 3 === 0 ? '-' : ' ',
         friend: friends.includes(n),
         gone: n === gone,
+        plan: plans[n] || null,
       });
     }
     const ROWS = app.buf.rows;
     const PAGE = ROWS - 4;
-    const state = { surface: 'menu', view: 'all', cursor: 1, typed: '', query: null };
+    const state = { surface: 'menu', view: 'all', cursor: 1, typed: '', query: null, flood: null, alert: null };
     const shown = () => state.view === 'friends' ? users.filter(u => u.friend) : users;
     const SGR = '\x1b[m';
     const menuFrame = () => {
@@ -121,8 +133,9 @@ async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 
         pad('《上次上站》01/02/2026 03:04:05 Fri', 40) + '《上次故鄉》' + u.place,
         pad('《 五子棋 》    0 勝     0 敗     0 和', 40) + '《象棋戰績》    0 勝     0 敗     0 和',
         '',
-        '《個人名片》' + u.id + ' 目前沒有名片',
       ];
+      if (u.plan) lines.push(...u.plan);
+      else lines.push('《個人名片》' + u.id + ' 目前沒有名片');
       let s = at(0) + titleBar(state.view === 'friends' ? '【好友列表】' : '【休閒聊天】');
       lines.forEach((t, i) => { s += at(1 + i) + t; });
       s += at(ROWS - 1) + '\x1b[1;34;44m' + '▄'.repeat(15) + ' \x1b[37m請按任意鍵繼續\x1b[34m ' + '▄'.repeat(15) + SGR;
@@ -133,9 +146,16 @@ async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 
     const promptFrame = () =>
       at(0) + '\x1b[1;37;44m【查詢網友】' + SGR + at(1) + '請輸入使用者代號: \x1b[30;47m' +
       pad(state.typed, 13) + SGR + at(1, 18 + state.typed.length);
+    // The usage-limit alert (talk.c#alert_screen): its status on the blue row
+    // 0, the reason below, the 請按任意鍵繼續 bar.
+    const alertFrame = () =>
+      at(0) + '\x1b[1;37;44m 使用限制 \x1b[33m ' + (state.alert === 'denied' ? '查詢' : '限速中') + ' ' + SGR +
+      at(2) + '  \x1b[1;31m操作過於頻繁，請稍後再試' + SGR +
+      at(ROWS - 1) + '\x1b[1;34;44m' + '▄'.repeat(15) + ' \x1b[37m請按任意鍵繼續\x1b[34m ' + '▄'.repeat(15) + SGR +
+      at(ROWS - 1, 79);
     const frame = () => {
       const s = state.surface === 'list' ? listFrame() : state.surface === 'query' ? queryFrame()
-        : state.surface === 'prompt' ? promptFrame() : menuFrame();
+        : state.surface === 'prompt' ? promptFrame() : state.surface === 'alert' ? alertFrame() : menuFrame();
       return '\x1b[H\x1b[2J' + encode(s);
     };
     const move = to => {
@@ -151,7 +171,16 @@ async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 
         }
         return;
       }
-      if (state.surface === 'query') return void (state.surface = 'list');
+      if (state.surface === 'query') {
+        state.surface = 'list';
+        state.slept = true;
+        return;
+      }
+      if (state.surface === 'alert') {
+        state.surface = state.alert === 'slowed' && state.query ? 'query' : 'list';
+        state.alert = null;
+        return;
+      }
       if (state.surface === 'prompt') {
         const enter = token.endsWith('\r');
         if (/^\d+\r$/.test(token)) state.typed += token.slice(0, -1);
@@ -162,6 +191,11 @@ async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 
         state.typed = '';
         state.query = u || null;
         state.surface = u ? 'query' : 'list';
+        if (state.flood) {
+          state.alert = state.flood;
+          state.flood = null;
+          state.surface = 'alert';
+        }
         return;
       }
       const PAGE_TOP = () => Math.floor((state.cursor - 1) / PAGE) * PAGE + 1;
@@ -188,12 +222,13 @@ async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 
     window.__userListSent = [];
     window.__stubWSSent = bytes => {
       window.__userListSent.push(bytes);
+      state.slept = false;
       for (const token of bytes.match(TOKEN) || []) if (token !== '\f') apply(token);
-      setTimeout(() => app.onData(frame()), delay);
+      setTimeout(() => app.onData(frame()), delay + (state.slept ? sleepMs : 0));
     };
     window.__userListServer = { state, users, frame, PAGE };
     app.onData(frame());
-  }, { count, friends, gone, delay, ART, MAIN_MENU, FIRST_ITEM_ROW });
+  }, { count, friends, gone, delay, plans, sleepMs, ART, MAIN_MENU, FIRST_ITEM_ROW });
   await page.waitForFunction(() => window.__app.homeDashboard.state.visible);
 }
 

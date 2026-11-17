@@ -55,6 +55,7 @@ export const PALETTE_ACTIONS = [
   // 線上使用者列表的好友／全部切換（#199）：只列切過去的那一個。
   { id: "userListFriends", titleKey: "userList_showFriends", when: "userListFriends", keywords: ["只看好友", "好友", "friends", "friends only"] },
   { id: "userListAll", titleKey: "userList_showAll", when: "userListAll", keywords: ["顯示全部使用者", "全部使用者", "使用者", "all users", "users"] },
+  { id: "userQuery", titleKey: "userQuery_title", when: "userQuery", keywords: ["查詢網友", "查詢", "使用者", "網友", "query user", "user", "profile"] },
   { id: "copyLink", titleKey: "palette_copyLink", when: "copyLink", keywords: ["複製本篇連結", "複製連結", "分享", "copy link", "share", "url"] },
   { id: "back", titleKey: "palette_back", when: "back", keywords: ["返回原文", "返回", "上一篇", "back", "return"] },
   { id: "settings", titleKey: "palette_settings", when: null, keywords: ["設定", "偏好", "settings", "preferences", "options"] },
@@ -97,7 +98,7 @@ function actionMatch(action, q, title) {
  * @param {string} query 使用者輸入
  * @param {object} ctx 開面板當下量好的事實：
  *   searchKinds: string[]（article_search.availableSearchKinds）
- *   refresh / unreadJump / markAllRead / copyLink / back: boolean
+ *   refresh / unreadJump / markAllRead / userQuery / copyLink / back: boolean
  *   boardToggles: { counts: boolean|null, sort: 'favorites'|'switch'|false } | null
  *     (board_list_session.listToggles, #221; counts is null where `c` is not offered)
  *   userListToggle: 'friends' | 'all' | null（user_list.userListToggleTarget）
@@ -139,6 +140,7 @@ export function buildPaletteItems(query, ctx) {
     boardShowsCounts: !!c.boardToggles && c.boardToggles.counts === true,
     userListFriends: c.userListToggle === "friends",
     userListAll: c.userListToggle === "all",
+    userQuery: !!c.userQuery,
     copyLink: !!c.copyLink,
     back: !!c.back,
     easyReadingOn: !!c.easyReading,

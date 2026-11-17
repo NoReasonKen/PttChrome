@@ -58,6 +58,22 @@ test("桌機：線上使用者列表有好友／全部切換，標籤是切過�
   expect(keys({ ...BASE, mobile: true, userListToggle: "friends" })).not.toContain("userListToggle");
 });
 
+test("查詢網友（#199）：桌機右鍵在線上使用者列表才有；手機在工具列「更多」", () => {
+  const calls = [];
+  const p = {
+    ...BASE,
+    markAllReadEnabled: false,
+    userQueryEnabled: true,
+    onMenuSelect: (k) => calls.push(k),
+  };
+  const item = buildContextMenuEntries(p).find((e) => e.key === "userQuery");
+  expect(item.label).toBe(i18n("userQuery_title"));
+  item.onClick({});
+  expect(calls).toEqual(["userQuery"]);
+  expect(keys({ ...p, userQueryEnabled: false })).not.toContain("userQuery");
+  expect(keys({ ...p, mobile: true })).not.toContain("userQuery");
+});
+
 test("手機：全選／圖片上傳／設為全部已讀都不在長按選單", () => {
   const k = keys({ ...BASE, mobile: true });
   for (const m of MOVED) expect(k).not.toContain(m);

@@ -189,3 +189,50 @@ describe("onInput 不因 IME 丟棄字元", () => {
     expect(got).toEqual([]);
   });
 });
+
+describe("onTextInput over the user query page (#199)", () => {
+  function pageCtx({ owns = true } = {}) {
+    const sent = [];
+    const refused = [];
+    const ctx = {
+      lineWrap: 0,
+      bbscore: {
+        userQuery: {
+          ownsInput: () => owns,
+          refuseText: (text, what) => refused.push([text, what]),
+        },
+        activeListSession: () => null,
+      },
+      sendKeyAsUser: (k) => sent.push(k),
+      _convSend: () => sent.push("raw"),
+    };
+    return { ctx, sent, refused };
+  }
+
+  test("one typed character is the page's key; other text and a paste are refused; nothing goes to PTT", () => {
+    const { ctx, sent, refused } = pageCtx();
+    onTextInput(ctx, "q");
+    onTextInput(ctx, "你好");
+    onTextInput(ctx, "q", true);
+    expect(sent).toEqual(["q"]);
+    expect(refused).toEqual([["你好", "text"], ["q", "paste"]]);
+  });
+
+  test("without the page the funnel is unchanged", () => {
+    const { ctx, refused } = pageCtx({ owns: false });
+    onTextInput(ctx, "q");
+    expect(refused).toEqual([]);
+  });
+
+  test("onInput lets the page's text through the modal gate, and drops it for any other modal", () => {
+    for (const [owns, taken] of [[true, ["q"]], [false, []]]) {
+      const { ctx, sent } = pageCtx({ owns });
+      ctx.bbscore.modalShown = true;
+      ctx.onTextInput = (t) => sent.push(t);
+      ctx.isComposition = false;
+      const e = { target: { value: "q" } };
+      TermView.prototype.onInput.call(ctx, e);
+      expect(sent).toEqual(taken);
+    }
+  });
+});
