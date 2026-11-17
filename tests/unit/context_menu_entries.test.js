@@ -118,3 +118,26 @@ describe("複製推文", () => {
     expect(keys({ ...BASE, previews: {} })).not.toContain("copyCommentAll");
   });
 });
+
+test("board list view switches (#221): desktop only, the first label follows the view", () => {
+  const calls = [];
+  const p = { ...BASE, markAllReadEnabled: false, onMenuSelect: (k) => calls.push(k) };
+  const at = (toggles, mobile = false) =>
+    buildContextMenuEntries({ ...p, boardToggles: toggles, mobile });
+  const numbered = at({ counts: false, sort: "switch" });
+  expect(numbered.find((e) => e.key === "boardCounts").label).toBe("Show article counts");
+  expect(numbered.find((e) => e.key === "boardSort").label).toBe("Switch sort (by name / by class)");
+  expect(at({ counts: true, sort: "switch" }).find((e) => e.key === "boardCounts").label).toBe("Show board numbers");
+  // The favorites: the sort entry reorders them; the class root has neither entry.
+  expect(at({ counts: false, sort: "favorites" }).find((e) => e.key === "boardSort").label).toBe("Reorder favorites");
+  expect(at({ counts: false, sort: false }).map((e) => e.key)).not.toContain("boardSort");
+  expect(at({ counts: null, sort: false }).map((e) => e.key)).not.toContain("boardCounts");
+  expect(at({ counts: null, sort: false }).map((e) => e.key)).not.toContain("boardSort");
+  numbered.find((e) => e.key === "boardCounts").onClick({});
+  numbered.find((e) => e.key === "boardSort").onClick({});
+  expect(calls).toEqual(["boardCounts", "boardSort"]);
+  for (const k of ["boardCounts", "boardSort"]) {
+    expect(keys({ ...p, boardToggles: null })).not.toContain(k);
+    expect(keys({ ...p, boardToggles: { counts: false, sort: "switch" }, mobile: true })).not.toContain(k);
+  }
+});

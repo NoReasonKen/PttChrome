@@ -219,3 +219,44 @@ test("每個動作的標題兩語系都有", () => {
     expect(en_US[a.titleKey], a.titleKey).toBeTruthy();
   }
 });
+
+describe("the board list's view switches in the palette (#221)", () => {
+  test("a class's boards, numbered: offers article counts and the sort order", () => {
+    const got = ids(buildPaletteItems("", { boardToggles: { counts: false, sort: "switch" } }));
+    expect(got).toContain("action:boardCounts");
+    expect(got).toContain("action:boardSort");
+    expect(got).not.toContain("action:boardNumbers");
+  });
+
+  test("the favorites: their reorder instead of the sort switch; the class root: neither", () => {
+    const fav = ids(buildPaletteItems("", { boardToggles: { counts: false, sort: "favorites" } }));
+    expect(fav).toContain("action:boardCounts");
+    expect(fav).toContain("action:favSort");
+    expect(fav).not.toContain("action:boardSort");
+    expect(ids(buildPaletteItems("reorder", { boardToggles: { counts: false, sort: "favorites" } }))).toContain("action:favSort");
+    const root = ids(buildPaletteItems("", { boardToggles: { counts: null, sort: false } }));
+    expect(root).not.toContain("action:boardSort");
+    expect(root).not.toContain("action:boardCounts");
+    expect(root).not.toContain("action:boardNumbers");
+  });
+
+  test("article-count view: offers board numbers back", () => {
+    const got = ids(buildPaletteItems("", { boardToggles: { counts: true, sort: "switch" } }));
+    expect(got).toContain("action:boardNumbers");
+    expect(got).not.toContain("action:boardCounts");
+  });
+
+  test("not on other screens", () => {
+    const got = ids(buildPaletteItems("", { boardToggles: null }));
+    for (const id of ["action:boardCounts", "action:boardNumbers", "action:boardSort", "action:favSort"])
+      expect(got).not.toContain(id);
+  });
+
+  test("found by its words", () => {
+    expect(ids(buildPaletteItems("排序", { boardToggles: { counts: false, sort: "switch" } }))).toContain("action:boardSort");
+    expect(ids(buildPaletteItems("by class", { boardToggles: { counts: false, sort: "switch" } }))).toContain("action:boardSort");
+    expect(ids(buildPaletteItems("article count", { boardToggles: { counts: false, sort: "switch" } }))).toContain(
+      "action:boardCounts"
+    );
+  });
+});

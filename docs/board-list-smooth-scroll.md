@@ -22,12 +22,12 @@ The variant is decided by `class_bid`/`yank_flag`. The old version (03cdf5eb) re
 | Category board subcategory | Pick a category in 【分類看板】 → `class_bid>1` | `(m)加入/移出最愛` + `(s)進入已知板名` | caption `看板列表` | ✅ `class` |
 | 熱門看板 (popular boards) | `TopBoards()` / the `BRD_TOP` group → `class_bid=-1` | `(m)加入/移出最愛` + `(y)只列最愛` | caption `看板列表` (**indistinguishable from a category subcategory**) | old ❌ `all` / new ✅ `class` (the owner's decision; the order is dynamic, so stitching pages may duplicate or miss boards) |
 | 全部看板 (all boards) | `y` on favorites → `class_bid=0` + `LIST_BRD()` | Same as popular boards | caption **still** `我的最愛` + `(m)加入最愛` / row 1 `[y]只列最愛` | ❌ `all` (tens of thousands of rows; how evict feels is unverified) |
-| 「新文章」 (new articles) mode | `c` on any board list | One of the above | One of the above | ❌ `newflag` (row 2 「總數」, total) |
+| Article-count view (`newflag`, PTT's hint calls it 「新文章」) | `c` on any board list (per list, not saved, §1) | One of the above | One of the above | Favorites and a class's boards: ✅ only once easy reading itself switched to it, or on Back to a list it switched (#221, §4.7); any other way ❌ `newflag` (row 2 「總數」, total) |
 | Category board **root** (分組討論區) | Main menu `C`, or `Ctrl+Z c` from the home dashboard (`class_bid==1`) | No footer (the menu's status line) | row 0 `【分類看板】` + caption `分類看板` | old ❌ / new ✅ `classroot` (#229, see below) |
 
 Preconditions: row 0 starts with `【看板列表】` (`src/js/screen_titles.js#rowHasTitle`, **accepting both the `【X】` and ` X ` shapes**, for reasons in
 protocol §11.9) **and** the footer caption is a board list (`src/js/screen_captions.js#isBoardListFooter`) → whether row 2 is 「編號」 (number)
-or 「總數」 (total) (`board.c:1338`; the screen itself tells newflag apart, so there is no need to intercept the `c` key) → variant → the cursor rests in the body on a row with a number.
+or 「總數」 (total) (`board.c:1338`; the screen itself tells newflag apart) → variant → the cursor rests in the body on a row with a number.
 In the old version, **`(y)只列最愛` must be checked before `(m)加入/移出最愛`**, since both start with `(m)`.
 
 **The class root (`classroot`, #229)** is recognized before those preconditions: row 0 is `【分類看板】` and the footer caption is `分類看板`
@@ -76,6 +76,9 @@ Line numbers refer to the old version (03cdf5eb); the "newui" column gives the n
 | Cursor = `cursor_key(3 + num - head, 0)` → a half-width `>`, then move back to the same cell. `%7d` is right-aligned, so `>` only covers leading spaces and **never covers a digit** | `board.c:1717-1720`, `stuff.c:214-251` | CONFIRMED: `psb_main` `header_lines + curr - base` → `board.c#brdlist_cursor` (col 10 at the category root) |
 | `search_num` clamps `clen > max` to `max` (= brdnum), and then `brdlist_foot()` **redraws the footer**, so the landing frame of a number jump is a complete board list | `stuff.c:189-208`, `board.c:1843-1845` | CONFIRMED: `board.c#board_cmd_num` (`curr = total` → `psb_sync_cache` clamps to `total-1`; `redraw_footer_lines = 1`). newui's read.c number jump also redraws the footer now (protocol §4 ✚) |
 | With newflag, `%7d` prints `B_TOTAL` (the article total); group boards and boards without permission print `%7s` blanks | `board.c:1462-1466`, `1376,1425,1471` | CONFIRMED: `brdlist_renderer` |
+| `c`/`C` (`board_cmd_toggle_newflag`, help text 「切換顯示看板編號或文章數」) **switches the number column** between the position and the article total; it is **not a filter**: the rows, their order and the cursor stay (`ctx->redraw` only), row 2 reads 「總數」. `C` is an alias in `boardlist_cmds` (`{ 'C', NULL, NULL, board_cmd_toggle_newflag }`, `board.c:3176`) | `board.c:1338,1462-1466,3176` | `c` CONFIRMED by an upstream-built screen (`board_list_toggles`, `docs/ptt-src-screens.md`); the `C` alias read from source |
+| The view is **per list, not saved**: the switch flips `*cx->newflag`, which points at `choose_board(int newflag)`'s own parameter. `Class()`, `TopBoards()` and `Favorite()` call `choose_board(0)` (numbered); a group or favorites folder opened from the list (`board_enter_group` / `board_enter_fav_folder`) is a new `choose_board(0)`, so it opens numbered. Back from it returns to the outer call, still in its view, and reloads (`brdnum=-1`): in the count view `brdlist_loader` moves the cursor to the first unread board at or after the row opened (`board_find_first_unread`). Opening a board (`board_enter_normal`) only redraws on return | `board.c` (`choose_board`, `board_enter_group`, `board_enter_fav_folder`, `brdlist_loader`) | **Source-built, unverified** (no captured screen) |
+| `S` (`board_cmd_sort`) outside the favorites flips the account flag `UF_BRDSORT` (`pwcuToggleSortBoard()`, saved with the account) and reloads: `load_boards` sorts a class's boards **by name** with the flag off (`BRD_GROUP_LL_TYPE_NAME`) and **by class** with it on (`BRD_GROUP_LL_TYPE_CLASS`); the all-boards list uses `bsorted[type]`. The class root (`IN_CLASSROOT()` forces by class) and the hot boards (SHM order) do not change, though the flag still flips. On the favorites (`IS_LISTING_FAV()`) it draws 「重新排序看板 (注意, 這個動作會覆寫原來設定)」 at `b_lines-2` and asks with `vans("排序方式 (1)按照板名排序 (2)按照類別排序 ==> [0]取消 ")` at `b_lines` (`vtuikit.c#vans` reads a line with `vgets`, so the answer needs Enter); `1` / `2` **rewrite the favorites' saved order** (`fav_sort_by_name` / `fav_sort_by_class`), anything else cancels, and the list reloads either way. The screen does not say which order is on | `board.c` (`board_cmd_sort`, `load_boards`), `vtuikit.c#vans` | **Source-built, unverified**: no captured screen |
 | Board without permission: `prints("%7d", head)` is **immediately** followed by `prints("X%c …")`, so there is no space after the number | `board.c:1427-1435` | CONFIRMED: `brdlist_renderer` |
 | `num` is a **`static int`**, so the cursor position persists across leaving and re-entering (equivalent to read.c's getkeep semantics) | `board.c:1646` | **Changed**: `choose_board` still passes `num` into `cmd.curr`, but `psb.c#psb_init_defaults` resets `curr` to zero when it sees `total == 0` before the loader, so **every fresh entry into `choose_board` lands on row 1** (with newflag, on `board_find_first_unread`). Entering a board and leaving it stays inside the same `psb_main` loop, so the cursor persists |
 | Three outcomes of Enter: an ordinary board → `Read()`; a folder or group board → recursive `choose_board` (a new number space); **a separator line (`NBRD_LINE`) or a board without permission → the switch just breaks, with zero response** | `board.c:1928-2018` | CONFIRMED: `board.c#board_cmd_select` → `board_enter_normal` (`!HasBoardPerm` returns directly) / `board_enter_group` / `board_enter_fav_folder`; `NBRD_LINE` returns 0 with nothing dirty, so zero response |
@@ -266,6 +269,9 @@ So `_maybeFill` is "down first, then up once the bottom edge is reached", and **
 | Back up a level `brd-leave` | `\x1b[D` | Same as above |
 | Help `brd-help` (#192, #222) | `h` + `\f` at once, with no cursor-sync leg: a background fetch on the wire is cut short (`flushPendingKind` + `_expediteBackground`); the help-menu hold keeps the native help screen off the page | Once every help page is read, the sheet sends `q` behind itself and detaches: `HelpMenuController` calls `resumeAfterHelp(true)` and the kept list comes back in the same frame (`_resumeHeldList`, rows, selection and viewport unchanged; `_serverNum` adopts PTT's cursor); any other ending → the idle probe re-seeds |
 | PttChrome's own sequences (`_beginPassthroughBytes`) | Bytes PttChrome itself decides to send + `\f` (with the sync leg first) | Same as above (the screen is already the native mirror); `resumeOnLanding` re-engages on the landing. **No reader key, paste or typed text goes this way any more** (#192) |
+| View switch `brd-list-toggle` (#221) | `c` or `S` + `\f`, the list frozen on screen, then `brd-list-toggle-sync` `<sel>\r` + `\f` | Key leg: `brd.parked ∧ same variant ∧ the view expected` (`c`: row 2 flipped between 「編號」 and 「總數」; `S`: the view unchanged). Sync leg: `cursorNum === sel`. Then `rebuild` from that page alone (§4.7) |
+| Reorder the favorites `brd-fav-sort` → `brd-fav-sort-answer` (#221) | After the confirmation sheet's pick: `S` (no repaint), then `1\r` or `2\r` + `\f`, the list frozen | `S` leg: PTT's prompt on the last row (`isFavSortPrompt`). Answer leg: `brd.parked ∧ fav ∧ the view unchanged`. Then the toggle's sync leg and `rebuild` (§4.7) |
+| Return to a count view `brd-counts-return` (#221) | After `brd-leave` lands on a count-view page of a list that showed counts: `<row opened>\r` + `\f`, the list frozen | `brd.newflag ∧ placed ∧ same variant ∧ cursorNum === row` → seed from that page (§4.7) |
 | A-class keys `brd-native-inplace` | `t`/`v`/`V` + `\f` (with `brd-inplace-sync-jump` first when needed) | `brd.parked ∧ cursorNum≠null ∧ same variant` → `_resumeInPlace` (adopts the landing, **anchor unchanged**); landing not in the buffer → `rebuild` |
 
 "Entering a board and backing up a level always use `expect: () => true` plus teardown in onDone" on purpose: there are three kinds of landing
@@ -293,7 +299,12 @@ stale marks, so it is passthrough (switching to native and rebuilding fully on r
 keys of the features it presents itself. Ctrl combinations, Alt-remapped keys (Alt+R/T/W/V = `^R/^T/^W/^V`), every other letter or symbol,
 the footer buttons for those keys, paste and typed text show the error hint 「好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）」
 (or the paste / text variant) and **send nothing**; the hint wording comes from `src/js/unsupported_hint.js` (shared by every easy-reading page) and both lists refuse through `refuseUnsupported(view, what)` in `src/js/list_refusal.js`.
-Two keys are not refused because easy reading presents them:
+Three groups are not refused because easy reading presents them:
+- `c`/`C` and `S` (#221) are the list's view switches (`LIST_TOGGLE_KEYS`, from the keyboard, the hot-key row's `[c]`/`[S]` buttons and the
+  entrances in §4.7). `c`/`C` work on the favorites and a class's boards; the class root, which has no column header to show the view, refuses them.
+  `S` works on a class's boards; the class root refuses it too, because PTT keeps its order by class and nothing visible would change (the hot boards list cannot be told apart from a class's list and keeps the entry). On the favorites and
+  their folders PTT's `S` rewrites the favorites' saved order (§1), so the key opens easy reading's confirmation sheet instead and sends nothing
+  until the reader picks (§4.7).
 - `s` opens the board-search sheet (`article_search.tryOpenSearchModal`), from the keyboard and from the footer button alike.
 - `h` opens the help-menu sheet over the **kept** board list: `_beginHelp` asks `HelpMenuController.expect(this)` to hold the native help screen,
   and sends `h` at once with `keepList` (no cursor sync first, #222; `_enterNative` stashes the list in `_helpList` instead of dropping the buffer).
@@ -328,8 +339,8 @@ Alias rule: the table follows the commands PTT lists on its help screen, aliases
 | `h`/`H`/`?` | Help screen | Kept (help-menu sheet over the kept list, detached from PTT once read, #222) |
 | `/` | Filter the list by keyword | Refused |
 | `Ctrl-S` | Search the list locally | Refused |
-| `c`/`C` | Toggle the newflag view | Refused |
-| `S` | Change the sort order | Refused |
+| `c`/`C` | Switch the number column between board numbers and article totals (not a filter) | Kept on the favorites and a class's boards (§4.7, #221); refused on the class root |
+| `S` | Switch a class's boards between by-name and by-class order (the account flag `UF_BRDSORT`); on the favorites, rewrite their saved order | Kept on a class's boards (§4.7, #221); refused on the class root; on the favorites and their folders it opens the reorder confirmation sheet first (§4.7) |
 | `y`/`Y` | Show all boards / only subscribed (yank) | Refused |
 | `w` | Save the read records | Refused |
 | `Ctrl-W`/`Ctrl-Y` | Where am I | Refused |
@@ -344,6 +355,51 @@ Alias rule: the table follows the commands PTT lists on its help screen, aliases
 
 Features without an easy-reading entrance are collected for a follow-up issue rather than passed to native.
 
+### 4.7 The view switches: article counts and sort order (#221)
+
+Entrances: the keys (§4.6), the toolbar's More sheet on mobile, the desktop context menu and the command palette. Each asks
+`BoardListSession.listToggles()` and calls `toggleCounts()` / `toggleSort()`, the same path as the key. `listToggles()` is null unless easy reading
+is on with a list engaged, else `{ counts, sort }`: `counts` is null where `c` is not offered (the class root), otherwise whether the count view
+shows; `sort` is `'switch'` (a class's boards), `'favorites'` (the favorites and their folders) or false. The counts label
+follows the view: 「顯示文章數」 (Show article counts) in the numbered view, 「顯示看板編號」 (Show board numbers) in the count view. The sort label
+is 「切換排序（依板名／依類別）」 (Switch sort (by name / by class)): PTT's screen does not say which order is on, so the label names both. On the
+favorites it is 「重新排序我的最愛」 (Reorder favorites). The home dashboard has none.
+
+Reordering the favorites: the key, the More entry, the context menu and the palette all open a confirmation sheet first
+(`ContextMenu/FavSortModal.jsx`, through `core.openFavSortChoice`; a bottom sheet on mobile, a modal on desktop). It says plainly that the
+favorites' current order is overwritten and cannot be undone, and offers 「依板名排序」 / 「依類別排序」 / 「取消」. Cancel or closing sends nothing.
+A pick calls `reorderFavorites('name' | 'class')`: `brd-fav-sort` sends `S` and waits for PTT's prompt (`isFavSortPrompt`), then
+`brd-fav-sort-answer` sends `1\r` or `2\r` + `\f` and waits for the reloaded favorites; the list stays frozen through the prompt and the reload.
+Then the same sync leg and rebuild as the sort switch run, the selection following its board's name, with the hint 「已重新排序我的最愛」; a timeout
+fails visibly with 「重新排序我的最愛逾時」. Once PTT has the answer, `homeDashboard.favoritesChanged()` marks home's cached favorites stale, so home
+fetches them again the next time it shows.
+
+The transaction (`_beginToggle`): no slide and no new stack layer. The list is frozen on screen, the pending reading-record viewport is dropped, and
+the key goes out with a repaint. Once PTT's page shows the expected view, a sync leg puts PTT's cursor on the reader's selection, and the list is
+**rebuilt from that page alone** (no row held before is mixed in) with the selection kept. After `S`, the selection follows the selected board's
+name when the landed page shows it. A busy list shows the usual busy hint and sends nothing; a leg that times out fails visibly (I6b) with
+「切換顯示方式逾時」/「切換排序逾時」. On success the hint 「看板列表改顯示文章數」/「看板列表改顯示看板編號」/「已切換看板排序（依板名／依類別）」 shows.
+On the class root `S` changes nothing visible, and the selection stays on its position.
+
+The count view lasts while its list is open (§1): it is not saved, and a group or favorites folder opened from it opens numbered. Back from such a
+sub-list lands on the outer list still in the count view, its cursor on the first unread board, a page nothing places. The session remembers, for
+each list a sub-list was opened from, whether it showed counts and the row opened (`_trail`); when Back lands on a count-view page and that list
+showed counts, the screen stays frozen and `brd-counts-return` sends `<row>\r` + `\f`, then seeds the list from the page that shows the row
+(`_beginCountsReturn`; a timeout fails visibly with 「回上層逾時」). Opening a board and coming back resumes in place as usual.
+
+The count view prints totals where positions go, and blanks on group, separator and blocked rows, so a page there does not say where it sits.
+`board_list_parse.js#decorateNewflagBoardList` places it by a page base (pages are aligned, §2): the strongest evidence is a board name the
+buffer already holds at a position; next, a candidate position (the jump just sent, then where PTT's cursor was) whose row is the cursor's row.
+A base under which any row names another board than the buffer holds is rejected. A placed page is read with positions in its number column
+(`newflagRowText`), so the name, separator, mark-read and landing helpers work unchanged; the rows drawn keep the totals, only the cursor `>` is
+blanked. `term_view.accumulateBoardListLines` takes rows only from pages the session placed (`newflagRowNums`), and never from a page of the
+other view. End and a number jump past the rows held walk down with fetches (`_walkTo`, at most 50 pages), since PTT's End page in the count view
+does not say where it is.
+
+Not covered: a count view met without easy reading's own switch (a list switched while easy reading was off) stays native, since nothing places
+its page; so does a count view after a passthrough dropped the buffer. Group rows have
+no number in the count view, so their mobile card carries no position.
+
 ---
 
 ## 5. Invariants
@@ -353,8 +409,8 @@ Features without an easy-reading entrance are collected for a follow-up issue ra
 - **I2 A single line to the server**: share `App.commandQueue`, never build your own; commands always carry the `brd-` prefix.
 - **I3 wrap-aware**: a clamped local cursor ≠ wrap can be ignored. **If pages are ever fetched with PgUp/PgDn again**,
   edge detection must be rewritten (§2.1): a landing that moves far in the opposite direction means edge, and **that landing is discarded**.
-- **I4 newflag**: both lines of defence are required: the fingerprint layer checks whether row 2 is 「編號」 or 「總數」;
-  the `c` key is refused in easy reading (#192), so the newflag view only appears when the reader switches easy reading off and back on.
+- **I4 newflag**: the fingerprint layer checks whether row 2 is 「編號」 or 「總數」. A count-view page is engaged only through easy reading's
+  own switch or the return to a list it switched (§4.7), and only once it is placed; its totals are never read as positions, and a page of one view never enters a buffer of the other.
 - **I5 Zero-response Enter**: on separator lines (`NBRD_LINE`) and forbidden or hidden board rows, PTT replies with zero bytes,
   so **they must be blocked locally** (`isBoardListSeparatorRow` / `isBoardListBlockedRow`);
   sending would only freeze the screen until the timeout.
@@ -378,12 +434,15 @@ Features without an easy-reading entrance are collected for a follow-up issue ra
 | Layer | File | Covers |
 |---|---|---|
 | Unit (pure functions) | `tests/unit/board_list_parse.test.js` | Fingerprints of the three variants / CLASSROOT, article list and main menu must not match / newflag does not engage / per-row numbers (including `X` right after a forbidden row's number) / fetch targets and edge decisions |
-| Unit (keys, #192) | `tests/unit/board_list_keys.test.js` | Refusal of every non-whitelisted key, footer byte, paste and text; browser shortcuts left alone; `s` search sheet; `h` help route and `resumeAfterHelp` |
+| Unit (keys, #192) | `tests/unit/board_list_keys.test.js` | Refusal of every non-whitelisted key, footer byte, paste and text; browser shortcuts left alone; `s` search sheet; `h` help route and `resumeAfterHelp`; the view switches `c`/`C`/`S` (#221): frozen transaction, busy hint, `S` on the favorites opening the reorder sheet and the reorder's prompt/answer legs, `c` refused on the class root, rebuild from the new page alone, timeouts, count-view fetch / End walk / number jump, Back from a group into the count view, a board opened from it resuming in place |
+| Unit (count-view placement, #221) | `tests/unit/board_list_parse.test.js`, `tests/unit/ptt_src_screens.test.js` | `decorateNewflagBoardList` by held names, by candidates, contradiction rejected; the upstream-built `board_list_toggles` count page placed by the favorites' names |
+| Unit (entrances, #221) | `tests/unit/mobile_toolbar.test.js(x)`, `context_menu_entries.test.js`, `command_palette.test.js`, `fav_sort_modal.test.jsx`, `home_dashboard.test.js` | More-sheet buttons and labels, desktop context-menu items, palette actions, the reorder confirmation sheet, home's favorites cache made stale |
 | Unit (session) | `tests/unit/board_list_session.test.js` | Reducer transition table, keyboard whitelist, cursor clamping (three wrap regressions), fetching and edge probing, Enter's local guard, leaving, queue ownership |
 | Unit (accumulation) | `tests/unit/board_list_accumulate.test.js` | Number keys / whole-row overwrite / `>` overwritten back by `%7d` / zero overlap between pages / header and footer cache not polluted by prompts / window assembly and padding rows |
 | Unit (rendering) | `tests/unit/board_list_render.test.js` | `bodyStart:3`, header and footer outside the viewport, **pageState must be pinned to 1** (with a control case) |
 | Unit (ownership) | `tests/unit/list_render_owner.test.js`, `command_queue.test.js` | Same result whichever listener runs first; `flushKind` only clears its own |
 | Offline e2e | `tests/e2e/offline/board_list.offline.spec.js` (cassette `scn-boardlist-class`: a category board sub-list, recordable as guest, no personal favorites) | A round trip recorded from a real browser and real PTT: taking control, the viewport being built, scrolling moving only the body, End/Home really moving the selection, `/` refused with the error hint while the list stays drawn, `h` opening the help-menu sheet over the kept list and closing it with no scroll jump. Teardown on `←` is not replayed (the number of re-seeds during automatic resume varies with timing, so the bytes do not match); unit tests guard it |
+| Offline e2e (#221) | `tests/e2e/offline/mobile_board_list_toggles.offline.spec.js` (drawn screens, invented text) | Favorites: More → article counts and back; More → reorder (sheet, cancel sends nothing, by name) and the `S` key (sheet, by class), against a fake of PTT's prompt; a class's boards: More → sort, and count view → a group → Back staying in easy reading with the row kept. The cards stay while PTT answers, then the list is rebuilt from the new page; the native grid guard sees no native frame |
 
 Two hard rules when recording scenario cassettes (`record:scenarios`):
 1. Letter keys on the main menu only **move the cursor**; entering takes `F` followed by `Enter` (menu.c's hotkey semantics).

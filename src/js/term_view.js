@@ -3934,8 +3934,11 @@ TermView.prototype = {
     // the standard shape (shiftedBoardListRow).
     var classRoot = isClassRootScreen(rowTexts, buf.rows);
     var geometry = classRoot ? CLASS_ROOT_GEOMETRY : STANDARD_GEOMETRY;
-    var nums = boardListRowNums(rowTexts, buf.rows, geometry);
     var bs = listOwnerOf(this.bbscore);
+    // The article-count view (#221) prints totals in the number column: the
+    // session says where the page's rows sit, or that they are not to be taken.
+    var counted = bs && bs.newflagRowNums ? bs.newflagRowNums(rowTexts, buf.cur_x, buf.cur_y) : undefined;
+    var nums = counted !== undefined ? counted : boardListRowNums(rowTexts, buf.rows, geometry);
     // 合併前量「緩衝往哪端長」（與文章列表同一條規則，見 evictListBuffer 註解）。
     var pageEntries = [];
     for (var j = geometry.headerRows; j <= buf.rows - 2; ++j)
@@ -3948,7 +3951,14 @@ TermView.prototype = {
       var row = shiftedBoardListRow(buf.lines[i], geometry.colOffset);
       // 把 `%7d` 序號欄由解析出的編號重寫一次：server 的游標 `>` 蓋著 cell 0，
       // 存進 map 的列必須長得跟乾淨的原生列一模一樣（游標由 render 端自己畫）。
-      relabelListCursorRow(row, nums[i]);
+      // In the article-count view the column keeps PTT's totals: only the
+      // cursor mark over cell 0 goes.
+      if (counted !== undefined) {
+        if (row.length && row[0].ch === '>') {
+          row[0].ch = ' ';
+          row[0].isLeadByte = false;
+        }
+      } else relabelListCursorRow(row, nums[i]);
       // 整列覆蓋：重繪過的頁帶著最新的未讀 `ˇ` / 標記 `D`，要取代舊快照。
       this._brdNumMap.set(nums[i], row);
     }
@@ -3966,7 +3976,7 @@ TermView.prototype = {
     // 底列清成 prompt，污染快取就會讓視窗畫出半條 footer。
     if (
       rowHasTitle(rowTexts[0] || '', BOARD_LIST) &&
-      (rowTexts[2] || '').indexOf('編號') >= 0
+      /編號|總數/.test(rowTexts[2] || '')
     ) {
       this._brdHeaderRows = [
         cloneRow(buf.lines[0]),

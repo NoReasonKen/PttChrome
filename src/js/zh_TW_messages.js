@@ -117,6 +117,36 @@
   "cmenu_markAllRead": {
     "message": "設為全部已讀"
   },
+  "boardList_showCounts": {
+    "message": "顯示文章數"
+  },
+  "boardList_showNumbers": {
+    "message": "顯示看板編號"
+  },
+  "boardList_toggleSort": {
+    "message": "切換排序（依板名／依類別）"
+  },
+  "boardList_reorderFavorites": {
+    "message": "重新排序我的最愛"
+  },
+  "favSort_title": {
+    "message": "重新排序我的最愛"
+  },
+  "favSort_warning": {
+    "message": "這會覆寫我的最愛目前的排列順序，而且無法復原。"
+  },
+  "favSort_byName": {
+    "message": "依板名排序"
+  },
+  "favSort_byClass": {
+    "message": "依類別排序"
+  },
+  "favSort_gone": {
+    "message": "我的最愛已不在畫面上，沒有重新排序"
+  },
+  "favSort_cancel": {
+    "message": "取消"
+  },
   "titleBlacklistModal_title": {
     "message": "加入標題黑名單"
   },

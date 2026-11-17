@@ -15,6 +15,7 @@ import TitleBlacklistModal from "./TitleBlacklistModal";
 import LongPushProgressModal from "./LongPushProgressModal";
 import LongPushErrorModal from "./LongPushErrorModal";
 import AidBoardChoiceModal from "./AidBoardChoiceModal";
+import FavSortModal from "./FavSortModal";
 import PixivLookup from "../PixivLookup";
 
 // 用到才開的大彈窗拆成獨立 chunk，不進主 bundle（手機冷啟動少解析一截）。
@@ -164,6 +165,9 @@ const menuHandlerByEventKey = {
     pttchrome.listSession.markReadUnreadBefore(markReadTarget.num),
   // 設為全部已讀（v → v⏎）：序列與可用判定都在 js/mark_all_read.js。
   markAllRead: (pttchrome) => pttchrome.markAllRead.start(),
+  // The board list's view switches (#221): the same entrance as the `c` and `S` keys.
+  boardCounts: (pttchrome) => pttchrome.boardListSession?.toggleCounts(),
+  boardSort: (pttchrome) => pttchrome.boardListSession?.toggleSort(),
   // 看板列表：把右鍵那一列的看板設為已讀（跳號 → v）。目標在開選單當下就算好了。
   boardMarkRead: (pttchrome, { boardMarkReadTarget }) =>
     pttchrome.boardMarkRead.start(boardMarkReadTarget),
@@ -253,6 +257,8 @@ const initialState = {
   markReadTarget: null,
   // 「設為全部已讀」出不出現（文章列表才有，markAllRead.available）。
   markAllReadEnabled: false,
+  // The board list's view switches ({ counts } or null, boardListSession.listToggles).
+  boardToggles: null,
   // 看板列表右鍵那一列的看板（{ num, name } / null），boardMarkRead.targetAtRow。
   boardMarkReadTarget: null,
   // The live layer's entry the menu was opened on (#124; NavigationStack
@@ -312,6 +318,9 @@ const initialState = {
   // 選「指定看板」後搜尋彈窗以看板種類開啟，searchAidTarget＝{ aid } 讓它只挑板名。
   aidChoice: null,
   searchAidTarget: null,
+  // Reordering the favorites (#221, board_list_session._askFavSort): the
+  // confirmation sheet before PTT's `S` prompt.
+  showsFavSort: false,
   // 指令面板（js/command_palette.js）：paletteCtx＝開的當下量好的「這一刻能做什麼」。
   showsPalette: false,
   paletteCtx: null,
@@ -404,6 +413,7 @@ export const ContextMenu = ({ pttchrome }) => {
     state.showsSearch ||
     state.showsPalette ||
     !!state.aidChoice ||
+    state.showsFavSort ||
     !!state.longPushProgress ||
     !!state.longPushError;
   useEffect(() => {
@@ -703,6 +713,11 @@ export const ContextMenu = ({ pttchrome }) => {
           !!normalEnabled &&
           !!pttchrome.markAllRead &&
           pttchrome.markAllRead.available(),
+        boardToggles:
+          (onScreen &&
+            normalEnabled &&
+            pttchrome.boardListSession?.listToggles?.()) ||
+          null,
         menuTarget:
           normalEnabled && prefs.highlightMenuTarget
             ? menuTargetFromElement(target)
@@ -759,6 +774,7 @@ export const ContextMenu = ({ pttchrome }) => {
         blacklistTitleTarget: null,
         markReadTarget: null,
         markAllReadEnabled: false,
+        boardToggles: null,
         boardMarkReadTarget: null,
         layerEntry: null,
         menuTarget: null,
@@ -1000,6 +1016,31 @@ export const ContextMenu = ({ pttchrome }) => {
       pttchrome.openAidBoardChoice = noop;
     };
   }, [pttchrome, openAidBoardChoice]);
+  // `S` on the easy-reading favorites (board_list_session._askFavSort): true =
+  // the sheet took it.
+  const openFavSortChoice = useCallback(() => {
+    update({ ...initialState, showsFavSort: true });
+    return true;
+  }, [update]);
+  useEffect(() => {
+    pttchrome.openFavSortChoice = openFavSortChoice;
+    return () => {
+      pttchrome.openFavSortChoice = null;
+    };
+  }, [pttchrome, openFavSortChoice]);
+  const onFavSortHide = useCallback(
+    () => update({ showsFavSort: false }),
+    [update],
+  );
+  const onFavSortPick = useCallback(
+    (order) => {
+      update({ showsFavSort: false });
+      // The reader asked for an irreversible action: say so when it is not done.
+      if (!pttchrome.boardListSession?.reorderFavorites(order))
+        pttchrome.view?.flashListHint?.(i18n("favSort_gone"), 4000, HINT_ERROR);
+    },
+    [pttchrome, update],
+  );
   const onAidChoiceHide = useCallback(
     () => update({ aidChoice: null }),
     [update],
@@ -1061,6 +1102,7 @@ export const ContextMenu = ({ pttchrome }) => {
         refresh: !!pttchrome.screenRefresh?.target?.(),
         unreadJump: !!pttchrome.unreadJump?.available?.(),
         markAllRead: !!pttchrome.markAllRead?.available?.(),
+        boardToggles: pttchrome.boardListSession?.listToggles?.() || null,
         copyLink:
           !!pttchrome.deepLinkController && pttchrome.buf?.pageState === 3,
         back: !!pttchrome.aidNavigation?.canGoBack?.(),
@@ -1206,6 +1248,14 @@ export const ContextMenu = ({ pttchrome }) => {
           return;
         case "markAllRead":
           pttchrome.markAllRead?.start();
+          return;
+        case "boardCounts":
+        case "boardNumbers":
+          pttchrome.boardListSession?.toggleCounts();
+          return;
+        case "boardSort":
+        case "favSort":
+          pttchrome.boardListSession?.toggleSort();
           return;
         case "copyLink":
           pttchrome.deepLinkController?.copyCurrentPostLink();
@@ -1469,6 +1519,7 @@ export const ContextMenu = ({ pttchrome }) => {
     blacklistTitleTarget,
     markReadTarget,
     markAllReadEnabled,
+    boardToggles,
     boardMarkReadTarget,
     layerEntry,
     replyCommentTarget,
@@ -1496,6 +1547,7 @@ export const ContextMenu = ({ pttchrome }) => {
     searchKinds,
     aidChoice,
     searchAidTarget,
+    showsFavSort,
     showsPalette,
     paletteCtx,
     prefJump,
@@ -1529,6 +1581,7 @@ export const ContextMenu = ({ pttchrome }) => {
         replyCommentTarget={replyCommentTarget}
         markReadTarget={markReadTarget}
         markAllReadEnabled={markAllReadEnabled}
+        boardToggles={boardToggles}
         boardMarkReadTarget={boardMarkReadTarget}
         menuAnchor={menuAnchor}
         articleLinkEnabled={articleLinkEnabled}
@@ -1615,6 +1668,13 @@ export const ContextMenu = ({ pttchrome }) => {
         onHide={onAidChoiceHide}
         onCurrent={onAidChoiceCurrent}
         onPickBoard={onAidChoicePick}
+        mobile={mobile}
+        pttchrome={pttchrome}
+      />
+      <FavSortModal
+        opened={showsFavSort}
+        onHide={onFavSortHide}
+        onPick={onFavSortPick}
         mobile={mobile}
         pttchrome={pttchrome}
       />

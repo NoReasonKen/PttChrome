@@ -34,7 +34,7 @@
 - **手機**：標題「首頁」放在 App Bar（`MobileAppBar` 訂 `homeDashboard.onChange`，面板開著就把標題換成「首頁」）；面板自己不再畫那一行大標題，只留一行放「開信箱」（永遠都在，#196）。理由：App Bar 寫「主功能表」、底下又一行「首頁」，兩行標題吃掉一排卡片。桌機照舊。
 - 閱讀紀錄：面板的捲動位置是 `home` 紀錄（`readingPosition`：面板頂端那張卡片＋離上緣幾 px，只存身分不存像素）。從面板出發的交易——點看板／最近看板（`board-search`）、抓最愛（`home-favorites`）、開信箱（`home-mail`）、分組討論區（`home-board-groups`）——不論結果都交回待還原錨，面板下一次畫出來（或更新完重畫）時由外殼的 `useLayoutEffect` 呼叫 `applyPendingViewport` 套用；那張卡片不在了就不動。debug 錄製檔 `homeDashboard.viewportRestore`（saved／applied／dropped）。
 - The dashboard is always found through its controller: the view registers its root with `attachRoot` after rendering, and `readingPosition` and the App Bar's scroll-to-top use `rootElement()` instead of looking up `#homeDashboard` in the document, because a stacked-page layer (#25) carries another dashboard with the same id. `#homeDashboard` is only used by `closest`-style checks that walk up from an event target.
-- 快取：`pttchrome.homeFavorites.v1`（清單＋時間，跨重整保留只為了先畫出來；已讀標記只對這次登入有意義，所以「新鮮」只算這一頁抓過的）、`pttchrome.homeRecentBoards.v2`（最近看板紀錄，實際進入看板時記）。
+- 快取：`pttchrome.homeFavorites.v1`（清單＋時間，跨重整保留只為了先畫出來；已讀標記只對這次登入有意義，所以「新鮮」只算這一頁抓過的）。好讀看板列表重新排序我的最愛之後（#221，`docs/board-list-smooth-scroll.md` §4.7）呼叫 `favoritesChanged()` 把它標成不新鮮，面板下次出現時重抓、`pttchrome.homeRecentBoards.v2`（最近看板紀錄，實際進入看板時記）。
 - 滑鼠：面板在 `#BBSWindow` 外。App 的滑鼠入口在 window（滾輪是 capture），`_onUploadLayer` 認 `#homeDashboard` 放過；按鈕 mousedown `preventDefault`（不搶 `#t` 焦點）＋ stopPropagation。
 - 好讀行為：好讀開著就有面板，沒有自己的開關。e2e 畫主功能表又要量送出 byte 的 spec，在面板出現後把我的最愛標成剛抓過（`homeDashboard._state.fetchedAt = Date.now()`），面板就不會自己送 `^Z f`。
 

@@ -108,6 +108,27 @@ describe("toolbarContextFromFacts", () => {
     expect(toolbarContextFromFacts(frame({ 23: READ_ROW }), 3).markAllRead).toBe(false);
     expect(toolbarContextFromFacts(frame({ 0: "【主功能表】    批踢踢實業坊" }), 1).markAllRead).toBe(false);
     expect(EMPTY_TOOLBAR_CONTEXT.markAllRead).toBe(false);
+    // The board list's view switches come from the session, not the screen (#221).
+    expect(toolbarContextFromFacts(frame(LIST), 2, { boardToggles: { counts: true, sort: "switch" } })).toMatchObject({
+      boardCountsSwitch: true,
+      boardCounts: true,
+      boardSort: true,
+      boardSortFavorites: false,
+    });
+    // The favorites: their reorder (through the confirmation sheet).
+    expect(toolbarContextFromFacts(frame(LIST), 2, { boardToggles: { counts: false, sort: "favorites" } })).toMatchObject({
+      boardCountsSwitch: true,
+      boardCounts: false,
+      boardSort: true,
+      boardSortFavorites: true,
+    });
+    // The class root: neither switch.
+    expect(toolbarContextFromFacts(frame(LIST), 2, { boardToggles: { counts: null, sort: false } })).toMatchObject({
+      boardCountsSwitch: false,
+      boardSort: false,
+    });
+    expect(toolbarContextFromFacts(frame(LIST), 2)).toMatchObject({ boardCountsSwitch: false, boardSort: false });
+    expect(EMPTY_TOOLBAR_CONTEXT).toMatchObject({ boardCountsSwitch: false, boardCounts: false, boardSort: false, boardSortFavorites: false });
   });
   test("全選／圖片上傳（更多）：主功能表不給，列表與文章給", () => {
     expect(toolbarContextFromFacts(frame({ 0: "【主功能表】    批踢踢實業坊" }), 1).contentTools).toBe(false);

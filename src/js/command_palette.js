@@ -48,6 +48,10 @@ export const PALETTE_ACTIONS = [
   { id: "refresh", titleKey: "palette_refresh", when: "refresh", keywords: ["重新整理", "重整", "更新", "refresh", "reload", "f5"] },
   { id: "unreadJump", titleKey: "palette_unreadJump", when: "unreadJump", keywords: ["跳到第一篇未讀", "未讀", "unread", "first unread"] },
   { id: "markAllRead", titleKey: "palette_markAllRead", when: "markAllRead", keywords: ["設為全部已讀", "全部已讀", "已讀", "mark all read", "read"] },
+  { id: "boardCounts", titleKey: "boardList_showCounts", when: "boardShowsNumbers", keywords: ["顯示文章數", "文章數", "新文章", "總數", "article count", "counts"] },
+  { id: "boardNumbers", titleKey: "boardList_showNumbers", when: "boardShowsCounts", keywords: ["顯示看板編號", "看板編號", "編號", "新文章", "board number", "numbers"] },
+  { id: "boardSort", titleKey: "boardList_toggleSort", when: "boardSort", keywords: ["切換排序", "排序", "依板名", "依類別", "sort", "order", "by name", "by class"] },
+  { id: "favSort", titleKey: "boardList_reorderFavorites", when: "boardFavSort", keywords: ["重新排序我的最愛", "排序", "我的最愛", "reorder favorites", "sort", "favorites"] },
   { id: "copyLink", titleKey: "palette_copyLink", when: "copyLink", keywords: ["複製本篇連結", "複製連結", "分享", "copy link", "share", "url"] },
   { id: "back", titleKey: "palette_back", when: "back", keywords: ["返回原文", "返回", "上一篇", "back", "return"] },
   { id: "settings", titleKey: "palette_settings", when: null, keywords: ["設定", "偏好", "settings", "preferences", "options"] },
@@ -91,6 +95,8 @@ function actionMatch(action, q, title) {
  * @param {object} ctx 開面板當下量好的事實：
  *   searchKinds: string[]（article_search.availableSearchKinds）
  *   refresh / unreadJump / markAllRead / copyLink / back: boolean
+ *   boardToggles: { counts: boolean|null, sort: 'favorites'|'switch'|false } | null
+ *     (board_list_session.listToggles, #221; counts is null where `c` is not offered)
  *   easyReading: boolean（目前好讀開著嗎）
  *   title(key): string —— 動作標題（i18n；比對用，可省）
  *   lang: 設定搜尋用的語系（可省）
@@ -123,6 +129,10 @@ export function buildPaletteItems(query, ctx) {
     refresh: !!c.refresh,
     unreadJump: !!c.unreadJump,
     markAllRead: !!c.markAllRead,
+    boardSort: !!c.boardToggles && c.boardToggles.sort === "switch",
+    boardFavSort: !!c.boardToggles && c.boardToggles.sort === "favorites",
+    boardShowsNumbers: !!c.boardToggles && c.boardToggles.counts === false,
+    boardShowsCounts: !!c.boardToggles && c.boardToggles.counts === true,
     copyLink: !!c.copyLink,
     back: !!c.back,
     easyReadingOn: !!c.easyReading,

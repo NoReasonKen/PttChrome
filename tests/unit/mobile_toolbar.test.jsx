@@ -400,6 +400,44 @@ describe("更多（bottom sheet）", () => {
     await sheetClosed();
   });
 
+  test("board list view switches (#221): each only with its flag; each calls the session and closes the sheet", async () => {
+    for (const [counts, label] of [[false, "Show article counts"], [true, "Show board numbers"]]) {
+      const core = makeCore({
+        context: { push: false, search: [], boardCountsSwitch: true, boardCounts: counts, boardSort: true },
+      });
+      core.boardListSession = { toggleCounts: vi.fn(() => true), toggleSort: vi.fn(() => true) };
+      const { unmount } = renderBar(core);
+      await openMore();
+      expect(byKey("__boardCounts").textContent).toBe(label);
+      expect(byKey("__boardSort").textContent).toBe("Switch sort (by name / by class)");
+      fireEvent.click(byKey("__boardCounts"));
+      expect(core.boardListSession.toggleCounts).toHaveBeenCalledTimes(1);
+      await sheetClosed();
+      await openMore();
+      fireEvent.click(byKey("__boardSort"));
+      expect(core.boardListSession.toggleSort).toHaveBeenCalledTimes(1);
+      await sheetClosed();
+      unmount();
+    }
+    // The favorites: the sort entry reorders them (the session asks first).
+    const fav = renderBar(
+      makeCore({ context: { push: false, search: [], boardCountsSwitch: true, boardSort: true, boardSortFavorites: true } }),
+    );
+    await openMore();
+    expect(byKey("__boardSort").textContent).toBe("Reorder favorites");
+    fav.unmount();
+    // The class root: neither entry (no toggles offered).
+    const root = renderBar(makeCore({ context: { push: false, search: [], boardSort: false } }));
+    await openMore();
+    expect(byKey("__boardCounts")).toBeNull();
+    expect(byKey("__boardSort")).toBeNull();
+    root.unmount();
+    renderBar(makeCore());
+    await openMore();
+    expect(byKey("__boardCounts")).toBeNull();
+    expect(byKey("__boardSort")).toBeNull();
+  });
+
   test("操作說明：底列有 (h)說明 才出現（context.help），按下送 h（sendKeyAsUser）並收起", async () => {
     const core = makeCore({ context: { push: false, search: [], help: true } });
     renderBar(core);
