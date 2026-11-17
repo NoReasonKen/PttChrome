@@ -495,6 +495,35 @@ body.mobile-layout:not(.mobileSelectMode) #mainContainer {
 .listCard .listCardPush {
   font-weight: bold;
 }
+/* The online user list (#199, render/list_card.js CARD_LAYOUT.user): the ID
+   leads the card in bold. A friend's ID keeps PTT's bright cyan, and the card
+   gets a cyan bar on the left, on the cursor card too (box-shadow takes no room,
+   so the fixed card height holds). A user who logged off has no ID and is
+   greyed by colour, not opacity (opacity would multiply with the read-row
+   dimming, see list_card_css.test.js). */
+.listCard .listCardUserId {
+  font-weight: bold;
+}
+span.listCard[data-user-friend] > .listCardBody {
+  box-shadow: inset 3px 0 0 #00ffff;
+}
+span.listCard[data-user-gone] .listCardLine,
+span.listCard[data-user-gone] .listCardLine * {
+  color: #777777;
+}
+/* An empty user list (#199, render/list_card.js#buildListEmptyRow): one row (a
+   card's height with cards) with the message centred in grey. */
+.listEmptyRow {
+  display: block;
+  text-align: center;
+  color: #888888;
+}
+.listEmptyRow .listEmptyText {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
 
 /* 手機 Phase 5：主功能表大按鈕（render/menu_card.js，docs/mobile.md「Phase 5」）。
    ANSI 圖／標題／狀態列仍是縮小的 80 欄格線；選單項換成這個。高度與字級寫死 px

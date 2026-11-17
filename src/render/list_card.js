@@ -31,6 +31,8 @@ import {
   hasServerCursorMark,
 } from "../js/comment_parse";
 import { parseBoardListName, parseBoardListNum } from "../js/board_list_parse";
+import { parseUserListRow } from "../js/user_list";
+import { i18n } from "../js/i18n";
 
 // A board list row's number and board name (at most 12 cells) fit in these.
 const BOARD_NAME_CELLS = 32;
@@ -126,6 +128,30 @@ export const CARD_LAYOUT = {
       ],
     },
   },
+  // The online user list (#199), talk.c's user row (js/user_list.js): number
+  // [1,7), pager character [8], ID [10,22), nickname [23,41), home column
+  // [41,58), activity [58,75), idle time [75,80). First line: ID and
+  // nickname. Second line: number and activity, idle time on the right. The
+  // pager character and the home / description / record column are left out.
+  user: {
+    title: {
+      lead: null,
+      main: [
+        [10, 23, "listCardUserId"],
+        [23, 41, "listCardUserNick"],
+      ],
+      end: [],
+    },
+    meta: {
+      lead: null,
+      main: [
+        [0, 7, "listCardNum"],
+        [58, 75, "listCardUserActivity"],
+      ],
+      end: [[75, 80, "listCardUserIdle"]],
+      endClass: "listCardInfo",
+    },
+  },
   // The class root (#229), its rows shifted to the standard number column
   // (term_view.accumulateBoardListLines): `%7d%c%s` [0,10), then the 40-cell
   // description and BM (board.c#choose_board IN_CLASSROOT). First line: unread
@@ -199,6 +225,9 @@ export function buildListCard({
   listNewPush,
 }) {
   const layout = CARD_LAYOUT[kind] || CARD_LAYOUT.article;
+  // A user card's identity is its user ID (#199); a user who logged off has
+  // none and is greyed (data-user-gone), a friend is marked (data-user-friend).
+  const user = layout === CARD_LAYOUT.user ? parseUserListRow(chars) : null;
   // 游標記號（labelListCursor 的半形 `>`，舊 server 的全形 ● 佔兩格）蓋在 cell 0：
   // 它不是空白，cardSegment 剪不掉 ⇒ 連同後面 %7d 的補白一起留下，游標那張卡片整行
   // 右移。抽出來放進每張卡片都有的固定寬游標欄，欄位一律從記號之後切。
@@ -244,6 +273,9 @@ export function buildListCard({
             : layout === CARD_LAYOUT.mail
               ? mailCardMark(chars)
               : undefined,
+        "data-user-id": user && user.id ? user.id : undefined,
+        "data-user-friend": user && user.friend ? "" : undefined,
+        "data-user-gone": user && user.gone ? "" : undefined,
       },
       el(
         "span",
@@ -260,6 +292,30 @@ export function buildListCard({
     ),
     slots: [],
   };
+}
+
+// The row that stands for an empty user list (#199, term_view._emptyListRow):
+// `view` 'friends' or 'all' picks the message. With cards it takes one card's
+// height (the scroll maths counts it as a card); on the grid it is one row.
+// It keeps the row contract (bbsrow / srow, bbsline / data-row).
+export function buildListEmptyRow({ row, view, cards }) {
+  const text = i18n(
+    view === "friends" ? "list_emptyFriends" : "list_emptyUsers",
+  );
+  return el(
+    "span",
+    {
+      type: "bbsrow",
+      srow: row,
+      class: cx("listEmptyRow", cards && "listCard"),
+      "data-list-empty": view,
+    },
+    el(
+      "span",
+      { class: "listEmptyText", "data-type": "bbsline", "data-row": row },
+      text,
+    ),
+  );
 }
 
 // 「+N」徽章：字放在 data-new-push，CSS ::after 畫（不會被選取／複製）。

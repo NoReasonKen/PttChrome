@@ -68,16 +68,20 @@ import { parseVmsgText } from './push_screen';
 import {
   BOARD_LIST,
   FAVOURITE,
+  FRIEND_LIST_KEY,
   MAIL_LIST_KEY,
+  USER_LIST_KEY,
   MENU_TITLES,
   boardNameFromKey,
   isMailListTitleRow,
+  isUserListKey,
   listHeaderReversed,
   parseBoardKey,
   rowHasAnyTitle,
-  rowHasTitle
+  rowHasTitle,
+  userListKeyOfRow
 } from './screen_titles';
-import { isArticleListFooter, isMailListFooter, isSubListFooter } from './screen_captions';
+import { isArticleListFooter, isMailListFooter, isSubListFooter, userListFooterRow } from './screen_captions';
 import { recordFor, listRecordMatches } from './reading_record';
 import { markReadPromptShown } from './mark_read_prompt';
 import { readSearchResultsContext, recordSearchResults } from './search_results_context';
@@ -154,9 +158,13 @@ export function classifyListScreen(facts) {
   const { rowTexts, curX, curY, rows, row0Reversed, row2Reversed } = facts;
   const lastRowText = rowTexts[rows - 1] || '';
   const mail = isMailListTitleRow(rowTexts[0]);
-  const boardName = mail ? MAIL_LIST_KEY : parseBoardKey(rowTexts[0]);
+  const userKey = userListKeyOfRow(rowTexts[0]);
+  const boardName = mail ? MAIL_LIST_KEY : userKey != null ? userKey : parseBoardKey(rowTexts[0]);
 
-  if (
+  if (userKey != null) {
+    const user = classifyUserListScreen(facts);
+    if (user) return Object.assign({ boardName }, user);
+  } else if (
     row0Reversed &&
     boardName != null &&
     row2Reversed &&
@@ -222,6 +230,39 @@ export function classifyListScreen(facts) {
   if (curY === rows - 1) return { kind: 'prompt', boardName };
 
   return { kind: 'transient', boardName };
+}
+
+// The online user list (#199) as a clean list, or null. Its title row is
+// 【休閒聊天】 or 【好友列表】 (the caller checked it), row 2 is the reversed
+// column header (「編號 P 代號 暱稱 …」), and the footer carries the 休閒聊天
+// caption. The footer is found by its caption (userListFooterRow), not on the
+// last row: PTT lays a page out one redraw behind a resize. The entry rows
+// are the rows between the header and the footer; every one that is not blank
+// is a numbered user row (PTT's rows always carry a number, `%6d` after the
+// cursor cell), and the cursor rests on one at col 0.
+// A view with no users (the friends view with no friend online) is a clean
+// list too, { emptyList: true }: its header and footer are there and its
+// entry rows are all blank. Where PTT parks the cursor then was not seen, so
+// the cursor is not checked for it.
+// The help screen keeps the title but has its own caption (操作說明), and the
+// query screen keeps the title over blank rows without a footer: neither is
+// the list.
+export function classifyUserListScreen(facts) {
+  const { rowTexts, curX, curY, row0Reversed, row2Reversed } = facts;
+  const header = rowTexts[2] || '';
+  if (!row0Reversed || !row2Reversed || header.indexOf('編號') < 0 || header.indexOf('代號') < 0) return null;
+  const footer = userListFooterRow(rowTexts);
+  if (footer < 4) return null;
+  const nums = pageArticleNums(rowTexts, curY);
+  let numbered = 0;
+  for (let i = 3; i < footer; ++i) {
+    if (!(rowTexts[i] || '').trim()) continue;
+    if (nums[i] == null) return null;
+    ++numbered;
+  }
+  if (!numbered) return { kind: 'clean-list', emptyList: true };
+  if (curX > 1 || curY < 3 || curY >= footer || nums[curY] == null) return null;
+  return { kind: 'clean-list' };
 }
 
 // 「跳號落點」的文章列表：舊版 server 跳號（`N⏎`）後底列留空、`^L` 也補不回來
@@ -388,7 +429,9 @@ export function transitionListSession(state, event) {
         event.kind === 'clean-list' &&
         event.engageEligible &&
         // 無編號列的幀 seed 不出錨點（不變量 17）：停在原生，等下一幀再 engage。
-        event.hasNumberedRow
+        // An empty user list (#199) has no row to anchor and none to reach:
+        // it is the whole list, so it seeds (invariant 17a).
+        (event.hasNumberedRow || event.emptyList)
       ) {
         return { next: 'active', actions: ['seed', 'start-fill'] };
       }
@@ -399,6 +442,9 @@ export function transitionListSession(state, event) {
       if (event.type === 'settle') {
         switch (event.kind) {
           case 'clean-list':
+            // An empty user list (invariant 17a): the rows held are gone from
+            // PTT's list, so the buffer starts over empty.
+            if (event.emptyList) return { next: 'active', actions: ['rebuild'] };
             // 無編號列（getkeep 落在板尾 ⇒ 只剩置底文的短頁，不變量 17）：這一幀
             // 帶不進任何序號，rebuild 只會把 buffer 清成無錨點的死局。板名相同就
             // 續用現有 buffer；板名不同則連舊 buffer 都不能當畫面 → 顯性降級原生。
@@ -497,7 +543,7 @@ export function transitionListSession(state, event) {
         if (event.holdReason !== 'passthrough') return stay; // N1
         if (event.inFlightKind) return stay;
         if (event.kind !== 'clean-list') return stay;
-        if (!event.hasNumberedRow) return stay; // 不變量 17
+        if (!event.hasNumberedRow && !event.emptyList) return stay; // 不變量 17／17a
         if (!event.engageEligible) return stay;
         // _enterFunctionMode 依不變量 15 清過 _boardName ⇒ B 類實務上一律 rebuild；
         // 那是對的（原生鍵可以改寫清單內容與編號空間）。快路徑留給保住板名的
@@ -521,8 +567,9 @@ export function transitionListSession(state, event) {
             // 在它上面 resume 會採用到錯的落點（游標跳列）。
             if (event.holdReason) return stay;
             // 無編號列的落點無法 resume/rebuild（不變量 17）：繼續鏡像原生，
-            // 使用者原生翻一頁就會拿到有序號的幀再恢復好讀。
-            if (!event.hasNumberedRow) return stay;
+            // 使用者原生翻一頁就會拿到有序號的幀再恢復好讀。An empty user
+            // list resumes (invariant 17a).
+            if (!event.hasNumberedRow && !event.emptyList) return stay;
             // Content-decided exit. If the landed cursor row is an article we
             // already hold AND we are on the same board, the page overwrite (in
             // redraw) is enough; otherwise rebuild from the current page
@@ -1171,6 +1218,7 @@ ListSession.prototype = {
     if (cls.kind === 'clean-list' && !covered) this._footerText = rowTexts[buf.rows - 1];
     facts.kind = cls.kind;
     facts.boardName = cls.boardName;
+    facts.emptyList = !!cls.emptyList;
     // messageOnSettle reads the settle's dirty-row shape.
     facts.changedRows = snap ? snap.changedRows : null;
     facts.nums = pageArticleNums(rowTexts, facts.curY);
@@ -1237,6 +1285,7 @@ ListSession.prototype = {
       holdReason: this._holdReason,
       withinResumeGrace: performance.now() - this._resumedAt < RESUME_GRACE_MS,
       hasNumberedRow: hasNumberedEntryRow(facts),
+      emptyList: !!facts.emptyList,
       engageEligible: this._engageEligible(),
       keepsLayer: !!layer,
       layerResultsLeft: this._layerResultsLeft(facts, layer),
@@ -1597,6 +1646,27 @@ ListSession.prototype = {
   // kept for resumeAfterHelp.
   isMailList: function() {
     return (this._boardName ?? this._helpBoard) === MAIL_LIST_KEY;
+  },
+
+  // The list held is PTT's online user list (#199), either view: its rows have
+  // talk.c's user columns, numbered from 1, and the blacklist does not apply.
+  isUserList: function() {
+    return isUserListKey(this._boardName ?? this._helpBoard);
+  },
+
+  // The held row the selection rests on (cells, as PTT painted it), or null:
+  // nothing held or selected, or a pinned row is selected.
+  selectedListRow: function() {
+    if (this._selectedNum == null) return null;
+    const idx = (this._termBuf.listLineNums || []).indexOf(this._selectedNum);
+    return idx < 0 ? null : (this._termBuf.listLines || [])[idx] || null;
+  },
+
+  // The user list's view held: 'all' (【休閒聊天】), 'friends' (【好友列表】), or
+  // null when the list held is not the user list.
+  userListView: function() {
+    const key = this._boardName ?? this._helpBoard;
+    return key === USER_LIST_KEY ? 'all' : key === FRIEND_LIST_KEY ? 'friends' : null;
   },
 
   // 閱讀紀錄（reading_record）的列表量測：使用者現在看到的視野。
@@ -3275,6 +3345,7 @@ ListSession.prototype = {
     this._renderMode = 'buffer';
     this._view.hideCursor();
     this._seedAnchors(facts);
+    this._markEmptyListEdges(facts);
     this._forceRedraw(); // synchronous: accumulates this page into the buffer
     if (this._selectedNum == null && this._selectedPinnedKey == null)
       this._selectLastNumbered();
@@ -3331,6 +3402,7 @@ ListSession.prototype = {
     this._stallDown = false;
     this._fillPages = 0;
     this._seedAnchors(facts);
+    this._markEmptyListEdges(facts);
     if (edge === 'up') this._edgeUp = true;
     else if (edge === 'down') this._edgeDown = true;
     this._forceRedraw();
@@ -3386,6 +3458,14 @@ ListSession.prototype = {
         }
       }
     }
+  },
+
+  // An empty user list (#199, invariant 17a) is the whole list: both edges are
+  // known, and no page is asked for.
+  _markEmptyListEdges: function(facts) {
+    if (!facts || !facts.emptyList) return;
+    this._edgeUp = true;
+    this._edgeDown = true;
   },
 
   _startFill: function() {
@@ -3613,6 +3693,12 @@ ListSession.prototype = {
       // 之上時永遠等不到。
       if (self._pendingViewport) self._maybeFill();
     };
+    // The user list numbers its rows from 1 (#199): holding number 1 is its
+    // top edge, with no page above to ask PTT for.
+    if (up && base === 1 && this.isUserList()) {
+      markEdge();
+      return;
+    }
     if (!chained) {
       this._queue.enqueue({
         keys: String(base) + '\r',
@@ -5184,8 +5270,8 @@ ListSession.prototype = {
     const lines = this._termBuf.listLines || [];
     const texts = [];
     for (let i = 0; i < lines.length; ++i) texts.push(rowToText(lines[i]));
-    // Mail rows are never hidden: the filter reads article columns.
-    if (this.isMailList()) return texts.map((t, i) => i);
+    // Mail and user rows are never hidden: the filter reads article columns.
+    if (this.isMailList() || this.isUserList()) return texts.map((t, i) => i);
     return visibleListIndices(texts, this._view.blacklist, this._view.titleBlacklist);
   },
 

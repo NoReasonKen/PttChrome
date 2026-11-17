@@ -29,6 +29,31 @@
 - **按鍵**：信件列表留方向鍵／翻頁／Home／End、數字跳號、`h` 說明、`←`／`q`／`e` 離開，讀信用 `mail.c#mail_comms` 讀信的全部鍵（`→`／Enter／`r`／`l`／`L`）；其餘（回信、轉寄、刪信、標記、全部已讀、信件夾、搜尋 `/` `?` `a` `Z` `s`、文章列表的原地鍵）擋下並提示。讀信時回信鍵（`y` `Y` `r` `R`）與同標題跳擋下（寄信、回信是 #230）。
 - **依據**：信件列表的畫面（標題、表頭與容量標籤的顏色、短信箱、80x45）已對照過實機；讀信畫面、空信箱與舊 caption 沒有實機畫面，形狀照 pttbbs 原始碼（`mail.c#mailtitle`／`maildoent`／`mail_comms`／`m_read`、`read.c#i_read_caption`、`menu.c` ZA），e2e 用 `tests/e2e/helpers/mail_box.js` 的受控信箱。空信箱（`vmsg("您沒有來信")`）由「開信箱」按一個空白鍵清掉、留在首頁並提示。
 
+### 線上使用者（#199）
+
+第一階段只做列表本身：認得、做成卡片、捲動與跳號。首頁入口、查詢網友頁、`Q` 查詢 sheet、頁面堆疊（第二階段）與按鍵政策、`f`／`F` 的接線與工具列入口（第三階段）建在這裡列出的介面上。
+
+- **認得**：`【休閒聊天】`（全部使用者）與 `【好友列表】`（只有好友）是列表好讀的另一種列表（`list_session.classifyUserListScreen`）。條件：row 0 反白標題含其中一個、row 2 反白表頭含「編號」與「代號」、底列由 caption ` 休閒聊天 ` 找（`screen_captions.userListFooterRow`：最後一個非空白列，row 3 以後），表頭與底列之間每個非空白列都有編號、游標停在有編號的列（col ≤ 1）。PTT 的版面晚 NAWS 一次重繪，底列可能在倒數第二列、最後一列空白，所以底列一律照 caption 找，不假設是最後一列；一頁的人數是「底列列號 − 3」。說明畫面（底列 caption ` 操作說明 `）與查詢畫面沒有表頭和底列，不算列表。
+- **身分鍵**：`screen_titles.USER_LIST_KEY`（`'【休閒聊天】'`）與 `FRIEND_LIST_KEY`（`'【好友列表】'`），永遠不是板名（row 0 右邊的 `看板《X》` 是上次待的看板，不讀）。兩個視圖各有自己的鍵，切換視圖等於換一個列表：列表好讀重建 buffer，編號重新從 1 開始。`screen_titles.isUserListKey(key)` 判斷一個鍵是不是使用者列表。
+- **空列表**：沒有上線好友的 `【好友列表】` 只有標題、表頭和自己的底列（` 休閒聊天  (Tab)排序 (f)好友 (s)搜尋 (b)廣播 (S)顯示切換 … (←)離開 (h)說明`），沒有任何編號列。它仍是 clean-list（`emptyList: true`），列表好讀以它開始或重建（[easy-reading-list.md](easy-reading-list.md) 不變量 17a），兩端都已到底，視窗只有一列空狀態（`render/list_card.buildListEmptyRow`，`data-list-empty="friends"`／`"all"`，文字 `list_emptyFriends`／`list_emptyUsers`），不顯示 PTT 的畫面。
+- **卡片**（`cardKind: 'user'`，`list_card.CARD_LAYOUT.user`）：第一行代號（粗體）與暱稱；第二行編號、動態，右側發呆時間。不顯示 pager 字元（cell 8）與故鄉欄（cell 41–57，`S` 切換的那欄）。好友（代號格亮青）的卡片有 `data-user-friend`，左緣一條青色；在 PTT 數人數與畫列表之間離站的 `< 離站中..>` 列沒有代號，卡片有 `data-user-gone`、整張變灰（用顏色，不用 opacity）。每張卡片有 `data-user-id`（代號；離站列沒有）。黑名單不套用（不藏列、不掛標註），沒有已讀標記。
+- **捲動與累積**與文章列表相同：方向鍵、翻頁、Home／End、數字跳號；編號從 1 連續、最後一頁較短。編號 1 就是頂端，往上不再探。上線的人來來去去，同一個編號在兩次讀取之間可能換人（照列表好讀既有的累積接受）。
+- **按鍵**：第一階段沒動按鍵政策，目前套的是文章列表那張表（`ListSession._classifyKey`）：方向鍵／翻頁／Home／End／數字跳號可用，`→`／Enter 是開啟、`←`／`q`／`e` 是離開、`h` 是說明，其餘擋下並提示。PTT 在這個列表上的 `q` 是查詢、`f`／`F` 是切換視圖，由第三階段改。
+- **依據**：列表、表頭與底列的顏色、好友代號的亮青、空好友列表的底列、說明畫面、查詢畫面與 `Q` 提示都對照過實機畫面；數字跳號、列表兩端的方向鍵與翻頁、空視圖的游標位置、`< 離站中..>` 列的樣子沒有實機畫面。e2e 用 `tests/e2e/helpers/user_list.js` 的受控列表（虛構的使用者），`tests/e2e/offline/mobile_user_list.offline.spec.js`。
+
+給第二、三階段的介面（純函式在 `src/js/user_list.js`，除非另註）：
+
+| 介面 | 回傳 |
+|---|---|
+| `userListView(buf)` | 畫面是使用者列表時 `'all'`（`【休閒聊天】`）或 `'friends'`（`【好友列表】`），否則 `null`（說明畫面、查詢畫面雖然留著標題也是 `null`） |
+| `selectedUserId(core)` | 列表好讀拿著使用者列表時，選取卡片的代號；沒有選取、選到離站列或不是使用者列表時 `null` |
+| `isUserQueryScreen(buf)` | 一位使用者的查詢畫面（`q` 或 `Q`＋代號之後）：某列以 `《ＩＤ暱稱》` 開頭，其下有一列以 `《登入次數》`／`《目前動態》`／`《上次上站》` 開頭。row 0 與 `請按任意鍵繼續` 那條都不讀（PTT 不清 row 0；resize 後的重繪沒有那條） |
+| `isUserQueryPrompt(buf)` | `Q` 的提示：row 0 標題 `【查詢網友】`、row 1 以 `請輸入使用者代號:` 開頭 |
+| `parseUserListRow(chars)` | 一列的格子 ⇒ `{ id, friend, gone }`（離站列 `id: null, gone: true`），不是使用者列時 `null` |
+| `ListSession.isUserList()` | 列表好讀拿著的是使用者列表（任一視圖；說明畫面期間仍算） |
+| `ListSession.userListView()` | 拿著的視圖：`'all'`／`'friends'`／`null` |
+| `ListSession.selectedListRow()` | 選取的那列（PTT 畫的格子），或 `null` |
+
 「呈現」的區還沒做完的部分是缺口：在補上之前每次進去都顯示同樣的 PTT 原生畫面，原生畫面守門（`tests/e2e/helpers/native_grid_guard.js`）以各自的 issue 放行。「不呈現」的區在守門裡沒有放行條目。守護 `tests/e2e/offline/mobile_easy_reading_gaps.offline.spec.js`（首頁按不呈現區的鍵 ⇒ 擋下、提示、一個 byte 都不送、沒有原生畫面）。
 
 ## 機制（CONFIRMED）

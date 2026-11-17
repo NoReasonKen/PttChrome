@@ -103,6 +103,37 @@ export function isMailListTitleRow(row0Text) {
   return rowHasTitle(row0Text, MAIL_LIST);
 }
 
+// PTT's online user list (#199): 【休閒聊天】 lists every user, 【好友列表】 only
+// friends (`f`/`F` toggles them). Its title row can name the board last
+// visited too, so the title is checked before any 《board》 is read. Each view
+// is a list of its own under its own key: the two number spaces never merge,
+// and toggling rebuilds. Both keys start with 【 and never read as a board.
+export const USER_LIST = '休閒聊天';
+export const FRIEND_LIST = '好友列表';
+export const USER_LIST_KEY = '【' + USER_LIST + '】';
+export const FRIEND_LIST_KEY = '【' + FRIEND_LIST + '】';
+
+// The user list's view from its title row: 'all', 'friends', or null.
+export function userListViewOfRow(row0Text) {
+  if (rowHasTitle(row0Text, USER_LIST)) return 'all';
+  if (rowHasTitle(row0Text, FRIEND_LIST)) return 'friends';
+  return null;
+}
+
+export function isUserListTitleRow(row0Text) {
+  return userListViewOfRow(row0Text) != null;
+}
+
+export function isUserListKey(key) {
+  return key === USER_LIST_KEY || key === FRIEND_LIST_KEY;
+}
+
+// The list identity key of a user-list title row, or null.
+export function userListKeyOfRow(row0Text) {
+  const view = userListViewOfRow(row0Text);
+  return view === 'all' ? USER_LIST_KEY : view === 'friends' ? FRIEND_LIST_KEY : null;
+}
+
 // Row 2 of an i_read list is one coloured header bar (pttbbs-screen-protocol
 // §3): `buf` (a TermBuf) shows it when the row has one background up to
 // cols-10. The mailbox's bar ends in mail.c's capacity tag 「(容量:n/m篇) 」

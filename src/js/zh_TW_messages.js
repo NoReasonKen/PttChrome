@@ -1031,6 +1031,12 @@
   "inbox_newMail": {
     "message": "你有新信件"
   },
+  "list_emptyFriends": {
+    "message": "目前沒有上線的好友"
+  },
+  "list_emptyUsers": {
+    "message": "目前沒有上線的使用者"
+  },
   "options_deepLinkHandoffNotify": {
     "message": "外部連結被這個分頁接手時發出通知（分頁標題閃爍＋系統通知）"
   },

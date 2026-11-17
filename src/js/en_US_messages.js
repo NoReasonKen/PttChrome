@@ -1016,6 +1016,12 @@ export const en_US = {
   "inbox_newMail": {
     "message": "You have new mail"
   },
+  "list_emptyFriends": {
+    "message": "No friends online"
+  },
+  "list_emptyUsers": {
+    "message": "No users online"
+  },
   "options_deepLinkHandoffNotify": {
     "message": "Notify when this tab picks up an external link (tab title flash + system notification)."
   },

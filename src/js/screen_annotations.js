@@ -331,6 +331,7 @@ export function computeAnnotations(
     inListContext,
     listEasyReading,
     mailList,
+    userList,
     onAidClick,
   } = enhance;
   const hasBlacklist = blacklist && blacklist.size > 0;
@@ -994,7 +995,8 @@ export function computeAnnotations(
     for (let row = 0; mailList && row < lines.length; ++row) {
       if (isMailRowRead(lines[row])) result[row] = { listRead: true };
     }
-    for (let row = 0; !mailList && row < lines.length; ++row) {
+    // The user list (userList, #199) has neither: its rows are users.
+    for (let row = 0; !mailList && !userList && row < lines.length; ++row) {
       const text = rowToText(lines[row]);
       // 這一列必須先「長得像列表列」才准跑黑名單／才准掛 data-list-*。
       // 上面那兩個輸入（pageState、inListContext）都是**黏的**，從列表叫出來的

@@ -37,9 +37,12 @@ export const ARTICLE_LIST_CAPTIONS = ['文章選讀', '文章列表', '系列文
 export const MAIL_LIST_CAPTIONS = ['鴻雁往返', '信件列表'];
 export const BOARD_LIST_CAPTIONS = ['選擇看板', '看板列表', '我的最愛', '分類看板'];
 export const EDITOR_CAPTION = '編輯文章';
+// The online user list (#199): one caption for both views (all users and
+// friends only), with or without users.
+export const USER_LIST_CAPTION = '休閒聊天';
 
 const KNOWN_CAPTIONS = new Set(
-  [].concat(ARTICLE_LIST_CAPTIONS, MAIL_LIST_CAPTIONS, BOARD_LIST_CAPTIONS, [EDITOR_CAPTION])
+  [].concat(ARTICLE_LIST_CAPTIONS, MAIL_LIST_CAPTIONS, BOARD_LIST_CAPTIONS, [EDITOR_CAPTION, USER_LIST_CAPTION])
 );
 
 // 最後一列的 caption；不是已知 caption 回 null。
@@ -66,6 +69,24 @@ export function isArticleListFooter(lastRowText) {
 // 信箱（currstat == RMAIL）的底列。
 export function isMailListFooter(lastRowText) {
   return MAIL_LIST_CAPTIONS.indexOf(footerCaption(lastRowText)) >= 0;
+}
+
+// The online user list's footer (#199).
+export function isUserListFooter(lastRowText) {
+  return footerCaption(lastRowText) === USER_LIST_CAPTION;
+}
+
+// The user list's footer row (#199): the last row that is not blank, when it
+// carries the user-list caption. PTT lays a page out for the terminal height
+// it last read, one redraw behind a resize, so the footer can sit above the
+// last row with blank rows under it. Returns its index, or -1.
+export function userListFooterRow(rowTexts) {
+  for (let r = (rowTexts || []).length - 1; r >= 3; --r) {
+    const text = rowTexts[r] || '';
+    if (!text.trim()) continue;
+    return isUserListFooter(text) ? r : -1;
+  }
+  return -1;
 }
 
 // 看板列表（choose_board）的底列。分類看板根也算（呼叫端另以 row 0 區分）。
