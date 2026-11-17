@@ -16,10 +16,12 @@
 //      ＋PgUp/PgDn」的兩腿都省了，也不必處理 PgUp/PgDn 的 wrap（board.c:1760-1785）。
 //   2. 沒有置底文、沒有黑名單過濾 ⇒ 序列就是整份緩衝，`windowVisibleSequence` /
 //      `visibleListIndices` / pinned 那整套全部不需要。
-//   3. 使用者可就地編輯清單（`a`/`t`/`D`/`m`/`S`/`y`/`c`/`/`）⇒ 這些鍵一律走
-//      passthrough（切原生鏡像＋代送），回來時**整份重建**，不 resume 舊緩衝。
-//   4. 離開畫面就收攤（不跨畫面保留緩衝）：`y`/`c`/`/`／進出分類都會換掉整個
-//      編號空間，預設每次進入重新 seed 才是安全的（handoff §6.5）。
+//   3. Keys that edit the list or change its number space (`a`/`D`/`m`/`y`/`/`…)
+//      are refused (#192). The view switches `c`/`C` and `S` (#221) are kept:
+//      a frozen transaction rebuilds the list from PTT's new page alone.
+//   4. Leaving the screen tears down (no buffer kept across screens): `y`, `/`
+//      and entering or leaving a class change the whole number space, so every
+//      entry re-seeds (handoff §6.5).
 //
 // 詳細設計與 PTT 端事實見 docs/board-list-smooth-scroll.md。
 
@@ -37,7 +39,11 @@ import {
   boardMarkReadTargetOfText,
   setBoardListRowUnread,
   boardListRowUnread,
-  boardListRowNums
+  boardListRowNums,
+  decorateNewflagBoardList,
+  newflagRowText,
+  isFavSortPrompt,
+  FAV_SORT_ANSWERS
 } from './board_list_parse';
 import { articleListBoard, newestArticleUnread } from './home_dashboard';
 import { bufferEdgeNum, noticeNewArticles } from './list_session';
@@ -106,9 +112,26 @@ const RESUME_GRACE_MS = 400;
 //   t     fav_tag/admtag → head=9999 全重畫，並 fall through 到 KEY_DOWN（游標下移一列）
 //   v V   brc_toggle_all_read → show_brdlist(head,0,newflag) 原地重畫
 // **`*`（tag all）刻意不在這一組**：它一次翻掉整份清單的 tag 標記，緩衝裡其他頁
-// 會殘留舊標記。它與 `/` `S` `y` `a` `m` `D`… 一樣是好讀沒有呈現的功能 ⇒ 拒絕
+// 會殘留舊標記。它與 `/` `y` `a` `m` `D`… 一樣是好讀沒有呈現的功能 ⇒ 拒絕
 // （#192；清單見 docs/board-list-smooth-scroll.md §4.6）。
 const INPLACE_KEYS = 'tvV';
+// The list's own view switches easy reading presents (#221; inventory in
+// docs/board-list-smooth-scroll.md §4.6), as board.c#boardlist_cmds binds them:
+//   c C  board_cmd_toggle_newflag (`C` is the alias at board.c:3176): board
+//        numbers or article totals. It flips choose_board's local `newflag`,
+//        so it lasts while this list is open: a sub-list opens with
+//        choose_board(0), and the list keeps its view when the reader comes
+//        back to it (_beginCountsReturn).
+//   S    board_cmd_sort: outside the favorites it flips the account flag
+//        UF_BRDSORT (saved on the account), which picks a class's boards by
+//        name (flag off) or by class (flag on); the class root and the hot
+//        boards keep their own order. On the favorites it opens a prompt that
+//        rewrites the favorites' saved order: easy reading asks first in its
+//        own sheet (_askFavSort) and answers PTT's prompt itself.
+const LIST_TOGGLE_KEYS = Object.freeze({ c: 'newflag', C: 'newflag', S: 'sort' });
+// Pages an End or a far number jump walks down in the article-count view,
+// whose page does not say where PTT's End landed (_walkTo).
+const WALK_MAX_PAGES = 50;
 
 // 切原生時提示語的尾巴：做完就回來。每一處切原生的 hint 都用這一句。
 const NATIVE_RESUME_HINT = '（操作完成後自動恢復）';
@@ -292,6 +315,11 @@ export function BoardListSession(core, view, termBuf, queue) {
   this._queue = queue;
 
   this.state = 'idle';
+  // The lists opened from one another (#221): for each list a sub-list was
+  // opened from, whether it showed article counts and the row opened. Back
+  // returns to a count view PTT keeps but whose page does not say where it is.
+  this._trail = [];
+  this._openFrom = null;
   // The rows' variant and the reader's anchor kept over a help visit
   // (_beginHelp → resumeAfterHelp); null otherwise.
   this._helpList = null;
@@ -405,12 +433,67 @@ BoardListSession.prototype = {
       changedRows: snap ? snap.changedRows : null
     };
     facts.brd = classifyBoardListScreen(facts);
+    // The article-count view (#221): the page is the list's only where the
+    // session can tell where its rows sit (_placeNewflag).
+    if (facts.brd && facts.brd.newflag) {
+      const placed = this._placeNewflag(facts, facts.brd);
+      if (placed) {
+        facts.rowTexts = placed.rowTexts;
+        facts.brd = placed;
+      }
+    }
     facts.ctx = facts.brd
       ? facts.brd.engageable
         ? 'brdlist'
         : 'brdlist-other'
       : boardListContextKind(facts);
     return facts;
+  },
+
+  // Where the rows of an article-count page sit (decorateNewflagBoardList):
+  // by the board names the list holds, or by the position PTT's cursor was
+  // sent to (_nfTarget, set as each jump goes out) or stands on. Nothing is
+  // placed while no list is engaged: a page the session never asked for does
+  // not say where it is.
+  _placeNewflag: function(facts, brd) {
+    if (this.state === 'idle') return null;
+    const ignore = !!this._nfIgnoreBuffer;
+    let byName = null;
+    const self = this;
+    return decorateNewflagBoardList(facts, brd, {
+      candidates: [this._nfTarget, this._serverNum],
+      nameOfNum: function(num) {
+        return ignore ? '' : parseBoardListName(self._rowTextOf(num));
+      },
+      numOfName: function(name) {
+        if (ignore) return null;
+        if (!byName) {
+          byName = new Map();
+          const nums = self._termBuf.brdListLineNums || [];
+          for (let i = 0; i < nums.length; ++i) {
+            const n = parseBoardListName(self._rowTextOf(nums[i]));
+            if (n && !byName.has(n)) byName.set(n, nums[i]);
+          }
+        }
+        return byName.has(name) ? byName.get(name) : null;
+      }
+    });
+  },
+
+  // term_view.accumulateBoardListLines asks which rows of the screen to take.
+  // undefined: the numbered view, whose numbers say it themselves. Otherwise
+  // the positions of an article-count page the session placed, or no row at
+  // all: a page of the other view than the list holds, or one not placed, is
+  // never mixed in.
+  newflagRowNums: function(rowTexts, curX, curY) {
+    const facts = { rowTexts: rowTexts, curX: curX, curY: curY, rows: rowTexts.length };
+    const brd = classifyBoardListScreen(facts);
+    const counts = !!(brd && brd.newflag);
+    if (!counts && !this._newflag) return undefined;
+    const none = new Array(rowTexts.length).fill(null);
+    if (!brd || counts !== !!this._newflag) return none;
+    const placed = this._placeNewflag(facts, brd);
+    return placed ? placed.nums : none;
   },
 
   _settleEvent: function(facts, consumed) {
@@ -578,6 +661,8 @@ BoardListSession.prototype = {
         // An open that landed on another board list, such as a class group's.
         const another = this._openedAnother;
         this._openedAnother = false;
+        if (another && this._openFrom) this._trail.push(this._openFrom);
+        this._openFrom = null;
         return this._presented(another);
       }
       case 'start-fill':
@@ -594,6 +679,7 @@ BoardListSession.prototype = {
       case 'resume-in-place':
         // Back on the list a board was opened from: nothing else was opened.
         this._openedAnother = false;
+        this._openFrom = null;
         this._resumeShown(facts);
         this._presented();
         // 進板時被 flush 掉的背景填充要接回去（緩衝可能還沒填到 _fillTarget）。
@@ -631,6 +717,8 @@ BoardListSession.prototype = {
   },
 
   disable: function() {
+    this._trail = [];
+    this._openFrom = null;
     this._dispatch({ type: 'pref-off' }, null);
   },
 
@@ -797,6 +885,7 @@ BoardListSession.prototype = {
     if (this.state !== 'active') return;
     // 使用者自己動了 ⇒ 待還原的視野作廢（不可以在他動過之後把畫面拉回去）。
     this._dropPendingViewport('user-key');
+    this._stopWalk();
 
     if (altRemap !== null) {
       // _classifyKey 走不到：keyEventToBytes 對 altKey 一律回 null ⇒ 判成 'ignore'。
@@ -825,6 +914,10 @@ BoardListSession.prototype = {
     }
     if (key.class === 'native-inplace') {
       this._beginInplaceTransaction(key.bytes);
+      return;
+    }
+    if (key.class === 'list-toggle') {
+      this._beginToggle(key.toggle);
       return;
     }
     this._runKeyClass(key, { repeat: !!e.repeat });
@@ -909,6 +1002,7 @@ BoardListSession.prototype = {
         return { class: 'leave' };
       default:
         if (/^[1-9]$/.test(e.key)) return { class: 'jump-digit', digit: e.key };
+        if (e.key.length === 1 && LIST_TOGGLE_KEYS[e.key]) return this._toggleClass(e.key);
         // A 類鍵（INPLACE_KEYS）：原地重繪 ⇒ 凍結交易，全程不切原生。
         // 好讀關掉時 session 不運作；這裡的檢查只防關掉途中的殘留呼叫。
         if (
@@ -939,6 +1033,12 @@ BoardListSession.prototype = {
     }
     if (cls.class === 'help') {
       this._beginHelp();
+      return true;
+    }
+    if (cls.class === 'list-toggle') {
+      this._dropPendingViewport('user-key');
+      this._stopWalk();
+      this._beginToggle(cls.toggle);
       return true;
     }
     this._runKeyClass(cls, null);
@@ -981,6 +1081,8 @@ BoardListSession.prototype = {
       case 'Q':
         return { class: 'leave' };
       default:
+        // The hot-key row's `[c]新文章` and `[S]排序` buttons (#221).
+        if (LIST_TOGGLE_KEYS[bytes]) return this._toggleClass(bytes);
         return { class: 'unsupported' };
     }
   },
@@ -1266,6 +1368,323 @@ BoardListSession.prototype = {
     send();
   },
 
+  // ---- The list's view switches (`c`/`C`, `S`; #221) ---------------------------
+
+  // A view switch typed or clicked on the list (_offersToggle).
+  _toggleClass: function(key) {
+    const which = LIST_TOGGLE_KEYS[key];
+    if (!this._autoResumeEnabled() || !this._offersToggle(which)) return { class: 'unsupported' };
+    return { class: 'list-toggle', toggle: which };
+  },
+
+  // Which switch the list shown presents:
+  //   newflag: the favorites and a class's boards. The class root (#229) has
+  //            no column header to show the view, so it is refused there.
+  //   sort:    a class's boards, where PTT flips the account's sort flag
+  //            (refused on the class root, whose order is always by class,
+  //            so nothing visible would change; the hot boards cannot be
+  //            told apart from a class's list and keep it); the favorites (and their folders), where
+  //            PTT rewrites their saved order once the reader confirms in
+  //            easy reading's own sheet (_askFavSort).
+  _offersToggle: function(which) {
+    if (which === 'newflag') return this._variant === 'fav' || this._variant === 'class';
+    if (which === 'sort') return this._variant === 'class' || this._variant === 'fav';
+    return false;
+  },
+
+  // What the entrances offer (mobile toolbar "More", context menu, palette):
+  // null when the list shown has no switch, else { counts, sort }: counts is
+  // whether the number column shows article totals now (null: no such
+  // switch); sort is 'favorites' (reorder the favorites, through the
+  // confirmation sheet), 'switch' (PTT's by-name / by-class switch) or false.
+  listToggles: function() {
+    if (this._renderMode === 'native' || (this.state !== 'active' && this.state !== 'functionMode')) return null;
+    if (!this._autoResumeEnabled()) return null;
+    const counts = this._offersToggle('newflag') ? !!this._newflag : null;
+    const sort = !this._offersToggle('sort') ? false : this._variant === 'fav' ? 'favorites' : 'switch';
+    return counts == null && !sort ? null : { counts: counts, sort: sort };
+  },
+
+  // The entrances' way in, as the key. true = taken (busy shows the hint).
+  toggleCounts: function() {
+    return this._runToggle('newflag');
+  },
+
+  toggleSort: function() {
+    return this._runToggle('sort');
+  },
+
+  _runToggle: function(which) {
+    if (this._renderMode === 'native') return false;
+    if (this._busyHint()) return true;
+    if (this.state !== 'active' || !this._autoResumeEnabled()) return false;
+    if (!this._offersToggle(which)) {
+      this._refuseUnsupported();
+      return true;
+    }
+    this._dropPendingViewport('user-key');
+    this._stopWalk();
+    this._beginToggle(which);
+    return true;
+  },
+
+  // A switch is no page change: the list stays on screen, frozen, while PTT
+  // answers (like `t`/`v`, #125), then is rebuilt from PTT's new page alone.
+  //   1. the key (`c` or `S`) with a repaint: PTT redraws the list, its cursor
+  //      somewhere on it;
+  //   2. a jump to the selected position, so the new page is one the session
+  //      can place (in the article-count view no row shows its position);
+  //   3. the buffer is rebuilt from that page and fills around it again.
+  // `c` keeps every row in place, so the selected board stays selected. `S`
+  // reorders the list: the rows held name other boards at their positions, so
+  // the jump's page is placed by the position alone, and the selected board
+  // stays selected when that page still shows it.
+  _beginToggle: function(which) {
+    if (!this._offersToggle(which)) {
+      this._refuseUnsupported();
+      return;
+    }
+    if (which === 'sort' && this._variant === 'fav') {
+      this._askFavSort();
+      return;
+    }
+    const r = transitionBoardListSession(this.state, { type: 'key', keyClass: 'native-inplace' });
+    this.state = r.next; // functionMode, frozen: settles absorbed, keys swallowed with the hint
+    this._dropPendingViewport('list-toggle');
+    this._freezeForTransaction();
+    const self = this;
+    const sort = which === 'sort';
+    const sel = this._selectedNum != null ? this._selectedNum : 1;
+    const selName = sort ? parseBoardListName(this._rowTextOf(sel)) : null;
+    const wasCounts = !!this._newflag;
+    const counts = sort ? wasCounts : !wasCounts;
+    const fail = function() {
+      self._nfIgnoreBuffer = false;
+      if (self.state === 'functionMode' && self._renderMode === 'frozen')
+        self._fail(sort ? '切換排序逾時' : '切換顯示方式逾時');
+    };
+    this._core.debugRecorder?.log('boardList.toggle', { which: which, sel: sel, counts: counts });
+    this._queue.enqueue({
+      keys: sort ? 'S' : 'c',
+      kind: BRD_CMD_PREFIX + 'list-toggle',
+      fullRepaint: true,
+      expect: function(snap, facts) {
+        const brd = facts.brd;
+        return !!(brd && brd.parked && brd.variant === self._variant && !!brd.newflag === counts);
+      },
+      timeoutMs: CMD_PROBE_AFTER_MS,
+      probeTimeoutMs: CMD_PROBE_WINDOW_MS,
+      hardTimeoutMs: CMD_HARD_MS,
+      onDone: function() {
+        if (sort) self._nfIgnoreBuffer = true;
+        self._enqueueToggleLanding(
+          sel,
+          sort ? '已切換看板排序（依板名／依類別）' : counts ? '看板列表改顯示文章數' : '看板列表改顯示看板編號',
+          selName,
+          counts,
+          fail
+        );
+      },
+      onFail: fail
+    });
+  },
+
+  // `S` on the favorites (#221): PTT asks how to rewrite their saved order, a
+  // change that cannot be undone. Easy reading asks first in its own sheet
+  // (core.openFavSortChoice, ContextMenu's FavSortModal), which sends
+  // nothing; only the reader's pick goes to PTT (reorderFavorites).
+  _askFavSort: function() {
+    const open = this._core.openFavSortChoice;
+    if (typeof open === 'function' && open()) return;
+    this._refuseUnsupported();
+  },
+
+  // The sheet's pick: 'name' or 'class'. true = taken (busy shows the hint);
+  // false = no favorites list to reorder any more.
+  reorderFavorites: function(order) {
+    const answer = FAV_SORT_ANSWERS[order];
+    if (!answer || this._renderMode === 'native') return false;
+    if (this._busyHint()) return true;
+    if (this.state !== 'active' || !this._autoResumeEnabled() || this._variant !== 'fav') return false;
+    this._dropPendingViewport('user-key');
+    this._stopWalk();
+    this._beginFavSort(answer);
+    return true;
+  },
+
+  // `S`, then the answer to PTT's prompt with Enter (vans reads a line); the
+  // list stays frozen on screen through the prompt and PTT's reload, then is
+  // rebuilt from the landed page as after the sort switch, the selection
+  // following its board's name.
+  _beginFavSort: function(answer) {
+    const r = transitionBoardListSession(this.state, { type: 'key', keyClass: 'native-inplace' });
+    this.state = r.next;
+    this._dropPendingViewport('list-toggle');
+    this._freezeForTransaction();
+    const self = this;
+    const sel = this._selectedNum != null ? this._selectedNum : 1;
+    const selName = parseBoardListName(this._rowTextOf(sel));
+    const counts = !!this._newflag;
+    const fail = function() {
+      self._nfIgnoreBuffer = false;
+      if (self.state === 'functionMode' && self._renderMode === 'frozen') self._fail('重新排序我的最愛逾時');
+    };
+    this._core.debugRecorder?.log('boardList.favSort', { answer: answer, sel: sel });
+    this._queue.enqueue({
+      keys: 'S',
+      kind: BRD_CMD_PREFIX + 'fav-sort',
+      expect: function(snap, facts) {
+        return isFavSortPrompt(facts.rowTexts);
+      },
+      timeoutMs: CMD_PROBE_AFTER_MS,
+      probeTimeoutMs: CMD_PROBE_WINDOW_MS,
+      hardTimeoutMs: CMD_HARD_MS,
+      onDone: function() {
+        self._queue.enqueue({
+          keys: answer + '\r',
+          kind: BRD_CMD_PREFIX + 'fav-sort-answer',
+          fullRepaint: true,
+          expect: function(snap, facts) {
+            const brd = facts.brd;
+            return !!(brd && brd.parked && brd.variant === 'fav' && !!brd.newflag === counts);
+          },
+          timeoutMs: CMD_PROBE_AFTER_MS,
+          probeTimeoutMs: CMD_PROBE_WINDOW_MS,
+          hardTimeoutMs: CMD_HARD_MS,
+          onDone: function() {
+            // The saved order changed: home's cached favorites are stale.
+            self._core.homeDashboard?.favoritesChanged?.();
+            self._nfIgnoreBuffer = true;
+            self._enqueueToggleLanding(sel, '已重新排序我的最愛', selName, counts, fail);
+          },
+          onFail: fail
+        });
+      },
+      onFail: fail
+    });
+  },
+
+  _enqueueToggleLanding: function(sel, hint, followName, counts, fail) {
+    const self = this;
+    let landed = null;
+    this._queue.enqueue({
+      keys: String(sel) + '\r',
+      kind: BRD_CMD_PREFIX + 'list-toggle-sync',
+      onSend: function() {
+        self._nfTarget = sel;
+      },
+      fullRepaint: true,
+      expect: function(snap, facts) {
+        const brd = facts.brd;
+        if (!brd || !brd.parked || brd.variant !== self._variant || !!brd.newflag !== counts) return false;
+        if (brd.cursorNum !== sel) return false;
+        landed = facts;
+        return true;
+      },
+      timeoutMs: CMD_PROBE_AFTER_MS,
+      probeTimeoutMs: CMD_PROBE_WINDOW_MS,
+      hardTimeoutMs: CMD_HARD_MS,
+      onDone: function() {
+        self._nfIgnoreBuffer = false;
+        if (self.state !== 'functionMode' || self._renderMode !== 'frozen') return;
+        self.state = 'active';
+        self._renderMode = 'buffer';
+        self._setLoading(false);
+        self._view.hideCursor();
+        self._rebuild(landed);
+        if (followName) {
+          const nums = self._termBuf.brdListLineNums || [];
+          for (let i = 0; i < nums.length; ++i)
+            if (parseBoardListName(self._rowTextOf(nums[i])) === followName) {
+              self._selectedNum = nums[i];
+              self._forceRedraw();
+              break;
+            }
+        }
+        if (self._view.flashListHint) self._view.flashListHint(hint, 2000);
+        self._core._refreshScreenContext?.();
+      },
+      onFail: fail
+    });
+  },
+
+  // ---- Walking down the article-count view (#221) --------------------------
+  //
+  // PTT's End lands on a page that does not say where it is, and a jump past
+  // the list's end clamps to one: in the article-count view both are walked
+  // with the fetches that fill the list (each placed by the jump it sent),
+  // until the target is held or the end is found.
+  _walkTo: function(target) {
+    this._queue.flushPendingKind(BRD_CMD_PREFIX + 'fetch');
+    this._expediteBackground();
+    this._walk = { target: target, pages: 0 };
+    this._prunePivotOverride = null;
+    this._setLoading(true);
+    this._continueWalk();
+  },
+
+  _continueWalk: function() {
+    const w = this._walk;
+    if (!w) return;
+    const nums = this._termBuf.brdListLineNums || [];
+    const last = nums.length ? nums[nums.length - 1] : null;
+    if (last == null || this._edgeDown || last >= w.target || w.pages >= WALK_MAX_PAGES) {
+      this._stopWalk();
+      if (last == null) return;
+      const at = this._posOfNum(w.target);
+      const pos = at !== -1 ? at : nums.length - 1;
+      this._setCursorPos(pos);
+      this._anchorOverride = true;
+      this._pendingReveal = {
+        pos: pos,
+        block: at !== -1 ? 'start' : 'end',
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth'
+      };
+      this._forceRedraw();
+      return;
+    }
+    if (!this._queue.idle) {
+      // A fetch on the wire continues the walk when it lands; anything else
+      // is waited out.
+      const self = this;
+      if ((this._queue.inFlightKind || '').indexOf(BRD_CMD_PREFIX + 'fetch') !== 0)
+        setTimeout(function() {
+          self._continueWalk();
+        }, 120);
+      return;
+    }
+    ++w.pages;
+    this._enqueueFetch(1, 'walk');
+  },
+
+  _stopWalk: function() {
+    if (!this._walk) return;
+    this._walk = null;
+    this._prunePivotOverride = undefined;
+    this._setLoading(false);
+  },
+
+  // A number jump in the article-count view: a position the list holds, or
+  // one past its known end, is selected here; one past the rows held is
+  // walked to; one before them exists and is PTT's to jump to.
+  _jumpInCounts: function(num) {
+    const nums = this._termBuf.brdListLineNums || [];
+    if (!nums.length || num < nums[0]) return false;
+    this.state = 'active';
+    const last = nums[nums.length - 1];
+    if (num > last && !this._edgeDown) {
+      this._walkTo(num);
+      return true;
+    }
+    const at = this._posOfNum(num);
+    const pos = at !== -1 ? at : nums.length - 1;
+    this._setCursorPos(pos);
+    this._anchorOverride = true;
+    this._pendingReveal = { pos: pos, block: 'start', behavior: 'auto' };
+    this._forceRedraw();
+    return true;
+  },
+
   _enqueueInplaceKey: function(bytes, onLanded) {
     const self = this;
     let landed = null;
@@ -1415,6 +1834,7 @@ BoardListSession.prototype = {
     const idx = renderRow - this.headerRows();
     if (idx < 0) return; // header
     this._dropPendingViewport('user-click');
+    this._stopWalk();
     const rangeOn = !!(this._termBuf && this._termBuf.useMouseBrowsing);
     const start = this._view && this._view.mouseListClickStart;
     // 可點起始欄的規則沿用列表那一套（`buf.pageState` 在看板列表仍是 2，
@@ -1467,6 +1887,7 @@ BoardListSession.prototype = {
   onWheel: function(op) {
     if (this.state !== 'active' || this._renderMode !== 'buffer') return;
     this._dropPendingViewport('user-wheel');
+    this._stopWalk();
     this._moveSelection(op, { repeat: true });
   },
 
@@ -1544,6 +1965,7 @@ BoardListSession.prototype = {
     this._serverNum = brd ? brd.cursorNum : null;
     this._selectedNum = brd ? brd.cursorNum : null;
     this._topNum = brd ? brd.topNum : null;
+    this._newflag = !!(brd && brd.newflag);
     this._scrollFrac = 0;
     this._landingLastNum = null;
     if (brd && brd.nums)
@@ -1567,6 +1989,8 @@ BoardListSession.prototype = {
     this._edgeUp = false;
     this._edgeDown = false;
     this._fillPages = 0;
+    this._newflag = false;
+    this._walk = null;
   },
 
   _startFill: function() {
@@ -1641,6 +2065,9 @@ BoardListSession.prototype = {
     this._queue.enqueue({
       keys: String(target) + '\r',
       kind: BRD_CMD_PREFIX + (dir < 0 ? 'fetch-up' : 'fetch-down'),
+      onSend: function() {
+        self._nfTarget = target;
+      },
       expect: function(snap, facts) {
         const brd = facts.brd;
         if (!brd || !brd.parked || brd.cursorNum == null) return false;
@@ -1661,12 +2088,14 @@ BoardListSession.prototype = {
           if (dir < 0) self._edgeUp = true;
           else self._edgeDown = true;
           self._forceRedraw();
+          if (self._walk) return self._continueWalk();
           // 這個方向到底了 ⇒ 讓 _maybeFill 決定要不要換另一個方向繼續。
           // 落在最後一頁（static `num` 的常態）時，這一步就是整份清單補不補得回來
           // 的分水嶺 —— 少了它畫面會停在「幾列內容 ＋ 一整片空白」。
           self._maybeFill();
           return;
         }
+        if (self._walk) return self._continueWalk();
         self._fillPages++;
         if (origin === 'key') {
           self._maybeDemand(dir);
@@ -1681,6 +2110,7 @@ BoardListSession.prototype = {
           self._edgeUp = true;
           self._syncReserveTarget();
         } else self._edgeDown = true;
+        if (self._walk) self._continueWalk();
       }
     });
   },
@@ -1715,6 +2145,9 @@ BoardListSession.prototype = {
     this._queue.enqueue({
       keys: String(num) + '\r',
       kind: BRD_CMD_PREFIX + kind,
+      onSend: function() {
+        self._nfTarget = num;
+      },
       // 落地除了編號對上，還得是**同一份清單**（同變體、整頁沒有跟緩衝矛盾的板名）：
       // 同步完緊接著就送 Enter／←／A 類鍵，換了一份清單時同編號是別的看板。
       // 認不出 ⇒ 逾時走 onFail（降級原生），不送後面的鍵。游標列不必能解析出板名
@@ -1756,6 +2189,7 @@ BoardListSession.prototype = {
     if (isBoardListSeparatorRow(text)) return this._abortOpen('這是分隔線，不能進入');
     if (isBoardListBlockedRow(text)) return this._abortOpen('這個看板目前無法進入');
     this._openedAnother = false;
+    this._openFrom = { counts: !!this._newflag, num: num };
     // This board list stays alive under the board's article list (#31).
     // A class root row names no board: whichever board it opens stacks (#229).
     this._core.articleGestures?.captureBoardListLayer(rowName(text, this._variant), this._variant !== 'classroot');
@@ -1786,7 +2220,7 @@ BoardListSession.prototype = {
     this._freezeForTransaction();
     const self = this;
     const send = function() {
-      self._enqueueLandingKey(LEFT_ARROW, 'leave', '回上層逾時');
+      self._enqueueLandingKey(LEFT_ARROW, 'leave', '回上層逾時', { leaving: true });
     };
     if (this._selectedNum == null || this._selectedNum === this._serverNum) send();
     // The sync only keeps the next entry's position: a sync that fails still
@@ -1817,11 +2251,13 @@ BoardListSession.prototype = {
   _enqueueLandingKey: function(keys, kind, failMsg, opts) {
     const self = this;
     let landedCtx = null;
+    let landed = null;
     this._queue.enqueue({
       keys: keys,
       kind: BRD_CMD_PREFIX + kind,
       expect: function(snap, facts) {
         landedCtx = facts ? facts.ctx : null;
+        landed = facts || null;
         return true;
       },
       timeoutMs: NATIVE_PASSTHROUGH_MS,
@@ -1830,6 +2266,14 @@ BoardListSession.prototype = {
           landedCtx === 'brdlist' ||
           landedCtx === 'brdlist-other' ||
           landedCtx === 'menu';
+        const back = opts && opts.leaving ? self._trail.pop() : null;
+        if (landedCtx === 'menu') self._trail = [];
+        if (back && back.counts && self._countsListLanded(landed)) {
+          // Back on a list PTT keeps in the article-count view (#221).
+          self._reset({ keepFrozen: true });
+          self._beginCountsReturn(back.num, landed.brd.variant);
+          return;
+        }
         if (opts && opts.enteringBoard && !otherSpace) self._suspend();
         else self._reset();
         // The next seed presents a board list as opened from this one. A class
@@ -1861,12 +2305,16 @@ BoardListSession.prototype = {
   },
 
   _beginJumpNumber: function(num) {
+    if (this._newflag && this._jumpInCounts(num)) return;
     this._freezeForTransaction();
     const self = this;
     let landed = null;
     this._queue.enqueue({
       keys: String(num) + '\r',
       kind: BRD_CMD_PREFIX + 'jump-number',
+      onSend: function() {
+        self._nfTarget = num;
+      },
       expect: function(snap, facts) {
         if (!facts.brd || !facts.brd.parked || facts.brd.cursorNum == null) return false;
         landed = facts;
@@ -1895,9 +2343,8 @@ BoardListSession.prototype = {
   // 切到原生 LIVE 鏡像。`facts` 有值＝是 reducer 的 catch-all 送我們來的
   //（畫面偏離看板列表格式）⇒ 顯性提示；沒值＝內部呼叫（passthrough 等），不提示。
   //
-  // **緩衝整份丟掉**：非白名單鍵（`y` 切全部看板／`c` 新文章／`/` 關鍵字／`a`
-  // 增看板／`t` 標記／`D` 刪除／`m` 移入移出／`S` 排序）每一個都會改寫清單內容
-  // 或整個編號空間（handoff I5）。回來時一律重建才安全。
+  // The whole buffer is dropped: what sends PTT here may have rewritten the
+  // list or its number space (handoff I5), so coming back always rebuilds.
   // opts.hold: 'passthrough'（預設，靜置後自動回平滑捲動）| 'external'（永不解除）。
   // opts.keepList: help only (_beginHelp). PTT is asked for its help screen and
   // nothing else, so the rows are kept with the reader's anchor in _helpList
@@ -1923,6 +2370,7 @@ BoardListSession.prototype = {
     }
     this._variant = null;
     this._serverNum = null;
+    this._nfTarget = null;
     this._selectedNum = null;
     this._topNum = null;
     this._renderMode = 'native';
@@ -2014,7 +2462,9 @@ BoardListSession.prototype = {
   // 交易落地後的收攤：把畫面所有權交還，狀態回 idle，讓**同一個 settle** 的
   // reducer 依內容重新決定要不要 engage。與 _cleanup 的差別只有「不 flush 別人的
   // 命令」——這時 in-flight 已經是我們自己剛完成的那一條。
-  _reset: function() {
+  // opts.keepFrozen: the list is rebuilt by a leg sent next
+  // (_beginCountsReturn); the screen stays as it is until then.
+  _reset: function(opts) {
     this._breakScroll();
     this._dropPendingViewport('reset');
     this._helpList = null;
@@ -2030,10 +2480,68 @@ BoardListSession.prototype = {
     this._variant = null;
     this._selectedNum = null;
     this._serverNum = null;
+    this._nfTarget = null;
+    this._nfIgnoreBuffer = false;
     this._topNum = null;
+    if (opts && opts.keepFrozen) return;
     this._renderMode = 'native';
     this._view.showCursor();
     this._forceRedraw();
+  },
+
+  // A page of the article-count view of a list easy reading can show
+  // (_beginCountsReturn). Whatever placed it then was the sub-list's buffer,
+  // so the page is placed again by the jump back.
+  _countsListLanded: function(facts) {
+    const brd = facts && facts.brd;
+    return !!(brd && brd.newflag && brd.parked &&
+      (brd.variant === 'fav' || brd.variant === 'class'));
+  },
+
+  // Back from a sub-list to a list in the article-count view (#221): PTT
+  // keeps that list's view (choose_board's `newflag` is the outer call's own)
+  // and reloads it, its cursor moved to the first unread board from the row
+  // the sub-list was opened from (board.c#brdlist_loader). Such a page does
+  // not say where it is, so PTT's cursor is sent back to that row, and the
+  // list is seeded from the page that shows it, frozen until then.
+  _beginCountsReturn: function(num, variant) {
+    const self = this;
+    let landed = null;
+    this.state = 'opening';
+    this._variant = variant;
+    this._renderMode = 'frozen';
+    this._setLoading(true);
+    this._armFrozenWatchdog();
+    this._view.hideCursor();
+    this._queue.enqueue({
+      keys: String(num) + '\r',
+      kind: BRD_CMD_PREFIX + 'counts-return',
+      onSend: function() {
+        self._nfTarget = num;
+      },
+      fullRepaint: true,
+      expect: function(snap, facts) {
+        const brd = facts.brd;
+        if (!brd || !brd.newflag || !brd.engageable || brd.variant !== variant || brd.cursorNum !== num)
+          return false;
+        landed = facts;
+        return true;
+      },
+      timeoutMs: CMD_PROBE_AFTER_MS,
+      probeTimeoutMs: CMD_PROBE_WINDOW_MS,
+      hardTimeoutMs: CMD_HARD_MS,
+      onDone: function() {
+        if (self.state !== 'opening' || self._renderMode !== 'frozen') return;
+        self.state = 'active';
+        self._setLoading(false);
+        self._seed(landed);
+        self._startFill();
+        self._presented(false);
+      },
+      onFail: function() {
+        self._fail('回上層逾時');
+      }
+    });
   },
 
   // 進板：把畫面所有權交還，但**緩衝／捲動錨／變體整份留著**（state → suspended）。
@@ -2057,6 +2565,7 @@ BoardListSession.prototype = {
     this._visited = null;
     // 板內 server 游標會亂跑 ⇒ 不確定；退板落地幀會重教（同 _enterNative）。
     this._serverNum = null;
+    this._nfTarget = null;
     this._prunePivotOverride = undefined;
     this._renderMode = 'native';
     this._view.showCursor();
@@ -2252,6 +2761,7 @@ BoardListSession.prototype = {
   // `if (!this._queue.idle) return;` 讓整個按鍵零 byte、零重繪、零提示消失。
   _requestEnd: function() {
     if (this._queue.hasKind(BRD_CMD_PREFIX + 'jump-')) return;
+    if (this._newflag) return this._walkTo(Infinity);
     const self = this;
     this._queue.flushPendingKind(BRD_CMD_PREFIX + 'fetch');
     this._expediteBackground();
@@ -2308,6 +2818,7 @@ BoardListSession.prototype = {
       kind: BRD_CMD_PREFIX + 'jump-home',
       onSend: function() {
         self._prunePivotOverride = 1; // 保留第 1 項（落點）所在的那一段
+        self._nfTarget = 1;
       },
       expect: function(snap, facts) {
         return !!(facts.brd && facts.brd.parked && facts.brd.cursorNum === 1);
@@ -2614,7 +3125,10 @@ BoardListSession.prototype = {
     const idx = this._posOfNum(num);
     if (idx === -1) return '';
     const row = (this._termBuf.brdListLines || [])[idx];
-    return row ? rowToText(row) : '';
+    if (!row) return '';
+    // The article-count view keeps PTT's totals on screen; every reader of a
+    // row's text gets its position there (#221).
+    return this._newflag ? newflagRowText(rowToText(row), num) : rowToText(row);
   },
 
   // 讀取中指示（v5 合約 #4：交易凍住畫面時要說話）。view-optional（unit stub）。

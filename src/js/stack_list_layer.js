@@ -312,8 +312,11 @@ export class StackListLayer extends ScreenCopyLayer {
     const line = this.frame.lines[Number(card.querySelector('.listCardBody')?.dataset.row)];
     const text = line ? rowToText(line) : '';
     if (this.kind === 'board') {
-      // The class root's rows (#229) name no board to mark read.
-      const markable = this.frame.enhance.listCards !== 'boardClass';
+      // The class root's rows (#229) name no board to mark read. In the
+      // article-count view (#221) the number column holds article totals, not
+      // the positions marking read needs.
+      const counts = rowToText(this.frame.lines[2] || []).indexOf('總數') >= 0;
+      const markable = this.frame.enhance.listCards !== 'boardClass' && !counts;
       return { kind: 'board', id: cardIdentity(card), boardMarkRead: markable ? boardMarkReadTargetOfText(text) : null };
     }
     const entry = listEntryOf(text);

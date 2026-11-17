@@ -473,8 +473,23 @@ describe("鍵盤白名單（board.c:1751-1840 的同義鍵）", () => {
     expect(cls("Q").class).toBe("leave");
     // `*`（tag all）不是 A 類：它一次翻掉整份清單的 tag 標記。`s` 由 term_view 先開
     // 搜尋彈窗（article_search.tryOpenSearchModal），走不到這裡。
-    for (const k of ["y", "c", "/", "a", "D", "m", "S", "s", "*"])
+    for (const k of ["y", "/", "a", "D", "m", "s", "*"])
       expect(cls(k).class).toBe("unsupported");
+  });
+
+  test("c / C / S are the list's view switches (#221): c on the favorites and a class, S on the favorites and a class", () => {
+    const P = BoardListSession.prototype;
+    const at = (variant, key) =>
+      P._classifyKey.call(
+        { _autoResumeEnabled: () => true, _variant: variant, _toggleClass: P._toggleClass, _offersToggle: P._offersToggle },
+        keyEvent(key)
+      );
+    expect(at("fav", "c")).toEqual({ class: "list-toggle", toggle: "newflag" });
+    expect(at("class", "C")).toEqual({ class: "list-toggle", toggle: "newflag" });
+    expect(at("class", "S")).toEqual({ class: "list-toggle", toggle: "sort" });
+    // On the favorites `S` asks first (the reorder sheet, _askFavSort).
+    expect(at("fav", "S")).toEqual({ class: "list-toggle", toggle: "sort" });
+    for (const k of ["c", "C", "S"]) expect(at("classroot", k).class).toBe("unsupported");
   });
 
   test("A 類鍵（t / v / V：board.c 原地重繪）→ native-inplace，全程不切原生", () => {

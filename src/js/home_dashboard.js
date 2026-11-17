@@ -762,6 +762,13 @@ HomeDashboard.prototype = {
     if (p) this._setBoards(withFavPageUnread(this._state.boards, p.entries));
   },
 
+  // The favorites' saved order changed (the board list's reorder, #221): the
+  // cached order is stale, so home fetches the favorites again the next time
+  // it shows (shouldFetchFavorites).
+  favoritesChanged: function() {
+    this._set({ fetchedAt: null, failedAt: null });
+  },
+
   _setBoards: function(boards) {
     if (boards === this._state.boards) return;
     // 「幾點更新」仍是上次整份抓的時間：這裡只改了個別板的未讀。

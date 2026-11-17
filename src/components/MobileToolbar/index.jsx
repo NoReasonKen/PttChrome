@@ -505,6 +505,24 @@ export const MobileToolbar = ({
     });
   }, [pttchrome, whenReady]);
 
+  // The board list's view switches (#221): the same entrance as the `c` and
+  // `S` keys (board_list_session), which hints and sends nothing while busy.
+  const onBoardToggle = useCallback(
+    (which) => {
+      setPanel(null);
+      setConfirmLogout(false);
+      const bs = pttchrome.boardListSession;
+      if (!bs) return;
+      whenReady(() => {
+        if (typeof pttchrome.noteUserAction === "function")
+          pttchrome.noteUserAction();
+        if (which === "sort") bs.toggleSort();
+        else bs.toggleCounts();
+      });
+    },
+    [pttchrome, whenReady],
+  );
+
   // 操作說明：送 h（與實體鍵盤同一條分派）；好讀開著時 PTT 的說明選單會變成 bottom sheet
   // （components/HelpMenu）。
   const onHelp = useCallback(() => {
@@ -819,6 +837,34 @@ export const MobileToolbar = ({
             onClick={onMarkAllRead}
           >
             {i18n("cmenu_markAllRead")}
+          </button>
+        ) : null}
+        {context.boardCountsSwitch ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__boardCounts"
+            onClick={() => onBoardToggle("counts")}
+          >
+            {i18n(
+              context.boardCounts
+                ? "boardList_showNumbers"
+                : "boardList_showCounts",
+            )}
+          </button>
+        ) : null}
+        {context.boardSort ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__boardSort"
+            onClick={() => onBoardToggle("sort")}
+          >
+            {i18n(
+              context.boardSortFavorites
+                ? "boardList_reorderFavorites"
+                : "boardList_toggleSort",
+            )}
           </button>
         ) : null}
         {context.help ? (

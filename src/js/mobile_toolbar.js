@@ -17,6 +17,15 @@
 //            （mbbsd/bbs.c 的 bbs_cmd_new_post）。游標在輸入欄（prompt 開著）時不給。
 //   unreadJump：文章列表（同 post 的判準），「更多」裡的「跳到第一篇未讀」（unread_jump.js）。
 //   markAllRead：文章列表（同 post 的判準），「更多」裡的「設為全部已讀」（mark_all_read.js）。
+//   boardCountsSwitch / boardCounts / boardSort: the easy-reading board list puts
+//            PTT's view switches in More (#221). boardCountsSwitch: favorites and a
+//            class's boards can show article counts / board numbers (PTT's `c`);
+//            boardCounts: the number column shows article totals now (the label
+//            follows). boardSort: PTT's `S` is offered; boardSortFavorites: on
+//            the favorites, where it reorders them through a confirmation
+//            sheet (the label says so), else PTT's by-name / by-class switch.
+//            The session answers (board_list_session.listToggles), not the screen:
+//            with easy reading off, PTT's keys work as they always did.
 //   help   ：底列寫著 `(h)說明`／`(h)按鍵說明`（看板列表／文章列表／主功能表 footer、
 //            pager 狀態列；vs_footer 與 pmore.c 的提示都在 b_lines），「更多」裡的「操作說明」送 h
 //            ⇒ 新版說明選單（好讀開著時是 help_menu.js 的 bottom sheet）。手機上這些畫面的底列
@@ -39,7 +48,7 @@ import { MOBILE_KEYPAD_PUSH_KEY } from './mobile_layout';
 
 export const EMPTY_TOOLBAR_CONTEXT = Object.freeze({
   push: false, reply: false, mail: false, share: false, threadNav: false, post: false,
-  unreadJump: false, markAllRead: false, help: false, contentTools: false, refresh: false, end: false,
+  unreadJump: false, markAllRead: false, boardCountsSwitch: false, boardCounts: false, boardSort: false, boardSortFavorites: false, help: false, contentTools: false, refresh: false, end: false,
   search: [], appBar: EMPTY_APP_BAR, locked: false
 });
 
@@ -110,6 +119,10 @@ export function toolbarContextFromFacts(facts, pageState, opts) {
     post: !pager && isArticleList(facts),
     unreadJump: !pager && isArticleList(facts),
     markAllRead: !pager && isArticleList(facts),
+    boardCountsSwitch: !pager && !!o.boardToggles && o.boardToggles.counts != null,
+    boardCounts: !pager && !!(o.boardToggles && o.boardToggles.counts),
+    boardSort: !pager && !!(o.boardToggles && o.boardToggles.sort),
+    boardSortFavorites: !pager && !!(o.boardToggles && o.boardToggles.sort === 'favorites'),
     help: !facts.inputField && !menu && hasHelpHint(last),
     contentTools: !menu,
     refresh: !!o.connected && !!refreshTargetFromFacts(facts, pageState, {
@@ -148,12 +161,14 @@ export function mobileToolbarContext(core) {
     prev: prev,
     connected: !!(core && core.conn && core.conn.isConnected),
     listOpened: !!(ls && ls.currentAnchor && ls.currentAnchor()),
-    home: homeDashboardShown(core)
+    home: homeDashboardShown(core),
+    boardToggles: (core && core.boardListSession && core.boardListSession.listToggles &&
+      core.boardListSession.listToggles()) || null
   });
 }
 
 const FLAGS = [
-  'push', 'reply', 'mail', 'share', 'threadNav', 'post', 'unreadJump', 'markAllRead', 'help', 'contentTools', 'refresh', 'end',
+  'push', 'reply', 'mail', 'share', 'threadNav', 'post', 'unreadJump', 'markAllRead', 'boardCountsSwitch', 'boardCounts', 'boardSort', 'boardSortFavorites', 'help', 'contentTools', 'refresh', 'end',
   'locked'
 ];
 

@@ -280,6 +280,110 @@ function classifyRows(facts, variant, newflag) {
   };
 }
 
+// ---- The article-count view (`c`, #221) -------------------------------------
+//
+// PTT's `c` (board_cmd_toggle_newflag, help text 「切換顯示看板編號或文章數」)
+// switches the number column between the board's position and its article
+// total; header row 2 reads 總數 instead of 編號. The rows, their order and the
+// boards with no articles all stay (board_list_toggles.json). Group,
+// separator and blocked rows print blanks there. So a page in this view does
+// not say where its rows sit: decorateNewflagBoardList works it out.
+
+// A row of the article-count view, with its number column holding its
+// position `num` instead, so every helper that reads a numbered row (name,
+// separator, mark-read target) reads it as in the numbered view.
+export function newflagRowText(text, num) {
+  if (text == null || num == null) return text || '';
+  const s = String(num);
+  if (s.length > NUM_COL_END) return text;
+  return ('       ' + s).slice(-NUM_COL_END) + text.slice(NUM_COL_END);
+}
+
+// PTT's prompt for reordering the favorites (board.c#board_cmd_sort under
+// IS_LISTING_FAV): a warning at b_lines-2, then vans() at b_lines, which reads
+// a line (vgets: the answer needs Enter). Answers: 1 by name, 2 by class,
+// anything else cancels.
+export const FAV_SORT_ANSWERS = Object.freeze({ name: '1', class: '2' });
+export function isFavSortPrompt(rowTexts) {
+  const rows = rowTexts || [];
+  const last = rows[rows.length - 1] || '';
+  return /排序方式/.test(last) && /按照板名排序/.test(last);
+}
+
+// Where the rows of an article-count page sit. Pages are aligned (head =
+// floor((num-1)/p)*p, board.c), so a page is known by its base. A base comes
+// from either:
+//   - a board name the list already holds: the page's row of that name sits
+//     at its position (`numOfName`), the strongest evidence;
+//   - a candidate position PTT's cursor stands on (`candidates`, in order of
+//     trust: the jump just sent, then where PTT's cursor was), when the
+//     cursor's row is the one that position takes on its page.
+// A base under which any row names another board than the list holds at that
+// position (`nameOfNum`) is wrong. Of the rest, the one with the most rows
+// matching the list wins, then the most trusted candidate.
+// Returns brd with positions as nums, cursorNum, topNum and engageable, plus
+// rowTexts with positions in the number column; null when nothing places the
+// page.
+export function decorateNewflagBoardList(facts, brd, opts) {
+  if (!brd || !brd.newflag || !brd.parked) return null;
+  if (brd.variant !== 'fav' && brd.variant !== 'class') return null;
+  const o = opts || {};
+  const rowTexts = facts.rowTexts || [];
+  const rows = facts.rows || rowTexts.length;
+  const h = brd.geometry.headerRows;
+  const p = rows - 1 - h;
+  if (p <= 0) return null;
+  let k = 0;
+  while (h + k <= rows - 2 && /\S/.test(rowTexts[h + k] || '')) ++k;
+  const cur = facts.curY - h;
+  if (!k || cur < 0 || cur >= k) return null;
+  const names = [];
+  for (let i = 0; i < k; ++i) names.push(parseBoardListName(newflagRowText(rowTexts[h + i], 1)));
+  const nameOfNum = o.nameOfNum || (() => '');
+  const numOfName = o.numOfName || (() => null);
+  const bases = new Map();
+  const offer = (base, trust) => {
+    if (base < 0 || base % p !== 0) return;
+    const had = bases.get(base);
+    if (had == null || trust < had) bases.set(base, trust);
+  };
+  (o.candidates || []).forEach((c, i) => {
+    if (c != null && c >= 1 && (c - 1) % p === cur) offer(c - 1 - cur, i);
+  });
+  names.forEach((name, i) => {
+    const n = name ? numOfName(name) : null;
+    if (n != null) offer(n - 1 - i, Infinity);
+  });
+  let best = null;
+  bases.forEach((trust, base) => {
+    let matches = 0;
+    for (let i = 0; i < k; ++i) {
+      const held = nameOfNum(base + i + 1);
+      if (!held || !names[i]) continue;
+      if (held !== names[i]) return;
+      ++matches;
+    }
+    if (!matches && trust === Infinity) return;
+    if (!best || matches > best.matches || (matches === best.matches && trust < best.trust))
+      best = { base, matches, trust };
+  });
+  if (!best) return null;
+  const nums = new Array(rows).fill(null);
+  const texts = rowTexts.slice();
+  for (let i = 0; i < k; ++i) {
+    nums[h + i] = best.base + i + 1;
+    texts[h + i] = newflagRowText(rowTexts[h + i], best.base + i + 1);
+  }
+  return {
+    ...brd,
+    nums: nums,
+    cursorNum: best.base + cur + 1,
+    topNum: best.base + 1,
+    engageable: true,
+    rowTexts: texts
+  };
+}
+
 // 這一幀屬於哪一種「情境」——state machine 只吃這個枚舉。
 //   'brdlist'       可 engage 的看板列表（我的最愛／分類子分類）
 //   'brdlist-other' 看板列表但不在本期範圍（全部看板／熱門／newflag）

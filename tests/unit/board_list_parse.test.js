@@ -8,6 +8,7 @@
 // 這些字串同時是「哪些畫面不得 engage」的反例來源：分類看板根、全部看板、
 // 按 `c` 的新文章模式（row2 是「總數」）、文章列表、主功能表。
 import {
+  isFavSortPrompt,
   parseBoardListNum,
   boardListRowNums,
   isBoardListSeparatorRow,
@@ -20,6 +21,8 @@ import {
   BRD_HEADER_ROWS,
   parseBoardListName,
   classRootRowName,
+  decorateNewflagBoardList,
+  newflagRowText,
 } from "../../src/js/board_list_parse";
 
 const pad7 = (n) => String(n).padStart(7, " ");
@@ -498,4 +501,77 @@ describe("分類看板根（#229）", () => {
     expect(classRootRowName(CLASS_ROOT_ROWS[13])).toBe("--> 即時熱門看板 <--");
     expect(classRootRowName("")).toBe("");
   });
+});
+
+// The article-count view (`c`, header 總數) prints totals where positions go,
+// and a blank `%7s` on group, separator and blocked rows (board.c). Easy
+// reading places such a page by the names it already holds or by the jump it
+// sent (#221).
+describe("placing an article-count page (decorateNewflagBoardList)", () => {
+  // Totals: 500 + position, so a total is never mistaken for a position.
+  const totalsScreen = ({ startNum = 1, count = 20, curY = BRD_HEADER_ROWS, name = (n) => "Board" + n } = {}) =>
+    brdScreen({
+      header: HEADER_TOTAL,
+      curY,
+      bodyRows: Array.from({ length: count }, (_, i) => brdRow(500 + startNum + i, name(startNum + i))),
+    });
+  const held = (from, to, name = (n) => "Board" + n) => {
+    const names = new Map();
+    for (let n = from; n <= to; ++n) names.set(n, name(n));
+    const nums = new Map([...names].map(([n, b]) => [b, n]));
+    return { nameOfNum: (n) => names.get(n) || "", numOfName: (b) => (nums.has(b) ? nums.get(b) : null) };
+  };
+  const place = (facts, opts) => decorateNewflagBoardList(facts, classifyBoardListScreen(facts), opts);
+
+  test("newflagRowText puts the position in the number column and keeps the rest", () => {
+    expect(newflagRowText(brdRow(523, "Gossip"), 4)).toBe(brdRow(4, "Gossip"));
+    expect(newflagRowText("       " + "   Group", 12)).toBe(pad7(12) + "   Group");
+    expect(newflagRowText(null, 3)).toBe("");
+  });
+
+  test("by names the list holds: positions replace totals, the cursor row read as its position", () => {
+    const d = place(totalsScreen({ startNum: 21, curY: BRD_HEADER_ROWS + 2 }), held(1, 40));
+    expect(d).toMatchObject({ engageable: true, topNum: 21, cursorNum: 23, newflag: true });
+    expect(d.nums.slice(BRD_HEADER_ROWS, BRD_HEADER_ROWS + 3)).toEqual([21, 22, 23]);
+    expect(d.rowTexts[BRD_HEADER_ROWS]).toBe(brdRow(21, "Board21"));
+    expect(parseBoardListNum(d.rowTexts[BRD_HEADER_ROWS + 19])).toBe(40);
+  });
+
+  test("by a candidate position when no name is held, only if PTT's cursor row fits it", () => {
+    const facts = totalsScreen({ startNum: 41, curY: BRD_HEADER_ROWS + 4 });
+    expect(place(facts, { candidates: [45] })).toMatchObject({ topNum: 41, cursorNum: 45 });
+    expect(place(facts, { candidates: [44] })).toBe(null); // 44 sits on another row
+    expect(place(facts, {})).toBe(null); // nothing says where it is
+  });
+
+  test("a base under which a row names another board than the list holds is rejected", () => {
+    const reordered = totalsScreen({ name: (n) => "Board" + (21 - n) });
+    // The cursor's candidate fits, but the names say position 1 is Board1, not Board20.
+    expect(place(reordered, { candidates: [1], ...held(1, 20) })).toBe(null);
+    // Without the old names (as after `S`), the candidate alone places it.
+    expect(place(reordered, { candidates: [1] })).toMatchObject({ topNum: 1, cursorNum: 1 });
+  });
+
+  test("names outrank a candidate that points elsewhere; candidates rank in order of trust", () => {
+    const facts = totalsScreen({ startNum: 21 });
+    expect(place(facts, { candidates: [1], ...held(1, 40) })).toMatchObject({ topNum: 21 });
+    expect(place(totalsScreen({ startNum: 61 }), { candidates: [61, 41] })).toMatchObject({ topNum: 61 });
+    expect(place(totalsScreen({ startNum: 61 }), { candidates: [41, 61] })).toMatchObject({ topNum: 41 });
+  });
+
+  test("not for the numbered view, a frame not parked, or the class root / all boards", () => {
+    expect(place(brdScreen(), { candidates: [1] })).toBe(null);
+    expect(place({ ...totalsScreen(), curY: 23 }, { candidates: [1] })).toBe(null);
+    expect(place(brdScreen({ header: HEADER_TOTAL, foot: FOOT_ALL }), { candidates: [1] })).toBe(null);
+  });
+});
+
+test("isFavSortPrompt: PTT's favorites reorder prompt (board.c#board_cmd_sort, vans at b_lines) (#221)", () => {
+  const rows = new Array(24).fill("");
+  rows[21] = "重新排序看板 (注意, 這個動作會覆寫原來設定)";
+  rows[23] = "排序方式 (1)按照板名排序 (2)按照類別排序 ==> [0]取消 ";
+  expect(isFavSortPrompt(rows)).toBe(true);
+  rows[23] = "  選擇看板    (a)增加看板 (s)進入已知板名 (y)列出全部 (v/V)已讀/未讀";
+  expect(isFavSortPrompt(rows)).toBe(false);
+  expect(isFavSortPrompt(null)).toBe(false);
 });

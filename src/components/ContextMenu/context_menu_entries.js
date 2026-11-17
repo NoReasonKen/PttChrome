@@ -62,13 +62,41 @@ export function buildContextMenuEntries(p) {
     item("markAllRead", i18n("cmenu_markAllRead"), (e) =>
       p.onMenuSelect("markAllRead", e),
     );
+  // The board list's view switches (#221, PTT's `c` and `S`) act on the whole
+  // list, not the row clicked. board_list_session.listToggles decides which the
+  // current easy-reading list offers: `counts` is null where `c` is not offered
+  // (otherwise it says whether counts show now, and the label follows); `sort`
+  // is 'favorites' on the favorites (reorder them, through a confirmation
+  // sheet) or 'switch' (PTT's by-name / by-class switch). On mobile they sit
+  // in the toolbar's More.
+  const boardToggles =
+    p.normalEnabled && p.boardToggles && !p.mobile ? p.boardToggles : null;
+  if (boardToggles && boardToggles.counts != null)
+    item(
+      "boardCounts",
+      i18n(
+        boardToggles.counts ? "boardList_showNumbers" : "boardList_showCounts",
+      ),
+      (e) => p.onMenuSelect("boardCounts", e),
+    );
+  if (boardToggles && boardToggles.sort)
+    item(
+      "boardSort",
+      i18n(
+        boardToggles.sort === "favorites"
+          ? "boardList_reorderFavorites"
+          : "boardList_toggleSort",
+      ),
+      (e) => p.onMenuSelect("boardSort", e),
+    );
   if (
     p.normalEnabled &&
     (p.authorBlacklistId ||
       p.titleBlacklistText ||
       p.markReadTarget ||
       p.boardMarkReadTarget ||
-      markAllRead)
+      markAllRead ||
+      boardToggles)
   )
     divider("d-blacklist");
   // 回覆這則推文（推文列預填 → 與帳號）：放在推文那一段的最前面。出現條件在 index.jsx

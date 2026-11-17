@@ -1540,3 +1540,12 @@ describe("HomeDashboard: reconnect and reload recovery", () => {
     expect(home.state.visible).toBe(false);
   });
 });
+
+test("favoritesChanged: after the board list reorders the favorites (#221), home fetches them again", () => {
+  const { home } = makeCore();
+  home._state.fetchedAt = Date.now();
+  home._state.failedAt = Date.now();
+  expect(shouldFetchFavorites(home._state, Date.now())).toBe(false);
+  home.favoritesChanged();
+  expect(shouldFetchFavorites(home._state, Date.now())).toBe(true);
+});

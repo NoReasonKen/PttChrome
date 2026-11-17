@@ -101,6 +101,36 @@ export const en_US = {
   "cmenu_markAllRead": {
     "message": "Mark all as read"
   },
+  "boardList_showCounts": {
+    "message": "Show article counts"
+  },
+  "boardList_showNumbers": {
+    "message": "Show board numbers"
+  },
+  "boardList_toggleSort": {
+    "message": "Switch sort (by name / by class)"
+  },
+  "boardList_reorderFavorites": {
+    "message": "Reorder favorites"
+  },
+  "favSort_title": {
+    "message": "Reorder favorites"
+  },
+  "favSort_warning": {
+    "message": "This overwrites the current order of your favorites and cannot be undone."
+  },
+  "favSort_byName": {
+    "message": "Sort by board name"
+  },
+  "favSort_byClass": {
+    "message": "Sort by class"
+  },
+  "favSort_gone": {
+    "message": "The favorites are no longer on screen; nothing was reordered."
+  },
+  "favSort_cancel": {
+    "message": "Cancel"
+  },
   "titleBlacklistModal_title": {
     "message": "Add to title blacklist"
   },

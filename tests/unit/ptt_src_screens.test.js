@@ -15,6 +15,8 @@ import { boardEntryArms, boardNoteDecision } from "../../src/js/board_note_skip"
 import {
   boardListContextKind,
   classifyBoardListScreen,
+  decorateNewflagBoardList,
+  parseBoardListNum,
   parseBoardListName,
 } from "../../src/js/board_list_parse";
 import { parseHelpMenuScreen } from "../../src/js/help_menu";
@@ -372,6 +374,32 @@ describe("upstream pttbbs 產的看板列表切換（y 全部看板、c 文章�
   test("c 切成文章總數：newflag、不接管（編號欄印的是總數）", () => {
     expect(classifyBoardListScreen(at("newflag"))).toMatchObject({ newflag: true, engageable: false });
     expect(boardListContextKind(at("newflag"))).toBe("brdlist-other");
+  });
+
+  test("the article-count page is placed by the favorites' names easy reading already holds (#221)", () => {
+    const fav = at("fav-again");
+    const favBrd = classifyBoardListScreen(fav);
+    const names = new Map();
+    for (let r = favBrd.geometry.headerRows; r < fav.rows - 1; ++r) {
+      const num = parseBoardListNum(fav.rowTexts[r]);
+      const name = parseBoardListName(fav.rowTexts[r]);
+      if (num != null && name) names.set(num, name);
+    }
+    expect(names.size).toBeGreaterThan(0);
+    const byName = new Map([...names].map(([n, b]) => [b, n]));
+    const counts = at("newflag");
+    const d = decorateNewflagBoardList(counts, classifyBoardListScreen(counts), {
+      nameOfNum: (n) => names.get(n) || "",
+      numOfName: (b) => (byName.has(b) ? byName.get(b) : null),
+    });
+    expect(d).toMatchObject({ engageable: true, topNum: favBrd.topNum, cursorNum: favBrd.cursorNum });
+    for (const [num, name] of names) {
+      const r = d.nums.indexOf(num);
+      expect(parseBoardListName(d.rowTexts[r])).toBe(name);
+      expect(parseBoardListNum(d.rowTexts[r])).toBe(num);
+    }
+    // Nothing held and no jump sent: the page is not placed.
+    expect(decorateNewflagBoardList(counts, classifyBoardListScreen(counts), {})).toBe(null);
   });
 });
 
