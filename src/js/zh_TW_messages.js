@@ -1037,6 +1037,12 @@
   "list_emptyUsers": {
     "message": "目前沒有上線的使用者"
   },
+  "userList_showFriends": {
+    "message": "只看好友"
+  },
+  "userList_showAll": {
+    "message": "顯示全部使用者"
+  },
   "options_deepLinkHandoffNotify": {
     "message": "外部連結被這個分頁接手時發出通知（分頁標題閃爍＋系統通知）"
   },
@@ -1168,6 +1174,9 @@
   },
   "home_boardGroups": {
     "message": "分組討論區"
+  },
+  "home_users": {
+    "message": "線上使用者"
   },
   "home_recents": {
     "message": "最近看板"

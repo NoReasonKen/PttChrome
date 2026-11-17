@@ -27,8 +27,13 @@ import {
   isUserQueryScreen,
   parseUserListRow,
   selectedUserId,
+  userListToggleLabel,
+  userListToggleTarget,
   userListView,
+  userListViewOfTexts,
 } from "../../src/js/user_list";
+import { OWNER_ARTICLE_LIST } from "../../src/js/list_render_owner";
+import { listBoard } from "../../src/js/stack_handoff";
 import { buildListCard, buildListEmptyRow } from "../../src/render/list_card";
 import { i18n, setupI18n } from "../../src/js/i18n";
 import { loadBig5Tables } from "./helpers/load_big5_tables";
@@ -354,6 +359,56 @@ describe("the online user list (#199)", () => {
       const rows = ["t", "1", "2", "row", " 休閒聊天  (w)丟水球", "", ""];
       expect(userListFooterRow(rows)).toBe(4);
       expect(userListFooterRow(["t", "1", "2", "row", " 操作說明 ", ""])).toBe(-1);
+    });
+  });
+
+  // The toolbar entries of `f` (#199): they name the view `f` shows, and are
+  // there only while easy reading holds the list and no prompt is open.
+  describe("the friends/all toggle", () => {
+    const texts = (title) => {
+      const rows = Array.from({ length: 24 }, () => "");
+      rows[0] = title + "                     批踢踢實業坊    看板《Test》";
+      rows[2] = "   編號 P 代號         暱稱              故鄉             動態              發呆";
+      rows[3] = ">     1   user001      暱稱1             某地             閱讀文章          3h06";
+      rows[23] = " 休閒聊天  (w)丟水球 (q)查詢 (→)聊天 (m)寄信 (Tab)排序       (←)離開 (h)說明  ";
+      return rows;
+    };
+    const facts = (title, extra) => ({ rowTexts: texts(title), rows: 24, inputField: false, listOwner: OWNER_ARTICLE_LIST, ...extra });
+
+    test("the view of the screen's texts needs the title, the column header and the footer", () => {
+      expect(userListViewOfTexts(texts("【休閒聊天】"))).toBe("all");
+      expect(userListViewOfTexts(texts("【好友列表】"))).toBe("friends");
+      const noHeader = texts("【休閒聊天】");
+      noHeader[2] = "";
+      expect(userListViewOfTexts(noHeader)).toBe(null);
+      const noFooter = texts("【休閒聊天】");
+      noFooter[23] = " 操作說明  (↑)上移";
+      expect(userListViewOfTexts(noFooter)).toBe(null);
+      expect(userListViewOfTexts([])).toBe(null);
+    });
+
+    test("the target is the other view, and only over the list easy reading holds", () => {
+      expect(userListToggleTarget(facts("【休閒聊天】"))).toBe("friends");
+      expect(userListToggleTarget(facts("【好友列表】"))).toBe("all");
+      expect(userListToggleTarget(facts("【休閒聊天】", { listOwner: null }))).toBe(null);
+      expect(userListToggleTarget(facts("【休閒聊天】", { inputField: true }))).toBe(null);
+      expect(userListToggleTarget(facts("【主功能表】"))).toBe(null);
+      expect(userListToggleTarget(null)).toBe(null);
+    });
+
+    test("the label names the view the toggle shows", () => {
+      expect(userListToggleLabel("friends")).toBe("userList_showFriends");
+      expect(userListToggleLabel("all")).toBe("userList_showAll");
+    });
+
+    // Both views are one page of the stack: the toggle never starts a new one.
+    test("the page stack knows both views as one list", () => {
+      const core = (board) => ({ listSession: { _boardName: board } });
+      expect(listBoard(core(USER_LIST_KEY))).toBe(USER_LIST_KEY);
+      expect(listBoard(core(FRIEND_LIST_KEY))).toBe(USER_LIST_KEY);
+      expect(listBoard(core("C_Chat"))).toBe("C_Chat");
+      expect(listBoard(core(null))).toBe(null);
+      expect(listBoard({})).toBe(null);
     });
   });
 

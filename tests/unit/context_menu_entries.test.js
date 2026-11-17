@@ -2,7 +2,7 @@
 // 鎖：「設為全部已讀」只在桌機右鍵選單；手機長按選單不放全選／圖片上傳／設為全部已讀
 // （改在工具列「更多」，tests/unit/mobile_toolbar.test.jsx），且不留連續的分隔線。
 import { buildContextMenuEntries } from "../../src/components/ContextMenu/context_menu_entries";
-import { setupI18n } from "../../src/js/i18n";
+import { i18n, setupI18n } from "../../src/js/i18n";
 
 beforeAll(() => setupI18n());
 
@@ -34,6 +34,28 @@ test("桌機：不在文章列表（markAllReadEnabled 假）就沒有", () => {
   expect(keys({ ...BASE, markAllReadEnabled: false })).not.toContain(
     "markAllRead",
   );
+});
+
+// #199: the online user list's friends/all toggle, labelled with the view it shows.
+test("桌機：線上使用者列表有好友／全部切換，標籤是切過去的視圖", () => {
+  const calls = [];
+  const on = (target) =>
+    buildContextMenuEntries({
+      ...BASE,
+      markAllReadEnabled: false,
+      userListToggle: target,
+      onMenuSelect: (k) => calls.push(k),
+    }).find((e) => e.key === "userListToggle");
+  const friends = on("friends");
+  expect(friends).toBeDefined();
+  expect(friends.label).toBe(i18n("userList_showFriends"));
+  expect(on("all").label).toBe(i18n("userList_showAll"));
+  expect(friends.label).not.toBe(on("all").label);
+  friends.onClick({});
+  expect(calls).toEqual(["userListToggle"]);
+  expect(keys({ ...BASE, userListToggle: null })).not.toContain("userListToggle");
+  // The phone has it in the toolbar's More sheet.
+  expect(keys({ ...BASE, mobile: true, userListToggle: "friends" })).not.toContain("userListToggle");
 });
 
 test("手機：全選／圖片上傳／設為全部已讀都不在長按選單", () => {

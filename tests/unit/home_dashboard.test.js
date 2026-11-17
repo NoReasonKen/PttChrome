@@ -1367,6 +1367,168 @@ describe("HomeDashboard：動作都接到原生鍵", () => {
     expect(core.articleGestures.captureHomeListLayer).not.toHaveBeenCalled();
     expect(hints.at(-1).m).toBe("回到斷線前的位置，請稍候…");
   });
+
+  // #199: the online user list is Ctrl+Z u (menu.c za_cmds → t_users), shown
+  // by the list's easy reading. The dashboard is copied before the key goes
+  // out and the list slides in over it, as for the mailbox (#196).
+  describe("線上使用者", () => {
+    const ZA_USERS = "\x1au";
+    const USER_LIST = (title = "【休閒聊天】") => {
+      const rowTexts = Array.from({ length: ROWS }, () => "");
+      rowTexts[0] = title + "                     批踢踢實業坊    看板《C_Chat》";
+      rowTexts[1] = " 排序:[朋友] 站上:100 朋友:0 與我為友:0 板友:0 壞人:0";
+      rowTexts[2] = "   編號 P 代號         暱稱              故鄉             動態              發呆";
+      rowTexts[3] = ">     1   user001      暱稱1             某地             閱讀文章          3h06";
+      rowTexts[ROWS - 1] = " 休閒聊天  (w)丟水球 (q)查詢 (→)聊天 (m)寄信 (Tab)排序       (←)離開 (h)說明  ";
+      return { rowTexts, rows: ROWS, curX: 0, curY: 3 };
+    };
+    // menu.c's ZA prompt on the last row while it reads its key.
+    const ZA_PROMPT = () => {
+      const f = mainMenu();
+      f.rowTexts[ROWS - 1] = " 快速切換: (b)文章列表 (c)分類 (t)熱門 (f)我的最愛 (m)信箱 (u)使用者名單 ";
+      return f;
+    };
+    const withGestures = (core, { entered = true } = {}) => {
+      const held = { kind: "home" };
+      core.articleGestures = {
+        holdHomeLayer: vi.fn(() => held),
+        enterHomeLayer: vi.fn(() => entered),
+        dropHomeLayer: vi.fn(),
+      };
+      return held;
+    };
+    const withRecord = (core) => {
+      core.readingRecord = { begin: vi.fn(() => "bm"), end: vi.fn() };
+      return core.readingRecord;
+    };
+
+    test("sends Ctrl+Z u, done once PTT shows either view of the user list", () => {
+      const { core, home, enqueued, show } = makeCore();
+      show(mainMenu());
+      const record = withRecord(core);
+      expect(home.openUsers()).toBe(true);
+      expect(record.begin).toHaveBeenCalledWith("home-users");
+      expect(enqueued).toHaveLength(1);
+      expect(enqueued[0].keys).toBe(ZA_USERS);
+      expect(enqueued[0].kind).toBe("home-users");
+      expect(enqueued[0].expect(null, USER_LIST())).toBe(true);
+      // The view is an account flag: the list may come back as friends only.
+      expect(enqueued[0].expect(null, USER_LIST("【好友列表】"))).toBe(true);
+      // ZA still reading its key, or any other screen: not yet.
+      expect(enqueued[0].expect(null, ZA_PROMPT())).toBe(false);
+      expect(enqueued[0].expect(null, ARTICLE_LIST())).toBe(false);
+    });
+
+    test("the cards slide in over the dashboard copied before the key went out", () => {
+      vi.useFakeTimers();
+      try {
+        const { core, home, enqueued, show, land } = makeCore();
+        show(mainMenu());
+        const held = withGestures(core);
+        home.openUsers();
+        expect(core.articleGestures.holdHomeLayer).toHaveBeenCalled();
+        expect(core.articleGestures.enterHomeLayer).not.toHaveBeenCalled();
+        land(enqueued[0], USER_LIST());
+        expect(core.articleGestures.enterHomeLayer).toHaveBeenCalledWith(held, "【休閒聊天】");
+        // The entry holds the screen now; the hold lets go.
+        expect(core.boardSearchHold).toBe(null);
+        expect(core.articleGestures.dropHomeLayer).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("a list presented at once is done and keeps the copy", async () => {
+      vi.useFakeTimers();
+      try {
+        const { core, home, enqueued, hints, show, land } = makeCore();
+        show(mainMenu());
+        withGestures(core);
+        const record = withRecord(core);
+        core.listSession = { isUserList: () => true };
+        home.openUsers();
+        core.buf.listRenderMode = "buffer";
+        land(enqueued[0], USER_LIST());
+        await Promise.resolve();
+        vi.advanceTimersByTime(1500);
+        expect(record.end).toHaveBeenCalledWith("bm", "done");
+        expect(core.articleGestures.dropHomeLayer).not.toHaveBeenCalled();
+        expect(hints.map((h) => h.m)).not.toContain("開不了線上使用者名單");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("a list easy reading does not present fails fast and drops the copy", async () => {
+      vi.useFakeTimers();
+      try {
+        const { core, home, enqueued, hints, show, land } = makeCore();
+        show(mainMenu());
+        const held = withGestures(core);
+        const record = withRecord(core);
+        home.openUsers();
+        land(enqueued[0], USER_LIST());
+        await Promise.resolve();
+        vi.advanceTimersByTime(1500);
+        expect(core.articleGestures.dropHomeLayer).toHaveBeenCalledWith(held);
+        expect(record.end).toHaveBeenCalledWith("bm", "fail");
+        expect(hints.at(-1)).toEqual({ m: "開不了線上使用者名單", level: HINT_ERROR });
+        expect(core.boardSearchHold).toBe(null);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    // A guest has no PERM_LOGINOK: ZA reads `u` and PTT redraws the main menu.
+    test("a guest, answered with the main menu, fails at once with the hint and drops the copy", () => {
+      const { core, home, enqueued, hints, show, land } = makeCore();
+      show(mainMenu());
+      const held = withGestures(core);
+      const record = withRecord(core);
+      home.openUsers();
+      land(enqueued[0], mainMenu());
+      expect(core.articleGestures.enterHomeLayer).not.toHaveBeenCalled();
+      expect(core.articleGestures.dropHomeLayer).toHaveBeenCalledWith(held);
+      expect(record.end).toHaveBeenCalledWith("bm", "fail");
+      expect(hints.at(-1)).toEqual({ m: "開不了線上使用者名單", level: HINT_ERROR });
+      expect(core.boardSearchHold).toBe(null);
+      expect(enqueued).toHaveLength(1);
+    });
+
+    test("PTT not answering fails with the hint and drops the copy", () => {
+      const { core, home, enqueued, hints, show } = makeCore();
+      show(mainMenu());
+      const held = withGestures(core);
+      home.openUsers();
+      enqueued[0].onFail("timeout");
+      expect(core.articleGestures.dropHomeLayer).toHaveBeenCalledWith(held);
+      expect(hints.at(-1)).toEqual({ m: "開不了線上使用者名單", level: HINT_ERROR });
+      expect(core.boardSearchHold).toBe(null);
+      expect(core.view.navigationEnded).toHaveBeenCalled();
+    });
+
+    test("another operation driving PTT: only the hint, no copy, no key, no record", () => {
+      const { core, home, show, enqueued, hints } = makeCore();
+      show(mainMenu());
+      withGestures(core);
+      const record = withRecord(core);
+      core.aidNavigation = { active: true, opHint: "回到斷線前的位置，請稍候…" };
+      expect(home.openUsers()).toBe(false);
+      expect(enqueued).toHaveLength(0);
+      expect(core.articleGestures.holdHomeLayer).not.toHaveBeenCalled();
+      expect(record.begin).not.toHaveBeenCalled();
+      expect(hints.at(-1).m).toBe("回到斷線前的位置，請稍候…");
+    });
+
+    // The main menu's Talk item stays refused: the dashboard is the way in.
+    test("the main menu's T key is still refused", () => {
+      const { home, show, enqueued, key } = makeCore();
+      show(mainMenu());
+      expect(key("T")).toBe(true);
+      expect(key("t")).toBe(true);
+      expect(enqueued).toHaveLength(0);
+    });
+  });
 });
 
 // #187: PTT's main menu is held back from its first frame until the settle's

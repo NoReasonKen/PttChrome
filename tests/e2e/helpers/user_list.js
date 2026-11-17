@@ -22,7 +22,10 @@
 //               under the cursor (any key back), `Q` the 【查詢網友】 prompt (an
 //               ID⏎ shows its query screen, an empty ⏎ goes back), ← / e / E
 //               the main menu. Every key sequence ending in `\f` repaints the
-//               whole screen.
+//               whole screen. The view is an account flag (UF_FRIEND): Ctrl+Z u
+//               shows the view the list was left in, from user 1.
+//               `window.__userListServer.refuseUsers = true` plays a guest
+//               (no PERM_LOGINOK): Ctrl+Z u redraws the main menu.
 // Not observed, built from the layout notes alone: the number jump, the
 // arrows and PgUp/PgDn at the list's ends (clamped here), where PTT parks
 // the cursor on an empty view (row 3 here) and the form of a `< 離站中..>`
@@ -142,9 +145,8 @@ async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 
     const TOKEN = /\x1b\[[0-9;]*[A-Za-z~]|\x1a[\s\S]|\d+\r|[\s\S]/g;
     const apply = token => {
       if (state.surface === 'menu') {
-        if (token === '\x1au') {
+        if (token === '\x1au' && !window.__userListServer.refuseUsers) {
           state.surface = 'list';
-          state.view = 'all';
           state.cursor = 1;
         }
         return;
@@ -195,9 +197,9 @@ async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 
   await page.waitForFunction(() => window.__app.homeDashboard.state.visible);
 }
 
-// Sends `keys` to PTT as they are, past easy reading's key policy: Ctrl+Z u
-// from the main menu until the home dashboard has an entrance (#199 phase 2),
-// `f` until the list's key policy takes it (phase 3).
+// Sends `keys` to PTT as they are, past easy reading's key policy and the
+// home dashboard's entrance (the reader's way in is the dashboard's 線上使用者
+// button, mobile_user_list_entry.offline.spec.js).
 const sendRaw = (page, keys) => page.evaluate(k => window.__app.conn.send(k), keys);
 
 // The list easy reading took the user list over and is idle.

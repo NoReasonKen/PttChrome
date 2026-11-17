@@ -153,6 +153,12 @@ export const RESTORE_TABLE = {
     cancel: cell(null, null, null, 'origin'),
     fail: cell(null, null, null, 'origin')
   },
+  // The online user list (#199), the same as the mailbox.
+  'home-users': {
+    done: cell(null, null, null, 'origin'),
+    cancel: cell(null, null, null, 'origin'),
+    fail: cell(null, null, null, 'origin')
+  },
   // 寬螢幕雙欄閱讀（split_reader.js）：點左欄一篇＝aid_navigation.startNum 換文，目的地就是
   // 結果；失敗停在 PTT 給的畫面（原文已經離開，沒有入口回原列）；取消＝一個 byte 都沒送。
   'split-open': { done: NONE, cancel: NONE, fail: NONE },

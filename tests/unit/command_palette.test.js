@@ -66,6 +66,20 @@ describe("buildPaletteItems", () => {
     ]);
   });
 
+  // #199: on the online user list only the view `f` switches to is listed.
+  test("線上使用者列表 ⇒ 只列切過去的那個視圖", () => {
+    const friends = ids(buildPaletteItems("", { userListToggle: "friends" }));
+    expect(friends).toContain("action:userListFriends");
+    expect(friends).not.toContain("action:userListAll");
+    const all = ids(buildPaletteItems("", { userListToggle: "all" }));
+    expect(all).toContain("action:userListAll");
+    expect(all).not.toContain("action:userListFriends");
+    const none = ids(buildPaletteItems("", { userListToggle: null }));
+    expect(none.filter((id) => id.startsWith("action:userList"))).toEqual([]);
+    expect(ids(buildPaletteItems("好友", { userListToggle: "friends" }))[0]).toBe("action:userListFriends");
+    expect(ids(buildPaletteItems("all users", { userListToggle: "all" }))).toContain("action:userListAll");
+  });
+
   test("easy reading on ⇒ offers turning it off instead", () => {
     const got = ids(buildPaletteItems("", { easyReading: true }));
     expect(got).toContain("action:easyReadingOff");

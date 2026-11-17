@@ -90,6 +90,8 @@ describe("決策表", () => {
     ["home-favorites", "fail", "none", "none", "none"],
     ["home-mail", "done", "none", "none", "none"],
     ["home-mail", "fail", "none", "none", "none"],
+    ["home-users", "done", "none", "none", "none"],
+    ["home-users", "fail", "none", "none", "none"],
     ["split-open", "done", "none", "none", "none"],
     ["split-open", "cancel", "none", "none", "none"],
     ["split-open", "fail", "none", "none", "none"],
@@ -110,7 +112,7 @@ describe("決策表", () => {
 
   // 首頁儀表板的捲動位置：從面板出發的交易（點看板＝board-search、抓最愛、開信箱）不論
   // 結果，回到首頁時捲回原處。其餘功能都不碰它（面板沒畫著時本來就量不到）。
-  const HOME_ORIGIN = ["board-search", "home-favorites", "home-mail"];
+  const HOME_ORIGIN = ["board-search", "home-favorites", "home-mail", "home-users"];
   test.each(Object.keys(RESTORE_TABLE))("%s ⇒ 首頁紀錄", (feature) => {
     for (const outcome of OUTCOMES)
       expect(restorePlan(feature, outcome).home).toBe(HOME_ORIGIN.includes(feature) ? "origin" : "none");

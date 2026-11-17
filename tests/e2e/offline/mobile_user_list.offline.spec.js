@@ -4,11 +4,12 @@
 // view with no friend online shows an empty-state row. With easy reading on,
 // PttChrome presents every screen on this route, so the native grid guard
 // (helpers/native_grid_guard.js, failing on offline-mobile) must see no frame
-// of PTT's grid; its 休閒聊天區 entry covers the Talk menu, not this list.
+// of PTT's grid.
 //
 // The list is the controlled PTT of helpers/user_list.js with invented users.
-// Until the home dashboard has an entrance and the list's key policy takes
-// `f` (#199 phases 2 and 3), Ctrl+Z u and `f` are sent to PTT as they are.
+// Ctrl+Z u and `f` are sent to PTT as they are here: this spec is about the
+// list itself, whatever brought the view. The entrance, the key policy and
+// the in-place toggle are mobile_user_list_entry.offline.spec.js.
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { bootUserList, sendRaw, userListActive, userListSurface } = require('../helpers/user_list');

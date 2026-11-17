@@ -27,7 +27,8 @@ Each easy-reading page takes part in the page stack and the gestures as follows.
 | Smooth-scrolling board list: 原生我的最愛, a class group or a 目錄 folder | Goes back ([#53](https://github.com/NoReasonKen/PttChrome/issues/53)) | Nothing | The board list it was opened from | Its boards' article lists ([#31](https://github.com/NoReasonKen/PttChrome/issues/31)) and the board lists opened from its rows | A board list's row |
 | Easy-reading mail list ([#196](https://github.com/NoReasonKen/PttChrome/issues/196)) | Goes back | Nothing | The home dashboard it was opened from | Its mails | The home dashboard's mail entrance, once PTT shows the list (an empty mailbox slides nothing) |
 | Easy-reading mail ([#196](https://github.com/NoReasonKen/PttChrome/issues/196)) | Exits the mail | Nothing: a mail has no drawer, since the article shortcuts (push, thread, author) do not apply to it | The mail list it was opened from, with the mail shown read | Nothing | The mail list |
-| Home dashboard | Nothing | Nothing | Nothing: it is the bottom page | Boards opened from it ([#31](https://github.com/NoReasonKen/PttChrome/issues/31)) and the mail list | Never |
+| Easy-reading online user list, both views ([#199](https://github.com/NoReasonKen/PttChrome/issues/199)) | Goes back | Nothing | The home dashboard it was opened from, also on `e` and `E` | Nothing | The home dashboard's 線上使用者 entrance, once PTT shows the list. Switching between all users and friends (`f`) stays in place: the same page, no slide, the dashboard still below |
+| Home dashboard | Nothing | Nothing | Nothing: it is the bottom page | Boards opened from it ([#31](https://github.com/NoReasonKen/PttChrome/issues/31)), the mail list and the online user list | Never |
 
 With nothing alive below, Back and the right swipe show the dark fallback until PTT shows its next page. Natively shown board lists and article lists with easy reading off are not stacked pages.
 

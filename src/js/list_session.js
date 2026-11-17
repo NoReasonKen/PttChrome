@@ -97,6 +97,17 @@ import {
 } from './list_render_owner';
 import { PAGE } from './page_stack';
 import { searchKeyOpensSheet } from './article_search';
+import { selectedUserId } from './user_list';
+import { queryUser, promptUserQuery } from './user_query';
+
+// A plain `←`, for a key that leaves as it does (article_gestures.handleBack).
+const PLAIN_BACK_EVENT = Object.freeze({
+  key: 'ArrowLeft',
+  ctrlKey: false,
+  altKey: false,
+  metaKey: false,
+  shiftKey: false
+});
 
 // 程式化平滑捲動的最長等待：超過就放棄「等它到站」，把 scroll 事件當成使用者
 // 自己捲的（動畫會被使用者的滾輪／拖曳取消，那時永遠到不了目標）。
@@ -369,6 +380,73 @@ export function hasNumberedEntryRow(facts) {
   const nums = (facts && facts.nums) || [];
   for (let r = 3; r <= (facts.rows || 0) - 2; ++r) if (nums[r] != null) return true;
   return false;
+}
+
+// The online user list's key table (#199; the enumeration is the contract,
+// docs/easy-reading.md 「線上使用者」). From pttbbs talk.c#userlist_cmds and
+// the global keys it falls through to:
+//   - navigation: ↑ k, ↓ j n, PgUp P Ctrl-B, PgDn space Ctrl-F, Home 0,
+//     End $, and the number jump 1-9;
+//   - leave (← e E), query the selected user (q Enter →), query by ID (Q),
+//     the friends/all toggle (f F, an account flag: the view PTT shows next
+//     time is the one left), and help (h ?);
+//   - everything else is refused: talk, water, mail, the pager, sort, the
+//     display switch, the column search, broadcast, the friend and nickname
+//     edits, the sysop keys (H is the sysop's hide; a non-sysop's H is help
+//     again, so it is refused rather than told apart), Ctrl-Z, Ctrl-U, Ctrl-R.
+export function userListKeyClass(e) {
+  if (e.ctrlKey) {
+    if (e.key === 'f' || e.key === 'F') return { class: 'nav', op: 'pgdn' };
+    if (e.key === 'b' || e.key === 'B') return { class: 'nav', op: 'pgup' };
+    return { class: 'unsupported' };
+  }
+  switch (e.key) {
+    case 'ArrowUp':
+    case 'k':
+      return { class: 'nav', op: 'up' };
+    case 'ArrowDown':
+    case 'j':
+    case 'n':
+      return { class: 'nav', op: 'down' };
+    case 'PageUp':
+    case 'P':
+      return { class: 'nav', op: 'pgup' };
+    case 'PageDown':
+    case ' ':
+      return { class: 'nav', op: 'pgdn' };
+    case 'Home':
+    case '0':
+      return { class: 'nav', op: 'home' };
+    case 'End':
+    case '$':
+      return { class: 'nav', op: 'end' };
+    case 'ArrowLeft':
+    case 'e':
+    case 'E':
+      return { class: 'leave' };
+    case 'q':
+    case 'Enter':
+    case 'ArrowRight':
+      return { class: 'query' };
+    case 'Q':
+      return { class: 'query-input' };
+    case 'f':
+    case 'F':
+      return { class: 'view-toggle' };
+    case 'h':
+    case '?':
+      return { class: 'help' };
+    default:
+      if (/^[1-9]$/.test(e.key)) return { class: 'jump-digit', digit: e.key };
+      return { class: 'unsupported' };
+  }
+}
+
+// A frozen transaction's landing the list resumes and rebuilds from: a clean
+// list with a numbered row (invariant 17), or an empty user list such as the
+// friends view with no friend online (invariant 17a, #199).
+function landsOnList(facts) {
+  return !!facts && facts.kind === 'clean-list' && (hasNumberedEntryRow(facts) || !!facts.emptyList);
 }
 
 // 這份清單的編號空間：'select' ＝搜尋結果（MODE_SELECT）或文摘（MODE_DIGEST），
@@ -1619,8 +1697,10 @@ ListSession.prototype = {
   // list sees them (term_view.onKeyDown); the rest is the list's own table.
   wouldRefuse: function(k) {
     const ctrl = !!(k && k.ctrlKey);
-    // The mailbox opens no search sheet (article_search.availableSearchKinds).
-    if (!ctrl && !this.isMailList() && searchKeyOpensSheet(k.key, OWNER_ARTICLE_LIST)) return false;
+    // The mailbox and the user list open no search sheet
+    // (article_search.availableSearchKinds).
+    const searches = !this.isMailList() && !this.isUserList();
+    if (!ctrl && searches && searchKeyOpensSheet(k.key, OWNER_ARTICLE_LIST)) return false;
     const c = this._classifyKey({ key: k.key, ctrlKey: ctrl, altKey: false, metaKey: false, shiftKey: false });
     return c.class === 'unsupported' || c.class === 'ignore';
   },
@@ -1667,6 +1747,67 @@ ListSession.prototype = {
   userListView: function() {
     const key = this._boardName ?? this._helpBoard;
     return key === USER_LIST_KEY ? 'all' : key === FRIEND_LIST_KEY ? 'friends' : null;
+  },
+
+  // A user-list key class (userListKeyClass) the list's common table has no
+  // case for. true = handled. `e` is the key event, null for a function key.
+  _userListKey: function(key, e) {
+    if (!this.isUserList()) return false;
+    const core = this._core;
+    switch (key.class) {
+      case 'query':
+        queryUser(core, selectedUserId(core));
+        return true;
+      case 'query-input':
+        promptUserQuery(core);
+        return true;
+      case 'view-toggle':
+        this.toggleUserListView();
+        return true;
+      case 'leave':
+        // `e` and `E` leave as `←` does: over the page under the list (the
+        // dashboard) it is revealed at once (article_gestures.handleBack);
+        // term_view has asked it for `←` already.
+        return !!e && e.key !== 'ArrowLeft' && !!core.articleGestures?.handleBack?.(PLAIN_BACK_EVENT);
+      default:
+        return false;
+    }
+  },
+
+  // The user list's friends/all toggle (#199): `f` / `F`, and the toolbar
+  // entries that type `f`. Like an in-place key it is a frozen transaction:
+  // the list stays on screen (no slide, no new page) while PTT redraws the
+  // other view, and is rebuilt from the view PTT lands on, numbered from 1
+  // again. The view is an account flag (UF_FRIEND): PTT shows it next time.
+  // true = taken (sent, or the reader told why not).
+  toggleUserListView: function() {
+    if (!this.isUserList() || this._boardName == null) return false;
+    if (this.state === 'functionMode' && this._renderMode === 'frozen') {
+      if (this._view.flashListHint) this._view.flashListHint(this._busyText());
+      return true;
+    }
+    if (this.state !== 'active' || this._renderMode !== 'buffer') return false;
+    const from = this._boardName;
+    const r = transitionListSession(this.state, { type: 'key', keyClass: 'transact' });
+    this.state = r.next; // functionMode, render frozen
+    this._freezeForTransaction();
+    this._landingExplained = false;
+    const self = this;
+    const steps = [
+      {
+        keys: 'f',
+        kind: 'user-view-toggle',
+        // The other view's list (an empty friends view included): PTT
+        // answers `f` with the whole list redrawn, its cursor on the first row.
+        expect: function(snap, facts) {
+          return facts.kind === 'clean-list' && isUserListKey(facts.boardName) && facts.boardName !== from;
+        }
+      }
+    ];
+    this._enqueuePassthroughStep(steps, 0, function(landed) {
+      self._resumeFromLanding(landed);
+    });
+    return true;
   },
 
   // 閱讀紀錄（reading_record）的列表量測：使用者現在看到的視野。
@@ -1895,6 +2036,9 @@ ListSession.prototype = {
       return;
     }
 
+    // The online user list's own keys (#199, userListKeyClass).
+    if (this._userListKey(key, e)) return;
+
     const r = transitionListSession(this.state, { type: 'key', keyClass: key.class });
     this.state = r.next;
     for (let i = 0; i < r.actions.length; ++i) {
@@ -2097,12 +2241,7 @@ ListSession.prototype = {
     this._frozenStepBudgetMs = 0;
     // 落地前已經被別人接走（step 的 onDone 自己降級、cleanup、pref-off）⇒ 不碰。
     if (this.state !== 'functionMode' || this._renderMode !== 'frozen') return;
-    if (
-      landed &&
-      landed.kind === 'clean-list' &&
-      hasNumberedEntryRow(landed) &&
-      this._engageEligible()
-    ) {
+    if (landsOnList(landed) && this._engageEligible()) {
       this.state = 'active';
       this._resumeBuffer(landed);
       this._runAction('rebuild', landed);
@@ -2150,7 +2289,7 @@ ListSession.prototype = {
     if (performance.now() - this._lastServerActivityAt < RESUME_QUIET_MS || this._queue.inFlightKind)
       return this._scheduleLandingJudge();
     const now = this._collectFacts(null);
-    if (now.kind === 'clean-list' && hasNumberedEntryRow(now) && this._engageEligible()) {
+    if (landsOnList(now) && this._engageEligible()) {
       this._landingHold = null;
       this.state = 'active';
       this._resumeBuffer(now);
@@ -2286,6 +2425,7 @@ ListSession.prototype = {
       this._beginHelp();
       return true;
     }
+    if (this._userListKey(cls, null)) return true;
     const r = transitionListSession(this.state, { type: 'key', keyClass: cls.class });
     this.state = r.next;
     for (let i = 0; i < r.actions.length; ++i) {
@@ -2313,6 +2453,12 @@ ListSession.prototype = {
   // 這裡只認**明確的方向鍵／翻頁鍵序列**，其餘一律 passthrough（切原生＋送出），
   // 方向安全：passthrough 永遠會把鍵送到 PTT，只是畫面切回原生。
   _classifyBytes: function(bytes) {
+    // The online user list (#199): → and Enter query the selected user, and
+    // only `h` is help (`H` is the sysop's hide there).
+    if (this.isUserList()) {
+      if (bytes === '\x1b[C' || bytes === '\r') return { class: 'query' };
+      if (bytes === 'H') return { class: 'unsupported' };
+    }
     switch (bytes) {
       case '\x1b[A': return { class: 'nav', op: 'up' };
       case '\x1b[B': return { class: 'nav', op: 'down' };
@@ -2982,6 +3128,8 @@ ListSession.prototype = {
     // no hardcoded key list can drift out of sync with it. Article easy
     // reading has the same guard as `e.key.length === 1` (easy_reading.js).
     if (keyEventToBytes(e) == null) return { class: 'ignore' };
+    // The online user list (#199) has its own table (talk.c's userlist_cmds).
+    if (this.isUserList()) return userListKeyClass(e);
     if (e.ctrlKey) return { class: 'unsupported' }; // Ctrl-P 發文 etc.
     // The mailbox (#196) reads a mail with every key mail.c#mail_comms gives
     // mail_cmd_read (→ Enter r l L); its other commands (reply, forward,
@@ -3212,6 +3360,8 @@ ListSession.prototype = {
   // 那個選單項不出現（條件全收在這裡，React 端不重複判斷）。
   markReadTargetAtRow: function(renderRow) {
     if (this.state !== 'active' || this._renderMode !== 'buffer') return null;
+    // The online user list (#199) has no read marks.
+    if (this.isUserList()) return null;
     const idx = renderRow - this.headerRows();
     if (idx < 0) return null; // header
     const view = this.getListView();

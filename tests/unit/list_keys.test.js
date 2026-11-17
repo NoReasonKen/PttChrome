@@ -5,8 +5,15 @@
 // error-level hint. The serialized native sequence (_beginPassthroughBytes) is
 // kept for PttChrome's own operations (search, mark read, refresh) and is
 // exercised directly here.
-import { ListSession, transitionListSession } from "../../src/js/list_session";
-import { MAIL_LIST_KEY } from "../../src/js/screen_titles";
+import { ListSession, transitionListSession, userListKeyClass } from "../../src/js/list_session";
+import { FRIEND_LIST_KEY, MAIL_LIST_KEY, USER_LIST_KEY } from "../../src/js/screen_titles";
+import { queryUser, promptUserQuery } from "../../src/js/user_query";
+
+vi.mock("../../src/js/user_query", () => ({ queryUser: vi.fn(() => true), promptUserQuery: vi.fn(() => true) }));
+vi.mock("../../src/js/user_list", async (importOriginal) => ({
+  ...(await importOriginal()),
+  selectedUserId: vi.fn(() => "user007"),
+}));
 
 function makeSession() {
   const sent = [];
@@ -1006,5 +1013,214 @@ describe("ListSession on the mailbox keeps only the keys easy reading presents (
     expect(classOf(ctx, "r")).toBe("unsupported");
     expect(classOf(ctx, "=")).toBe("native-inplace");
     expect(ctx.s.wouldRefuse({ key: "/" })).toBe(false);
+  });
+});
+
+// The online user list (#199): easy reading presents the list and one user's
+// query page, not PTT's talk, mail, pager, sorting or friend editing. It keeps
+// the list's navigation, leaving, number jump and help, queries the selected
+// user (q Enter →) or one by ID (Q), switches between all users and friends
+// in place (f F), and refuses every other key of talk.c's userlist.
+describe("ListSession on the online user list keeps only the keys easy reading presents (#199)", () => {
+  function userSession(key = USER_LIST_KEY) {
+    const ctx = activeRefusalSession();
+    ctx.s._boardName = key;
+    ctx.s._core.listSession = ctx.s;
+    return ctx;
+  }
+  const classOf = (ctx, key, mods = {}) => ctx.s._classifyKey(keyEvent(key, mods));
+
+  beforeEach(() => {
+    queryUser.mockClear();
+    promptUserQuery.mockClear();
+  });
+
+  const KEPT = [
+    ["ArrowUp", {}, { class: "nav", op: "up" }],
+    ["k", {}, { class: "nav", op: "up" }],
+    ["ArrowDown", {}, { class: "nav", op: "down" }],
+    ["j", {}, { class: "nav", op: "down" }],
+    ["n", {}, { class: "nav", op: "down" }],
+    ["PageUp", {}, { class: "nav", op: "pgup" }],
+    ["P", {}, { class: "nav", op: "pgup" }],
+    ["b", { ctrlKey: true }, { class: "nav", op: "pgup" }],
+    ["PageDown", {}, { class: "nav", op: "pgdn" }],
+    [" ", {}, { class: "nav", op: "pgdn" }],
+    ["f", { ctrlKey: true }, { class: "nav", op: "pgdn" }],
+    ["Home", {}, { class: "nav", op: "home" }],
+    ["0", {}, { class: "nav", op: "home" }],
+    ["End", {}, { class: "nav", op: "end" }],
+    ["$", {}, { class: "nav", op: "end" }],
+    ["ArrowLeft", {}, { class: "leave" }],
+    ["e", {}, { class: "leave" }],
+    ["E", {}, { class: "leave" }],
+    ["q", {}, { class: "query" }],
+    ["Enter", {}, { class: "query" }],
+    ["ArrowRight", {}, { class: "query" }],
+    ["Q", {}, { class: "query-input" }],
+    ["f", {}, { class: "view-toggle" }],
+    ["F", {}, { class: "view-toggle" }],
+    ["h", {}, { class: "help" }],
+    ["?", {}, { class: "help" }],
+    ["1", {}, { class: "jump-digit", digit: "1" }],
+    ["9", {}, { class: "jump-digit", digit: "9" }],
+  ];
+  test.each(KEPT)("%s %j is kept as %j", (key, mods, cls) => {
+    expect(classOf(userSession(), key, mods)).toEqual(cls);
+    expect(classOf(userSession(FRIEND_LIST_KEY), key, mods)).toEqual(cls);
+    expect(userListKeyClass(keyEvent(key, mods))).toEqual(cls);
+  });
+
+  const REFUSED = [
+    ["w", {}], ["W", {}], ["t", {}], ["T", {}], // water balls and talk
+    ["m", {}], ["M", {}], ["r", {}], ["R", {}], // mail
+    ["s", {}], ["S", {}], ["Tab", {}], ["/", {}], // search, display and sorting
+    ["a", {}], ["A", {}], ["d", {}], ["D", {}], ["o", {}], ["O", {}], // friends and bad users
+    ["b", {}], ["B", {}], ["N", {}], ["H", {}], ["p", {}], ["c", {}], ["C", {}], ["g", {}], ["l", {}], ["K", {}], ["i", {}],
+    ["x", {}], ["X", {}], ["y", {}], ["u", {}], ["U", {}],
+    ["[", {}], ["]", {}], ["=", {}], ["-", {}], ["<", {}], [">", {}], ["{", {}], ["}", {}],
+    ["p", { ctrlKey: true }], ["z", { ctrlKey: true }], ["u", { ctrlKey: true }], ["r", { ctrlKey: true }],
+    ["w", { ctrlKey: true }], ["x", { ctrlKey: true }],
+  ];
+  test.each(REFUSED)("%s %j is refused: nothing is sent and the reader is told", (key, mods) => {
+    for (const view of [USER_LIST_KEY, FRIEND_LIST_KEY]) {
+      const ctx = userSession(view);
+      const e = keyEvent(key, mods);
+      ctx.s.onKeyDown(e);
+      expect(e.defaultPrevented).toBe(true);
+      expect(ctx.sent).toEqual([]);
+      expect(ctx.enqueued).toEqual([]);
+      expect(ctx.s.state).toBe("active");
+      expect(ctx.s._renderMode).toBe("buffer");
+      expect(ctx.s._boardName).toBe(view);
+      expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
+      expect(ctx.s.wouldRefuse({ key, ctrlKey: !!mods.ctrlKey })).toBe(true);
+    }
+    expect(queryUser).not.toHaveBeenCalled();
+    expect(promptUserQuery).not.toHaveBeenCalled();
+  });
+
+  test.each(["q", "Enter", "ArrowRight"])("%s queries the selected user, and sends nothing itself", (key) => {
+    const ctx = userSession();
+    const e = keyEvent(key);
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(queryUser).toHaveBeenCalledTimes(1);
+    expect(queryUser).toHaveBeenCalledWith(ctx.s._core, "user007");
+    expect(promptUserQuery).not.toHaveBeenCalled();
+    expect(ctx.enqueued).toEqual([]);
+    expect(ctx.sent).toEqual([]);
+    expect(ctx.hints).toEqual([]);
+  });
+
+  test("Q asks for a user ID to query", () => {
+    const ctx = userSession();
+    const e = keyEvent("Q");
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(promptUserQuery).toHaveBeenCalledWith(ctx.s._core);
+    expect(queryUser).not.toHaveBeenCalled();
+    expect(ctx.enqueued).toEqual([]);
+  });
+
+  test("the toolbar's Enter and → bytes query the selected user; its `H` is refused", () => {
+    const ctx = userSession();
+    expect(ctx.s.onFunctionKey("\r")).toBe(true);
+    expect(ctx.s.onFunctionKey("\x1b[C")).toBe(true);
+    expect(queryUser).toHaveBeenCalledTimes(2);
+    expect(ctx.s.onFunctionKey("H")).toBe(true);
+    expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
+    expect(ctx.enqueued).toEqual([]);
+  });
+
+  test.each(["f", "F"])("%s switches the view in place: one frozen transaction that sends `f`", (key) => {
+    const ctx = userSession();
+    const e = keyEvent(key);
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(ctx.s.state).toBe("functionMode");
+    expect(ctx.s._renderMode).toBe("frozen");
+    expect(ctx.enqueued).toHaveLength(1);
+    expect(ctx.enqueued[0]).toMatchObject({ kind: "user-view-toggle", keys: "f" });
+    const lands = (facts) => !!ctx.enqueued[0].expect(null, facts);
+    // PTT answers with the other view's list; the same view or another screen is no answer yet.
+    expect(lands({ kind: "clean-list", boardName: FRIEND_LIST_KEY })).toBe(true);
+    expect(lands({ kind: "clean-list", boardName: USER_LIST_KEY })).toBe(false);
+    expect(lands({ kind: "other", boardName: FRIEND_LIST_KEY })).toBe(false);
+    expect(lands({ kind: "clean-list", boardName: "C_Chat" })).toBe(false);
+    expect(ctx.hints).toEqual([]);
+  });
+
+  test("from friends, f switches back to all users", () => {
+    const ctx = userSession(FRIEND_LIST_KEY);
+    ctx.s.onKeyDown(keyEvent("f"));
+    expect(ctx.enqueued[0].expect(null, { kind: "clean-list", boardName: USER_LIST_KEY })).toBe(true);
+    expect(ctx.enqueued[0].expect(null, { kind: "clean-list", boardName: FRIEND_LIST_KEY })).toBe(false);
+  });
+
+  test("a second f while the first is answered is held off with the busy hint", () => {
+    const ctx = userSession();
+    ctx.s.onKeyDown(keyEvent("f"));
+    ctx.hints.length = 0;
+    expect(ctx.s.toggleUserListView()).toBe(true);
+    expect(ctx.enqueued).toHaveLength(1);
+    expect(ctx.hints).toHaveLength(1);
+    expect(ctx.hints[0][0]).not.toBe(KEY_HINT);
+  });
+
+  test("the toggle is the user list's own: anywhere else it does nothing", () => {
+    const ctx = activeRefusalSession();
+    expect(ctx.s.toggleUserListView()).toBe(false);
+    expect(ctx.enqueued).toEqual([]);
+  });
+
+  test.each(["e", "E"])("%s leaves as ← does, revealing the page below at once", (key) => {
+    const ctx = userSession();
+    const handleBack = vi.fn(() => true);
+    ctx.s._core.articleGestures = { handleBack };
+    const e = keyEvent(key);
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(handleBack).toHaveBeenCalledTimes(1);
+    expect(handleBack.mock.calls[0][0]).toMatchObject({ key: "ArrowLeft", ctrlKey: false, shiftKey: false });
+    expect(ctx.enqueued).toEqual([]);
+  });
+
+  test("with no page below, e leaves the list as ← does", () => {
+    const ctx = userSession();
+    ctx.s._core.articleGestures = { handleBack: () => false };
+    ctx.s.onKeyDown(keyEvent("e"));
+    expect(ctx.s.state).toBe("functionMode");
+    expect(ctx.enqueued[0].kind).toBe("leave-sync-jump");
+  });
+
+  test("← itself goes the list's leave way (term_view asked the page below already)", () => {
+    const ctx = userSession();
+    const handleBack = vi.fn(() => true);
+    ctx.s._core.articleGestures = { handleBack };
+    ctx.s.onKeyDown(keyEvent("ArrowLeft"));
+    expect(handleBack).not.toHaveBeenCalled();
+    expect(ctx.enqueued[0].kind).toBe("leave-sync-jump");
+  });
+
+  test("the help sheet's rows follow the user list's keys (wouldRefuse), with no search exemption", () => {
+    const ctx = userSession();
+    for (const key of ["/", "s", "a", "w", "t", "m", "Tab", "H"]) expect([key, ctx.s.wouldRefuse({ key })]).toEqual([key, true]);
+    for (const key of ["q", "Q", "f", "F", "e", "h", "$", "0", "ArrowRight"]) expect([key, ctx.s.wouldRefuse({ key })]).toEqual([key, false]);
+  });
+
+  test("while the help sheet is up the session still knows it is the user list", () => {
+    const ctx = userSession();
+    ctx.s._helpBoard = FRIEND_LIST_KEY;
+    ctx.s._boardName = null;
+    expect(ctx.s.wouldRefuse({ key: "w" })).toBe(true);
+    expect(ctx.s.wouldRefuse({ key: "f" })).toBe(false);
+    // Nothing to toggle from until the list is back.
+    expect(ctx.s.toggleUserListView()).toBe(false);
+  });
+
+  test("no row is a mark-read target on the user list", () => {
+    const ctx = userSession();
+    expect(ctx.s.markReadTargetAtRow(5)).toBe(null);
   });
 });

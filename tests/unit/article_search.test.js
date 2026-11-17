@@ -131,6 +131,15 @@ describe("availableSearchKinds", () => {
     expect(availableSearchKinds(boardList())).toEqual(["board"]);
     expect(availableSearchKinds(mainMenu())).toEqual(["board"]);
   });
+  // #199: the online user list's `s` / `/` are talk.c's own, not a board search.
+  test("線上使用者列表 ⇒ 無", () => {
+    for (const title of ["【休閒聊天】", "【好友列表】"]) {
+      const f = articleList({ listOwner: "article-list" });
+      f.rowTexts[0] = title + "                     批踢踢實業坊    看板《Test》";
+      f.rowTexts[23] = " 休閒聊天  (w)丟水球 (q)查詢 (→)聊天 (m)寄信 (Tab)排序       (←)離開 (h)說明  ";
+      expect(availableSearchKinds(f)).toEqual([]);
+    }
+  });
   test("已有 prompt 開著（游標在輸入欄）⇒ 無", () => {
     expect(availableSearchKinds(articleList({ inputField: true }))).toEqual([]);
   });

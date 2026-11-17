@@ -25,7 +25,7 @@ import { atPagerStatusRow } from './long_push_gate';
 import { parsePagerFooterContext } from './string_util';
 import { boardListContextKind, classifyBoardListScreen } from './board_list_parse';
 import { OWNER_ARTICLE_LIST } from './list_render_owner';
-import { parseBoardKey, boardNameFromKey } from './screen_titles';
+import { parseBoardKey, boardNameFromKey, isUserListTitleRow } from './screen_titles';
 import { footerCaption } from './screen_captions';
 import {
   isSearchPromptFrame,
@@ -76,6 +76,9 @@ export function refreshTargetFromFacts(facts, pageState, opts) {
     boardListContextKind(facts) === 'article-list'
   ) {
     if (LEAVES_ON_S.indexOf(footerCaption(last)) >= 0) return null;
+    // The online user list (#199): its title row still names the board last
+    // visited, and the refresh's `s` is talk.c's search there. Not refreshed.
+    if (isUserListTitleRow(rowTexts[0] || '')) return null;
     const board = boardNameFromKey(parseBoardKey(rowTexts[0] || ''));
     if (!board || !/^[\x21-\x7e]+$/.test(board)) return null;
     return { kind: 'article-list', board: board };

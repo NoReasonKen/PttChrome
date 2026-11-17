@@ -37,6 +37,7 @@ import {
   toolbarSlots,
 } from "../../js/mobile_toolbar";
 import { toolbarDiag, toolbarContextId } from "../../js/toolbar_diag";
+import { userListToggleLabel } from "../../js/user_list";
 import { ARTICLE_TAP_SLOP } from "../../js/article_horizontal_gesture";
 import "./MobileToolbar.css";
 
@@ -531,6 +532,13 @@ export const MobileToolbar = ({
     sendKey(TOOLBAR_KEYS.help.key);
   }, [sendKey]);
 
+  // 線上使用者列表的「只看好友」／「顯示全部使用者」（#199）：送 f，與實體鍵盤同一條分派。
+  const onUserListToggle = useCallback(() => {
+    setPanel(null);
+    setConfirmLogout(false);
+    sendKey(TOOLBAR_KEYS.userListToggle.key);
+  }, [sendKey]);
+
   // 全選／圖片上傳：與桌機右鍵選單同一組 App 入口（ContextMenu 的 menuHandlerByEventKey）。
   const onSelectAll = useCallback(() => {
     setPanel(null);
@@ -865,6 +873,17 @@ export const MobileToolbar = ({
                 ? "boardList_reorderFavorites"
                 : "boardList_toggleSort",
             )}
+          </button>
+        ) : null}
+        {context.userListToggle ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__userListToggle"
+            data-target-view={context.userListToggle}
+            onClick={onUserListToggle}
+          >
+            {i18n(userListToggleLabel(context.userListToggle))}
           </button>
         ) : null}
         {context.help ? (

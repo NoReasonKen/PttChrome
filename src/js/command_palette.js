@@ -52,6 +52,9 @@ export const PALETTE_ACTIONS = [
   { id: "boardNumbers", titleKey: "boardList_showNumbers", when: "boardShowsCounts", keywords: ["顯示看板編號", "看板編號", "編號", "新文章", "board number", "numbers"] },
   { id: "boardSort", titleKey: "boardList_toggleSort", when: "boardSort", keywords: ["切換排序", "排序", "依板名", "依類別", "sort", "order", "by name", "by class"] },
   { id: "favSort", titleKey: "boardList_reorderFavorites", when: "boardFavSort", keywords: ["重新排序我的最愛", "排序", "我的最愛", "reorder favorites", "sort", "favorites"] },
+  // 線上使用者列表的好友／全部切換（#199）：只列切過去的那一個。
+  { id: "userListFriends", titleKey: "userList_showFriends", when: "userListFriends", keywords: ["只看好友", "好友", "friends", "friends only"] },
+  { id: "userListAll", titleKey: "userList_showAll", when: "userListAll", keywords: ["顯示全部使用者", "全部使用者", "使用者", "all users", "users"] },
   { id: "copyLink", titleKey: "palette_copyLink", when: "copyLink", keywords: ["複製本篇連結", "複製連結", "分享", "copy link", "share", "url"] },
   { id: "back", titleKey: "palette_back", when: "back", keywords: ["返回原文", "返回", "上一篇", "back", "return"] },
   { id: "settings", titleKey: "palette_settings", when: null, keywords: ["設定", "偏好", "settings", "preferences", "options"] },
@@ -97,6 +100,7 @@ function actionMatch(action, q, title) {
  *   refresh / unreadJump / markAllRead / copyLink / back: boolean
  *   boardToggles: { counts: boolean|null, sort: 'favorites'|'switch'|false } | null
  *     (board_list_session.listToggles, #221; counts is null where `c` is not offered)
+ *   userListToggle: 'friends' | 'all' | null（user_list.userListToggleTarget）
  *   easyReading: boolean（目前好讀開著嗎）
  *   title(key): string —— 動作標題（i18n；比對用，可省）
  *   lang: 設定搜尋用的語系（可省）
@@ -133,6 +137,8 @@ export function buildPaletteItems(query, ctx) {
     boardFavSort: !!c.boardToggles && c.boardToggles.sort === "favorites",
     boardShowsNumbers: !!c.boardToggles && c.boardToggles.counts === false,
     boardShowsCounts: !!c.boardToggles && c.boardToggles.counts === true,
+    userListFriends: c.userListToggle === "friends",
+    userListAll: c.userListToggle === "all",
     copyLink: !!c.copyLink,
     back: !!c.back,
     easyReadingOn: !!c.easyReading,

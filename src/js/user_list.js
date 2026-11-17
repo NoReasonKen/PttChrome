@@ -22,6 +22,7 @@
 
 import { rowHasTitle, userListViewOfRow } from './screen_titles';
 import { userListFooterRow } from './screen_captions';
+import { OWNER_ARTICLE_LIST } from './list_render_owner';
 import { rowToText } from './comment_parse';
 
 export const USER_ID_COL_START = 10;
@@ -56,18 +57,38 @@ function rowTexts(buf) {
   return out;
 }
 
+// userListView over the screen's row texts.
+export function userListViewOfTexts(texts) {
+  const view = userListViewOfRow((texts && texts[0]) || '');
+  if (!view) return null;
+  const header = texts[2] || '';
+  if (header.indexOf('編號') < 0 || header.indexOf('代號') < 0) return null;
+  return userListFooterRow(texts) >= 0 ? view : null;
+}
+
 // Which view of the user list `buf` shows: 'all' (【休閒聊天】, every user),
 // 'friends' (【好友列表】, friends only), or null when it is not the user list
 // (the help screen and the query screen keep the title, but not the column
 // header and the footer).
 export function userListView(buf) {
   if (!buf || !buf.rows) return null;
-  const texts = rowTexts(buf);
-  const view = userListViewOfRow(texts[0]);
-  if (!view) return null;
-  const header = texts[2] || '';
-  if (header.indexOf('編號') < 0 || header.indexOf('代號') < 0) return null;
-  return userListFooterRow(texts) >= 0 ? view : null;
+  return userListViewOfTexts(rowTexts(buf));
+}
+
+// The view the friends/all toggle (`f`) would show from this screen, for the
+// toolbar entries: 'friends' over the list of all users, 'all' over the
+// friends view, null when easy reading does not hold the user list or a
+// prompt is open. `facts` is article_search.searchGateFacts' shape.
+export function userListToggleTarget(facts) {
+  if (!facts || facts.inputField || facts.listOwner !== OWNER_ARTICLE_LIST) return null;
+  const view = userListViewOfTexts(facts.rowTexts || []);
+  return view === 'all' ? 'friends' : view === 'friends' ? 'all' : null;
+}
+
+// The i18n key of the toggle entries' label, which names the view it shows:
+// 只看好友 toward the friends view, 顯示全部使用者 toward every user.
+export function userListToggleLabel(target) {
+  return target === 'friends' ? 'userList_showFriends' : 'userList_showAll';
 }
 
 // The user ID of the user list's selected card, or null: the list held is not

@@ -1022,6 +1022,12 @@ export const en_US = {
   "list_emptyUsers": {
     "message": "No users online"
   },
+  "userList_showFriends": {
+    "message": "Friends only"
+  },
+  "userList_showAll": {
+    "message": "Show all users"
+  },
   "options_deepLinkHandoffNotify": {
     "message": "Notify when this tab picks up an external link (tab title flash + system notification)."
   },
@@ -1153,6 +1159,9 @@ export const en_US = {
   },
   "home_boardGroups": {
     "message": "Board groups"
+  },
+  "home_users": {
+    "message": "Online users"
   },
   "home_recents": {
     "message": "Recent boards"

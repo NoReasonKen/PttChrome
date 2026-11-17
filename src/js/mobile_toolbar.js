@@ -26,6 +26,9 @@
 //            sheet (the label says so), else PTT's by-name / by-class switch.
 //            The session answers (board_list_session.listToggles), not the screen:
 //            with easy reading off, PTT's keys work as they always did.
+//   userListToggle：好讀拿著線上使用者列表時，`f` 會切到的視圖（'friends'／'all'，
+//            user_list.userListToggleTarget），否則 null；「更多」裡的「只看好友」／
+//            「顯示全部使用者」送 f（#199）。使用者列表沒有 post／unreadJump／markAllRead。
 //   help   ：底列寫著 `(h)說明`／`(h)按鍵說明`（看板列表／文章列表／主功能表 footer、
 //            pager 狀態列；vs_footer 與 pmore.c 的提示都在 b_lines），「更多」裡的「操作說明」送 h
 //            ⇒ 新版說明選單（好讀開著時是 help_menu.js 的 bottom sheet）。手機上這些畫面的底列
@@ -45,11 +48,12 @@ import { refreshTargetFromFacts, homeDashboardShown } from './screen_refresh';
 import { OWNER_ARTICLE_LIST } from './list_render_owner';
 import { appBarFromFacts, sameAppBar, EMPTY_APP_BAR } from './mobile_app_bar';
 import { MOBILE_KEYPAD_PUSH_KEY } from './mobile_layout';
+import { userListToggleTarget } from './user_list';
 
 export const EMPTY_TOOLBAR_CONTEXT = Object.freeze({
   push: false, reply: false, mail: false, share: false, threadNav: false, post: false,
   unreadJump: false, markAllRead: false, boardCountsSwitch: false, boardCounts: false, boardSort: false, boardSortFavorites: false, help: false, contentTools: false, refresh: false, end: false,
-  search: [], appBar: EMPTY_APP_BAR, locked: false
+  userListToggle: null, search: [], appBar: EMPTY_APP_BAR, locked: false
 });
 
 // 送鍵表：key 是 term_view.sendKeyAsUser 的 keyName（單字元或 KeyMap 裡的具名鍵），
@@ -60,7 +64,8 @@ export const TOOLBAR_KEYS = Object.freeze({
   reply: { key: 'y' },
   post: { key: 'p', mods: { altKey: true } },
   end: { key: 'End' },
-  help: { key: 'h' }
+  help: { key: 'h' },
+  userListToggle: { key: 'f' }
 });
 
 // 底列有沒有「(h)說明」這顆提示（文字判準，不看 pageState：主功能表、看板列表、文章列表、
@@ -110,19 +115,23 @@ export function toolbarContextFromFacts(facts, pageState, opts) {
   const o = opts || {};
   const lists = !facts.inputField && (isArticleList(facts) || !!classifyBoardListScreen(facts));
   const menu = boardListContextKind(facts) === 'menu';
+  const userListToggle = pager ? null : userListToggleTarget(facts);
+  // The user list (#199) is held like an article list, but has no posts.
+  const articles = !pager && !userListToggle && isArticleList(facts);
   return {
     push: article,
     reply: pager,
     mail: mail,
     share: article,
     threadNav: article,
-    post: !pager && isArticleList(facts),
-    unreadJump: !pager && isArticleList(facts),
-    markAllRead: !pager && isArticleList(facts),
+    post: articles,
+    unreadJump: articles,
+    markAllRead: articles,
     boardCountsSwitch: !pager && !!o.boardToggles && o.boardToggles.counts != null,
     boardCounts: !pager && !!(o.boardToggles && o.boardToggles.counts),
     boardSort: !pager && !!(o.boardToggles && o.boardToggles.sort),
     boardSortFavorites: !pager && !!(o.boardToggles && o.boardToggles.sort === 'favorites'),
+    userListToggle: userListToggle,
     help: !facts.inputField && !menu && hasHelpHint(last),
     contentTools: !menu,
     refresh: !!o.connected && !!refreshTargetFromFacts(facts, pageState, {
@@ -175,6 +184,7 @@ const FLAGS = [
 export function sameToolbarContext(a, b) {
   if (!a || !b) return a === b;
   for (const f of FLAGS) if (!!a[f] !== !!b[f]) return false;
+  if ((a.userListToggle || null) !== (b.userListToggle || null)) return false;
   return (a.search || []).join(',') === (b.search || []).join(',') &&
     sameAppBar(a.appBar || EMPTY_APP_BAR, b.appBar || EMPTY_APP_BAR);
 }
