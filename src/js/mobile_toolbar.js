@@ -48,7 +48,8 @@ import { parsePagerFooterContext } from './string_util';
 import { atPagerStatusRow } from './long_push_gate';
 import { availableSearchKinds, searchGateFacts } from './article_search';
 import { boardListContextKind, classifyBoardListScreen } from './board_list_parse';
-import { refreshTargetFromFacts, homeDashboardShown } from './screen_refresh';
+import { refreshTargetFromFacts, refreshOffered, homeDashboardShown } from './screen_refresh';
+import { isMailListTitleRow } from './screen_titles';
 import { OWNER_ARTICLE_LIST } from './list_render_owner';
 import { appBarFromFacts, sameAppBar, EMPTY_APP_BAR } from './mobile_app_bar';
 import { MOBILE_KEYPAD_PUSH_KEY } from './mobile_layout';
@@ -102,8 +103,15 @@ export const THREAD_NAV_KEYS = Object.freeze([
   { key: 'f', label: 'mobileToolbar_articleNext' }
 ]);
 
+// The mailbox is a list (End, help work) but no article list: its title row
+// names the board last visited, and the article list's entrances (post, jump
+// to unread, mark all read, refresh) are not offered there (#252).
+function isMailList(facts) {
+  return !facts.inputField && isMailListTitleRow((facts.rowTexts || [])[0]);
+}
+
 function isArticleList(facts) {
-  if (facts.inputField) return false;
+  if (facts.inputField || isMailList(facts)) return false;
   return facts.listOwner === OWNER_ARTICLE_LIST || boardListContextKind(facts) === 'article-list';
 }
 
@@ -117,7 +125,7 @@ export function toolbarContextFromFacts(facts, pageState, opts) {
   const mail = pager && parsePagerFooterContext(last) === 'mail';
   const article = pager && !mail;
   const o = opts || {};
-  const lists = !facts.inputField && (isArticleList(facts) || !!classifyBoardListScreen(facts));
+  const lists = !facts.inputField && (isArticleList(facts) || isMailList(facts) || !!classifyBoardListScreen(facts));
   const menu = boardListContextKind(facts) === 'menu';
   const userListToggle = pager ? null : userListToggleTarget(facts);
   // The user list (#199) is held like an article list, but has no posts.
@@ -141,11 +149,11 @@ export function toolbarContextFromFacts(facts, pageState, opts) {
     userListToggle: userListToggle,
     help: !facts.inputField && !menu && hasHelpHint(last),
     contentTools: !menu,
-    refresh: !!o.connected && !!refreshTargetFromFacts(facts, pageState, {
+    refresh: !!o.connected && refreshOffered(refreshTargetFromFacts(facts, pageState, {
       articleBoard: o.articleBoard,
       listOpened: o.listOpened,
       home: o.home
-    }),
+    })),
     end: pager || lists,
     search: availableSearchKinds(facts),
     appBar: appBarFromFacts(facts, { ...(opts || {}), pageState: pageState })

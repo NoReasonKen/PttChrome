@@ -23,6 +23,10 @@ const READ_ROW =
 const MAIL_ROW =
   "  瀏覽 第 1/1 頁 (100%)  目前顯示: 第 01~18 行  (y)回信 (h)說明 (←/q)離開 ";
 const LIST = { 0: " 【板主:none】看板《Test》", 23: " 文章選讀  (y)回應(X)推文(^X)轉錄 " };
+const MAIL_LIST = {
+  0: "【郵件選單】                     批踢踢實業坊                     看板《Test》",
+  23: " 信件列表  (^P)寄信 (y)回信 (d)刪信       (←)離開 (h)說明 ",
+};
 
 describe("toolbarContextFromFacts", () => {
   test("文章（pager 狀態列）⇒ 推，沒有搜尋", () => {
@@ -44,6 +48,25 @@ describe("toolbarContextFromFacts", () => {
     expect(toolbarContextFromFacts(frame(LIST), 2)).toMatchObject({
       push: false,
       search: ["title", "author", "push", "board"],
+    });
+  });
+  // #252: the mailbox is a list but not an article list; the title row names
+  // the board last visited, which must not make it one.
+  test("信箱列表 ⇒ 沒有發文／未讀／全部已讀／重整，到底與說明還在", () => {
+    const ctx = toolbarContextFromFacts(frame(MAIL_LIST), 2, { connected: true });
+    expect(ctx).toMatchObject({
+      post: false, unreadJump: false, markAllRead: false, refresh: false, search: [], end: true, help: true,
+    });
+    const owned = toolbarContextFromFacts({ ...frame(MAIL_LIST), listOwner: "article-list" }, 2, { connected: true });
+    expect(owned).toMatchObject({ post: false, unreadJump: false, markAllRead: false, refresh: false, end: true });
+    expect(toolbarSlots(owned)).toEqual([null, null, "refresh", "end", "keys", "more"]);
+  });
+  test("信件 pager ⇒ 重整反灰（回信仍是鍵盤上被拒絕的入口）", () => {
+    expect(toolbarContextFromFacts(frame({ 23: MAIL_ROW }), 3, { connected: true, articleBoard: "Test" }).refresh).toBe(false);
+  });
+  test("文章列表照舊：發文／未讀／全部已讀／重整都在", () => {
+    expect(toolbarContextFromFacts(frame(LIST), 2, { connected: true })).toMatchObject({
+      post: true, unreadJump: true, markAllRead: true, refresh: true, end: true,
     });
   });
   test("同一次計算帶出 App Bar 標題（mobile_app_bar.js）", () => {
