@@ -35,6 +35,16 @@
 //               usage-limit alert ( 使用限制 , the status, a reason) instead;
 //               its key goes back to the list (denied) or on to the query
 //               screen (slowed).
+//   paging      a page starts at its number in PTT's users (talk.c#pickup):
+//               the users `hidden` from the reader on it are skipped and the
+//               page reads on past them, so the next page starts with the
+//               last users of this one again, at higher numbers. A user in
+//               `twins` is logged in twice: listed again under the next
+//               number.
+//   snapshot    with `snapshotMs`, PTT lists the users it took when it drew
+//               the list `snapshotMs` or more after the last time it took
+//               them; users logging in or out (`users` changed) show from
+//               then. Without it, every frame shows `users` as they are.
 // Not observed, built from the layout notes alone: the number jump, the
 // arrows and PgUp/PgDn at the list's ends (clamped here), where PTT parks
 // the cursor on an empty view (row 3 here) and the form of a `< 離站中..>`
@@ -49,11 +59,13 @@ const { ART, MAIN_MENU, FIRST_ITEM_ROW } = require('./main_menu');
 // so the friends view is empty. `gone`: the number of a user who logged off.
 // `delay`: how long the server takes to answer. `plans`: { number: lines } of
 // the users with a plan. `sleepMs`: PTT's sleep after the key on the query
-// screen, before the list.
-async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 40, plans = {}, sleepMs = 0, prefs = {} } = {}) {
+// screen, before the list. `hidden`, `twins`, `snapshotMs`: see paging and
+// snapshot above.
+async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 40, plans = {}, sleepMs = 0, prefs = {},
+  hidden = [], twins = [], snapshotMs = 0 } = {}) {
   await bootOffline(page, ptt);
   await ptt.applyPrefs(page, { enableEasyReading: true, ...prefs });
-  await page.evaluate(({ count, friends, gone, delay, plans, sleepMs, ART, MAIN_MENU, FIRST_ITEM_ROW }) => {
+  await page.evaluate(({ count, friends, gone, delay, plans, sleepMs, hidden, twins, snapshotMs, ART, MAIN_MENU, FIRST_ITEM_ROW }) => {
     const app = window.__app;
     const encode = text => [...text].map(ch => {
       const c = ch.charCodeAt(0);
@@ -69,7 +81,7 @@ async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 
     const users = [];
     for (let n = 1; n <= count; n++) {
       users.push({
-        id: 'user' + String(n).padStart(3, '0'),
+        id: 'user' + String(twins.includes(n) ? n - 1 : n).padStart(3, '0'),
         nick: n % 5 === 0 ? '' : '暱稱' + n,
         place: PLACES[n % PLACES.length],
         act: ACTS[n % ACTS.length],
@@ -78,12 +90,32 @@ async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 
         friend: friends.includes(n),
         gone: n === gone,
         plan: plans[n] || null,
+        hidden: hidden.includes(n),
       });
     }
     const ROWS = app.buf.rows;
     const PAGE = ROWS - 4;
     const state = { surface: 'menu', view: 'all', cursor: 1, typed: '', query: null, flood: null, alert: null };
-    const shown = () => state.view === 'friends' ? users.filter(u => u.friend) : users;
+    // The users PTT lists: `users` as they are, or as PTT took them last.
+    const snapshot = () => {
+      const now = Date.now();
+      if (!snapshotMs || !state.snap || now - state.snapAt >= snapshotMs) {
+        state.snap = users.slice();
+        state.snapAt = now;
+      }
+      return state.snap;
+    };
+    const listed = () => snapshotMs && state.snap ? state.snap : users;
+    const shown = () => state.view === 'friends' ? listed().filter(u => u.friend) : listed();
+    const pageTop = num => Math.floor((num - 1) / PAGE) * PAGE + 1;
+    // The users of the page from number `top`: PTT starts at that number and
+    // reads on past the users hidden from the reader.
+    const pageRows = top => {
+      const list = shown();
+      const rows = [];
+      for (let i = top - 1; i < list.length && rows.length < PAGE; i++) if (!list[i].hidden) rows.push(list[i]);
+      return rows;
+    };
     const SGR = '\x1b[m';
     const menuFrame = () => {
       let s = at(0) + '\x1b[7m' + pad('【主功能表】', 80) + SGR;
@@ -110,18 +142,20 @@ async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 
     const HINTS = [['w', '丟水球 '], ['q', '查詢 '], ['→', '聊天 '], ['m', '寄信 '], ['Tab', '排序       '], ['←', '離開 '], ['h', '說明  ']];
     const EMPTY_HINTS = [['Tab', '排序 '], ['f', '好友 '], ['s', '搜尋 '], ['b', '廣播 '], ['S', '顯示切換      '], ['←', '離開 '], ['h', '說明  ']];
     const listFrame = () => {
+      snapshot();
       const list = shown();
       // PTT keeps its cursor on a user when the list it reads again is
       // shorter (psb.c clamps it to the last one).
       if (list.length && state.cursor > list.length) state.cursor = list.length;
-      const top = Math.floor((state.cursor - 1) / PAGE) * PAGE + 1;
+      const top = pageTop(state.cursor);
+      const rows = pageRows(top);
       let s = at(0) + titleBar(state.view === 'friends' ? '【好友列表】' : '【休閒聊天】');
       s += at(1) + ' 排序:[朋友] 站上:' + (count + 40) + ' \x1b[1;32m朋友:' + friends.length +
         ' \x1b[33m與我為友:0 \x1b[36m板友:0 \x1b[31m壞人:0' + SGR;
       s += at(2) + '\x1b[30;47m' +
         pad('   編號 P 代號         暱稱              故鄉             動態              發呆', 80) + SGR;
-      for (let i = 0; i < PAGE && top + i <= list.length; i++)
-        s += at(3 + i) + userRow(list[top + i - 1], top + i, top + i === state.cursor);
+      for (let i = 0; i < rows.length; i++)
+        s += at(3 + i) + userRow(rows[i], top + i, top + i === state.cursor);
       s += at(ROWS - 1) + footer(list.length ? HINTS : EMPTY_HINTS);
       return s + (list.length ? at(3 + state.cursor - top) : at(3));
     };
@@ -208,7 +242,7 @@ async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 
         state.view = state.view === 'all' ? 'friends' : 'all';
         state.cursor = 1;
       } else if (token === 'q') {
-        const u = shown()[state.cursor - 1];
+        const u = pageRows(PAGE_TOP())[state.cursor - PAGE_TOP()];
         if (u && !u.gone) {
           state.query = u;
           state.surface = 'query';
@@ -229,9 +263,9 @@ async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 
       for (const token of bytes.match(TOKEN) || []) if (token !== '\f') apply(token);
       setTimeout(() => app.onData(frame()), delay + (state.slept ? sleepMs : 0));
     };
-    window.__userListServer = { state, users, frame, PAGE };
+    window.__userListServer = { state, users, frame, PAGE, pageRows };
     app.onData(frame());
-  }, { count, friends, gone, delay, plans, sleepMs, ART, MAIN_MENU, FIRST_ITEM_ROW });
+  }, { count, friends, gone, delay, plans, sleepMs, hidden, twins, snapshotMs, ART, MAIN_MENU, FIRST_ITEM_ROW });
   await page.waitForFunction(() => window.__app.homeDashboard.state.visible);
 }
 

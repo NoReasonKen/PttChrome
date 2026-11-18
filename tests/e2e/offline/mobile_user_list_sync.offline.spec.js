@@ -1,10 +1,12 @@
 // The online user list (#199) keeps showing PTT's current rows, and the
 // selected card's `>` and its highlight stay on one card.
 //
-// PTT lists users from a snapshot it takes again, sorted, when it reloads a
-// page 10 s or more after the last one (talk.c#pickup), so a login or a
-// logout moves every user below it. The rows easy reading holds from the old
-// snapshot must not mix with PTT's new pages.
+// PTT lists users from a snapshot it takes again when it reloads a page 10 s
+// or more after the last one (talk.c#pickup), so a login or a logout moves
+// every user below it. The rows easy reading holds from the old snapshot
+// must not mix with PTT's new pages. Within one snapshot PTT's pages overlap:
+// a page skips the users hidden from the reader and reads on, and the next
+// page starts with its last users again.
 //
 // The list is the controlled PTT of helpers/user_list.js with invented users.
 // Ctrl+Z u is sent to PTT as it is: the entrance is
@@ -27,6 +29,28 @@ const cards = (page) => main(page).evaluate((el) => [...el.querySelectorAll('.li
   })));
 const loaded = (page) => page.evaluate(() => (window.__app.buf.listLineNums || []).filter((n) => n != null).length);
 const pttIds = (page) => page.evaluate(() => window.__userListServer.users.map((u) => u.id));
+const sentCount = (page) => page.evaluate(() => window.__userListSent.length);
+// The ID PTT lists at each number of `nums`, on the page it draws there.
+const pttIdsAt = (page, nums) => page.evaluate((nums) => {
+  const { pageRows, PAGE } = window.__userListServer;
+  return nums.map((num) => {
+    const top = Math.floor((num - 1) / PAGE) * PAGE + 1;
+    const user = pageRows(top)[num - top];
+    return user ? user.id : null;
+  });
+}, nums);
+// Nothing more is sent to PTT for a while: the reading on stopped.
+async function readingStops(page) {
+  let last = -1;
+  await expect.poll(async () => {
+    const n = await page.evaluate(() => (window.__app.commandQueue.idle ? window.__userListSent.length : -1));
+    const same = n >= 0 && n === last;
+    last = n;
+    return same;
+  }, { intervals: [1000], timeout: 20000 }).toBe(true);
+}
+// Every fourth user is hidden from the reader.
+const everyFourth = (count) => Array.from({ length: Math.floor(count / 4) }, (_, i) => 4 * (i + 1));
 
 // Every card is PTT's current row at its number, and no user shows twice.
 async function expectPttRows(page) {
@@ -120,5 +144,97 @@ test.describe('the selected card', () => {
       { mark: [5], lit: [5] },
       { mark: [4], lit: [4] },
     ]);
+  });
+});
+
+test.describe('reading on through PTT\'s pages', () => {
+  test('pages that list users of the page above again read on only as far as the window needs', async ({ page }) => {
+    // One user is logged in twice.
+    await bootUserList(page, { count: 1200, hidden: everyFourth(1200), twins: [30] });
+    await sendRaw(page, '\x1au');
+    await userListActive(page);
+    await idle(page);
+    const before = await sentCount(page);
+    await ptt.sendKey(page, 'ArrowDown');
+    await readingStops(page);
+    const pages = await page.evaluate((from) => window.__userListSent.slice(from)
+      .filter((keys) => keys.includes('\x1b[6~')).length, before);
+    expect(pages).toBeGreaterThan(0);
+    expect(pages).toBeLessThanOrEqual(4);
+    const shown = await cards(page);
+    expect(shown.filter((c) => c.mark).map((c) => c.num)).toEqual([2]);
+    // The rows held are PTT's, number by number, from user 1 on.
+    const nums = await page.evaluate(() => window.__app.buf.listLineNums.filter((n) => n != null));
+    expect(nums).toEqual(nums.map((_, i) => i + 1));
+    const held = await page.evaluate(() => {
+      const { listLines, listLineNums } = window.__app.buf;
+      return listLineNums.map((n, i) => (n == null ? null : (listLines[i].map((c) => (c ? c.ch : " ")).join('').match(/^.{10}(\S+)/) || [])[1]))
+        .filter((id) => id != null);
+    });
+    expect(held).toEqual(await pttIdsAt(page, nums));
+  });
+
+  test('a list that changes between reads settles once the reader stops', async ({ page }) => {
+    await bootUserList(page, { count: 400, hidden: everyFourth(400), snapshotMs: 600 });
+    await sendRaw(page, '\x1au');
+    await userListActive(page);
+    await idle(page);
+    // Users keep logging in at the top of PTT's list; each read is of a new
+    // snapshot.
+    await page.evaluate(() => {
+      const { users } = window.__userListServer;
+      let n = 0;
+      window.__logins = setInterval(() => {
+        n++;
+        users.unshift({ ...users[1], id: 'login' + n, nick: '新來的', hidden: false });
+      }, 100);
+    });
+    for (const key of ['PageDown', 'PageDown', 'PageDown', 'PageUp', 'PageDown']) {
+      await ptt.sendKey(page, key);
+      await page.waitForTimeout(700); // sleep-ok: each read comes after PTT took a new snapshot (snapshotMs)
+    }
+    await readingStops(page);
+    const settled = await sentCount(page);
+    await page.waitForTimeout(2000); // sleep-ok: nothing more may be sent over this time
+    expect(await sentCount(page)).toBe(settled);
+    expect(await page.evaluate(() => window.__app.commandQueue.idle)).toBe(true);
+    await page.evaluate(() => clearInterval(window.__logins));
+    // One selected card, and no number listed twice.
+    const shown = await cards(page);
+    expect(shown.filter((c) => c.mark)).toHaveLength(1);
+    const nums = await page.evaluate(() => window.__app.buf.listLineNums.filter((n) => n != null));
+    expect(nums.filter((n, i) => nums.indexOf(n) !== i)).toEqual([]);
+  });
+
+  test('a list that changes on every page PTT draws stops being read again', async ({ page }) => {
+    await bootUserList(page, { count: 400 });
+    await sendRaw(page, '\x1au');
+    await userListActive(page);
+    for (let i = 0; i < 5; i++) await ptt.sendKey(page, 'ArrowDown');
+    await readingStops(page);
+    // From here a user logs in at the top before every page PTT draws, so
+    // every page that lists a number held disagrees with the rows held.
+    await page.evaluate(() => {
+      const { users } = window.__userListServer;
+      const send = window.__stubWSSent;
+      let n = 0;
+      window.__stubWSSent = (bytes) => {
+        n++;
+        users.unshift({ ...users[1], id: 'login' + n, nick: '新來的' });
+        send(bytes);
+      };
+    });
+    // A query and back: PTT draws its list again.
+    await main(page).locator('.listCard[data-user-id="user010"]').tap();
+    await page.waitForFunction(() => window.__app.userQuery.phase === 'shown' && window.__app.commandQueue.idle);
+    await page.waitForFunction(() => !!window.history.state?.pttchromeBackGuard);
+    await page.goBack();
+    await userListActive(page);
+    await readingStops(page);
+    const settled = await sentCount(page);
+    await page.waitForTimeout(2000); // sleep-ok: nothing more may be sent over this time
+    expect(await sentCount(page)).toBe(settled);
+    const shown = await cards(page);
+    expect(shown.filter((c) => c.mark)).toHaveLength(1);
   });
 });

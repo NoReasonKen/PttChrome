@@ -1040,6 +1040,9 @@ function markReadRejected(rowTexts) {
 // → rebuild → 往上補頁」整段；過了還沒套用就放棄，免得很久以後的某次補頁突然
 // 把畫面拉走。
 const PENDING_VIEWPORT_MAX_MS = 10000;
+// How long PTT lists the user list from one snapshot of its users before it
+// takes another on the next page it reads (talk.c USERLIST_SNAPSHOT_EXPIRE_SECS).
+const USER_LIST_SNAPSHOT_MS = 10000;
 
 // Owner of list easy reading. Subscribes to term_buf 'screenSettled' and runs:
 //   settle → snapshot+facts → queue.onSettle (command completion first)
@@ -1099,6 +1102,12 @@ export function ListSession(core, view, termBuf, queue) {
   // follows ({ id, num, at }), until a page lists them (noteUserListPage).
   this._userListResync = null;
   this._userListResyncs = 0;
+  // When a new snapshot last read the user list again from scratch (the fill
+  // cap restarted): at most once per snapshot (noteUserListPage).
+  this._userListRefillAt = null;
+  // The user selected when a query gave the user list back ({ id, num, at }),
+  // until the resume's rebuild follows them (_rebuild) or the reader moves.
+  this._userListReturn = null;
   // Contiguity-prune pivot override while a far jump is in flight (End/Home):
   // the jump's landing page is DISCONTIGUOUS with the buffer by design, and the
   // prune must keep the TARGET segment, not the one the cursor came from.
@@ -1691,6 +1700,8 @@ ListSession.prototype = {
     const board = this._helpBoard;
     const sel = this._helpSelection;
     const resyncs = this._userListResyncs;
+    const who = listKept && this.isUserList() ? this.userListSelection() : null;
+    this._userListReturn = who && who.id ? { id: who.id, num: who.num, at: Date.now() } : null;
     this._helpBoard = null;
     // Kept through the resume: a user list PTT draws from a new snapshot
     // follows the user selected here (userListSelection).
@@ -3374,6 +3385,7 @@ ListSession.prototype = {
       const user = parseUserListRow((this._termBuf.listLines || [])[abs]);
       if (!user || !user.id || nums[abs] == null) return;
       this._userListResync = null;
+      this._userListReturn = null;
       this._selectedNum = nums[abs];
       this._selectedPinnedKey = null;
       this._forceRedraw();
@@ -3519,6 +3531,8 @@ ListSession.prototype = {
   _seed: function(facts) {
     this._dropPendingViewport('seed');
     this._userListResync = null;
+    this._userListReturn = null;
+    this._userListRefillAt = null;
     this._holdReason = null;
     this._cancelResumeProbe();
     this._breakChain();
@@ -3585,8 +3599,17 @@ ListSession.prototype = {
   _rebuild: function(facts, edge) {
     this._breakChain();
     // A user list rebuilt from PTT's page still follows its user
-    // (noteUserListPage); another list does not.
+    // (noteUserListPage), and starts to when the rebuild ends a return from
+    // a query (_userListReturn): PTT may draw that page from a new snapshot
+    // without listing a number held. Another list does not.
     if (!facts || facts.boardName !== this._boardName) this._userListResync = null;
+    else if (
+      !this._userListResync &&
+      this._userListReturn &&
+      Date.now() - this._userListReturn.at < PENDING_VIEWPORT_MAX_MS
+    )
+      this._userListResync = this._userListReturn;
+    this._userListReturn = null;
     // _lastReadTitle kept: title keys are number-space independent (see _seed).
     this._view.resetListAccumulation();
     this._termBuf.listLines = [];
@@ -3788,13 +3811,15 @@ ListSession.prototype = {
   },
 
   // term_view.accumulateListLines, after each user-list page (#199). PTT lists
-  // users from a snapshot it takes again, sorted, when it reloads a page 10 s
-  // or more after the last one (talk.c#pickup). `resynced`: this page came from
-  // a new snapshot, and the rows held from the old one were dropped;
-  // `selection` is userListSelection() from before the drop.
+  // users from a snapshot it takes again when it reloads a page 10 s or more
+  // after the last one (talk.c#pickup). `resynced`: this page came from a new
+  // snapshot, and the rows held from the old one were dropped; `selection` is
+  // userListSelection() from before the drop.
   //
   // The session reads the list again around the new page (its edges are no
-  // longer known) and the selection follows its user: on the number it had
+  // longer known; the fill cap starts again at most once per
+  // USER_LIST_SNAPSHOT_MS) and the selection follows its user (also after a
+  // rebuild of the user list, _rebuild): on the number it had
   // while the list is read on toward that number (_maybeFill), then on the
   // user's number once a page lists them. A user not listed once that number
   // is held (logged off, or moved past the pages read) leaves the selection at
@@ -3809,7 +3834,14 @@ ListSession.prototype = {
       this._newerBelow = false;
       this._stallUp = false;
       this._stallDown = false;
-      this._fillPages = 0;
+      // The fill reads its pages again once per snapshot: PTT takes the next
+      // one no sooner than USER_LIST_SNAPSHOT_MS, so pages disagreeing more
+      // often than that must not keep the list reading.
+      const at = Date.now();
+      if (this._userListRefillAt == null || at - this._userListRefillAt >= USER_LIST_SNAPSHOT_MS) {
+        this._userListRefillAt = at;
+        this._fillPages = 0;
+      }
       // A second new snapshot before the user is found keeps the first
       // target: the selection may since have snapped to another user.
       if (!this._userListResync && selection && selection.num != null)
@@ -3841,14 +3873,19 @@ ListSession.prototype = {
     if (!r) return;
     const lines = this._termBuf.listLines || [];
     const nums = this._termBuf.listLineNums || [];
+    // PTT can list a user twice (its pages overlap, a user logged in twice):
+    // the row nearest the number they had.
+    let found = null;
     for (let i = 0; r.id && i < lines.length; ++i) {
       if (nums[i] == null) continue;
+      if (found != null && Math.abs(nums[i] - r.num) >= Math.abs(found - r.num)) continue;
       const user = parseUserListRow(lines[i]);
-      if (user && user.id === r.id) {
-        this._selectedNum = nums[i];
-        this._userListResync = null;
-        return;
-      }
+      if (user && user.id === r.id) found = nums[i];
+    }
+    if (found != null) {
+      this._selectedNum = found;
+      this._userListResync = null;
+      return;
     }
     // Not listed yet: the number it had (getListView shows the nearest row
     // while that number is not held).
@@ -4713,6 +4750,7 @@ ListSession.prototype = {
     this._scrollFrac = 0;
     this._dropPendingViewport('cleanup');
     this._userListResync = null;
+    this._userListReturn = null;
     // 真的離開看板了：身後的列表紀錄跟著作廢。
     recordFor(this._core).takeBehindList();
     this._seqCache = null;
@@ -5248,6 +5286,7 @@ ListSession.prototype = {
   // serverOp 的判準一字未改（read.c:842-880 的邊界條件）。
   _moveSelection: function(op, opts) {
     this._userListResync = null;
+    this._userListReturn = null;
     const seq = this._sequence();
     if (!seq.length) return;
     const len = seq.length;

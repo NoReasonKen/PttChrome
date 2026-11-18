@@ -259,32 +259,26 @@ function rowUserId(row) {
 }
 
 // Whether a page of the user list PTT painted comes from another snapshot
-// than the rows held: PTT sorts its users again when it reloads a page 10 s
+// than the rows held: PTT takes its users again when it reloads a page 10 s
 // or more after the last one (talk.c#pickup), and a user who logged in or
-// out moves every user below. Another user at a number held, or a user held
-// at a number the page does not show, tells it. Rows without an ID (a user
-// who logged off between PTT's count and its paint) tell nothing.
-// `numMap` is number → held row, `entries` the page's { num, row }.
+// out moves every user below. Another user at a number held tells it. A
+// user held at another number does not: within one snapshot PTT's pages
+// overlap (a page starts at its number in the snapshot, and the users it
+// skips on the page above, hidden ones and friends, push that page's last
+// users onto the next one), and a user logged in twice is listed twice.
+// Rows without an ID (a user who logged off between PTT's count and its
+// paint) tell nothing. `numMap` is number → held row, `entries` the page's
+// { num, row }.
 export function userListPageDisagrees(numMap, entries) {
   if (!numMap || !numMap.size) return false;
-  const pageNums = new Set();
-  const pageIds = new Map();
   for (let i = 0; i < entries.length; ++i) {
     const e = entries[i];
     if (e.num == null) continue;
-    pageNums.add(e.num);
-    const id = rowUserId(e.row);
-    if (id == null) continue;
     const held = numMap.get(e.num);
-    const heldId = held ? rowUserId(held) : null;
-    if (heldId != null && heldId !== id) return true;
-    pageIds.set(id, e.num);
-  }
-  if (!pageIds.size) return false;
-  for (const [num, row] of numMap) {
-    if (pageNums.has(num)) continue;
-    const id = rowUserId(row);
-    if (id != null && pageIds.has(id)) return true;
+    if (!held) continue;
+    const id = rowUserId(e.row);
+    const heldId = rowUserId(held);
+    if (id != null && heldId != null && heldId !== id) return true;
   }
   return false;
 }

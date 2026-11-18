@@ -450,7 +450,7 @@ describe("the online user list (#199)", () => {
     });
   });
 
-  // PTT lists users from a snapshot it takes again, sorted, when it reloads a
+  // PTT lists users from a snapshot it takes again when it reloads a
   // page 10 s or more after the last one (talk.c#pickup): rows held from the
   // old snapshot must not mix with its pages.
   describe("a page from a new snapshot", () => {
@@ -482,10 +482,14 @@ describe("the online user list (#199)", () => {
       expect(userListPageDisagrees(held(users(1, 40)), page(moved))).toBe(true);
     });
 
-    test("disagrees when a user held at another number is listed", () => {
-      // The page joins the rows held, but its first user is held two rows up.
-      const moved = renumber(users(39, 20), 41);
-      expect(userListPageDisagrees(held(users(1, 40)), page(moved))).toBe(true);
+    test("agrees when it lists users held at other numbers", () => {
+      // One snapshot: PTT's next page starts with the last users of the page
+      // above when that page skipped some (hidden users, friends).
+      const overlap = renumber(users(35, 20), 41);
+      expect(userListPageDisagrees(held(users(1, 40)), page(overlap))).toBe(false);
+      // A user logged in twice is listed at two numbers.
+      const twice = users(21, 20).map((u, i) => (i === 1 ? { ...u, id: "user021" } : u));
+      expect(userListPageDisagrees(held(users(1, 20)), page(twice))).toBe(false);
     });
 
     test("a user who logged off has no ID to compare", () => {
