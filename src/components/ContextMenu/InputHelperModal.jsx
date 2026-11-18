@@ -710,7 +710,7 @@ export const InputHelperModal = ({
         <Tabs value={tab} onChange={setTab}>
           <Tabs.List>
             <Tabs.Tab value="colors">{i18n("colorTitle")}</Tabs.Tab>
-            <Menu trigger="click-hover" position="bottom-start" zIndex={3000}>
+            <Menu trigger="click" position="bottom-start" zIndex={3000}>
               <Menu.Target>
                 <Button variant="subtle" size="compact-sm">
                   {i18n("symTitle")}
@@ -727,7 +727,7 @@ export const InputHelperModal = ({
                 ))}
               </Menu.Dropdown>
             </Menu>
-            <Menu trigger="click-hover" position="bottom-start" zIndex={3000}>
+            <Menu trigger="click" position="bottom-start" zIndex={3000}>
               <Menu.Target>
                 <Button variant="subtle" size="compact-sm">
                   {i18n("emoTitle")}

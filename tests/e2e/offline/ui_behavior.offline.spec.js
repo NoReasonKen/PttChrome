@@ -492,6 +492,36 @@ test.describe('UI 行為（offline，跨 bootstrap 版本守門）', () => {
     await expect.poll(() => page.evaluate(() => (window.__sentLog || []).join(''))).toContain('\x15[0;5;37;40m');
   });
 
+  test('InputHelper: the symbols and emoticons lists open on click only, one at a time', async ({ page }) => {
+    await installReplay(page);
+    await page.goto('/');
+    await waitConnected(page);
+    await openInputHelper(page);
+    const dialog = page.locator('.InputHelperModal__Dialog');
+    const sym = dialog.getByRole('button', { name: await label(page, 'symTitle') });
+    const emo = dialog.getByRole('button', { name: await label(page, 'emoTitle') });
+    const symItem = page.getByRole('menuitem', { name: await label(page, 'symTitle_general') });
+    const emoItem = page.getByRole('menuitem', { name: await label(page, 'emoTitle_happy') });
+    // Hover alone does nothing.
+    await sym.hover();
+    await expect(symItem).toHaveCount(0);
+    await sym.click();
+    await expect(symItem).toBeVisible();
+    // Moving away leaves it open (no hover close); opening the other closes it.
+    await dialog.getByText(await label(page, 'inputHelperTitle')).hover();
+    await expect(symItem).toBeVisible();
+    await emo.click();
+    await expect(emoItem).toBeVisible();
+    await expect(symItem).toHaveCount(0);
+    // A click on the same button toggles, Esc closes.
+    await emo.click();
+    await expect(emoItem).toHaveCount(0);
+    await sym.click();
+    await expect(symItem).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(symItem).toHaveCount(0);
+  });
+
   test('UI 文字：輸入小幫手符號格文字色 ≠ 底色（防白底白字）', async ({ page }) => {
     await installReplay(page);
     await page.goto('/');
