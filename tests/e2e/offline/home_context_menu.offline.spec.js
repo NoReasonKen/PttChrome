@@ -74,4 +74,34 @@ test.describe('home dashboard context menu', () => {
       await expect(page.locator('.DropdownMenu')).toHaveCount(0);
     }
   });
+
+  test('a click elsewhere on the dashboard closes the menu; a right-click moves it; Escape closes it', async ({ page }) => {
+    await bootHome(page);
+    await rightClickAt(page, '#homeDashboard', { x: 6, y: 6 });
+    await expect(menu(page)).toBeVisible();
+    await page.mouse.click(700, 500);
+    await expect(page.locator('.DropdownMenu')).toHaveCount(0);
+
+    await rightClickAt(page, '#homeDashboard', { x: 6, y: 6 });
+    await expect(menu(page)).toBeVisible();
+    const first = await menu(page).boundingBox();
+    await rightClickAt(page, '#homeDashboard', { x: 700, y: 300 });
+    await expect(menu(page)).toBeVisible();
+    await expect
+      .poll(async () => (await menu(page).boundingBox()).x)
+      .not.toBe(first.x);
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.DropdownMenu')).toHaveCount(0);
+  });
+
+  test('home offers no select all (it would select the hidden terminal grid)', async ({ page }) => {
+    await bootHome(page);
+    await rightClickAt(page, '#homeDashboard', { x: 6, y: 6 });
+    await expect(menu(page)).toBeVisible();
+    await expect(
+      menu(page).getByRole('menuitem').filter({ hasText: await label(page, 'cmenu_selectAll') })
+    ).toHaveCount(0);
+    await expect(menu(page).getByText(await label(page, 'cmenu_settings'), { exact: true })).toBeVisible();
+  });
 });
