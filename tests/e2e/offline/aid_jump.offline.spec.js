@@ -65,6 +65,16 @@ test.describe('jump to an article by its code from the easy-reading list (#253)'
     expect(await page.evaluate(() => window.__shortcutServer.state.surface)).toBe('list');
   });
 
+  test('the input stops at the longest article code', async ({ page }) => {
+    await bootList(page);
+    await ptt.sendKey(page, '#');
+    await page.locator(INPUT).fill('#1gIeu-3C (Test)');
+    await page.locator(INPUT).pressSequentially('x'.repeat(80));
+    const typed = await page.locator(INPUT).inputValue();
+    expect(typed.length).toBe(await page.evaluate(() => Number(document.querySelector('input[name="aidCode"]').maxLength)));
+    expect(typed.length).toBeLessThanOrEqual(32);
+  });
+
   test('cancelling the input leaves the list as it was and sends nothing', async ({ page }) => {
     await bootList(page);
     const from = await selected(page);

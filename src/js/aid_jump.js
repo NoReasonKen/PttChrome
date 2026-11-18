@@ -4,7 +4,7 @@
 // the keys go through the serialized AID navigation, which verifies every
 // screen. Pure parsing here; the page lives in components/ContextMenu/
 // AidJumpModal.jsx, the keys in aid_navigation.js.
-import { isAidc, parseAidWithBoard } from './aid_codec';
+import { AID_INPUT_MAX_LENGTH, isAidc, parseAidWithBoard } from './aid_codec';
 import { sameBoard } from './screen_titles';
 import { serializedOpHint } from './serialized_op_gate';
 import { HINT_ERROR } from './status_hint';
@@ -18,7 +18,7 @@ import { i18n } from './i18n';
 // Returns { aid, board } (board null when none was written) or null.
 export function parseAidJumpInput(text) {
   const s = String(text || '').trim();
-  if (!s || /^https?:\/\//i.test(s)) return null;
+  if (!s || s.length > AID_INPUT_MAX_LENGTH || /^https?:\/\//i.test(s)) return null;
   const bare = /^#?([0-9][0-9A-Za-z_-]{7})$/.exec(s);
   if (bare && isAidc(bare[1])) return { aid: bare[1], board: null };
   const target = parseAidWithBoard(s);

@@ -3,6 +3,7 @@ import { Modal, TextInput, Button, Group } from "@mantine/core";
 import { i18n } from "../../js/i18n";
 import MobileSheet from "../MobileSheet";
 import { parseAidJumpInput } from "../../js/aid_jump";
+import { AID_INPUT_MAX_LENGTH } from "../../js/aid_codec";
 
 // Jump to an article by its code from the easy-reading article list (#253,
 // js/aid_jump.js), presented like the search sheet: a bottom sheet on the
@@ -33,6 +34,7 @@ export const AidJumpModal = ({
       <TextInput
         data-autofocus
         name="aidCode"
+        maxLength={AID_INPUT_MAX_LENGTH}
         label={i18n("aidJump_label")}
         placeholder={i18n("aidJump_placeholder")}
         autoComplete="off"

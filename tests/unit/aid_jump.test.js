@@ -1,9 +1,18 @@
 import { describe, it, expect, vi } from 'vitest';
 vi.mock('../../src/js/i18n', () => ({ i18n: (key) => key + ' {0}' }));
 
+import { AID_INPUT_MAX_LENGTH } from '../../src/js/aid_codec';
 import { parseAidJumpInput, requestAidJump, startAidJump } from '../../src/js/aid_jump';
 
 describe('parseAidJumpInput', () => {
+  it('takes the longest real form and nothing longer than the input limit', () => {
+    const real = '#1AbCdEfG (' + 'a'.repeat(12) + ')';
+    expect(real.length).toBeLessThanOrEqual(AID_INPUT_MAX_LENGTH);
+    expect(parseAidJumpInput(real)).toEqual({ aid: '1AbCdEfG', board: 'a'.repeat(12) });
+    const long = '#1AbCdEfG' + ' '.repeat(AID_INPUT_MAX_LENGTH) + 'Test';
+    expect(parseAidJumpInput(long)).toBeNull();
+    expect(parseAidJumpInput('  ' + real + '  ')).not.toBeNull(); // trimmed first
+  });
   it('reads a code with or without #', () => {
     expect(parseAidJumpInput('#1AbCdEfG')).toEqual({ aid: '1AbCdEfG', board: null });
     expect(parseAidJumpInput(' 1AbCdEfG\n')).toEqual({ aid: '1AbCdEfG', board: null });
