@@ -7,6 +7,8 @@
 // 的 expect 會永遠判否。
 import { ListSession } from "../../src/js/list_session";
 import { LIST_HEADER_ROWS } from "../../src/js/list_window";
+import { MAIL_LIST_KEY } from "../../src/js/screen_titles";
+import { UNSUPPORTED_KEY_HINT } from "../../src/js/unsupported_hint";
 
 function rowOf(text) {
   return text.split("").map((c) => ({ ch: c, isLeadByte: false }));
@@ -144,6 +146,18 @@ describe("markReadTargetAtRow（純查詢，決定選單項出不出現）", () 
     expect(s.markReadTargetAtRow(4)).toEqual({ num: 101 });
     expect(s.markReadTargetAtRow(3)).toBe(null); // 在新的 header 區內
     expect(s.markReadTargetAtRow(6)).toEqual({ num: 103 });
+  });
+
+  // #252: `v` / `w` in the mailbox are other commands (`w` throws a water ball).
+  test("信箱列表 → null；直接呼叫也拒絕並提示、不送鍵", () => {
+    const { s, sent, enqueued, hints } = makeSession();
+    s._boardName = MAIL_LIST_KEY;
+    expect(s.isMailList()).toBe(true);
+    expect(s.markReadTargetAtRow(bodyRow(2))).toBe(null);
+    expect(s.markReadUnreadBefore(103)).toBe(true);
+    expect(sent).toEqual([]);
+    expect(enqueued).toEqual([]);
+    expect(hints.at(-1)).toBe(UNSUPPORTED_KEY_HINT);
   });
 
   test("非 active／非 buffer（原生鏡像、交易中）→ null", () => {

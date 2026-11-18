@@ -25,7 +25,7 @@ import { atPagerStatusRow } from './long_push_gate';
 import { parsePagerFooterContext } from './string_util';
 import { boardListContextKind, classifyBoardListScreen } from './board_list_parse';
 import { OWNER_ARTICLE_LIST } from './list_render_owner';
-import { parseBoardKey, boardNameFromKey, isUserListTitleRow } from './screen_titles';
+import { parseBoardKey, boardNameFromKey, isMailListTitleRow, isUserListTitleRow } from './screen_titles';
 import { footerCaption } from './screen_captions';
 import {
   isSearchPromptFrame,
@@ -36,6 +36,7 @@ import { landedOnBoard, SLOW_STEP_BUDGET } from './aid_navigation';
 import { serializedOpHint } from './serialized_op_gate';
 import { readValuesWithDefault } from './pref_storage';
 import { HINT_ERROR } from './status_hint';
+import { UNSUPPORTED_REFRESH_HINT } from './unsupported_hint';
 import { recordFor } from './reading_record';
 import { toolbarDiag } from './toolbar_diag';
 
@@ -54,7 +55,10 @@ const HOT_BOARD_REJECT = '熱門看板模式下不支援';
 //   opts.listOpened：列表好讀自己開的這篇（超長文 footer 被擠掉時的 READING 證據）
 //   opts.home：首頁儀表板畫著（home_dashboard 的 state.visible；它自己認主功能表，
 //             抓最愛途中畫面在我的最愛上也算——那時送出會被忙碌提示擋下）
-// 回 { kind:'article'|'article-list'|'board-list'|'home', board? } 或 null。
+// 回 { kind:'article'|'article-list'|'board-list'|'home'|'mail', board? } 或 null。
+// 'mail'（#252）：信箱列表與一封信。沒有重整可做，但也不是「不支援的畫面」：F5 不交還
+// 瀏覽器（整頁重載會斷線）、下拉與工具列都給「不支援」提示、不送任何鍵。信箱的標題列
+// 仍寫著上次的看板（currboard 還在），所以要在讀看板名之前先認出它。
 export function refreshTargetFromFacts(facts, pageState, opts) {
   if (!facts) return null;
   const o = opts || {};
@@ -67,10 +71,12 @@ export function refreshTargetFromFacts(facts, pageState, opts) {
   if (facts.inputField) return null;
   if (pageState === 3 && atPagerStatusRow(last)) {
     let ctx = parsePagerFooterContext(last);
+    if (ctx === 'mail') return { kind: 'mail' };
     if (ctx === 'unknown' && o.listOpened) ctx = 'reading';
     if (ctx !== 'reading' || !o.articleBoard) return null;
     return { kind: 'article', board: o.articleBoard };
   }
+  if (isMailListTitleRow(rowTexts[0])) return { kind: 'mail' };
   if (
     facts.listOwner === OWNER_ARTICLE_LIST ||
     boardListContextKind(facts) === 'article-list'
@@ -85,6 +91,12 @@ export function refreshTargetFromFacts(facts, pageState, opts) {
   }
   if (classifyBoardListScreen(facts)) return { kind: 'board-list' };
   return null;
+}
+
+// Whether a target is a refresh the reader is offered (the toolbar's button, the
+// command palette): the mailbox only refuses (#252).
+export function refreshOffered(target) {
+  return !!target && target.kind !== 'mail';
 }
 
 // 瀏覽器的「重新整理」快捷鍵裡我們接手的那幾顆：F5、⌘R（mac）。
@@ -268,6 +280,13 @@ ScreenRefresh.prototype = {
       diag('unsupported');
       if (source !== 'key') this._hint('這個畫面不支援重新整理');
       return false;
+    }
+    // The mailbox and a mail have no refresh (#252): refused, never sent and
+    // never handed to the browser, which would reload the page.
+    if (target.kind === 'mail') {
+      diag('unsupportedMail');
+      this._hint(UNSUPPORTED_REFRESH_HINT, 4000, HINT_ERROR);
+      return true;
     }
     // It is refreshed once PTT shows it, through this same path.
     if (target.kind === 'revealed') {
