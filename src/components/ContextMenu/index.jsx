@@ -1399,10 +1399,14 @@ export const ContextMenu = ({ pttchrome }) => {
     [update],
   );
   const onInputHelperReset = useCallback(() => {
+    if (pttchrome.view.refusesHelperText("\x15[m")) return;
     pttchrome.conn.send("\x15[m");
   }, [pttchrome]);
   const onInputHelperCmdSend = useCallback(
     (cmd) => {
+      // Same gate as typed and pasted text (#242): easy reading refuses it
+      // wherever it presents no place to type.
+      if (pttchrome.view.refusesHelperText(cmd)) return;
       if (!window.getSelection().isCollapsed && pttchrome.buf.pageState == 6) {
         // something selected
         var sel = pttchrome.view.getSelectionColRow();
@@ -1444,6 +1448,7 @@ export const ContextMenu = ({ pttchrome }) => {
   );
   const onInputHelperConvSend = useCallback(
     (value) => {
+      if (pttchrome.view.refusesHelperText(value)) return;
       pttchrome.conn.convSend(value);
     },
     [pttchrome],

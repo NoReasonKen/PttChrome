@@ -181,6 +181,50 @@ test.describe('好讀 functionMode（scenario 重放）', () => {
     }
   });
 
+  // The context menu's input helper is typed text for the gate (#242): refused
+  // over the article, sent once a native prompt is mirrored.
+  test('the input helper send is refused over the article and sent in a native prompt', async ({ page }) => {
+    test.skip(!help, '缺 scn-er-help（yarn record:scenarios）');
+    await bootScenario(page, ptt, help);
+    await openAndAccumulate(page, help);
+    await ptt.applyPrefs(page, { enableInputHelper: true, showStatusHints: false });
+    const sentCount = () => page.evaluate(() => window.__replay.sent.length);
+    const sendFromHelper = async () => {
+      await page.locator('#BBSWindow').click({ button: 'right', position: { x: 40, y: 20 } });
+      await page.locator('.DropdownMenu').first()
+        .getByText(await page.evaluate(() => window.__i18n('cmenu_showInputHelper')), { exact: true }).click();
+      await page.locator('.InputHelperModal__Dialog')
+        .getByText(await page.evaluate(() => window.__i18n('colorHelperSend')), { exact: true }).click();
+    };
+
+    const before = await sentCount();
+    await sendFromHelper();
+    await expect(page.locator('.ListHint')).toContainText('好讀模式目前不支援在文章輸入文字');
+    expect(await fnMode(page)).toBe(false);
+    expect(await page.evaluate((k) => window.__replay.sent.slice(k), before)).toEqual([]);
+    // Reset (from the send button's menu) is refused the same way.
+    await page.evaluate(() => {
+      const el = document.querySelector('.ListHint');
+      if (el) el.textContent = '';
+    });
+    const dlg = page.locator('.InputHelperModal__Dialog');
+    await dlg.getByText('▾', { exact: true }).click();
+    await page.getByText(await page.evaluate(() => window.__i18n('colorHelperSendMenuReset')), { exact: true }).click();
+    await expect(page.locator('.ListHint')).toContainText('好讀模式目前不支援在文章輸入文字');
+    expect(await page.evaluate((k) => window.__replay.sent.slice(k), before)).toEqual([]);
+
+    // A native prompt mirrored (as the reply key leaves it): the bytes go out.
+    // The helper stays open, it is not a modal.
+    await page.evaluate(() => window.__app.easyReading._enterFunctionMode());
+    expect(await fnMode(page)).toBe(true);
+    const mirrored = await sentCount();
+    await page.locator('.InputHelperModal__Dialog')
+      .getByText(await page.evaluate(() => window.__i18n('colorHelperSend')), { exact: true }).click();
+    await expect
+      .poll(() => page.evaluate((k) => window.__replay.sent.slice(k).join(''), mirrored))
+      .toContain('\x15[0;37;40m');
+  });
+
   test('pasted and input-method text over the article is refused; a footer button for an unpresented function too', async ({ page, context }) => {
     test.skip(!seekback, '缺 scn-er-seekback（yarn record:scenarios）');
     await bootScenario(page, ptt, seekback);

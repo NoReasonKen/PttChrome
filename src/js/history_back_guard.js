@@ -33,6 +33,10 @@
 //     才算「落回自己站著的那一層」。用布林的話，退到 stack 裡**舊的**殘骸
 //     sentinel（deep link 的 replaceState／使用者手動操作都可能留下）會被誤判成
 //     「沒有往外退」而靜默失效。
+//     id 也必須**跨 document 唯一**（#19）：瀏覽器的 history entry 會活過重新整理，
+//     而 `seq` 每次 install 都從頭數 ⇒ 重新整理後新疊的 sentinel 會和上一個
+//     document 留下的 entry 同 id ⇒ 第一次 back 被誤判成「落回自己站著的那一層」
+//     而被吃掉。所以每個 document 從隨機起點開始數。
 //  5. **離站逃生門＝什麼都不做**：放行時停在 E0（不補 sentinel），下一次 back
 //     自然離站。**不是** history.go(-1)——開新分頁直接進站時 E0 前面根本沒有
 //     entry，go(-1) 是靜默無效。
@@ -54,7 +58,8 @@ export function installHistoryBackGuard(app, win, opts) {
   const later = o.setTimeout
     || (typeof w.setTimeout === 'function' ? w.setTimeout.bind(w) : setTimeout);
 
-  let seq = 0;
+  // Entries outlive a reload, so ids must differ between documents (#19).
+  let seq = typeof o.idBase === 'number' ? o.idBase : Math.floor(Math.random() * 0x40000000);
   let myId = 0;
   let armed = false;
   let restoring = false;

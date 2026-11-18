@@ -834,6 +834,36 @@ test.describe('文章列表好读模式（离线）', () => {
     }
   });
 
+  test('the input helper send over the list is refused with the list hint, nothing is sent and the list stays', async ({ page }) => {
+    // #242: the helper's bytes (Ctrl-U first) are typed text for the gate.
+    test.setTimeout(60000);
+    await bootOffline(page, ptt);
+    await ptt.applyPrefs(page, { enableEasyReading: false });
+    await replayListCassette(page, nav);
+    await page.waitForFunction(() => window.__app.buf.pageState === 2);
+    await ptt.applyPrefs(page, {
+      enableEasyReading: true,
+      easyReadingListPrefetchCount: 0,
+      enableInputHelper: true
+    });
+    const before = await waitState(page, (x) => x.state === 'active' && x.queueIdle);
+    await page.locator('#BBSWindow').click({ button: 'right', position: { x: 40, y: 20 } });
+    await page.locator('.DropdownMenu').first()
+      .getByText(await page.evaluate(() => window.__i18n('cmenu_showInputHelper')), { exact: true }).click();
+    const dialog = page.locator('.InputHelperModal__Dialog');
+    await dialog.getByText(await page.evaluate(() => window.__i18n('colorHelperSend')), { exact: true }).click();
+    await expectRefused(page, before, '好讀模式目前不支援在列表輸入文字');
+    // Reset is typed text too.
+    await page.evaluate(() => {
+      const el = document.querySelector('.ListHint');
+      if (el) el.textContent = '';
+    });
+    await dialog.getByText('▾', { exact: true }).click();
+    await page.getByText(await page.evaluate(() => window.__i18n('colorHelperSendMenuReset')), { exact: true }).click();
+    await expectRefused(page, before, '好讀模式目前不支援在列表輸入文字');
+    await expect(page.locator('.listBodyView')).toHaveCount(1);
+  });
+
   test('本地导航即时：↑ 立即移动游标（不等 server），demand 背景补页', async ({ page }) => {
     test.setTimeout(60000);
     const logs = ptt.attachConsole(page);
