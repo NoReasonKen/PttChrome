@@ -468,6 +468,30 @@ test.describe('UI 行為（offline，跨 bootstrap 版本守門）', () => {
     expect(color).not.toBe(bg);
   }
 
+  test('InputHelper: the blink checkbox shows its state at once, and the next colour send carries it', async ({ page }) => {
+    await installReplay(page);
+    await page.goto('/');
+    await waitConnected(page);
+    await openInputHelper(page);
+    const dialog = page.locator('.InputHelperModal__Dialog');
+    const blink = dialog.getByRole('checkbox');
+    await expect(blink).not.toBeChecked();
+    // A real click on the visible box and on the label, not on the hidden input.
+    await dialog.locator('.mantine-Checkbox-inner').click();
+    await expect(blink).toBeChecked();
+    await dialog.getByText(await label(page, 'colorHelperBlink'), { exact: true }).click();
+    await expect(blink).not.toBeChecked();
+    await blink.click();
+    await expect(blink).toBeChecked();
+    await blink.click();
+    await expect(blink).not.toBeChecked();
+    await blink.click();
+    await expect(blink).toBeChecked();
+    await page.evaluate(() => { window.__sentLog = []; window.__stubWSSent = (s) => window.__sentLog.push(s); });
+    await dialog.getByText(await label(page, 'colorHelperSend'), { exact: true }).click();
+    await expect.poll(() => page.evaluate(() => (window.__sentLog || []).join(''))).toContain('\x15[0;5;37;40m');
+  });
+
   test('UI 文字：輸入小幫手符號格文字色 ≠ 底色（防白底白字）', async ({ page }) => {
     await installReplay(page);
     await page.goto('/');

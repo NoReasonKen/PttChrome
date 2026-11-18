@@ -609,6 +609,8 @@ function sendColorCommand({ fg, bg, isBlink }, onCmdSend, type) {
   onCmdSend(cmd);
 }
 
+const stopClick = (e) => e.stopPropagation();
+
 export const InputHelperModal = ({
   show,
   onReset,
@@ -690,6 +692,9 @@ export const InputHelperModal = ({
       withBorder
       className="InputHelperModal__Dialog"
       style={{ top: pos.top, left: pos.left }}
+      // A click inside the helper is not a click on the terminal: the app's
+      // window-level click handler would cancel a checkbox's own toggle.
+      onClick={stopClick}
     >
       <Group
         justify="space-between"
