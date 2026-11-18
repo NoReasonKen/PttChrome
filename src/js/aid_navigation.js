@@ -70,6 +70,7 @@ import { parseListEntry } from './agent_parse';
 import { MAIN_MENU, boardNameFromKey, parseBoardKey, parseBoardName, rowHasTitle, sameBoard } from './screen_titles';
 import { isSubListFooter } from './screen_captions';
 import { HINT_ERROR } from './status_hint';
+import { resolveDismiss } from './screen_dismiss';
 import { recordFor } from './reading_record';
 import { articlePresented } from './article_hold';
 import { clearSearchResultsContext } from './search_results_context';
@@ -349,6 +350,8 @@ export function AidNavigation(core, view, termBuf, queue, history) {
   this._urlScanForwarded = false; // 掃到轉錄標頭了：之後的網址都不是本篇
   // 這一輪的結束回呼（只有 agent 工具會給，見 startBoard）。
   this._onRunEnd = null;
+  // The run in flight reports its end to its caller alone (selectArticle's quiet).
+  this._quietEnd = false;
 }
 
 AidNavigation.prototype = {
@@ -356,18 +359,21 @@ AidNavigation.prototype = {
     if (this._view.flashListHint) this._view.flashListHint(msg, ms || 4000, level);
   },
 
-  _fail: function(msg) {
+  // extra: fields the run's end result carries besides { ok: false, error }
+  // (`missed`: PTT answered that no such article is there).
+  _fail: function(msg, extra) {
     this.active = false;
     this.opHint = null;
     // 停在哪裡都一樣：把列表 session 的外部 hold 交回靜置探針（否則列表好讀會
     // 卡在原生鏡像直到下一次開文）。身後的列表紀錄留著，回到同一份列表時還原。
-    recordFor(this._core).releaseExternal();
+    recordFor(this._core).releaseExternal(extra && extra.landed ? { landed: true } : undefined);
     // A run started over an easy-reading article leaves the reader on it, held
     // (#209): the frames it held still show that article. Elsewhere PTT's
     // screen is shown as it is.
     const overArticle = this._overArticle;
     this._overArticle = false;
     const failed = (what) => {
+      if (this._quietEnd) return;
       if (overArticle) {
         this._core.articleHold.hold({ source: 'aidNavigation', reason: msg, text: what + msg + '，下拉重新整理以重試。' });
       } else {
@@ -396,7 +402,7 @@ AidNavigation.prototype = {
     this._history.abort();
     this._updateBackButton();
     failed('AID 跳文失敗：');
-    this._endRun({ ok: false, error: msg });
+    this._endRun({ ok: false, error: msg, ...extra });
   },
 
   // The back affordance is a pure projection of (active, stack) — never
@@ -665,10 +671,17 @@ AidNavigation.prototype = {
 
   // Select a stable article identity in the full board list without opening
   // it. Search shortcuts need its native header for same-thread matching.
-  selectArticle: function(board, aid, onEnd) {
+  // opts.forList: the easy-reading list's jump by code (#253). The caller
+  // tells the reader how it went, so this run flashes no failure or "entered
+  // the board" notice; PTT's "no such article" box (pressanykey) is closed
+  // here; and the run ends on a landing it verified, so the list takes PTT's
+  // page back at once, with no native frame between.
+  selectArticle: function(board, aid, onEnd, opts) {
     if (this.active || !board || !isAidc(aid)) return false;
     this._onRunEnd = onEnd || null;
+    this._quietEnd = !!(opts && opts.forList);
     const run = makeRun({ board, aid, kind: 'aid', listOnly: true }, 'goto');
+    run.forList = !!(opts && opts.forList);
     run.external = true;
     const buf = this._termBuf;
     const here = boardNameFromKey(parseBoardKey(buf.getRowText(0, 0, buf.cols)));
@@ -778,6 +791,7 @@ AidNavigation.prototype = {
   _endRun: function(result) {
     const cb = this._onRunEnd;
     this._onRunEnd = null;
+    this._quietEnd = false;
     if (cb) cb(result);
   },
 
@@ -1528,10 +1542,10 @@ AidNavigation.prototype = {
   _finishGoto: function(run) {
     this.active = false;
     this.opHint = null;
-    recordFor(this._core).releaseExternal();
+    recordFor(this._core).releaseExternal(run.forList ? { landed: true } : undefined);
     this._history.invalidate();
     this._updateBackButton();
-    this._hint('已進入 ' + run.target.board + ' 看板', 1200);
+    if (!this._quietEnd) this._hint('已進入 ' + run.target.board + ' 看板', 1200);
     this._endRun({ ok: true });
   },
 
@@ -1836,7 +1850,7 @@ AidNavigation.prototype = {
         if (run.target.listOnly) self._finishGoto(run);
         else self._enqueueOpen(run);
       },
-      onFail: function(reason) {
+      onFail: function(reason, facts) {
         // Going back, a miss means the post is really gone (deleted) — a
         // PINNED post is findable, see aidSearchLanded. There is no number
         // to fall back to by design: say so and stay on the board's list.
@@ -1866,11 +1880,51 @@ AidNavigation.prototype = {
           );
           return;
         }
+        if (reason === 'miss' && run.forList && self._dismissMissBox(run, facts)) return;
         self._fail(
-          reason === 'miss' ? '找不到文章 #' + aid : 'AID 搜尋逾時'
+          reason === 'miss' ? '找不到文章 #' + aid : 'AID 搜尋逾時',
+          { missed: reason === 'miss' }
         );
       }
     });
+  },
+
+  // `#` found no such article and PTT waits on its message box (read.c#
+  // search_aid: vmsg, then FULLUPDATE): the box's own dismissing key, then the
+  // run ends as a miss once the board's list is back. false = no box on the
+  // screen to dismiss (the caller fails the run as it would).
+  _dismissMissBox: function(run, facts) {
+    const buf = this._termBuf;
+    const box = resolveDismiss({
+      lastRowText: buf.getRowText(buf.rows - 1, 0, buf.cols),
+      cursorOnInputField: !!(buf.isCursorOnInputField && buf.isCursorOnInputField())
+    });
+    if (!box) return false;
+    const self = this;
+    const end = function(landed) {
+      self._fail('找不到文章 #' + run.target.aid, { missed: true, landed: landed === true });
+    };
+    this._queue.enqueue({
+      keys: box.bytes,
+      kind: 'aid-miss-dismiss',
+      fullRepaint: true,
+      onFlushed: function() {
+        end(false);
+      },
+      timeoutMs: STEP_PROBE_AFTER_MS,
+      probeTimeoutMs: STEP_PROBE_WINDOW_MS,
+      hardTimeoutMs: STEP_HARD_MS,
+      expect: function(snapshot, landed) {
+        return landedOnBoardList(landed, run.boardLower) ? true : false;
+      },
+      onDone: function() {
+        end(true);
+      },
+      onFail: function() {
+        end(false);
+      }
+    });
+    return true;
   },
 
   // Step 3: ⏎ opens the article under the cursor. The article settle also

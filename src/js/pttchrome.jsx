@@ -1177,6 +1177,10 @@ App.prototype.openSearchModal = noop;
 // 合約同上：noop ＝ ContextMenu 未 mount ⇒ 照舊遞補目前文章的看板直接跳。
 App.prototype.openAidBoardChoice = noop;
 
+// Jump to an article by its code from the easy-reading article list (#253,
+// aid_jump.js). Same contract: noop = ContextMenu not mounted yet.
+App.prototype.openAidJumpModal = noop;
+
 // AID 連結點擊。board＝連結自己帶的看板（後綴／轉錄標頭），沒有就先問使用者。
 App.prototype.onAidClick = function(aid, board) {
   const current = this.view._articleBoard;

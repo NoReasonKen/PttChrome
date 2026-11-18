@@ -56,7 +56,8 @@ function makeSession() {
   return { s, sent, enqueued, queue };
 }
 
-const AID = "#1gTTD8RU";
+// An article code is a jump now (#253, aid_jump.test.js); other text is refused.
+const AID = "not an article code";
 const PASTE_HINT = "好讀模式目前不支援在列表貼上文字";
 
 describe("ListSession.onPaste — refused in easy reading", () => {
