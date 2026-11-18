@@ -1423,6 +1423,21 @@ export class ScreenController {
     return true;
   }
 
+  // Rows were read in above past what the reserve could absorb: give the
+  // reserve up, the caller writing scrollTop next. Kept, it would stay above
+  // the rows read in, where a fling up runs into it as blank space above #1
+  // (#255). It is topped up again at rest (_syncListReserve).
+  dropListReserve() {
+    if (!this._listReservePx) return;
+    diag("listView.reserve", {
+      from: Math.round(this._listReservePx),
+      to: 0,
+      action: "dropped",
+    });
+    this._setListReserve(0);
+    this._scheduleListReserveSync();
+  }
+
   // 保留區的目標大小（px）。session 每幀告知：到頂（_edgeUp）＝0，其餘＝固定頁數。
   setListReserveTarget(px) {
     const t = Math.max(0, Math.round(px || 0));
