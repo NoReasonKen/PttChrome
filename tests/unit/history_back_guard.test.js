@@ -72,6 +72,7 @@ function setup({ backNav = 1, sent = true, navigation = null, android = false } 
   // 補回 sentinel 的保險檢查是 setTimeout ⇒ 手動排乾，測試才不必等真時間。
   const timers = [];
   const guard = installHistoryBackGuard(app, win, {
+    idBase: 0,
     now: () => clock,
     setTimeout: (fn) => timers.push(fn),
   });
@@ -121,6 +122,34 @@ function makeNavigation({ currentIndex = 1, canGoForward = true } = {}) {
     },
   };
 }
+
+describe("sentinel id 跨 document 唯一（#19）", () => {
+  function install() {
+    const win = makeWin();
+    const keys = [];
+    const app = {
+      mouseGates: () => ({ backNav: 1 }),
+      sendNavKeyAsUser: (k) => (keys.push(k), true),
+      view: { flashListHint: () => {} },
+    };
+    installHistoryBackGuard(app, win, { setTimeout: () => {} });
+    win.fire("pointerdown", {});
+    return { win, keys };
+  }
+
+  it("重新整理後新疊的 sentinel 不和上一個 document 留下的 entry 同 id", () => {
+    const ids = new Set();
+    for (let i = 0; i < 20; i++) ids.add(install().win.pushed[0].pttchromeBackGuard);
+    expect(ids.size).toBe(20);
+  });
+
+  it("退到上一個 document 留下的 sentinel 仍是一次往外退：送 ←", () => {
+    const { win, keys } = install();
+    const stale = win.pushed[0].pttchromeBackGuard - 1;
+    win.fire("popstate", { state: { pttchromeBackGuard: stale } });
+    expect(keys).toEqual(["ArrowLeft"]);
+  });
+});
 
 describe("sentinel 的疊法", () => {
   test("沒有 user activation 之前不疊 —— Chrome 會跳過那種 entry 而直接離站", () => {
@@ -215,7 +244,7 @@ describe("back 的攔截", () => {
       sendNavKeyAsUser: (k) => (keys.push(k), true),
       view: { flashListHint: () => {} },
     };
-    installHistoryBackGuard(app, win);
+    installHistoryBackGuard(app, win, { idBase: 0 });
     win.fire("pointerdown", {});
     backNav = 0;
     win.fire("popstate", { state: null });
