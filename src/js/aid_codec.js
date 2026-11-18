@@ -133,7 +133,7 @@ export function parseArticleUrl(href) {
 // PTT's own spellings of an article with its board: "#1abcDEFG (Gossiping)"
 // (the line of the article information box, Q) and "Gossiping #1abcDEFG".
 // A code without a board is not accepted here. Returns { board, aid } or null.
-const AID_WITH_BOARD_RE = /^#([0-9A-Za-z_-]{8})\s*[(（]?\s*([0-9A-Za-z_.-]+)\s*[)）]?$/;
+const AID_WITH_BOARD_RE = /^#([0-9A-Za-z_-]{8})\s*(?:[(（]\s*)?([0-9A-Za-z_.-]+)(?:\s*[)）])?$/;
 // With a space between them the # is required: "ABC 12345678" is more likely a title to search.
 const BOARD_WITH_AID_RE = /^([0-9A-Za-z_.-]+)(?:\/#?|\s+#)([0-9A-Za-z_-]{8})$/;
 
