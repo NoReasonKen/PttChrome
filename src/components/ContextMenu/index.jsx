@@ -92,6 +92,7 @@ import {
   searchGateFacts,
   submitSearch,
 } from "../../js/article_search";
+import { refreshOffered } from "../../js/screen_refresh";
 import { userListToggleTarget } from "../../js/user_list";
 import { rememberSearch } from "../../js/search_history";
 import { promptUserQuery, queryAuthor } from "../../js/user_query";
@@ -1150,7 +1151,7 @@ export const ContextMenu = ({ pttchrome }) => {
         searchKinds: busy
           ? []
           : availableSearchKinds(searchGateFacts(pttchrome)),
-        refresh: !!pttchrome.screenRefresh?.target?.(),
+        refresh: refreshOffered(pttchrome.screenRefresh?.target?.()),
         unreadJump: !!pttchrome.unreadJump?.available?.(),
         markAllRead: !!pttchrome.markAllRead?.available?.(),
         boardToggles: pttchrome.boardListSession?.listToggles?.() || null,

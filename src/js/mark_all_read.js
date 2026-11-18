@@ -18,6 +18,7 @@ import { refreshTargetOf } from './screen_refresh';
 import { submitSerializedSteps } from './article_search';
 import { serializedOpHint } from './serialized_op_gate';
 import { HINT_ERROR } from './status_hint';
+import { UNSUPPORTED_KEY_HINT } from './unsupported_hint';
 import { recordFor } from './reading_record';
 import { markReadPromptShown } from './mark_read_prompt';
 
@@ -48,6 +49,11 @@ MarkAllRead.prototype = {
   // 回 true ＝已送出（或已提示為何不送）。
   start: function() {
     const core = this._core;
+    // The mailbox has no such function (#252): refused, nothing sent.
+    if (refreshTargetOf(core)?.kind === 'mail') {
+      this._hint(UNSUPPORTED_KEY_HINT, 4000, HINT_ERROR);
+      return false;
+    }
     if (!this.available()) {
       this._hint('只有在文章列表才能設為全部已讀');
       return false;

@@ -3522,6 +3522,8 @@ ListSession.prototype = {
   // 純查詢、零副作用：右鍵選單問「這一列做得了嗎、對象是第幾篇」。回 null ＝
   // 那個選單項不出現（條件全收在這裡，React 端不重複判斷）。
   markReadTargetAtRow: function(renderRow) {
+    // `v` and `w` are other commands in the mailbox (#252).
+    if (this.isMailList()) return null;
     if (this.state !== 'active' || this._renderMode !== 'buffer') return null;
     // The online user list (#199) has no read marks.
     if (this.isUserList()) return null;
@@ -3550,6 +3552,10 @@ ListSession.prototype = {
   // 拒絕（vmsg 等按鍵）或落點認不出 ⇒ 停在原生鏡像，由靜置探針接手。
   markReadUnreadBefore: function(num) {
     if (this._renderMode === 'native') return false; // 沒接管，交給一般路徑
+    if (this.isMailList()) {
+      this._refuseUnsupported('key');
+      return true;
+    }
     if (this.state === 'opening') {
       if (this._view.flashListHint)
         this._view.flashListHint('好讀列表：開啟文章中，請稍候…');

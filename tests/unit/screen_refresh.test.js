@@ -14,6 +14,7 @@ import { DEFAULT_PREFS } from "../../src/js/pref_storage";
 import { serializedOpHint } from "../../src/js/serialized_op_gate";
 import { OWNER_ARTICLE_LIST } from "../../src/js/list_render_owner";
 import { SLOW_STEP_BUDGET } from "../../src/js/aid_navigation";
+import { UNSUPPORTED_REFRESH_HINT } from "../../src/js/unsupported_hint";
 
 const ROWS = 24;
 const frame = (rows, extra) => {
@@ -29,6 +30,10 @@ const SQUEEZED_ROW =
 const MAIL_ROW =
   "  瀏覽 第 1/1 頁 (100%)  目前顯示: 第 01~18 行  (y)回信 (h)說明 (←/q)離開 ";
 const LIST = { 0: " 【板主:none】看板《Test》", 23: " 文章選讀  (y)回應(X)推文(^X)轉錄 " };
+const MAIL_LIST = {
+  0: "【郵件選單】                     批踢踢實業坊                     看板《Test》",
+  23: " 信件列表  (^P)寄信 (y)回信 (d)刪信       (←)離開 (h)說明 ",
+};
 
 const pad7 = (n) => String(n).padStart(7, " ");
 const brdRow = (num, name) => pad7(num) + "  " + name.padEnd(13, " ") + "綜合  ｜閒聊｜ 測試看板";
@@ -53,8 +58,22 @@ describe("refreshTargetFromFacts — 哪些畫面接手", () => {
   test("文章但不知道看板 ⇒ 不接（s<板> 組不出來）", () => {
     expect(refreshTargetFromFacts(frame({ 23: READ_ROW }), 3, {})).toBeNull();
   });
-  test("站內信 pager ⇒ 不接（more.c 在 RMAIL 擋掉 s/#）", () => {
-    expect(refreshTargetFromFacts(frame({ 23: MAIL_ROW }), 3, { articleBoard: "Test" })).toBeNull();
+  test("站內信 pager ⇒ kind mail（不重整；more.c 在 RMAIL 擋掉 s/#）", () => {
+    expect(refreshTargetFromFacts(frame({ 23: MAIL_ROW }), 3, { articleBoard: "Test" })).toEqual({ kind: "mail" });
+  });
+  // The title row still names the board last visited (currboard stays set), so
+  // the mailbox must not read as that board's article list (#252).
+  test("信箱列表（標題列仍寫著上次的看板）⇒ kind mail，不是文章列表", () => {
+    expect(refreshTargetFromFacts(frame(MAIL_LIST), 2)).toEqual({ kind: "mail" });
+    expect(refreshTargetFromFacts(frame(MAIL_LIST, { listOwner: OWNER_ARTICLE_LIST }), 2)).toEqual({ kind: "mail" });
+  });
+  test("信箱列表的標題列沒有看板名也一樣 ⇒ kind mail", () => {
+    expect(refreshTargetFromFacts(frame({ ...MAIL_LIST, 0: "【郵件選單】      批踢踢實業坊" }), 2)).toEqual({
+      kind: "mail",
+    });
+  });
+  test("信箱列表有 prompt 開著 ⇒ 不接（同其他畫面）", () => {
+    expect(refreshTargetFromFacts(frame(MAIL_LIST, { inputField: true }), 2)).toBeNull();
   });
   test("超長文 footer 被擠掉：只有列表好讀自己開的這篇才算 READING", () => {
     const f = frame({ 23: SQUEEZED_ROW });
@@ -219,6 +238,25 @@ describe("ScreenRefresh.refresh", () => {
     expect(hints).toEqual([]);
     expect(r.refresh("toolbar")).toBe(false);
     expect(hints).toEqual(["這個畫面不支援重新整理"]);
+  });
+
+  // #252: no article-list entrance sends keys into the mailbox, and F5 there is
+  // never handed back to the browser (a reload disconnects).
+  test.each([
+    ["信箱列表", MAIL_LIST, 2],
+    ["信件（站內信 pager）", { 23: MAIL_ROW }, 3],
+  ])("%s：任何入口都拒絕並提示，不送鍵、仍吞掉 F5", (_, rows, pageState) => {
+    const { core, enqueued, hints } = makeCore(rows, { pageState, extra: { articleBoard: "Test" } });
+    core.aidNavigation.refresh = vi.fn(() => true);
+    const calls = [];
+    core.activeListSession = () => ({ _beginPassthroughBytes: (steps) => calls.push(steps) });
+    const r = new ScreenRefresh(core);
+    for (const source of ["key", "pull", "toolbar"]) expect(r.refresh(source)).toBe(true);
+    expect(enqueued).toEqual([]);
+    expect(calls).toEqual([]);
+    expect(core.aidNavigation.refresh).not.toHaveBeenCalled();
+    expect(hints).toEqual([UNSUPPORTED_REFRESH_HINT, UNSUPPORTED_REFRESH_HINT, UNSUPPORTED_REFRESH_HINT]);
+    expect(core.refreshInFlight).toBeFalsy();
   });
 
   test("沒連線 ⇒ 不接", () => {
