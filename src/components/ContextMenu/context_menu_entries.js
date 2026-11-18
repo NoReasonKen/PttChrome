@@ -35,6 +35,15 @@ export function buildContextMenuEntries(p) {
       (e) => p.onMenuSelect("addAuthorBlacklist", e),
       { disabled: !!p.authorBlacklistExists },
     );
+  // 「查詢作者」（#254）：那一列文章的作者，以 PTT 的 Ctrl-Q 查（js/user_query.js
+  // queryAuthor）。桌機右鍵、手機長按都在這裡，跟加入黑名單的作者項放一起。
+  // 判定在 list_session.authorQueryTargetAtRow。
+  if (p.normalEnabled && p.authorQueryTarget)
+    item(
+      "queryAuthor",
+      `${i18n("authorQuery_title")} '${p.authorQueryTarget.author}'`,
+      (e) => p.onMenuSelect("queryAuthor", e),
+    );
   if (p.normalEnabled && p.titleBlacklistText)
     item(
       "addTitleBlacklist",
@@ -107,6 +116,7 @@ export function buildContextMenuEntries(p) {
   if (
     p.normalEnabled &&
     (p.authorBlacklistId ||
+      p.authorQueryTarget ||
       p.titleBlacklistText ||
       p.markReadTarget ||
       p.boardMarkReadTarget ||
