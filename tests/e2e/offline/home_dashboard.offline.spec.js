@@ -78,6 +78,27 @@ test.describe('首頁儀表板', () => {
     await expect(dashboard(page)).toBeVisible();
   });
 
+  // The context menu's input helper sends its colour code like typed text, so
+  // home refuses it too (#242): Ctrl-U would open PTT's user list behind the
+  // dashboard.
+  test('the input helper send over home is refused with the hint and sends nothing', async ({ page }) => {
+    await bootHome(page, { enableInputHelper: true });
+    // The dashboard leaves the browser's own menu alone, so the helper is
+    // opened before home draws; it is not a modal and stays up over it.
+    await page.locator('#BBSWindow').click({ button: 'right', position: { x: 40, y: 20 } });
+    await page.locator('.DropdownMenu').first()
+      .getByText(await page.evaluate(() => window.__i18n('cmenu_showInputHelper')), { exact: true }).click();
+    await expect(page.locator('.InputHelperModal__ColorList')).toBeVisible();
+    await fetchFlow(page);
+    await takeCapture(page);
+    await page.locator('.InputHelperModal__Dialog')
+      .getByText(await page.evaluate(() => window.__i18n('colorHelperSend')), { exact: true }).click();
+    await expect(page.locator('.ListHint')).toContainText('好讀模式目前不支援在首頁輸入文字');
+    await expect(dashboard(page)).toBeVisible();
+    await page.locator('#t').focus();
+    await expectOnlyFence(page, () => page.keyboard.press('h'), 'h');
+  });
+
   // The bytes behind the sheet belong to its board completion
   // (board_search_bridge), not to this key route.
   test('首頁按 s ⇒ 開看板搜尋（不被首頁擋下）', async ({ page }) => {
