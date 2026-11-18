@@ -44,6 +44,7 @@ PTT's user list in its two views, `【休閒聊天】` (all users) and `【好�
 
 - Rows follow talk.c's user list: number in cells 1-6, pager in cell 8, ID from cell 10 (bright cyan for a friend), nickname from 23, home from 41, activity from 58, idle time in 75-79 (`user_list.parseUserListRow`). No pinned rows, no last-read styling, no blacklist. The mobile card is `list_card.CARD_LAYOUT.user`.
 - Numbers run from 1 without gaps, so number 1 is the top edge: the upward prefetch stops there instead of probing.
+- Numbers are not stable. PTT lists users from a snapshot it takes again, sorted, when it reloads a page 10 s or more after the last one (`talk.c#pickup`), so a login or a logout moves every user below it. A page that lists another user at a number held, or a user held at another number (`user_list.userListPageDisagrees`), drops every row held, held for the reader or not (`term_view.accumulateListLines`). The session then reads the list again around that page with both edges unknown, and the selection follows the user it was on (during a query, the one the query gives back): it keeps the number it had while the list is read on toward that number, whatever the fill target, then moves to the user's number once a page lists them. A user not listed once that number is held (logged off, or moved past the pages read) leaves the selection at the number (`ListSession.noteUserListPage`, `userListSelection`; a key or a tap that moves the selection ends the wait, and so do 10 s). Article and mail lists keep their stable numbers. Guard: `tests/e2e/offline/mobile_user_list_sync.offline.spec.js`.
 - Each view is a list of its own: switching views is a board switch, and the buffer is rebuilt.
 - A view with no user (the friends view with no friend online) is a clean list without a numbered row (`emptyList`, invariant 17a). The window then holds a single empty-state row (`term_view._emptyListRow`, rendered by `list_card.buildListEmptyRow`).
 - Keys: the article list's table plus the user list's own key classes (`list_session.userListKeyClass`: query, number jump, view toggle, refused keys); the key table is in [easy-reading.md](easy-reading.md) 「線上使用者（#199）」.
@@ -254,7 +255,10 @@ Three principles: **A, content decides** (a settle only decides when to evaluate
 - **Mouse**: coordinates are first converted to the **rendered** row number (`clientToPos` for the body area uses
   `floor((y - bodyTop + scrollTop×scaleY)/rowH)`), then through `LIST_HEADER_ROWS` (=3) to the
   body index = **the sequence position**, and `getListView().seq[idx]` maps it to the absolute index.
-  - hover → `term_view.onListMouseMove`: the cursor background is drawn only for "the body area and idx < seq.length (not a padding row)";
+  - hover → `term_view.onListMouseMove`: the cursor background is drawn only for "the body area and idx < seq.length (not a padding row)".
+    With mobile cards only a move over a card hovers (`App.onMouse_move`, `mobile_layout.isListCardBodyTarget`, the rule clicks follow):
+    a tap anywhere else, the toolbar's keypad below the list among others, also arrives as a mouse move, and its grid row would read as a
+    card's index, leaving that card highlighted while the keypad's arrows move `>` (guard: `mobile_user_list_sync.offline.spec.js`);
     `cursor:pointer` also needs `mouseLeftClick` and a position in the clickable area (from the list start rightwards;
     with the master switch off, the whole row, `mouse_regions.clickableColStart`). **The highlight's range equals the clickable area, with different
     conditions** (the highlight ignores `mouseLeftClick`), as native does. The whole path is gated by the master switch

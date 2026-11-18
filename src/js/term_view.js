@@ -18,6 +18,7 @@ import { labelListCursor, pruneListToSegment, LIST_HEADER_ROWS } from './list_wi
 import { BRD_HEADER_ROWS, CLASS_ROOT_GEOMETRY, STANDARD_GEOMETRY, boardListRowNums, isClassRootScreen } from './board_list_parse';
 import { BOARD_LIST, isArticleListTitleRow, isMailListTitleRow, isUserListTitleRow, rowHasTitle, parseBoardName } from './screen_titles';
 import { isArticleListFooter, isBoardListFooter, isMailListFooter, userListFooterRow } from './screen_captions';
+import { userListPageDisagrees } from './user_list';
 import { OWNER_BOARD_LIST } from './list_render_owner';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { cursorOffsets, paintedRowsAreBufRows } from './cursor_anchor';
@@ -3708,6 +3709,17 @@ TermView.prototype = {
         });
       }
     }
+    // The user list (#199): a page from a snapshot PTT took again replaces
+    // every row held from the old one, held for the reader or not; the session
+    // reads the list again around the reader (ListSession#noteUserListPage).
+    var resyncFrom = null;
+    var resync = user && userListPageDisagrees(this._listNumMap, entries);
+    if (resync) {
+      resyncFrom = ls && ls.userListSelection ? ls.userListSelection() : null;
+      this._listNumMap.clear();
+      this._listPinnedMap.clear();
+      this.releaseListRows('article');
+    }
     // Rows kept as the reader left them (holdListRows): PTT's landing page adds
     // only the rows marked to retake, and any other page also adds the rows
     // not shown yet (retakeListRow).
@@ -3762,6 +3774,7 @@ TermView.prototype = {
       if (stalled && ls.noteGrowthStalled) ls.noteGrowthStalled(grewDir);
     }
     this._flattenList('article');
+    if (user && ls && ls.noteUserListPage) ls.noteUserListPage(resync, resyncFrom);
     // Cache the surrounding chrome for the window render off clean-list-shaped
     // live frames only (a jump response blanks the bottom row — protocol §4 ✚ —
     // and must not poison the footer cache).

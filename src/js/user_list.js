@@ -251,3 +251,40 @@ export function userQueryAlert(rowTexts) {
   for (let r = 1; r < texts.length - 1 && !reason; ++r) reason = (texts[r] || '').trim();
   return { status: head.indexOf('限速中') >= 0 ? 'slowed' : 'denied', reason: reason };
 }
+
+// The user ID of a user row, null for a row without one.
+function rowUserId(row) {
+  const user = parseUserListRow(row);
+  return user ? user.id : null;
+}
+
+// Whether a page of the user list PTT painted comes from another snapshot
+// than the rows held: PTT sorts its users again when it reloads a page 10 s
+// or more after the last one (talk.c#pickup), and a user who logged in or
+// out moves every user below. Another user at a number held, or a user held
+// at a number the page does not show, tells it. Rows without an ID (a user
+// who logged off between PTT's count and its paint) tell nothing.
+// `numMap` is number → held row, `entries` the page's { num, row }.
+export function userListPageDisagrees(numMap, entries) {
+  if (!numMap || !numMap.size) return false;
+  const pageNums = new Set();
+  const pageIds = new Map();
+  for (let i = 0; i < entries.length; ++i) {
+    const e = entries[i];
+    if (e.num == null) continue;
+    pageNums.add(e.num);
+    const id = rowUserId(e.row);
+    if (id == null) continue;
+    const held = numMap.get(e.num);
+    const heldId = held ? rowUserId(held) : null;
+    if (heldId != null && heldId !== id) return true;
+    pageIds.set(id, e.num);
+  }
+  if (!pageIds.size) return false;
+  for (const [num, row] of numMap) {
+    if (pageNums.has(num)) continue;
+    const id = rowUserId(row);
+    if (id != null && pageIds.has(id)) return true;
+  }
+  return false;
+}

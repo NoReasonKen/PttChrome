@@ -2026,8 +2026,13 @@ App.prototype.onMouse_move = function(cX, cY, overAnchor, target) {
   if (this.buf.listRenderMode === 'buffer' || this.buf.listRenderMode === 'frozen') {
     // 第三個參數是**螢幕**列號：pos.row 在 body 區是序列 index（可以到幾千），
     // 邊緣翻頁區的上下半分界必須用螢幕座標算（見 mouse_geometry.rowFromClientY）。
+    // Cards: only a card hovers, as only a card opens (mouse_click). A tap
+    // anywhere else also reaches here as a mouse move — on the phone's keypad
+    // below the list among others — and its grid row would read as a card's
+    // index: that card stayed highlighted while the keypad's arrows moved `>`.
+    var overCard = !this.view.listCards || isListCardBodyTarget(target);
     this.view.onListMouseMove(
-      pos.row,
+      overCard ? pos.row : -1,
       pos.col,
       rowFromClientY(cY, this.gridGeometry()),
       overAnchor

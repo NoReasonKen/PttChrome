@@ -1095,6 +1095,10 @@ export function ListSession(core, view, termBuf, queue) {
   this._newerBelow = false;
   this._stallUp = false;
   this._stallDown = false;
+  // The user list read again from a new snapshot: the user the selection
+  // follows ({ id, num, at }), until a page lists them (noteUserListPage).
+  this._userListResync = null;
+  this._userListResyncs = 0;
   // Contiguity-prune pivot override while a far jump is in flight (End/Home):
   // the jump's landing page is DISCONTIGUOUS with the buffer by design, and the
   // prune must keep the TARGET segment, not the one the cursor came from.
@@ -1607,6 +1611,9 @@ ListSession.prototype = {
 
   // Pref flipped OFF / disconnect: single exit (mirrors exitEasyReading rigor).
   disable: function() {
+    // A query cut short by the disconnect (UserQuery.reset) never gives its
+    // selection back: userListSelection must not read it later.
+    this._helpSelection = null;
     this._dispatch({ type: 'pref-off' }, null);
   },
 
@@ -1683,10 +1690,15 @@ ListSession.prototype = {
   resumeAfterHelp: function(listKept) {
     const board = this._helpBoard;
     const sel = this._helpSelection;
+    const resyncs = this._userListResyncs;
     this._helpBoard = null;
-    this._helpSelection = null;
+    // Kept through the resume: a user list PTT draws from a new snapshot
+    // follows the user selected here (userListSelection).
     this.resumeNow(listKept ? board : null);
+    this._helpSelection = null;
     if (!listKept || !sel || this.state !== 'active' || this._renderMode !== 'buffer') return;
+    // The selection follows its user instead of its number (noteUserListPage).
+    if (this._userListResyncs !== resyncs) return;
     if (sel.num === this._selectedNum && sel.pinnedKey === this._selectedPinnedKey) return;
     this._selectedNum = sel.num;
     this._selectedPinnedKey = sel.pinnedKey;
@@ -3361,6 +3373,7 @@ ListSession.prototype = {
     if (this.isUserList()) {
       const user = parseUserListRow((this._termBuf.listLines || [])[abs]);
       if (!user || !user.id || nums[abs] == null) return;
+      this._userListResync = null;
       this._selectedNum = nums[abs];
       this._selectedPinnedKey = null;
       this._forceRedraw();
@@ -3505,6 +3518,7 @@ ListSession.prototype = {
 
   _seed: function(facts) {
     this._dropPendingViewport('seed');
+    this._userListResync = null;
     this._holdReason = null;
     this._cancelResumeProbe();
     this._breakChain();
@@ -3570,6 +3584,9 @@ ListSession.prototype = {
   // 零回應的 PgDn（docs/easy-reading-list.md「a full-page landing must not probe」那條 Known limitations）。
   _rebuild: function(facts, edge) {
     this._breakChain();
+    // A user list rebuilt from PTT's page still follows its user
+    // (noteUserListPage); another list does not.
+    if (!facts || facts.boardName !== this._boardName) this._userListResync = null;
     // _lastReadTitle kept: title keys are number-space independent (see _seed).
     this._view.resetListAccumulation();
     this._termBuf.listLines = [];
@@ -3666,6 +3683,10 @@ ListSession.prototype = {
     if (this.state !== 'active') return;
     // 往上補把待還原的錨帶進來之後，下方可能還不夠捲到它（見 _demandDownIfWindowShort）。
     if (this._pendingViewport && this._queue.idle) this._demandDownIfWindowShort();
+    // The selection follows a user whose number is not held yet
+    // (noteUserListPage): read on toward it, whatever the fill target.
+    const follow = this._userListFollowDir();
+    if (follow > 0 && this._queue.idle) return this._enqueuePrefetch(false, 'fill');
     if (this._edgeUp || this._stallUp) return;
     if (!this._queue.idle) return;
     // 待還原的錨還沒進緩衝：不論預抓目標是否已滿，都再往上補（上限兩頁——視口
@@ -3679,6 +3700,7 @@ ListSession.prototype = {
       (pv.upFills || 0) < 2;
     if (
       !wantAnchor &&
+      follow === 0 &&
       shouldStopListPrefetch({
         visibleCount: this._visibleIndices().length,
         target: this._fillTarget,
@@ -3752,6 +3774,102 @@ ListSession.prototype = {
       dir: direction,
       len: (this._termBuf.listLineNums || []).length
     });
+  },
+
+  // The user the reader has selected on the user list, as the rows held list
+  // them ({ id, num }, id null for a row without one), or null. While a held
+  // excursion (a query) is over the list: the selection it gives back.
+  userListSelection: function() {
+    const num = this._helpSelection ? this._helpSelection.num : this._selectedNum;
+    if (num == null) return null;
+    const idx = (this._termBuf.listLineNums || []).indexOf(num);
+    const user = idx < 0 ? null : parseUserListRow((this._termBuf.listLines || [])[idx]);
+    return { id: user && user.id ? user.id : null, num: num };
+  },
+
+  // term_view.accumulateListLines, after each user-list page (#199). PTT lists
+  // users from a snapshot it takes again, sorted, when it reloads a page 10 s
+  // or more after the last one (talk.c#pickup). `resynced`: this page came from
+  // a new snapshot, and the rows held from the old one were dropped;
+  // `selection` is userListSelection() from before the drop.
+  //
+  // The session reads the list again around the new page (its edges are no
+  // longer known) and the selection follows its user: on the number it had
+  // while the list is read on toward that number (_maybeFill), then on the
+  // user's number once a page lists them. A user not listed once that number
+  // is held (logged off, or moved past the pages read) leaves the selection at
+  // the number. A key or a tap that moves the selection ends the wait, and so
+  // do PENDING_VIEWPORT_MAX_MS.
+  noteUserListPage: function(resynced, selection) {
+    if (resynced) {
+      this._userListResyncs++;
+      this._breakChain();
+      this._edgeUp = false;
+      this._edgeDown = false;
+      this._newerBelow = false;
+      this._stallUp = false;
+      this._stallDown = false;
+      this._fillPages = 0;
+      // A second new snapshot before the user is found keeps the first
+      // target: the selection may since have snapped to another user.
+      if (!this._userListResync && selection && selection.num != null)
+        this._userListResync = { id: selection.id, num: selection.num, at: Date.now() };
+      const held = this._termBuf.listLineNums || [];
+      if (this._topNum != null && held.indexOf(this._topNum) < 0 && !this._pendingViewport) {
+        this._pendingViewport = {
+          topNum: this._topNum,
+          topPinnedKey: null,
+          scrollFrac: this._scrollFrac || 0,
+          adopted: true,
+          at: Date.now()
+        };
+      }
+      this._core.debugRecorder?.log('listSession.userListResync', {
+        id: selection ? selection.id : null,
+        num: selection ? selection.num : null,
+        len: held.length
+      });
+      // After this page's accumulation: the command that brought it may still
+      // own the queue, and its end reads more pages only when it was a prefetch.
+      setTimeout(() => {
+        if (this.state !== 'active') return;
+        this._demandDownIfWindowShort();
+        this._maybeFill();
+      }, 0);
+    }
+    const r = this._userListResync;
+    if (!r) return;
+    const lines = this._termBuf.listLines || [];
+    const nums = this._termBuf.listLineNums || [];
+    for (let i = 0; r.id && i < lines.length; ++i) {
+      if (nums[i] == null) continue;
+      const user = parseUserListRow(lines[i]);
+      if (user && user.id === r.id) {
+        this._selectedNum = nums[i];
+        this._userListResync = null;
+        return;
+      }
+    }
+    // Not listed yet: the number it had (getListView shows the nearest row
+    // while that number is not held).
+    this._selectedNum = r.num;
+    if (!r.id || this._userListFollowDir() === 0 || Date.now() - r.at > PENDING_VIEWPORT_MAX_MS)
+      this._userListResync = null;
+  },
+
+  // While the selection follows a user (noteUserListPage) whose number is not
+  // held: the way to read on toward it, -1 up or 1 down; 0 when it is held or
+  // that way is not read.
+  _userListFollowDir: function() {
+    const r = this._userListResync;
+    if (!r) return 0;
+    const nums = this._termBuf.listLineNums || [];
+    if (nums.indexOf(r.num) >= 0) return 0;
+    const lo = bufferEdgeNum(nums, -1);
+    const hi = bufferEdgeNum(nums, 1);
+    if (lo != null && r.num < lo && !this._edgeUp && !this._stallUp) return -1;
+    if (hi != null && r.num > hi && !this._edgeDown && !this._stallDown) return 1;
+    return 0;
   },
 
   // Teach the last-read SUBJECT (pttbbs currtitle mirror). Called frame-taught
@@ -4594,6 +4712,7 @@ ListSession.prototype = {
     this._topPinnedKey = null;
     this._scrollFrac = 0;
     this._dropPendingViewport('cleanup');
+    this._userListResync = null;
     // 真的離開看板了：身後的列表紀錄跟著作廢。
     recordFor(this._core).takeBehindList();
     this._seqCache = null;
@@ -5128,6 +5247,7 @@ ListSession.prototype = {
   //     PgUp 若先瞬移回游標再翻一頁會很怪，而游標可見時與 read.c 語意一致。
   // serverOp 的判準一字未改（read.c:842-880 的邊界條件）。
   _moveSelection: function(op, opts) {
+    this._userListResync = null;
     const seq = this._sequence();
     if (!seq.length) return;
     const len = seq.length;

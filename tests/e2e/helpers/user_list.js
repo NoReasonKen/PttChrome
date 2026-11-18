@@ -111,6 +111,9 @@ async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 
     const EMPTY_HINTS = [['Tab', '排序 '], ['f', '好友 '], ['s', '搜尋 '], ['b', '廣播 '], ['S', '顯示切換      '], ['←', '離開 '], ['h', '說明  ']];
     const listFrame = () => {
       const list = shown();
+      // PTT keeps its cursor on a user when the list it reads again is
+      // shorter (psb.c clamps it to the last one).
+      if (list.length && state.cursor > list.length) state.cursor = list.length;
       const top = Math.floor((state.cursor - 1) / PAGE) * PAGE + 1;
       let s = at(0) + titleBar(state.view === 'friends' ? '【好友列表】' : '【休閒聊天】');
       s += at(1) + ' 排序:[朋友] 站上:' + (count + 40) + ' \x1b[1;32m朋友:' + friends.length +

@@ -27,6 +27,7 @@ import {
   isUserQueryScreen,
   parseUserListRow,
   selectedUserId,
+  userListPageDisagrees,
   userListToggleLabel,
   userListToggleTarget,
   userListView,
@@ -446,6 +447,51 @@ describe("the online user list (#199)", () => {
       expect(selectedUserId(core(null))).toBe(null);
       expect(selectedUserId(core(lines[4], false))).toBe(null);
       expect(selectedUserId(null)).toBe(null);
+    });
+  });
+
+  // PTT lists users from a snapshot it takes again, sorted, when it reloads a
+  // page 10 s or more after the last one (talk.c#pickup): rows held from the
+  // old snapshot must not mix with its pages.
+  describe("a page from a new snapshot", () => {
+    const rowsOf = (list) => paint(userListFrame({ rows: 24, list }), 24).lines;
+    const page = (list) => rowsOf(list).slice(3, 3 + list.length)
+      .map((row, i) => ({ num: list[i].num, key: null, row }));
+    // The rows held, read a page (20 users) at a time.
+    const held = (list) => {
+      const map = new Map();
+      for (let i = 0; i < list.length; i += 20)
+        for (const e of page(list.slice(i, i + 20))) map.set(e.num, e.row);
+      return map;
+    };
+    const renumber = (list, from) => list.map((u, i) => ({ ...u, num: from + i }));
+
+    test("agrees when it lists the users held at its numbers", () => {
+      expect(userListPageDisagrees(held(users(1, 40)), page(users(21, 20)))).toBe(false);
+    });
+
+    test("agrees when it lists numbers not held", () => {
+      expect(userListPageDisagrees(held(users(1, 20)), page(users(21, 20)))).toBe(false);
+      expect(userListPageDisagrees(new Map(), page(users(1, 20)))).toBe(false);
+      expect(userListPageDisagrees(null, page(users(1, 20)))).toBe(false);
+    });
+
+    test("disagrees when another user is listed at a number held", () => {
+      // Two users logged in above: every user moved down two rows.
+      const moved = renumber(users(19, 20), 21);
+      expect(userListPageDisagrees(held(users(1, 40)), page(moved))).toBe(true);
+    });
+
+    test("disagrees when a user held at another number is listed", () => {
+      // The page joins the rows held, but its first user is held two rows up.
+      const moved = renumber(users(39, 20), 41);
+      expect(userListPageDisagrees(held(users(1, 40)), page(moved))).toBe(true);
+    });
+
+    test("a user who logged off has no ID to compare", () => {
+      const gone = users(21, 20, { goneNum: 25 });
+      expect(userListPageDisagrees(held(users(1, 40)), page(gone))).toBe(false);
+      expect(userListPageDisagrees(held(gone), page(users(21, 20)))).toBe(false);
     });
   });
 
