@@ -405,17 +405,18 @@ export class UserQuery {
   }
 
   // Over the list's own area (between the App Bar and the toolbar on mobile).
-  // The top and the sides are the terminal's; the bottom edge is not measured
-  // here: CSS ties it to --term-bottom-inset (toolbar, the keypad over it and
-  // the safe area, kept by App._applyMobileGeometry), so it follows the
-  // keypad opening and closing as the other bottom overlays do.
+  // Only the sides are measured here (the terminal's). The top and bottom
+  // edges are CSS: --term-top-inset (the App Bar) and --term-bottom-inset
+  // (toolbar, the keypad over it and the safe area), both kept by
+  // App._applyMobileGeometry, so the page follows every geometry change (the
+  // keypad opening and closing, the soft keyboard, a resize) as the other
+  // overlays do, and never measures a layout the keypad had shifted.
   _place() {
     const page = this._page;
     const main = this.core.view && this.core.view.mainDisplay;
     if (!page || !main) return;
     const r = main.getBoundingClientRect();
     Object.assign(page.style, {
-      top: r.top + 'px',
       left: r.left + 'px',
       width: r.width + 'px'
     });

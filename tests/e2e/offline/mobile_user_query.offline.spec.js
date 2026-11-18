@@ -232,6 +232,18 @@ test.describe('querying a user from the online user list', () => {
     return Math.round(top - document.querySelector('[data-user-query-page]').getBoundingClientRect().bottom);
   });
 
+  // The page starts at the App Bar's bottom edge and its first row shows.
+  const topGap = (page) => page.evaluate(() => {
+    const bar = document.getElementById('mobileAppBar').getBoundingClientRect();
+    const box = document.querySelector('[data-user-query-page]').getBoundingClientRect();
+    const first = document.querySelector('[data-user-query-page] .userQueryRow').getBoundingClientRect();
+    return { gap: Math.round(box.top - bar.bottom), firstClear: first.top >= bar.bottom - 0.5 };
+  });
+  const placed = async (page) => {
+    await expect.poll(() => bottomGap(page)).toBe(0);
+    await expect.poll(() => topGap(page)).toEqual({ gap: 0, firstClear: true });
+  };
+
   test('the page\'s bottom edge follows the keypad: closing it brings the page down, opening it moves the page up', async ({ page }) => {
     await bootUserList(page, { sleepMs: 300 });
     await enterUserList(page);
@@ -242,19 +254,19 @@ test.describe('querying a user from the online user list', () => {
     await expect.poll(() => selectedId(page)).toBe('user002');
     await page.keyboard.press('Enter');
     await pageShown(page, 'user002');
-    await expect.poll(() => bottomGap(page)).toBe(0);
+    await placed(page);
     const withKeypad = (await queryPage(page).boundingBox()).height;
     await page.locator('[data-key="__keys"]').tap();
     await expect(page.locator('#mobileKeypad')).toHaveCount(0);
-    await expect.poll(() => bottomGap(page)).toBe(0);
+    await placed(page);
     expect((await queryPage(page).boundingBox()).height).toBeGreaterThan(withKeypad);
     await page.locator('[data-key="__keys"]').tap();
     await expect(page.locator('#mobileKeypad')).toBeVisible();
-    await expect.poll(() => bottomGap(page)).toBe(0);
+    await placed(page);
     expect((await queryPage(page).boundingBox()).height).toBe(withKeypad);
     // The soft keyboard covers the page (it overlays the bar), the page stays put.
     await page.locator('#mobileKeypad [data-key="__keyboard"]').tap();
-    await expect.poll(() => bottomGap(page)).toBe(0);
+    await placed(page);
     expect(await guardHits(page)).toEqual([]);
   });
 

@@ -1070,6 +1070,8 @@ App.prototype._onVisualViewport = function() {
   document.documentElement.style.setProperty('--safe-bottom', chrome.safeBottom + 'px');
   if (this.view && this.view.setTopInset)
     this.view.setTopInset(this.mobile ? chrome.top : 0);
+  // Top overlays that must not sit under the App Bar (the user query page).
+  document.documentElement.style.setProperty('--term-top-inset', (this.mobile ? chrome.top : 0) + 'px');
   var bottomInset = this.mobile ? chrome.bottom : 0;
   // Bottom terminal prompts keep their position above the toolbar/key panel.
   document.documentElement.style.setProperty('--term-bottom-inset', bottomInset + 'px');

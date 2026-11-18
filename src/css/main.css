@@ -534,6 +534,7 @@ span.listCard[data-user-gone] .listCardLine * {
   position: fixed;
   /* The bottom edge follows the toolbar and the keypad over it (set with the
      terminal's inset, App._applyMobileGeometry). */
+  top: var(--term-top-inset, 0px);
   bottom: var(--term-bottom-inset, 0px);
   z-index: 3;
   box-sizing: border-box;
