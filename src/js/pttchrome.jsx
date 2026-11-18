@@ -342,6 +342,7 @@ export const App = function() {
   // 目前開著的 modal 來源名稱集合；modalShown = size > 0（見 setModalOpen）。
   this._openModals = new Set();
   this.modalShown = false;
+  this.pressBeganInModal = false;
   // 最後一個 modal 關閉的時間（performance.now() 基準）。term_view 用它擋掉「關框
   // 的那一下」按鍵（modal_key_gate.js）。
   this.modalClosedAt = -Infinity;
@@ -404,6 +405,15 @@ export const App = function() {
   this.copyOnSelect = true;
 
   var self = this;
+
+  // Mantine closes a modal on its overlay's mousedown, so by the time the click
+  // that follows reaches mouse_click the modal is already gone. Capture-phase
+  // runs before any modal handler: remember whether the press began over a modal
+  // so that click can be refused (#259).
+  window.addEventListener('mousedown', function(e) {
+    if (e.button === 0)
+      self.pressBeganInModal = self.modalShown;
+  }, true);
 
   window.addEventListener('click', function(e) {
     self.mouse_click(e);
@@ -2531,7 +2541,11 @@ App.prototype._traceListTap = function(outcome, e) {
 };
 
 App.prototype.mouse_click = function(e) {
-  if (this.modalShown) {
+  // The click that ends a press which began while a modal was open belongs to
+  // that modal, even though the press itself already closed it.
+  var pressBeganInModal = this.pressBeganInModal;
+  this.pressBeganInModal = false;
+  if (this.modalShown || (pressBeganInModal && e.button === 0)) {
     this._traceListTap('modal', e);
     return;
   }
