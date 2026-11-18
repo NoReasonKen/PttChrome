@@ -1263,4 +1263,11 @@ export function isHomeDashboardTarget(el) {
   return !!(el && el.closest && el.closest('#' + HOME_DASHBOARD_ID));
 }
 
+// 面板上維持瀏覽器原生右鍵選單的目標：連結與文字輸入（複製連結、貼上、拼字檢查要靠它）。
+// 與預覽圖的放行同一個精神（preview_targets.js#NATIVE_MENU_SELECTOR）。
+export const HOME_NATIVE_MENU_SELECTOR = 'a, input, textarea, select, [contenteditable]';
+export function isHomeNativeMenuTarget(el) {
+  return !!(el && el.closest && el.closest(HOME_NATIVE_MENU_SELECTOR));
+}
+
 export default HomeDashboard;

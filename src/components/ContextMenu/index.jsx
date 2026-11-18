@@ -81,6 +81,10 @@ import {
   replyTargetId,
 } from "../../js/context_menu_items";
 import { isNativeMenuTarget } from "../../js/preview_targets";
+import {
+  isHomeDashboardTarget,
+  isHomeNativeMenuTarget,
+} from "../../js/home_dashboard";
 import { pushMaxBytes } from "../../js/long_push";
 import { longPushAvailable } from "../../js/long_push_gate";
 import { clearDraft, writeDraft } from "../../js/long_push_draft";
@@ -507,7 +511,10 @@ export const ContextMenu = ({ pttchrome }) => {
       const { CmdHandler } = pttchrome;
       const touch = isTouchContextMenu(event);
       const disposition = contextMenuDisposition({
-        nativeTarget: isNativeMenuTarget(event.target),
+        nativeTarget:
+          isNativeMenuTarget(event.target) ||
+          (isHomeDashboardTarget(event.target) &&
+            isHomeNativeMenuTarget(event.target)),
         doDOMMouseScroll: CmdHandler.getAttribute("doDOMMouseScroll") === "1",
         // 不帶 touch：拖選取把手後補發的 contextmenu 沒有觸控標記（見該函式註解）。
         mobile: pttchrome.mobile,
@@ -1552,6 +1559,14 @@ export const ContextMenu = ({ pttchrome }) => {
     const bbsWindow = document.getElementById("BBSWindow");
     const contextMenuHandler = (event) => onContextMenu(event);
     bbsWindow.addEventListener("contextmenu", contextMenuHandler, true);
+    // 首頁儀表板在 #cmenuReact（#BBSWindow 的兄弟），右鍵到不了上面那個監聽 ⇒ 另掛
+    // 一份，走同一條處理。只限桌機：手機的工具列已能進設定，長按另有專屬處理。
+    const dashboardRoot = document.getElementById("cmenuReact");
+    const dashboardHandler = (event) => {
+      if (pttchrome.mobile || !isHomeDashboardTarget(event.target)) return;
+      onContextMenu(event);
+    };
+    dashboardRoot?.addEventListener("contextmenu", dashboardHandler, true);
 
     const clickHandler = () => onHide();
     window.addEventListener("click", clickHandler, false);
@@ -1576,6 +1591,7 @@ export const ContextMenu = ({ pttchrome }) => {
       window.removeEventListener("keyup", hotKeyUpHandler, false);
       window.removeEventListener("click", clickHandler, false);
       bbsWindow.removeEventListener("contextmenu", contextMenuHandler, true);
+      dashboardRoot?.removeEventListener("contextmenu", dashboardHandler, true);
     };
   }, [onContextMenu, onHide, onMenuSelect]);
 
