@@ -609,6 +609,8 @@ function sendColorCommand({ fg, bg, isBlink }, onCmdSend, type) {
   onCmdSend(cmd);
 }
 
+const stopClick = (e) => e.stopPropagation();
+
 export const InputHelperModal = ({
   show,
   onReset,
@@ -690,6 +692,9 @@ export const InputHelperModal = ({
       withBorder
       className="InputHelperModal__Dialog"
       style={{ top: pos.top, left: pos.left }}
+      // A click inside the helper is not a click on the terminal: the app's
+      // window-level click handler would cancel a checkbox's own toggle.
+      onClick={stopClick}
     >
       <Group
         justify="space-between"
@@ -705,7 +710,7 @@ export const InputHelperModal = ({
         <Tabs value={tab} onChange={setTab}>
           <Tabs.List>
             <Tabs.Tab value="colors">{i18n("colorTitle")}</Tabs.Tab>
-            <Menu trigger="click-hover" position="bottom-start" zIndex={3000}>
+            <Menu trigger="click" position="bottom-start" zIndex={3000}>
               <Menu.Target>
                 <Button variant="subtle" size="compact-sm">
                   {i18n("symTitle")}
@@ -722,7 +727,7 @@ export const InputHelperModal = ({
                 ))}
               </Menu.Dropdown>
             </Menu>
-            <Menu trigger="click-hover" position="bottom-start" zIndex={3000}>
+            <Menu trigger="click" position="bottom-start" zIndex={3000}>
               <Menu.Target>
                 <Button variant="subtle" size="compact-sm">
                   {i18n("emoTitle")}

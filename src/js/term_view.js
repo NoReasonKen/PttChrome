@@ -137,6 +137,24 @@ function easyReadingOwnsKeys(view) {
     !view.buf.easyReadingFunctionMode);
 }
 
+// Whether easy reading refuses text that is not a key (typed text, an input
+// method's words, a paste, the input helper's send) at home or over a list:
+// true = refused with the hint and the caller must not send it. Refusing only
+// shows the hint; it never sends, queues or switches to the native mirror.
+// `stamp`: also record that the user typed natively (the lists' idle probe),
+// as typed text does and the helper's send does not. The article is judged by
+// easyReading.refuseText, which onTextInput reaches through
+// easyReading.noteTextInput and the helper calls directly.
+function refusesText(view, text, what, stamp) {
+  var core = view.bbscore;
+  if (core.homeDashboard?.refuseText(text, what))
+    return true;
+  if (stamp && core.noteListNativeInput)
+    core.noteListNativeInput();
+  var owner = listOwnerOf(core);
+  return !!(what !== 'paste' && owner && owner.noteTextInput(text));
+}
+
 function listOwnerOf(core) {
   return core && core.activeListSession ? core.activeListSession() : null;
 }
@@ -1494,6 +1512,21 @@ TermView.prototype = {
     e.target.value='';
   },
 
+  // The input helper's send (colour codes, symbols, emoticons) is typed text
+  // for the gate's purposes (#242): true when it was refused with the hint and
+  // the caller must not send it. Over a native prompt or the editor it returns
+  // false and the caller sends as before.
+  refusesHelperText: function(text) {
+    var busyHint = serializedOpHint(this.bbscore);
+    if (busyHint) {
+      this.flashListHint(busyHint);
+      return true;
+    }
+    if (refusesText(this, text, 'text', false)) return true;
+    var er = this.bbscore.easyReading;
+    return !!(er && er.refuseText(text, 'text'));
+  },
+
   onTextInput: function(text, isPasting) {
     // 序列化操作（AID 跳文／長推文）在途時一律吞掉，理由與 onKeyDown 那道相同。
     // **排在列表好讀分派之前**：noteTextInput 自己會 _enterFunctionMode() 並排
@@ -1524,7 +1557,7 @@ TermView.prototype = {
       return;
     }
     // Other text at home (an input method's words, a paste) is refused (#191).
-    if (this.bbscore.homeDashboard?.refuseText(text, isPasting ? 'paste' : 'text'))
+    if (refusesText(this, text, isPasting ? 'paste' : 'text', true))
       return;
     // 推文鍵的第三條入口：IME。中文輸入法開著時 keydown 的 keyCode 是 229，被
     // keyEventFilter 擋在 onKeyDown 之外，字改從 input 事件進到這裡 ⇒ 少了這道，
@@ -1556,11 +1589,6 @@ TermView.prototype = {
     // 見 list_session.noteTextInput／easy_reading.noteTextInput（兩者都自帶 gate，
     // 沒接管畫面時為 no-op／回 false）。
     // 同 onKeyDown：IME 送字也是「使用者送了 byte」，原生鏡像下同樣收不到。
-    if (this.bbscore && this.bbscore.noteListNativeInput)
-      this.bbscore.noteListNativeInput();
-    var textOwner = listOwnerOf(this.bbscore);
-    if (!isPasting && textOwner && textOwner.noteTextInput(text))
-      return;
     if (this.bbscore.easyReading && this.bbscore.easyReading.noteTextInput(text, isPasting))
       return;
     // Normalization lives in string_util.normalizePasteText so the list easy
