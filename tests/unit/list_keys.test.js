@@ -7,9 +7,13 @@
 // exercised directly here.
 import { ListSession, transitionListSession, userListKeyClass } from "../../src/js/list_session";
 import { FRIEND_LIST_KEY, MAIL_LIST_KEY, USER_LIST_KEY } from "../../src/js/screen_titles";
-import { queryUser, promptUserQuery } from "../../src/js/user_query";
+import { queryUser, promptUserQuery, queryAuthor } from "../../src/js/user_query";
 
-vi.mock("../../src/js/user_query", () => ({ queryUser: vi.fn(() => true), promptUserQuery: vi.fn(() => true) }));
+vi.mock("../../src/js/user_query", () => ({
+  queryUser: vi.fn(() => true),
+  promptUserQuery: vi.fn(() => true),
+  queryAuthor: vi.fn(() => true),
+}));
 vi.mock("../../src/js/user_list", async (importOriginal) => ({
   ...(await importOriginal()),
   selectedUserId: vi.fn(() => "user007"),
@@ -111,7 +115,6 @@ describe("ListSession refuses keys easy reading does not present (#159)", () => 
     ["v", {}],
     ["Z", { shiftKey: true }],
     ["p", { ctrlKey: true }], // Ctrl-P: post
-    ["q", { ctrlKey: true }], // Ctrl-Q: query author
     ["x", { ctrlKey: true }], // Ctrl-X: cross-post (not a clipboard key)
     ["]", { ctrlKey: true }], // Ctrl-]: a control byte
     ["t", { altKey: true, code: "KeyT" }], // Alt+T: this app's alias of Ctrl-T
@@ -891,8 +894,9 @@ describe("Ctrl／Alt combos: only the non-remap Alt combos still pass to the bro
 describe("Alt remap, all 26 letters (list easy reading)", () => {
   const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
-  test("every letter is refused: prevented, nothing enqueued or sent, mirror not entered", () => {
-    LETTERS.forEach((L) => {
+  // Alt+Q is Ctrl-Q, the author query (#254): see the Ctrl-Q tests below.
+  test("every letter but Q is refused: prevented, nothing enqueued or sent, mirror not entered", () => {
+    LETTERS.filter((L) => L !== "Q").forEach((L) => {
       const ctx = activeRefusalSession();
       const e = keyEvent(L.toLowerCase(), { altKey: true, code: "Key" + L });
       ctx.s.onKeyDown(e);
@@ -942,6 +946,47 @@ describe("Alt remap, all 26 letters (list easy reading)", () => {
       ctx.s.onKeyDown(e);
       expectRefused(ctx, e);
     }
+  });
+});
+
+// Ctrl-Q (and Alt+Q, its alias) on an article list queries the selected
+// article's author (#254): user_query.queryAuthor takes it and sends it, the
+// session itself sends nothing. The mailbox and the user list do not take it.
+describe("Ctrl-Q queries the selected article's author (#254)", () => {
+  beforeEach(() => queryAuthor.mockClear());
+
+  test.each([
+    ["q", { ctrlKey: true }],
+    ["Q", { ctrlKey: true }],
+    ["q", { altKey: true, code: "KeyQ" }],
+  ])("%s %j → prevented, handed to queryAuthor, nothing enqueued or sent here", (key, mods) => {
+    const ctx = activeRefusalSession();
+    const e = keyEvent(key, mods);
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(queryAuthor).toHaveBeenCalledTimes(1);
+    expect(queryAuthor).toHaveBeenCalledWith(ctx.s._core);
+    expect(ctx.sent).toEqual([]);
+    expect(ctx.enqueued).toEqual([]);
+    expect(ctx.s.state).toBe("active");
+    expect(ctx.hints).toEqual([]);
+  });
+
+  test("the help sheet's ^Q row is offered on an article list (wouldRefuse)", () => {
+    const ctx = activeRefusalSession();
+    expect(ctx.s.wouldRefuse({ key: "q", ctrlKey: true })).toBe(false);
+  });
+
+  test("the mailbox refuses Ctrl-Q and Alt+Q", () => {
+    for (const mods of [{ ctrlKey: true }, { altKey: true, code: "KeyQ" }]) {
+      const ctx = activeRefusalSession();
+      ctx.s._boardName = MAIL_LIST_KEY;
+      const e = keyEvent("q", mods);
+      ctx.s.onKeyDown(e);
+      expect(e.defaultPrevented).toBe(true);
+      expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
+    }
+    expect(queryAuthor).not.toHaveBeenCalled();
   });
 });
 

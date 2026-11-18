@@ -105,6 +105,18 @@
   "cmenu_authorBlacklistExists": {
     "message": "已在黑名單"
   },
+  "authorQuery_title": {
+    "message": "查詢作者"
+  },
+  "authorQuery_notFound": {
+    "message": "查不到這位作者（帳號可能已不存在）"
+  },
+  "authorQuery_unavailable": {
+    "message": "只能在好讀的文章列表查詢作者"
+  },
+  "authorQuery_noAuthor": {
+    "message": "這一列沒有可以查詢的作者"
+  },
   "cmenu_addTitleBlacklist": {
     "message": "加入標題黑名單 ..."
   },

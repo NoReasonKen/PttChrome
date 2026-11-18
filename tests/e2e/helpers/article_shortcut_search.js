@@ -218,7 +218,7 @@ async function installNestedServer(page, session) {
       return c < 128 ? ch : String.fromCharCode(window.lib.u2bArray[2 * c], window.lib.u2bArray[2 * c + 1]);
     }).join('');
     const subject = title => title.replace(/^(?:(?:Re|Fw):\s*)+/i, '').toLowerCase();
-    // surface: article | list | info | prompt | empty | missing | main
+    // surface: article | list | info | prompt | empty | missing | main | query
     // `promptless`: `a` shows no prompt, as on a screen where it is no command.
     // `squeezedFooter`: the pager footer has room only for its short hints,
     //   as a very long article's (more.c#common_pmore_footer_handler).
@@ -230,7 +230,12 @@ async function installNestedServer(page, session) {
       backPause: null, pausing: null,
       terminalRows: session.dynamicRows ? app.buf.rows : 24,
       applicationRows: session.dynamicRows ? app.buf.rows : 24, sizeChanges: [],
-      replyDelayMs: 90, holdResponses: false, queuedResponses: 0
+      replyDelayMs: 90, holdResponses: false, queuedResponses: 0,
+      // Ctrl-Q on the list (read.c#read_cmd_query → talk.c#my_query): the
+      // author's query screen, or nothing at all for an author in
+      // `goneAuthors` (getuser fails). `querySleepMs`: PTT's sleep after the
+      // key on the query screen, before the list (#254).
+      goneAuthors: new Set(), querySleepMs: 0, queryUser: null, sleepPending: 0
     };
     const listed = () => {
       const all = articles.filter(article => !state.deleted.has(article.aid) && (!state.filter || !article.pinned));
@@ -290,6 +295,26 @@ async function installNestedServer(page, session) {
       for (let n = state.line; n <= end; n++) rows[n - state.line] = line(n);
       return rows;
     };
+    const cellWidth = text => [...text].reduce((w, ch) => w + (ch.charCodeAt(0) < 0x80 ? 1 : 2), 0);
+    const padCells = (text, n) => text + ' '.repeat(Math.max(0, n - cellWidth(text)));
+    // The query screen as helpers/user_list.js draws it: from row 1 over the
+    // list (my_query's move(1, 0); clrtobot()), the board's title kept on row
+    // 0, the 請按任意鍵繼續 bar on the last row.
+    const queryRows = (id, termRows) => {
+      const lines = [
+        padCells('《ＩＤ暱稱》' + id + ' (' + id + ' 的暱稱)', 40) + '《經濟狀況》清寒',
+        padCells('《登入次數》12 次 (同天內只計一次)', 40) + '《有效文章》3 篇 (退:0)',
+        padCells('《目前動態》不在站上', 40) + '《私人信箱》最近無新信件',
+        padCells('《上次上站》01/02/2026 03:04:05 Fri', 40) + '《上次故鄉》某地',
+        padCells('《 五子棋 》    0 勝     0 敗     0 和', 40) + '《象棋戰績》    0 勝     0 敗     0 和',
+        '',
+        '《個人名片》' + id + ' 目前沒有名片'
+      ];
+      const rows = { 0: `【板主：test】看板《${state.board}》` };
+      lines.forEach((text, index) => { rows[1 + index] = text; });
+      rows[termRows - 1] = '▄'.repeat(15) + ' 請按任意鍵繼續 ' + '▄'.repeat(15);
+      return rows;
+    };
     const frame = (fullRepaint = false) => {
       const termRows = session.dynamicRows ? state.applicationRows : 24;
       const bodyRows = termRows - 4;
@@ -329,6 +354,9 @@ async function installNestedServer(page, session) {
       } else if (state.surface === 'boardMovie') {
         // An interactive movie may mask the backtick; q cannot be masked.
         rows = { 0: 'Board entry movie', [termRows - 1]: '互動式動畫播放中，可按 q 停止' };
+      } else if (state.surface === 'query') {
+        rows = queryRows(state.queryUser, termRows);
+        inverse = [0];
       } else {
         const entries = listed();
         rows = {
@@ -399,6 +427,15 @@ async function installNestedServer(page, session) {
           : session.boardEntry === 'movie' ? 'boardMovie' : 'list';
     };
     const step = rest => {
+      // Any key leaves the query screen (one escape sequence is one key); PTT
+      // sleeps before it draws the list again.
+      if (state.surface === 'query') {
+        state.surface = 'list';
+        state.queryUser = null;
+        state.sleepPending = state.querySleepMs;
+        const sequence = /^\x1b\[[0-9;]*[~A-Za-z]/.exec(rest);
+        return rest.slice(sequence ? sequence[0].length : 1);
+      }
       if (state.surface === 'boardPause' || state.surface === 'backPause') {
         state.surface = 'list';
         state.pausing = null;
@@ -496,6 +533,13 @@ async function installNestedServer(page, session) {
       const head = rest[0];
       if (head === ' ' && ['info', 'empty', 'missing'].includes(state.surface)) state.surface = 'list';
       else if (head === 'Q' && state.surface === 'article') state.surface = 'info';
+      else if (head === '\x11' && state.surface === 'list') {
+        const author = selected()?.author;
+        if (author && !state.goneAuthors.has(author)) {
+          state.surface = 'query';
+          state.queryUser = author;
+        }
+      }
       else if (head === '\r' && state.surface === 'list') {
         state.open = selected();
         state.surface = 'article';
@@ -570,7 +614,11 @@ async function installNestedServer(page, session) {
         if (session.dynamicRows) respond(bytes.replace(/\f/g, '') ? frame(bytes.includes('\f')) : render(storedScreen, true));
         // A hold queues the answer until releaseResponses, as the dynamic path.
         else if (state.holdResponses) respond(frame());
-        else setTimeout(() => app.onData(frame()), 0);
+        else {
+          const sleep = state.sleepPending;
+          state.sleepPending = 0;
+          setTimeout(() => app.onData(frame()), sleep);
+        }
       }
     };
     window.__shortcutServer = {

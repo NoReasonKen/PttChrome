@@ -179,3 +179,29 @@ test("board list view switches (#221): desktop only, the first label follows the
     expect(keys({ ...p, boardToggles: { counts: false, sort: "switch" }, mobile: true })).not.toContain(k);
   }
 });
+
+// #254: 查詢作者 on an article row, on the desktop menu and the phone's sheet
+// alike, right after the author's blacklist entry and before the divider.
+test("文章列：查詢作者帶作者 ID，桌機手機都有，點下去走 onMenuSelect('queryAuthor')", () => {
+  for (const mobile of [false, true]) {
+    const calls = [];
+    const entries = buildContextMenuEntries({
+      ...BASE,
+      mobile,
+      authorBlacklistId: "bob",
+      authorQueryTarget: { num: 103, pinnedKey: null, author: "bob" },
+      onMenuSelect: (k) => calls.push(k),
+    });
+    const at = entries.findIndex((e) => e.key === "queryAuthor");
+    expect(at).toBe(entries.findIndex((e) => e.key === "addAuthorBlacklist") + 1);
+    expect(entries[at].label).toBe(`${i18n("authorQuery_title")} 'bob'`);
+    entries[at].onClick({});
+    expect(calls).toEqual(["queryAuthor"]);
+  }
+  expect(keys({ ...BASE, authorQueryTarget: null })).not.toContain("queryAuthor");
+  expect(keys({ ...BASE, normalEnabled: false, authorQueryTarget: { author: "bob" } })).not.toContain("queryAuthor");
+  // Alone it still gets its divider.
+  const only = buildContextMenuEntries({ ...BASE, markAllReadEnabled: false, authorQueryTarget: { author: "bob" } });
+  const at = only.findIndex((e) => e.key === "queryAuthor");
+  expect(only[at + 1]).toMatchObject({ type: "divider", key: "d-blacklist" });
+});

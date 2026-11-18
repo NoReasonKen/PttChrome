@@ -59,6 +59,10 @@
   - **離開**：返回、系統返回、`←`（也接受 `Esc`、`q`）、或在頁面上往右滑。離開時列表立刻出現，只送一個空白鍵給 PTT 的「請按任意鍵繼續」。PTT 收到後可能先睡一下才重畫列表（`talk.c#my_query`：與上一次查詢結束相隔不到 1 秒睡 2 秒，不到 2 秒睡 1 秒，否則不睡），這段時間裡列表一直留在畫面上，PTT 的畫面一幀都不畫（`term_view._navigationHeld`）。等 PTT 畫回列表，列表好讀才把畫面收回來，列和選取都不變（`ListSession.resumeAfterHelp`）。往左滑沒有作用（沒有抽屜）。頁面上的方向鍵、翻頁、空白鍵捲動頁面。手機工具列按鍵面板的鍵（`view.sendKeyAsUser`，不是 window 上的 keydown）也由頁面接手（`UserQuery.takeKey`）：面板的 `←`／`Esc` 一樣離開、`↑`／`↓`／翻頁捲動，不會落到查詢佔線的「查詢網友中，請稍候…」提示。頁面顯示時，其餘按鍵（`Enter`、`→`、`Backspace`、`Tab`、`Del`、字母）都不會落到頁面底下被拿著的列表，一律顯示好讀的「目前不支援這個按鍵」提示；軟鍵盤打的字也一樣：單一字元當按鍵（`q` 離開、其他字元提示），輸入法的詞與貼上提示不支援在查詢頁輸入文字（`UserQuery.ownsInput`／`refuseText`，`term_view.onTextInput`）。手機工具列：「按鍵」可開關（按鍵面板在頁面出現前就開著也一樣）、按鍵面板的鍵盤鈕可叫出軟鍵盤、「更多」可開；針對頁面底下列表的動作一律關掉（推／回／發文／搜尋格留空，重整與到底反灰，「更多」裡沒有查詢網友、切換視圖、未讀、全部已讀、操作說明、全選與圖片上傳），登出反灰（PTT 被查詢佔線，送不出去）；「選取」與「設定」照常。頁面出現前（`Q`、代號送出中）整條工具列仍反灰。有別的 sheet 開在頁面上時，按鍵歸那個 sheet。
   - **失敗都留在列表並提示**：PTT 沒有這個使用者（它不畫查詢畫面，直接重畫列表）⇒「找不到這個使用者」；PTT 的使用限制（`alert_screen(" 使用限制 ", …)`）⇒ 送一個空白鍵關掉它，狀態是 ` 查詢 ` 的拒絕回到列表並提示，` 限速中 ` 繼續到查詢畫面；PTT 沒有回答（逾時）⇒ 提示，列表留著。別的操作正在跑時，只給提示，什麼都不送。查詢從 `Q` 到列表回來的整段期間，終端按鍵與點擊都擋下（`setModalOpen('userQuery')`）。
   - **依據**：查詢畫面的欄位排法、名片從第 7 列起、沒有名片那一行、按鍵後的 sleep、找不到使用者與使用限制的流程照 pttbbs 原始碼（`talk.c#my_query`／`t_query`、`activity_alert`），沒有實機的名片、使用限制畫面。e2e 用受控列表（`plans`、`state.flood`、`sleepMs`），`tests/e2e/offline/mobile_user_query.offline.spec.js`。
+- **查詢作者**（#254，`user_query.queryAuthor`）：在列表好讀的文章列表（不含信箱與線上使用者列表）查一篇文章的作者，結果是同一個查詢網友頁。入口：`Ctrl-Q`（與 `Alt+Q`）查選取的那一篇；右鍵選單（桌機）與卡片長按選單（手機）在文章列上多一項「查詢作者 '<作者>'」，緊跟在加入黑名單的作者項後面，查那一列（先選取它）。PTT 的 `Ctrl-Q`（`read.c#read_cmd_query`）查的是**PTT 游標那一列**的作者，所以先把 PTT 的游標移到選取的那篇（與其他作用在游標列的序列同一條同步腿，`ListSession.beginAuthorQuery`），只在 PTT 停在那篇時才送 `Ctrl-Q`，沒有代號、沒有 Enter。置底列也可以查（從編號列走過去）；作者欄不是帳號的列（已刪除的文章）沒有這一項，`Ctrl-Q` 提示「這一列沒有可以查詢的作者」。
+  - **頁面與離開**：同查詢網友頁（上面）：疊在列表上、列表留在底下；離開送一個空白鍵，列表立刻出現、選取不變，PTT 睡完重畫列表後列表好讀才收回畫面（`ListSession.showsHeldList` 認得 PTT 畫回的是同一個看板的列表）。
+  - **失敗都留在列表並提示，不送猜的鍵**：PTT 不認得這個作者（帳號已不存在：`my_query` 什麼都不畫，只有 `\f` 重畫列表）⇒「查不到這位作者（帳號可能已不存在）」，`Ctrl-Q` 之後什麼都不送；使用限制同查詢網友；游標同步失敗（逾時、列表變動）⇒ `Ctrl-Q` 不送，列表停在失敗狀態並提示，下拉重新整理；`Ctrl-Q` 沒有回答 ⇒ 只在 PTT 畫著查詢畫面或使用限制時才補一個 Enter（文章列表上的 Enter 會開文），否則什麼都不送。不在列表好讀的文章列表時提示「只能在好讀的文章列表查詢作者」。
+  - **依據**：流程照 pttbbs 原始碼（`read.c#read_cmd_query` 對游標列呼叫 `talk.c#my_query`：找不到使用者回 `DONOTHING` 不畫任何東西，查到時從第 1 列清到底再畫，第 0 列的看板標題留著），沒有實機的作者查詢畫面。e2e 用受控文章列表（`tests/e2e/helpers/article_shortcut_search.js` 的 `goneAuthors`、`querySleepMs`，查詢畫面與 `user_list.js` 的一致），`tests/e2e/offline/mobile_author_query.offline.spec.js`（手機長按、返回、找不到作者）與 `author_query.offline.spec.js`（桌機 `Ctrl-Q`、右鍵選單）。
 - **依據**：列表、表頭與底列的顏色、好友代號的亮青、空好友列表的底列、說明畫面、查詢畫面與 `Q` 提示都對照過實機畫面；數字跳號、列表兩端的方向鍵與翻頁、空視圖的游標位置、`< 離站中..>` 列的樣子沒有實機畫面。e2e 用 `tests/e2e/helpers/user_list.js` 的受控列表（虛構的使用者），`tests/e2e/offline/mobile_user_list.offline.spec.js`。
 
 給列表以外的呼叫端的介面（純函式在 `src/js/user_list.js`，除非另註）：
@@ -79,6 +83,8 @@
 | `userQueryAlert(rowTexts)` | PTT 的使用限制畫面 ⇒ `{ status: 'denied'｜'slowed', reason }`，否則 `null` |
 | `queryUser(core, id)`（`user_query.js`） | 查詢 `id`（卡片點擊，以及列表按鍵 `q`、Enter、`→`）。送出了回 `true`；別的操作在跑或不在使用者列表時回 `false` 並提示 |
 | `promptUserQuery(core)`（`user_query.js`） | 開「查詢網友」輸入 sheet，送出時查詢那個代號（`Q`、「更多」、右鍵選單、指令面板共用）。開了回 `true`；不行時回 `false` 並提示 |
+| `queryAuthor(core, target)`（`user_query.js`） | 查詢文章列表上選取那篇的作者（`Ctrl-Q`）；`target`（`ListSession.authorQueryTargetAtRow` 給的那一列，右鍵／長按選單）先被選取。送出了回 `true`；不行時回 `false` 並提示 |
+| `ListSession.authorQueryTargetAtRow(row)` | 右鍵／長按那一列可查詢的作者 `{ num, pinnedKey, author }`，不能查時 `null`（選單項不出現） |
 
 「呈現」的區還沒做完的部分是缺口：在補上之前每次進去都顯示同樣的 PTT 原生畫面，原生畫面守門（`tests/e2e/helpers/native_grid_guard.js`）以各自的 issue 放行。目前沒有缺口：信箱（#196）與線上使用者（#199）都由首頁儀表板的入口進去、由好讀呈現，守門裡沒有任何主功能表區的放行條目。「不呈現」的區（含私人信件區與休閒聊天區的子選單）沒有入口。守護 `tests/e2e/offline/mobile_easy_reading_gaps.offline.spec.js`（首頁按不呈現區的鍵 ⇒ 擋下、提示、一個 byte 都不送、沒有原生畫面）、`mobile_user_list_entry.offline.spec.js`（線上使用者的入口、頁面堆疊、按鍵政策與原地切換）。
 

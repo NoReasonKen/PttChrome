@@ -89,6 +89,18 @@ export const en_US = {
   "cmenu_authorBlacklistExists": {
     "message": "is already blacklisted"
   },
+  "authorQuery_title": {
+    "message": "Query author"
+  },
+  "authorQuery_notFound": {
+    "message": "Author not found (the account may no longer exist)"
+  },
+  "authorQuery_unavailable": {
+    "message": "Authors can be queried only from an easy-reading article list"
+  },
+  "authorQuery_noAuthor": {
+    "message": "This row has no author to query"
+  },
   "cmenu_addTitleBlacklist": {
     "message": "Blacklist title keyword ..."
   },
