@@ -1031,6 +1031,49 @@ describe("PttChrome 自己的 passthrough 序列的命令形狀", () => {
   });
 });
 
+// A background read of more boards still on the wire moves PTT's cursor
+// after `_serverNum` was taught: a key that acts on the cursor row moves PTT's
+// cursor back to the selection first, or Enter opens another board.
+describe("cursor-row keys behind a background read in flight", () => {
+  function busy() {
+    const h = makeSession();
+    h.termBuf.feed(brdScreenRows());
+    seedBuffer(h.termBuf, 1, 20);
+    h.s._selectedNum = 5;
+    h.s._serverNum = 5;
+    h.queue.idle = false;
+    h.queue.inFlightKind = BRD_CMD_PREFIX + "fetch-down";
+    h.enqueued.length = 0;
+    return h;
+  }
+
+  test("a list operation's passthrough moves PTT's cursor back first", () => {
+    const h = busy();
+    h.s._beginPassthroughBytes("/");
+    expect(h.enqueued.map((c) => c.keys)).toEqual(["5\r"]);
+    expect(h.enqueued[0].kind).toBe(BRD_CMD_PREFIX + "native-sync-jump");
+  });
+
+  test("Enter moves PTT's cursor back before opening the board", () => {
+    const h = busy();
+    h.s.onKeyDown(keyEvent("Enter"));
+    expect(h.s.state).toBe("opening");
+    expect(h.enqueued.map((c) => c.keys)).toEqual(["5\r"]);
+  });
+
+  test("an in-place key (v) moves PTT's cursor back first", () => {
+    const h = busy();
+    h.s.onKeyDown(keyEvent("v"));
+    expect(h.enqueued.map((c) => c.keys)).toEqual(["5\r"]);
+  });
+
+  test("Back moves PTT's cursor back first", () => {
+    const h = busy();
+    h.s._beginLeave();
+    expect(h.enqueued.map((c) => c.keys)).toEqual(["5\r"]);
+  });
+});
+
 describe("A 類鍵的凍結交易（看板列表：t / v / V）", () => {
   test("按 v → frozen（不是 native）、緩衝保住、命令是 brd-native-inplace", () => {
     const h = makeSession();
