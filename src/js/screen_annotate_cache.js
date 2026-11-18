@@ -124,6 +124,8 @@ export function annotationsKey(input) {
     stable(e.listEasyReading),
     // The mailbox's rows annotate by mail columns (#196).
     stable(e.mailList),
+    // The user list's rows carry no list annotation (#199).
+    stable(e.userList),
     stable(e.dropHidden),
     // 反向讀取的接合點：它決定哪些列不編樓層、跨列掃描在哪裡斷開。整段反向期間
     // 不變（新頁一律插在同一點），接合完成變回 undefined ⇒ **一次**全量重算，樓層

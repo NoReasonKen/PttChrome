@@ -153,3 +153,69 @@ describe("單一字元鍵補走 keypress", () => {
     expect(view._keyboard.onKeyPress).not.toHaveBeenCalled();
   });
 });
+
+// The toolbar and keypad keys are no keydown the list's number input sees
+// (#199: the keypad's Enter queried the selected user on the user list and
+// left the input open). While the input is open they are its keys.
+describe("the list's number input owns the toolbar and keypad keys", () => {
+  const inputValue = () => document.querySelector("[data-list-input]")?.value;
+
+  test("characters and ⌫ edit it, Enter commits it, and the list sees none of them", () => {
+    const view = makeView({ listRenderMode: "buffer" });
+    const cb = vi.fn();
+    view.promptListInput("跳至第幾項：", "5", cb);
+    view.sendKeyAsUser("0");
+    view.sendKeyAsUser("9");
+    view.sendKeyAsUser("Backspace");
+    expect(inputValue()).toBe("50");
+    view.sendKeyAsUser("Enter");
+    expect(cb).toHaveBeenCalledWith("50");
+    expect(inputValue()).toBeUndefined();
+    expect(view.seen.listSession).toHaveLength(0);
+    expect(view.seen.keyboard).toHaveLength(0);
+    // Closed: the next key is the list's again.
+    view.sendKeyAsUser("Enter");
+    expect(view.seen.listSession).toHaveLength(1);
+  });
+
+  test("Esc and system Back cancel it; a closed input lets go of Back", () => {
+    const view = makeView({ listRenderMode: "buffer" });
+    const dismissers = [];
+    view.bbscore.registerSheetDismiss = (fn) => {
+      dismissers.push(fn);
+      return () => dismissers.splice(dismissers.indexOf(fn), 1);
+    };
+    const cb = vi.fn();
+    view.promptListInput("跳至第幾項：", "5", cb);
+    view.sendKeyAsUser("Escape");
+    expect(cb).toHaveBeenCalledWith(null);
+    expect(dismissers).toHaveLength(0);
+
+    view.promptListInput("跳至第幾項：", "7", cb);
+    expect(dismissers).toHaveLength(1);
+    dismissers[0]();
+    expect(cb).toHaveBeenLastCalledWith(null);
+    expect(inputValue()).toBeUndefined();
+    expect(dismissers).toHaveLength(0);
+
+    view.promptListInput("跳至第幾項：", "8", cb);
+    view.hideListOverlay();
+    expect(inputValue()).toBeUndefined();
+    expect(dismissers).toHaveLength(0);
+    expect(view.seen.listSession).toHaveLength(0);
+  });
+});
+
+// The user query page (#199) listens for keydown on window; the keypad's keys
+// come through here, before the busy gate the query holds while its page shows.
+describe("the user query page takes the toolbar and keypad keys", () => {
+  test("a key the page takes reaches neither the busy hint nor the list", () => {
+    const view = makeView({ listRenderMode: "buffer" });
+    view.bbscore.userQuery = { busy: true, takeKey: vi.fn((e) => e.key === "ArrowLeft") };
+    view.sendKeyAsUser("ArrowLeft");
+    expect(view.bbscore.userQuery.takeKey).toHaveBeenCalledWith(expect.objectContaining({ key: "ArrowLeft", ctrlKey: false }), true);
+    expect(view.seen.hints).toHaveLength(0);
+    expect(view.seen.listSession).toHaveLength(0);
+    expect(view.seen.keyboard).toHaveLength(0);
+  });
+});

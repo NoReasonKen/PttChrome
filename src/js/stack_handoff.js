@@ -6,7 +6,7 @@
 // the end does to the stack stays with the stack (navigation_stack.js).
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { OWNER_ARTICLE_LIST, OWNER_BOARD_LIST } from './list_render_owner';
-import { MAIL_LIST_KEY, sameBoard } from './screen_titles';
+import { MAIL_LIST_KEY, USER_LIST_KEY, isUserListKey, sameBoard } from './screen_titles';
 import { handoffStep, PAGE, HANDOFF_TIMEOUT_MS, HANDOFF_REACH_POLL_MS } from './page_stack';
 import { i18n } from './i18n';
 import { STACK_NOTICE_MS, LOCAL_INPUT, stopLocal } from './stack_layer';
@@ -15,7 +15,12 @@ import { STACK_NOTICE_MS, LOCAL_INPUT, stopLocal } from './stack_layer';
 const PENDING_OWNER = 'stackPending';
 
 // The board the article list session reads, or null before it has read one.
-export const listBoard = core => core.listSession?._boardName || null;
+// The online user list is one page in either view (#199): its friends/all
+// toggle redraws the page in place, so both views are USER_LIST_KEY here.
+export function listBoard(core) {
+  const board = core.listSession?._boardName || null;
+  return isUserListKey(board) ? USER_LIST_KEY : board;
+}
 
 // The board of the article open in PTT, or null. A mail names no board (its
 // header has no 看板 field): opened from the mail list, it is that list's

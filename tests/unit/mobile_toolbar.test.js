@@ -95,6 +95,31 @@ describe("toolbarContextFromFacts", () => {
     expect(EMPTY_TOOLBAR_CONTEXT.help).toBe(false);
     expect(TOOLBAR_KEYS.help).toEqual({ key: "h" });
   });
+  // #199: the online user list held by easy reading. The More sheet names the
+  // view `f` switches to; the list has no posts, read marks or board to refresh.
+  test("線上使用者列表 ⇒ 好友／全部切換（更多），沒有發文、未讀、已讀、重新整理、搜尋", () => {
+    const users = (title) => ({
+      ...frame({
+        0: title + "                     批踢踢實業坊    看板《Test》",
+        2: "   編號 P 代號         暱稱              故鄉             動態              發呆",
+        3: ">     1   user001      暱稱1             某地             閱讀文章          3h06",
+        23: " 休閒聊天  (w)丟水球 (q)查詢 (→)聊天 (m)寄信 (Tab)排序       (←)離開 (h)說明  ",
+      }),
+      listOwner: "article-list",
+    });
+    const all = toolbarContextFromFacts(users("【休閒聊天】"), 2, { connected: true });
+    expect(all).toMatchObject({
+      userListToggle: "friends", post: false, unreadJump: false, markAllRead: false, refresh: false, search: [],
+    });
+    expect(toolbarContextFromFacts(users("【好友列表】"), 2).userListToggle).toBe("all");
+    // PTT's own screen (easy reading not holding it) or a prompt: no entry.
+    expect(toolbarContextFromFacts({ ...users("【休閒聊天】"), listOwner: null }, 2).userListToggle).toBe(null);
+    expect(toolbarContextFromFacts({ ...users("【休閒聊天】"), inputField: true }, 2).userListToggle).toBe(null);
+    expect(toolbarContextFromFacts(frame(LIST), 2).userListToggle).toBe(null);
+    expect(EMPTY_TOOLBAR_CONTEXT.userListToggle).toBe(null);
+    expect(TOOLBAR_KEYS.userListToggle).toEqual({ key: "f" });
+    expect(sameToolbarContext({ search: [], userListToggle: "friends" }, { search: [], userListToggle: "all" })).toBe(false);
+  });
   test("跳到第一篇未讀（更多）：只有文章列表；prompt 開著、文章、主功能表不給", () => {
     expect(toolbarContextFromFacts(frame(LIST), 2).unreadJump).toBe(true);
     expect(toolbarContextFromFacts({ ...frame(LIST), inputField: true }, 2).unreadJump).toBe(false);

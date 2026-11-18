@@ -237,13 +237,10 @@ function pageGuard({ tag, log, diagnostics }) {
 // removes its entry; the suite then proves no such frame is painted. The first
 // matching entry wins, so the narrower entries come first.
 const ALLOWED = [
-  // Easy-reading gaps (#161): main-menu areas shown natively on every visit
-  // (mobile_easy_reading_gaps.offline.spec.js). The areas easy reading does
-  // not present have no entrance and no entry (#231, docs/easy-reading.md).
-  // The mailbox is shown by easy reading (#196) and has no entry either.
-  ...[
-    [199, '休閒聊天區'],
-  ].map(([issue, title]) => ({ issue, why: `easy-reading gap: ${title}`, match: (hit) => hit.title.includes(title) })),
+  // No main-menu area has an entry (#161, mobile_easy_reading_gaps.offline.spec.js):
+  // the areas easy reading does not present have no entrance (#231,
+  // docs/easy-reading.md), and the mailbox (#196) and the online user list
+  // (#199) are shown by easy reading through the home dashboard.
   // A reply key over an article opens PTT's reply flow natively. A help key
   // opens the help sheet (#222), and PttChrome's own operations hold the
   // article (#209): neither is allowed.

@@ -16,8 +16,9 @@ import { rowToText, cloneRow, articleContextFromScreen, findPageOverlap, resolve
 import { mergeListPage, flattenListBuffer, evictListBuffer, listGrowthDir, listNumRange, isHiddenListRow, pinnedRowKey, MAX_LIST_ROWS, MAX_LIST_TOTAL_ROWS, isLastReadStyledListRow, normalizeLastReadListRow, paintLastReadListRow, subjectOfListRow, readListRow } from './list_session';
 import { labelListCursor, pruneListToSegment, LIST_HEADER_ROWS } from './list_window';
 import { BRD_HEADER_ROWS, CLASS_ROOT_GEOMETRY, STANDARD_GEOMETRY, boardListRowNums, isClassRootScreen } from './board_list_parse';
-import { BOARD_LIST, isArticleListTitleRow, isMailListTitleRow, rowHasTitle, parseBoardName } from './screen_titles';
-import { isArticleListFooter, isBoardListFooter, isMailListFooter } from './screen_captions';
+import { BOARD_LIST, isArticleListTitleRow, isMailListTitleRow, isUserListTitleRow, rowHasTitle, parseBoardName } from './screen_titles';
+import { isArticleListFooter, isBoardListFooter, isMailListFooter, userListFooterRow } from './screen_captions';
+import { userListPageDisagrees } from './user_list';
 import { OWNER_BOARD_LIST } from './list_render_owner';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { cursorOffsets, paintedRowsAreBufRows } from './cursor_anchor';
@@ -1007,6 +1008,15 @@ TermView.prototype = {
         var isBrdList = this.buf.listRenderOwner === OWNER_BOARD_LIST;
         var lsSession = listOwnerOf(this.bbscore);
         var isMailList = !isBrdList && !!(lsSession && lsSession.isMailList && lsSession.isMailList());
+        var isUserList = !isBrdList && !!(lsSession && lsSession.isUserList && lsSession.isUserList());
+        // The enhance flags of an article-kind list: the mailbox and the user
+        // list (#199) annotate by their own columns.
+        var listEnhance = {
+          pageState: 2,
+          listEasyReading: true,
+          mailList: isMailList || undefined,
+          userList: isUserList || undefined
+        };
         if (this.buf.listRenderMode === 'buffer') {
           // 重繪前先把「使用者現在看著哪一列」從 DOM 的 scrollTop 擷取成內容錨：
           // 下一行的 accumulate 會 merge/evict/prune，整段序列可能上下位移。
@@ -1057,14 +1067,17 @@ TermView.prototype = {
               // 手機卡片的版型（render/list_card.js）：兩種列表的欄位完全不同。
               kind: isBrdList ? 'board' : 'article',
               // The class root's rows (#229) have no board name: their own cards.
-              // The mailbox (#196) is an article-kind list with mail columns.
-              cardKind: isBrdList && this.showsClassRootList() ? 'boardClass' : isMailList ? 'mail' : undefined,
+              // The mailbox (#196) is an article-kind list with mail columns,
+              // the user list (#199) one with user columns.
+              cardKind: isBrdList && this.showsClassRootList()
+                ? 'boardClass'
+                : isMailList ? 'mail' : isUserList ? 'user' : undefined,
               scrollable:
                 this.buf.listRenderMode === 'buffer' && this._listWheelGates().wheelSmoothScroll
             }
           }, isBrdList
             ? { pageState: 1, inListContext: false }
-            : { pageState: 2, listEasyReading: true, mailList: isMailList || undefined }));
+            : listEnhance));
           // 捲動事件的接線（ScreenController 只在建立視口節點時掛一次 listener，
           // 這裡給它 callback）。hook 是常駐閉包，不必每幀重建。
           if (this.componentScreen) {
@@ -1091,7 +1104,7 @@ TermView.prototype = {
             { changedRows: changedRows },
             isBrdList
               ? { pageState: 1, inListContext: false }
-              : { pageState: 2, listEasyReading: true, mailList: isMailList || undefined }));
+              : listEnhance));
         }
       } else if (this.useEasyReadingMode && this.buf.pageState == 3) {
         // Easy-reading article: accumulate the long page into buf.pageLines (pure
@@ -1483,7 +1496,8 @@ TermView.prototype = {
   },
 
   onInput: function(e) {
-    if (this.bbscore.modalShown || this.bbscore.contextMenuShown)
+    // The user query page (#199) is a modal that takes the soft keyboard's text.
+    if ((this.bbscore.modalShown && !this.bbscore.userQuery?.ownsInput()) || this.bbscore.contextMenuShown)
       return;
     // 第三道防線：組字若被某些瀏覽器搶在 keydown 之前開起來，它 commit 出來的重音
     // 字元（é/î/ñ/ü）絕不可以當成使用者打的字送進 PTT —— 那是 ⌥E/⌥I/⌥N/⌥U 這幾顆
@@ -1528,6 +1542,21 @@ TermView.prototype = {
   },
 
   onTextInput: function(text, isPasting) {
+    // Over the user query page (#199) a typed character is a key the page
+    // answers (q leaves, any other is refused); other text is refused. Ahead
+    // of the busy gate: the query holds the wire while the page shows.
+    var queryPage = this.bbscore.userQuery;
+    if (queryPage && queryPage.ownsInput()) {
+      if (!isPasting && isTypedKey(text)) this.sendKeyAsUser(text);
+      else queryPage.refuseText(text, isPasting ? 'paste' : 'text');
+      return;
+    }
+    // A key the soft keyboard typed into #t while the list's number or keyword
+    // input is open is the input's (sendKeyAsUser), never the list's (#199).
+    if (!isPasting && this._listInputWrap && isTypedKey(text)) {
+      this.sendKeyAsUser(text);
+      return;
+    }
     // 序列化操作（AID 跳文／長推文）在途時一律吞掉，理由與 onKeyDown 那道相同。
     // **排在列表好讀分派之前**：noteTextInput 自己會 _enterFunctionMode() 並排
     // native-input，在途時那本身就是競態。isPasting 也擋（App.onPasteDone 已擋過
@@ -1622,6 +1651,27 @@ TermView.prototype = {
   sendKeyAsUser: function(keyName, mods) {
     var ctrl = !!(mods && mods.ctrlKey);
     var alt = !!(mods && mods.altKey);
+    // The list's number or keyword input (promptListInput) owns the keys while
+    // it is open. A toolbar or keypad key, or a key the soft keyboard typed
+    // into #t, is never a keydown the input sees: it edits or closes the input
+    // here and never reaches the list under it (#199: the keypad's Enter
+    // queried the selected user and left the input open).
+    if (this._listInputWrap && this._listInputKey) {
+      this._listInputKey(keyName, ctrl || alt);
+      toolbarDiag(this.bbscore, 'key', {
+        key: keyName.length > 1 ? keyName : 'char', ctrl: ctrl, alt: alt, outcome: 'listInput'
+      });
+      return;
+    }
+    // A page over the terminal that takes its own keys (the user query page,
+    // #199): its window listener never sees a key that does not come from the
+    // keyboard.
+    if (this.bbscore?.userQuery?.takeKey({ key: keyName, ctrlKey: ctrl, altKey: alt, metaKey: false }, true)) {
+      toolbarDiag(this.bbscore, 'key', {
+        key: keyName.length > 1 ? keyName : 'char', ctrl: ctrl, alt: alt, outcome: 'userQueryPage'
+      });
+      return;
+    }
     var down = new KeyboardEvent('keydown', {
       key: keyName, ctrlKey: ctrl, altKey: alt, cancelable: true
     });
@@ -2088,7 +2138,8 @@ TermView.prototype = {
       (app.boardSearchHold && app.boardSearchHold.holding) ||
       (app.backPause && app.backPause.holding) ||
       (app.articleHold && app.articleHold.holding) ||
-      (app.homeDashboard && app.homeDashboard.holding)));
+      (app.homeDashboard && app.homeDashboard.holding) ||
+      (app.userQuery && app.userQuery.holding)));
   },
 
   // The list easy-reading branch of redraw owns this frame. Article frames
@@ -2554,10 +2605,7 @@ TermView.prototype = {
 
   hideListOverlay: function() {
     if (this._listOverlayEl) this._listOverlayEl.style.display = 'none';
-    if (this._listInputWrap) {
-      this._listInputWrap.remove();
-      this._listInputWrap = null;
-    }
+    if (this._listInputClose) this._listInputClose();
   },
 
   // "返回原文" for the AID back stack (aid_navigation.js). Shown exactly while a
@@ -2590,7 +2638,7 @@ TermView.prototype = {
   // Esc → cb(null). Focus returns to the hidden terminal input afterwards.
   promptListInput: function(label, initial, cb) {
     var self = this;
-    if (this._listInputWrap) this._listInputWrap.remove();
+    if (this._listInputClose) this._listInputClose();
     var wrap = document.createElement('div');
     wrap.style.cssText =
       'position:fixed;left:50%;' + aboveBottomInset(88) + 'transform:translateX(-50%);' +
@@ -2610,11 +2658,20 @@ TermView.prototype = {
     wrap.appendChild(input);
     document.body.appendChild(wrap);
     this._listInputWrap = wrap;
-    var finish = function(val) {
-      if (self._listInputWrap !== wrap) return; // already closed
+    var offBack = null;
+    // Closing without an answer (hideListOverlay) also lets go of the keys and of Back.
+    var close = function() {
       window.removeEventListener('keydown', onWindowKey, true);
+      if (offBack) offBack();
       wrap.remove();
       self._listInputWrap = null;
+      self._listInputKey = null;
+      self._listInputClose = null;
+    };
+    this._listInputClose = close;
+    var finish = function(val) {
+      if (self._listInputWrap !== wrap) return; // already closed
+      close();
       if (self.bbscore && self.bbscore.setInputAreaFocus)
         self.bbscore.setInputAreaFocus();
       cb(val);
@@ -2659,6 +2716,34 @@ TermView.prototype = {
         input.focus();
     };
     window.addEventListener('keydown', onWindowKey, true);
+    // System Back cancels the input (history_back_guard asks the sheets first).
+    if (this.bbscore && this.bbscore.registerSheetDismiss)
+      offBack = this.bbscore.registerSheetDismiss(function() { finish(null); });
+    // Keys that are no keydown here (sendKeyAsUser: the toolbar and keypad
+    // keys, and a key the soft keyboard typed into #t): Enter commits, Esc
+    // cancels, ⌫ / Del / ← / → / Home / End edit, a character is typed in.
+    // Any other key is the input's too, and does nothing.
+    this._listInputKey = function(key, modified) {
+      if (key === 'Enter') return finish(input.value.trim() || null);
+      if (key === 'Escape') return finish(null);
+      var start = input.selectionStart == null ? input.value.length : input.selectionStart;
+      var end = input.selectionEnd == null ? start : input.selectionEnd;
+      var len = input.value.length;
+      if (key === 'Backspace' || key === 'Delete') {
+        if (start === end) {
+          if (key === 'Backspace') start = Math.max(0, start - 1);
+          else end = Math.min(len, end + 1);
+        }
+        input.setRangeText('', start, end, 'end');
+      } else if (key === 'ArrowLeft' || key === 'ArrowRight' || key === 'Home' || key === 'End') {
+        var at = key === 'Home' ? 0 : key === 'End' ? len :
+          key === 'ArrowLeft' ? Math.max(0, start - 1) : Math.min(len, end + 1);
+        input.setSelectionRange(at, at);
+      } else if (!modified && key.length === 1) {
+        input.setRangeText(key, start, end, 'end');
+      }
+      input.focus();
+    };
     setTimeout(function() {
       input.focus();
       input.setSelectionRange(input.value.length, input.value.length);
@@ -3593,6 +3678,9 @@ TermView.prototype = {
     var nums = pageArticleNums(rowTexts, buf.cur_y);
     var ls = this.bbscore && this.bbscore.listSession;
     var mail = isMailListTitleRow(rowTexts[0]) || !!(ls && ls.isMailList && ls.isMailList());
+    // The online user list (#199): its rows carry no article title, so no
+    // last-read styling, and its footer can sit above the last row.
+    var user = !mail && (isUserListTitleRow(rowTexts[0]) || !!(ls && ls.isUserList && ls.isUserList()));
     var entries = [];
     // 只掃 entry 區 [LIST_HEADER_ROWS, rows-2]（與 accumulateBoardListLines、
     // list_session 各掃描點同範圍）。標題列會通過 isPinnedListRow：PttCurrent 的
@@ -3613,7 +3701,7 @@ TermView.prototype = {
         // and teach the session the SUBJECT; render re-paints every matching
         // row (buildListWindowLines). Otherwise an off-frame styled row stays
         // colored in the map forever (殘紅).
-        if (isLastReadStyledListRow(row)) {
+        if (!user && isLastReadStyledListRow(row)) {
           normalizeLastReadListRow(row);
           if (ls) ls.noteLastRead(subjectOfListRow(row));
         }
@@ -3648,6 +3736,17 @@ TermView.prototype = {
           row: prow
         });
       }
+    }
+    // The user list (#199): a page from a snapshot PTT took again replaces
+    // every row held from the old one, held for the reader or not; the session
+    // reads the list again around the reader (ListSession#noteUserListPage).
+    var resyncFrom = null;
+    var resync = user && userListPageDisagrees(this._listNumMap, entries);
+    if (resync) {
+      resyncFrom = ls && ls.userListSelection ? ls.userListSelection() : null;
+      this._listNumMap.clear();
+      this._listPinnedMap.clear();
+      this.releaseListRows('article');
     }
     // Rows kept as the reader left them (holdListRows): PTT's landing page adds
     // only the rows marked to retake, and any other page also adds the rows
@@ -3687,8 +3786,8 @@ TermView.prototype = {
       grewDir,
       {
         isHidden: function(row) {
-          // Mail rows are never hidden (ListSession#_visibleIndices).
-          return !mail && isHiddenListRow(row, self.blacklist, self.titleBlacklist);
+          // Mail and user rows are never hidden (ListSession#_visibleIndices).
+          return !mail && !user && isHiddenListRow(row, self.blacklist, self.titleBlacklist);
         },
         hardCap: MAX_LIST_TOTAL_ROWS
       }
@@ -3703,11 +3802,12 @@ TermView.prototype = {
       if (stalled && ls.noteGrowthStalled) ls.noteGrowthStalled(grewDir);
     }
     this._flattenList('article');
+    if (user && ls && ls.noteUserListPage) ls.noteUserListPage(resync, resyncFrom);
     // Cache the surrounding chrome for the window render off clean-list-shaped
     // live frames only (a jump response blanks the bottom row — protocol §4 ✚ —
     // and must not poison the footer cache).
     if (
-      (mail || isArticleListTitleRow(rowTexts[0])) &&
+      (mail || user || isArticleListTitleRow(rowTexts[0])) &&
       (rowTexts[2] || '').indexOf('編號') >= 0
     ) {
       this._listHeaderRows = [
@@ -3716,8 +3816,14 @@ TermView.prototype = {
         cloneRow(buf.lines[2])
       ];
     }
-    if (mail ? isMailListFooter(rowTexts[buf.rows - 1]) : isArticleListFooter(rowTexts[buf.rows - 1])) {
-      this._listFooterRow = cloneRow(buf.lines[buf.rows - 1]);
+    // The user list's footer is found by its caption (userListFooterRow).
+    var footerRow = user ? userListFooterRow(rowTexts) : buf.rows - 1;
+    if (
+      user
+        ? footerRow >= 0
+        : mail ? isMailListFooter(rowTexts[buf.rows - 1]) : isArticleListFooter(rowTexts[buf.rows - 1])
+    ) {
+      this._listFooterRow = cloneRow(buf.lines[footerRow]);
     }
   },
 
@@ -3742,13 +3848,19 @@ TermView.prototype = {
     var ls = this.bbscore && this.bbscore.listSession;
     if (!ls || !this._listHeaderRows || !this._listFooterRow) return null;
     var view = ls.getListView();
-    if (!view) return null;
+    // A user list with no users (#199: the friends view with no friend
+    // online) is a list too: its window holds one empty-state row
+    // (_emptyListRow), never PTT's grid.
+    var emptyUsers = !view && !!(ls.isUserList && ls.isUserList());
+    if (!view && !emptyUsers) return null;
+    if (emptyUsers) view = { seq: [], cursorAbs: -1, cursorPos: -1 };
     var listLines = this.buf.listLines || [];
     var out = [
       this._listHeaderRows[0],
       this._listHeaderRows[1],
       this._listHeaderRows[2]
     ];
+    if (emptyUsers) out.push(this._emptyListRow(ls.userListView() || 'all'));
     // Last-read decoration: the map stores CLEAN rows (normalizeLastReadListRow
     // at accumulate); the highlight is re-painted here on a clone of EVERY row
     // whose subject matches the session's _lastReadTitle (pttbbs readdoent's
@@ -3756,7 +3868,8 @@ TermView.prototype = {
     // each in its own mark color. Subjects are memoized per stored row object
     // (rows are replaced wholesale on re-accumulate, so the cache never goes
     // stale).
-    var lastReadTitle = ls._lastReadTitle;
+    // User rows have no article subject (#199).
+    var lastReadTitle = ls.isUserList && ls.isUserList() ? null : ls._lastReadTitle;
     this._listCursorRow = -1;
     // body ＝**整段序列**（上限 MAX_LIST_ROWS≈300 列），捲動交給瀏覽器。
     var seq = view.seq;
@@ -3810,6 +3923,20 @@ TermView.prototype = {
   _blankListRow: function() {
     if (!this._listBlankRow) this._listBlankRow = blankRowLike(this._listHeaderRows[0]);
     return this._listBlankRow;
+  },
+
+  // The row that stands for an empty user list (#199). Blank cells, marked
+  // `listEmpty` with the view ('all' or 'friends'): render/list_card.js draws
+  // the empty-state message in its place. One object per view and
+  // accumulation, so the render reuses its node.
+  _emptyListRow: function(view) {
+    if (!this._listEmptyRows) this._listEmptyRows = {};
+    if (!this._listEmptyRows[view]) {
+      var row = blankRowLike(this._listHeaderRows[0]);
+      row.listEmpty = view;
+      this._listEmptyRows[view] = row;
+    }
+    return this._listEmptyRows[view];
   },
 
   // Keep the accumulated rows of `list` ('article', the default, or 'board')
@@ -3917,6 +4044,7 @@ TermView.prototype = {
     this._listFooterRow = null;
     this._listWindowLines = null;
     this._listBlankRow = null;
+    this._listEmptyRows = null;
   },
 
   // The accumulated article list as it is now, for its live layer to give back

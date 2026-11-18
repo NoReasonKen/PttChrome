@@ -68,17 +68,22 @@ import { parseVmsgText } from './push_screen';
 import {
   BOARD_LIST,
   FAVOURITE,
+  FRIEND_LIST_KEY,
   MAIL_LIST_KEY,
+  USER_LIST_KEY,
   MENU_TITLES,
   boardNameFromKey,
   isMailListTitleRow,
+  isUserListKey,
   listHeaderReversed,
   parseBoardKey,
   rowHasAnyTitle,
-  rowHasTitle
+  rowHasTitle,
+  userListKeyOfRow
 } from './screen_titles';
-import { isArticleListFooter, isMailListFooter, isSubListFooter } from './screen_captions';
+import { isArticleListFooter, isMailListFooter, isSubListFooter, userListFooterRow } from './screen_captions';
 import { recordFor, listRecordMatches } from './reading_record';
+import { parseUserListRow } from './user_list';
 import { markReadPromptShown } from './mark_read_prompt';
 import { readSearchResultsContext, recordSearchResults } from './search_results_context';
 import { repeatSearch } from './repeat_search';
@@ -93,6 +98,17 @@ import {
 } from './list_render_owner';
 import { PAGE } from './page_stack';
 import { searchKeyOpensSheet } from './article_search';
+import { selectedUserId } from './user_list';
+import { queryUser, promptUserQuery } from './user_query';
+
+// A plain `←`, for a key that leaves as it does (article_gestures.handleBack).
+const PLAIN_BACK_EVENT = Object.freeze({
+  key: 'ArrowLeft',
+  ctrlKey: false,
+  altKey: false,
+  metaKey: false,
+  shiftKey: false
+});
 
 // 程式化平滑捲動的最長等待：超過就放棄「等它到站」，把 scroll 事件當成使用者
 // 自己捲的（動畫會被使用者的滾輪／拖曳取消，那時永遠到不了目標）。
@@ -154,9 +170,13 @@ export function classifyListScreen(facts) {
   const { rowTexts, curX, curY, rows, row0Reversed, row2Reversed } = facts;
   const lastRowText = rowTexts[rows - 1] || '';
   const mail = isMailListTitleRow(rowTexts[0]);
-  const boardName = mail ? MAIL_LIST_KEY : parseBoardKey(rowTexts[0]);
+  const userKey = userListKeyOfRow(rowTexts[0]);
+  const boardName = mail ? MAIL_LIST_KEY : userKey != null ? userKey : parseBoardKey(rowTexts[0]);
 
-  if (
+  if (userKey != null) {
+    const user = classifyUserListScreen(facts);
+    if (user) return Object.assign({ boardName }, user);
+  } else if (
     row0Reversed &&
     boardName != null &&
     row2Reversed &&
@@ -222,6 +242,39 @@ export function classifyListScreen(facts) {
   if (curY === rows - 1) return { kind: 'prompt', boardName };
 
   return { kind: 'transient', boardName };
+}
+
+// The online user list (#199) as a clean list, or null. Its title row is
+// 【休閒聊天】 or 【好友列表】 (the caller checked it), row 2 is the reversed
+// column header (「編號 P 代號 暱稱 …」), and the footer carries the 休閒聊天
+// caption. The footer is found by its caption (userListFooterRow), not on the
+// last row: PTT lays a page out one redraw behind a resize. The entry rows
+// are the rows between the header and the footer; every one that is not blank
+// is a numbered user row (PTT's rows always carry a number, `%6d` after the
+// cursor cell), and the cursor rests on one at col 0.
+// A view with no users (the friends view with no friend online) is a clean
+// list too, { emptyList: true }: its header and footer are there and its
+// entry rows are all blank. Where PTT parks the cursor then was not seen, so
+// the cursor is not checked for it.
+// The help screen keeps the title but has its own caption (操作說明), and the
+// query screen keeps the title over blank rows without a footer: neither is
+// the list.
+export function classifyUserListScreen(facts) {
+  const { rowTexts, curX, curY, row0Reversed, row2Reversed } = facts;
+  const header = rowTexts[2] || '';
+  if (!row0Reversed || !row2Reversed || header.indexOf('編號') < 0 || header.indexOf('代號') < 0) return null;
+  const footer = userListFooterRow(rowTexts);
+  if (footer < 4) return null;
+  const nums = pageArticleNums(rowTexts, curY);
+  let numbered = 0;
+  for (let i = 3; i < footer; ++i) {
+    if (!(rowTexts[i] || '').trim()) continue;
+    if (nums[i] == null) return null;
+    ++numbered;
+  }
+  if (!numbered) return { kind: 'clean-list', emptyList: true };
+  if (curX > 1 || curY < 3 || curY >= footer || nums[curY] == null) return null;
+  return { kind: 'clean-list' };
 }
 
 // 「跳號落點」的文章列表：舊版 server 跳號（`N⏎`）後底列留空、`^L` 也補不回來
@@ -330,6 +383,73 @@ export function hasNumberedEntryRow(facts) {
   return false;
 }
 
+// The online user list's key table (#199; the enumeration is the contract,
+// docs/easy-reading.md 「線上使用者」). From pttbbs talk.c#userlist_cmds and
+// the global keys it falls through to:
+//   - navigation: ↑ k, ↓ j n, PgUp P Ctrl-B, PgDn space Ctrl-F, Home 0,
+//     End $, and the number jump 1-9;
+//   - leave (← e E), query the selected user (q Enter →), query by ID (Q),
+//     the friends/all toggle (f F, an account flag: the view PTT shows next
+//     time is the one left), and help (h ?);
+//   - everything else is refused: talk, water, mail, the pager, sort, the
+//     display switch, the column search, broadcast, the friend and nickname
+//     edits, the sysop keys (H is the sysop's hide; a non-sysop's H is help
+//     again, so it is refused rather than told apart), Ctrl-Z, Ctrl-U, Ctrl-R.
+export function userListKeyClass(e) {
+  if (e.ctrlKey) {
+    if (e.key === 'f' || e.key === 'F') return { class: 'nav', op: 'pgdn' };
+    if (e.key === 'b' || e.key === 'B') return { class: 'nav', op: 'pgup' };
+    return { class: 'unsupported' };
+  }
+  switch (e.key) {
+    case 'ArrowUp':
+    case 'k':
+      return { class: 'nav', op: 'up' };
+    case 'ArrowDown':
+    case 'j':
+    case 'n':
+      return { class: 'nav', op: 'down' };
+    case 'PageUp':
+    case 'P':
+      return { class: 'nav', op: 'pgup' };
+    case 'PageDown':
+    case ' ':
+      return { class: 'nav', op: 'pgdn' };
+    case 'Home':
+    case '0':
+      return { class: 'nav', op: 'home' };
+    case 'End':
+    case '$':
+      return { class: 'nav', op: 'end' };
+    case 'ArrowLeft':
+    case 'e':
+    case 'E':
+      return { class: 'leave' };
+    case 'q':
+    case 'Enter':
+    case 'ArrowRight':
+      return { class: 'query' };
+    case 'Q':
+      return { class: 'query-input' };
+    case 'f':
+    case 'F':
+      return { class: 'view-toggle' };
+    case 'h':
+    case '?':
+      return { class: 'help' };
+    default:
+      if (/^[1-9]$/.test(e.key)) return { class: 'jump-digit', digit: e.key };
+      return { class: 'unsupported' };
+  }
+}
+
+// A frozen transaction's landing the list resumes and rebuilds from: a clean
+// list with a numbered row (invariant 17), or an empty user list such as the
+// friends view with no friend online (invariant 17a, #199).
+function landsOnList(facts) {
+  return !!facts && facts.kind === 'clean-list' && (hasNumberedEntryRow(facts) || !!facts.emptyList);
+}
+
 // 這份清單的編號空間：'select' ＝搜尋結果（MODE_SELECT）或文摘（MODE_DIGEST），
 // 'plain' ＝完整列表。依底列 caption（read.c#i_read_caption）。舊版 caption 一律
 // 「文章選讀」分不出來 ⇒ 當 plain（已知限制，同 screen_refresh 的 LEAVES_ON_S）。
@@ -388,7 +508,9 @@ export function transitionListSession(state, event) {
         event.kind === 'clean-list' &&
         event.engageEligible &&
         // 無編號列的幀 seed 不出錨點（不變量 17）：停在原生，等下一幀再 engage。
-        event.hasNumberedRow
+        // An empty user list (#199) has no row to anchor and none to reach:
+        // it is the whole list, so it seeds (invariant 17a).
+        (event.hasNumberedRow || event.emptyList)
       ) {
         return { next: 'active', actions: ['seed', 'start-fill'] };
       }
@@ -399,6 +521,9 @@ export function transitionListSession(state, event) {
       if (event.type === 'settle') {
         switch (event.kind) {
           case 'clean-list':
+            // An empty user list (invariant 17a): the rows held are gone from
+            // PTT's list, so the buffer starts over empty.
+            if (event.emptyList) return { next: 'active', actions: ['rebuild'] };
             // 無編號列（getkeep 落在板尾 ⇒ 只剩置底文的短頁，不變量 17）：這一幀
             // 帶不進任何序號，rebuild 只會把 buffer 清成無錨點的死局。板名相同就
             // 續用現有 buffer；板名不同則連舊 buffer 都不能當畫面 → 顯性降級原生。
@@ -497,7 +622,7 @@ export function transitionListSession(state, event) {
         if (event.holdReason !== 'passthrough') return stay; // N1
         if (event.inFlightKind) return stay;
         if (event.kind !== 'clean-list') return stay;
-        if (!event.hasNumberedRow) return stay; // 不變量 17
+        if (!event.hasNumberedRow && !event.emptyList) return stay; // 不變量 17／17a
         if (!event.engageEligible) return stay;
         // _enterFunctionMode 依不變量 15 清過 _boardName ⇒ B 類實務上一律 rebuild；
         // 那是對的（原生鍵可以改寫清單內容與編號空間）。快路徑留給保住板名的
@@ -521,8 +646,9 @@ export function transitionListSession(state, event) {
             // 在它上面 resume 會採用到錯的落點（游標跳列）。
             if (event.holdReason) return stay;
             // 無編號列的落點無法 resume/rebuild（不變量 17）：繼續鏡像原生，
-            // 使用者原生翻一頁就會拿到有序號的幀再恢復好讀。
-            if (!event.hasNumberedRow) return stay;
+            // 使用者原生翻一頁就會拿到有序號的幀再恢復好讀。An empty user
+            // list resumes (invariant 17a).
+            if (!event.hasNumberedRow && !event.emptyList) return stay;
             // Content-decided exit. If the landed cursor row is an article we
             // already hold AND we are on the same board, the page overwrite (in
             // redraw) is enough; otherwise rebuild from the current page
@@ -914,6 +1040,9 @@ function markReadRejected(rowTexts) {
 // → rebuild → 往上補頁」整段；過了還沒套用就放棄，免得很久以後的某次補頁突然
 // 把畫面拉走。
 const PENDING_VIEWPORT_MAX_MS = 10000;
+// How long PTT lists the user list from one snapshot of its users before it
+// takes another on the next page it reads (talk.c USERLIST_SNAPSHOT_EXPIRE_SECS).
+const USER_LIST_SNAPSHOT_MS = 10000;
 
 // Owner of list easy reading. Subscribes to term_buf 'screenSettled' and runs:
 //   settle → snapshot+facts → queue.onSettle (command completion first)
@@ -969,6 +1098,16 @@ export function ListSession(core, view, termBuf, queue) {
   this._newerBelow = false;
   this._stallUp = false;
   this._stallDown = false;
+  // The user list read again from a new snapshot: the user the selection
+  // follows ({ id, num, at }), until a page lists them (noteUserListPage).
+  this._userListResync = null;
+  this._userListResyncs = 0;
+  // When a new snapshot last read the user list again from scratch (the fill
+  // cap restarted): at most once per snapshot (noteUserListPage).
+  this._userListRefillAt = null;
+  // The user selected when a query gave the user list back ({ id, num, at }),
+  // until the resume's rebuild follows them (_rebuild) or the reader moves.
+  this._userListReturn = null;
   // Contiguity-prune pivot override while a far jump is in flight (End/Home):
   // the jump's landing page is DISCONTIGUOUS with the buffer by design, and the
   // prune must keep the TARGET segment, not the one the cursor came from.
@@ -1171,6 +1310,7 @@ ListSession.prototype = {
     if (cls.kind === 'clean-list' && !covered) this._footerText = rowTexts[buf.rows - 1];
     facts.kind = cls.kind;
     facts.boardName = cls.boardName;
+    facts.emptyList = !!cls.emptyList;
     // messageOnSettle reads the settle's dirty-row shape.
     facts.changedRows = snap ? snap.changedRows : null;
     facts.nums = pageArticleNums(rowTexts, facts.curY);
@@ -1237,6 +1377,7 @@ ListSession.prototype = {
       holdReason: this._holdReason,
       withinResumeGrace: performance.now() - this._resumedAt < RESUME_GRACE_MS,
       hasNumberedRow: hasNumberedEntryRow(facts),
+      emptyList: !!facts.emptyList,
       engageEligible: this._engageEligible(),
       keepsLayer: !!layer,
       layerResultsLeft: this._layerResultsLeft(facts, layer),
@@ -1479,6 +1620,9 @@ ListSession.prototype = {
 
   // Pref flipped OFF / disconnect: single exit (mirrors exitEasyReading rigor).
   disable: function() {
+    // A query cut short by the disconnect (UserQuery.reset) never gives its
+    // selection back: userListSelection must not read it later.
+    this._helpSelection = null;
     this._dispatch({ type: 'pref-off' }, null);
   },
 
@@ -1555,10 +1699,17 @@ ListSession.prototype = {
   resumeAfterHelp: function(listKept) {
     const board = this._helpBoard;
     const sel = this._helpSelection;
+    const resyncs = this._userListResyncs;
+    const who = listKept && this.isUserList() ? this.userListSelection() : null;
+    this._userListReturn = who && who.id ? { id: who.id, num: who.num, at: Date.now() } : null;
     this._helpBoard = null;
-    this._helpSelection = null;
+    // Kept through the resume: a user list PTT draws from a new snapshot
+    // follows the user selected here (userListSelection).
     this.resumeNow(listKept ? board : null);
+    this._helpSelection = null;
     if (!listKept || !sel || this.state !== 'active' || this._renderMode !== 'buffer') return;
+    // The selection follows its user instead of its number (noteUserListPage).
+    if (this._userListResyncs !== resyncs) return;
     if (sel.num === this._selectedNum && sel.pinnedKey === this._selectedPinnedKey) return;
     this._selectedNum = sel.num;
     this._selectedPinnedKey = sel.pinnedKey;
@@ -1570,8 +1721,10 @@ ListSession.prototype = {
   // list sees them (term_view.onKeyDown); the rest is the list's own table.
   wouldRefuse: function(k) {
     const ctrl = !!(k && k.ctrlKey);
-    // The mailbox opens no search sheet (article_search.availableSearchKinds).
-    if (!ctrl && !this.isMailList() && searchKeyOpensSheet(k.key, OWNER_ARTICLE_LIST)) return false;
+    // The mailbox and the user list open no search sheet
+    // (article_search.availableSearchKinds).
+    const searches = !this.isMailList() && !this.isUserList();
+    if (!ctrl && searches && searchKeyOpensSheet(k.key, OWNER_ARTICLE_LIST)) return false;
     const c = this._classifyKey({ key: k.key, ctrlKey: ctrl, altKey: false, metaKey: false, shiftKey: false });
     return c.class === 'unsupported' || c.class === 'ignore';
   },
@@ -1597,6 +1750,88 @@ ListSession.prototype = {
   // kept for resumeAfterHelp.
   isMailList: function() {
     return (this._boardName ?? this._helpBoard) === MAIL_LIST_KEY;
+  },
+
+  // The list held is PTT's online user list (#199), either view: its rows have
+  // talk.c's user columns, numbered from 1, and the blacklist does not apply.
+  isUserList: function() {
+    return isUserListKey(this._boardName ?? this._helpBoard);
+  },
+
+  // The held row the selection rests on (cells, as PTT painted it), or null:
+  // nothing held or selected, or a pinned row is selected.
+  selectedListRow: function() {
+    if (this._selectedNum == null) return null;
+    const idx = (this._termBuf.listLineNums || []).indexOf(this._selectedNum);
+    return idx < 0 ? null : (this._termBuf.listLines || [])[idx] || null;
+  },
+
+  // The user list's view held: 'all' (【休閒聊天】), 'friends' (【好友列表】), or
+  // null when the list held is not the user list.
+  userListView: function() {
+    const key = this._boardName ?? this._helpBoard;
+    return key === USER_LIST_KEY ? 'all' : key === FRIEND_LIST_KEY ? 'friends' : null;
+  },
+
+  // A user-list key class (userListKeyClass) the list's common table has no
+  // case for. true = handled. `e` is the key event, null for a function key.
+  _userListKey: function(key, e) {
+    if (!this.isUserList()) return false;
+    const core = this._core;
+    switch (key.class) {
+      case 'query':
+        queryUser(core, selectedUserId(core));
+        return true;
+      case 'query-input':
+        promptUserQuery(core);
+        return true;
+      case 'view-toggle':
+        this.toggleUserListView();
+        return true;
+      case 'leave':
+        // `e` and `E` leave as `←` does: over the page under the list (the
+        // dashboard) it is revealed at once (article_gestures.handleBack);
+        // term_view has asked it for `←` already.
+        return !!e && e.key !== 'ArrowLeft' && !!core.articleGestures?.handleBack?.(PLAIN_BACK_EVENT);
+      default:
+        return false;
+    }
+  },
+
+  // The user list's friends/all toggle (#199): `f` / `F`, and the toolbar
+  // entries that type `f`. Like an in-place key it is a frozen transaction:
+  // the list stays on screen (no slide, no new page) while PTT redraws the
+  // other view, and is rebuilt from the view PTT lands on, numbered from 1
+  // again. The view is an account flag (UF_FRIEND): PTT shows it next time.
+  // true = taken (sent, or the reader told why not).
+  toggleUserListView: function() {
+    if (!this.isUserList() || this._boardName == null) return false;
+    if (this.state === 'functionMode' && this._renderMode === 'frozen') {
+      if (this._view.flashListHint) this._view.flashListHint(this._busyText());
+      return true;
+    }
+    if (this.state !== 'active' || this._renderMode !== 'buffer') return false;
+    const from = this._boardName;
+    const r = transitionListSession(this.state, { type: 'key', keyClass: 'transact' });
+    this.state = r.next; // functionMode, render frozen
+    this._freezeForTransaction();
+    this._landingExplained = false;
+    const self = this;
+    const steps = [
+      {
+        keys: 'f',
+        kind: 'user-view-toggle',
+        // The other view's list (an empty friends view included): PTT
+        // answers `f` with the whole list redrawn, its cursor on the first row.
+        expect: function(snap, facts) {
+          return facts.kind === 'clean-list' && isUserListKey(facts.boardName) && facts.boardName !== from;
+        }
+      }
+    ];
+    this._enqueuePassthroughStep(steps, 0, function(landed) {
+      self._resumeFromLanding(landed);
+    });
+    return true;
   },
 
   // 閱讀紀錄（reading_record）的列表量測：使用者現在看到的視野。
@@ -1825,6 +2060,9 @@ ListSession.prototype = {
       return;
     }
 
+    // The online user list's own keys (#199, userListKeyClass).
+    if (this._userListKey(key, e)) return;
+
     const r = transitionListSession(this.state, { type: 'key', keyClass: key.class });
     this.state = r.next;
     for (let i = 0; i < r.actions.length; ++i) {
@@ -1901,6 +2139,25 @@ ListSession.prototype = {
     // given the frame back when the sheet is over (resumeAfterHelp).
     this._core.helpMenu?.expect(this);
     this._beginPassthroughBytes('h', { kind: 'help', hint: null, noSync: true });
+  },
+
+  // A user query over the user list (#199, user_query.js): `steps` go out as
+  // the help's `h` does, without moving PTT's cursor (`Q` names the user), and
+  // the list is let go of for the native excursion while the query holds it on
+  // screen; resumeAfterHelp gives it the frame back with its rows and selection.
+  beginUserQuery: function(steps) {
+    this._spendLayer('nativePassthrough');
+    this._helpBoard = this._boardName;
+    this._helpSelection = { num: this._selectedNum, pinnedKey: this._selectedPinnedKey };
+    this._beginPassthroughBytes(steps, { kind: 'user-query', hint: null, noSync: true });
+  },
+
+  // One more step of that query (the space over PTT's alert or its
+  // 請按任意鍵繼續), while the list is still let go of. Returns whether it went out.
+  continueUserQuery: function(step) {
+    if (this.state !== 'functionMode' || this._helpBoard == null) return false;
+    this._enqueuePassthroughStep([step], 0);
+    return true;
   },
 
   // The serialized sequence behind PttChrome's own list operations (search,
@@ -2027,12 +2284,7 @@ ListSession.prototype = {
     this._frozenStepBudgetMs = 0;
     // 落地前已經被別人接走（step 的 onDone 自己降級、cleanup、pref-off）⇒ 不碰。
     if (this.state !== 'functionMode' || this._renderMode !== 'frozen') return;
-    if (
-      landed &&
-      landed.kind === 'clean-list' &&
-      hasNumberedEntryRow(landed) &&
-      this._engageEligible()
-    ) {
+    if (landsOnList(landed) && this._engageEligible()) {
       this.state = 'active';
       this._resumeBuffer(landed);
       this._runAction('rebuild', landed);
@@ -2080,7 +2332,7 @@ ListSession.prototype = {
     if (performance.now() - this._lastServerActivityAt < RESUME_QUIET_MS || this._queue.inFlightKind)
       return this._scheduleLandingJudge();
     const now = this._collectFacts(null);
-    if (now.kind === 'clean-list' && hasNumberedEntryRow(now) && this._engageEligible()) {
+    if (landsOnList(now) && this._engageEligible()) {
       this._landingHold = null;
       this.state = 'active';
       this._resumeBuffer(now);
@@ -2216,6 +2468,7 @@ ListSession.prototype = {
       this._beginHelp();
       return true;
     }
+    if (this._userListKey(cls, null)) return true;
     const r = transitionListSession(this.state, { type: 'key', keyClass: cls.class });
     this.state = r.next;
     for (let i = 0; i < r.actions.length; ++i) {
@@ -2243,6 +2496,12 @@ ListSession.prototype = {
   // 這裡只認**明確的方向鍵／翻頁鍵序列**，其餘一律 passthrough（切原生＋送出），
   // 方向安全：passthrough 永遠會把鍵送到 PTT，只是畫面切回原生。
   _classifyBytes: function(bytes) {
+    // The online user list (#199): → and Enter query the selected user, and
+    // only `h` is help (`H` is the sysop's hide there).
+    if (this.isUserList()) {
+      if (bytes === '\x1b[C' || bytes === '\r') return { class: 'query' };
+      if (bytes === 'H') return { class: 'unsupported' };
+    }
     switch (bytes) {
       case '\x1b[A': return { class: 'nav', op: 'up' };
       case '\x1b[B': return { class: 'nav', op: 'down' };
@@ -2912,6 +3171,8 @@ ListSession.prototype = {
     // no hardcoded key list can drift out of sync with it. Article easy
     // reading has the same guard as `e.key.length === 1` (easy_reading.js).
     if (keyEventToBytes(e) == null) return { class: 'ignore' };
+    // The online user list (#199) has its own table (talk.c's userlist_cmds).
+    if (this.isUserList()) return userListKeyClass(e);
     if (e.ctrlKey) return { class: 'unsupported' }; // Ctrl-P 發文 etc.
     // The mailbox (#196) reads a mail with every key mail.c#mail_comms gives
     // mail_cmd_read (→ Enter r l L); its other commands (reply, forward,
@@ -3118,6 +3379,19 @@ ListSession.prototype = {
     if (abs == null) return;
 
     const nums = this._termBuf.listLineNums || [];
+    // A user card (#199) queries that user; a user who logged off has no ID
+    // to ask for, and the tap does nothing.
+    if (this.isUserList()) {
+      const user = parseUserListRow((this._termBuf.listLines || [])[abs]);
+      if (!user || !user.id || nums[abs] == null) return;
+      this._userListResync = null;
+      this._userListReturn = null;
+      this._selectedNum = nums[abs];
+      this._selectedPinnedKey = null;
+      this._forceRedraw();
+      queryUser(this._core, user.id);
+      return;
+    }
     this._selectedNum = nums[abs];
     this._selectedPinnedKey =
       this._selectedNum == null ? this._pinnedKeyAt(abs) : null;
@@ -3142,6 +3416,8 @@ ListSession.prototype = {
   // 那個選單項不出現（條件全收在這裡，React 端不重複判斷）。
   markReadTargetAtRow: function(renderRow) {
     if (this.state !== 'active' || this._renderMode !== 'buffer') return null;
+    // The online user list (#199) has no read marks.
+    if (this.isUserList()) return null;
     const idx = renderRow - this.headerRows();
     if (idx < 0) return null; // header
     const view = this.getListView();
@@ -3254,6 +3530,9 @@ ListSession.prototype = {
 
   _seed: function(facts) {
     this._dropPendingViewport('seed');
+    this._userListResync = null;
+    this._userListReturn = null;
+    this._userListRefillAt = null;
     this._holdReason = null;
     this._cancelResumeProbe();
     this._breakChain();
@@ -3275,6 +3554,7 @@ ListSession.prototype = {
     this._renderMode = 'buffer';
     this._view.hideCursor();
     this._seedAnchors(facts);
+    this._markEmptyListEdges(facts);
     this._forceRedraw(); // synchronous: accumulates this page into the buffer
     if (this._selectedNum == null && this._selectedPinnedKey == null)
       this._selectLastNumbered();
@@ -3318,6 +3598,18 @@ ListSession.prototype = {
   // 零回應的 PgDn（docs/easy-reading-list.md「a full-page landing must not probe」那條 Known limitations）。
   _rebuild: function(facts, edge) {
     this._breakChain();
+    // A user list rebuilt from PTT's page still follows its user
+    // (noteUserListPage), and starts to when the rebuild ends a return from
+    // a query (_userListReturn): PTT may draw that page from a new snapshot
+    // without listing a number held. Another list does not.
+    if (!facts || facts.boardName !== this._boardName) this._userListResync = null;
+    else if (
+      !this._userListResync &&
+      this._userListReturn &&
+      Date.now() - this._userListReturn.at < PENDING_VIEWPORT_MAX_MS
+    )
+      this._userListResync = this._userListReturn;
+    this._userListReturn = null;
     // _lastReadTitle kept: title keys are number-space independent (see _seed).
     this._view.resetListAccumulation();
     this._termBuf.listLines = [];
@@ -3331,6 +3623,7 @@ ListSession.prototype = {
     this._stallDown = false;
     this._fillPages = 0;
     this._seedAnchors(facts);
+    this._markEmptyListEdges(facts);
     if (edge === 'up') this._edgeUp = true;
     else if (edge === 'down') this._edgeDown = true;
     this._forceRedraw();
@@ -3388,6 +3681,14 @@ ListSession.prototype = {
     }
   },
 
+  // An empty user list (#199, invariant 17a) is the whole list: both edges are
+  // known, and no page is asked for.
+  _markEmptyListEdges: function(facts) {
+    if (!facts || !facts.emptyList) return;
+    this._edgeUp = true;
+    this._edgeDown = true;
+  },
+
   _startFill: function() {
     this._fillTarget = readValuesWithDefault().easyReadingListPrefetchCount || 0;
     this._fillPages = 0;
@@ -3405,6 +3706,10 @@ ListSession.prototype = {
     if (this.state !== 'active') return;
     // 往上補把待還原的錨帶進來之後，下方可能還不夠捲到它（見 _demandDownIfWindowShort）。
     if (this._pendingViewport && this._queue.idle) this._demandDownIfWindowShort();
+    // The selection follows a user whose number is not held yet
+    // (noteUserListPage): read on toward it, whatever the fill target.
+    const follow = this._userListFollowDir();
+    if (follow > 0 && this._queue.idle) return this._enqueuePrefetch(false, 'fill');
     if (this._edgeUp || this._stallUp) return;
     if (!this._queue.idle) return;
     // 待還原的錨還沒進緩衝：不論預抓目標是否已滿，都再往上補（上限兩頁——視口
@@ -3418,6 +3723,7 @@ ListSession.prototype = {
       (pv.upFills || 0) < 2;
     if (
       !wantAnchor &&
+      follow === 0 &&
       shouldStopListPrefetch({
         visibleCount: this._visibleIndices().length,
         target: this._fillTarget,
@@ -3491,6 +3797,116 @@ ListSession.prototype = {
       dir: direction,
       len: (this._termBuf.listLineNums || []).length
     });
+  },
+
+  // The user the reader has selected on the user list, as the rows held list
+  // them ({ id, num }, id null for a row without one), or null. While a held
+  // excursion (a query) is over the list: the selection it gives back.
+  userListSelection: function() {
+    const num = this._helpSelection ? this._helpSelection.num : this._selectedNum;
+    if (num == null) return null;
+    const idx = (this._termBuf.listLineNums || []).indexOf(num);
+    const user = idx < 0 ? null : parseUserListRow((this._termBuf.listLines || [])[idx]);
+    return { id: user && user.id ? user.id : null, num: num };
+  },
+
+  // term_view.accumulateListLines, after each user-list page (#199). PTT lists
+  // users from a snapshot it takes again when it reloads a page 10 s or more
+  // after the last one (talk.c#pickup). `resynced`: this page came from a new
+  // snapshot, and the rows held from the old one were dropped; `selection` is
+  // userListSelection() from before the drop.
+  //
+  // The session reads the list again around the new page (its edges are no
+  // longer known; the fill cap starts again at most once per
+  // USER_LIST_SNAPSHOT_MS) and the selection follows its user (also after a
+  // rebuild of the user list, _rebuild): on the number it had
+  // while the list is read on toward that number (_maybeFill), then on the
+  // user's number once a page lists them. A user not listed once that number
+  // is held (logged off, or moved past the pages read) leaves the selection at
+  // the number. A key or a tap that moves the selection ends the wait, and so
+  // do PENDING_VIEWPORT_MAX_MS.
+  noteUserListPage: function(resynced, selection) {
+    if (resynced) {
+      this._userListResyncs++;
+      this._breakChain();
+      this._edgeUp = false;
+      this._edgeDown = false;
+      this._newerBelow = false;
+      this._stallUp = false;
+      this._stallDown = false;
+      // The fill reads its pages again once per snapshot: PTT takes the next
+      // one no sooner than USER_LIST_SNAPSHOT_MS, so pages disagreeing more
+      // often than that must not keep the list reading.
+      const at = Date.now();
+      if (this._userListRefillAt == null || at - this._userListRefillAt >= USER_LIST_SNAPSHOT_MS) {
+        this._userListRefillAt = at;
+        this._fillPages = 0;
+      }
+      // A second new snapshot before the user is found keeps the first
+      // target: the selection may since have snapped to another user.
+      if (!this._userListResync && selection && selection.num != null)
+        this._userListResync = { id: selection.id, num: selection.num, at: Date.now() };
+      const held = this._termBuf.listLineNums || [];
+      if (this._topNum != null && held.indexOf(this._topNum) < 0 && !this._pendingViewport) {
+        this._pendingViewport = {
+          topNum: this._topNum,
+          topPinnedKey: null,
+          scrollFrac: this._scrollFrac || 0,
+          adopted: true,
+          at: Date.now()
+        };
+      }
+      this._core.debugRecorder?.log('listSession.userListResync', {
+        id: selection ? selection.id : null,
+        num: selection ? selection.num : null,
+        len: held.length
+      });
+      // After this page's accumulation: the command that brought it may still
+      // own the queue, and its end reads more pages only when it was a prefetch.
+      setTimeout(() => {
+        if (this.state !== 'active') return;
+        this._demandDownIfWindowShort();
+        this._maybeFill();
+      }, 0);
+    }
+    const r = this._userListResync;
+    if (!r) return;
+    const lines = this._termBuf.listLines || [];
+    const nums = this._termBuf.listLineNums || [];
+    // PTT can list a user twice (its pages overlap, a user logged in twice):
+    // the row nearest the number they had.
+    let found = null;
+    for (let i = 0; r.id && i < lines.length; ++i) {
+      if (nums[i] == null) continue;
+      if (found != null && Math.abs(nums[i] - r.num) >= Math.abs(found - r.num)) continue;
+      const user = parseUserListRow(lines[i]);
+      if (user && user.id === r.id) found = nums[i];
+    }
+    if (found != null) {
+      this._selectedNum = found;
+      this._userListResync = null;
+      return;
+    }
+    // Not listed yet: the number it had (getListView shows the nearest row
+    // while that number is not held).
+    this._selectedNum = r.num;
+    if (!r.id || this._userListFollowDir() === 0 || Date.now() - r.at > PENDING_VIEWPORT_MAX_MS)
+      this._userListResync = null;
+  },
+
+  // While the selection follows a user (noteUserListPage) whose number is not
+  // held: the way to read on toward it, -1 up or 1 down; 0 when it is held or
+  // that way is not read.
+  _userListFollowDir: function() {
+    const r = this._userListResync;
+    if (!r) return 0;
+    const nums = this._termBuf.listLineNums || [];
+    if (nums.indexOf(r.num) >= 0) return 0;
+    const lo = bufferEdgeNum(nums, -1);
+    const hi = bufferEdgeNum(nums, 1);
+    if (lo != null && r.num < lo && !this._edgeUp && !this._stallUp) return -1;
+    if (hi != null && r.num > hi && !this._edgeDown && !this._stallDown) return 1;
+    return 0;
   },
 
   // Teach the last-read SUBJECT (pttbbs currtitle mirror). Called frame-taught
@@ -3613,6 +4029,12 @@ ListSession.prototype = {
       // 之上時永遠等不到。
       if (self._pendingViewport) self._maybeFill();
     };
+    // The user list numbers its rows from 1 (#199): holding number 1 is its
+    // top edge, with no page above to ask PTT for.
+    if (up && base === 1 && this.isUserList()) {
+      markEdge();
+      return;
+    }
     if (!chained) {
       this._queue.enqueue({
         keys: String(base) + '\r',
@@ -4327,6 +4749,8 @@ ListSession.prototype = {
     this._topPinnedKey = null;
     this._scrollFrac = 0;
     this._dropPendingViewport('cleanup');
+    this._userListResync = null;
+    this._userListReturn = null;
     // 真的離開看板了：身後的列表紀錄跟著作廢。
     recordFor(this._core).takeBehindList();
     this._seqCache = null;
@@ -4861,6 +5285,8 @@ ListSession.prototype = {
   //     PgUp 若先瞬移回游標再翻一頁會很怪，而游標可見時與 read.c 語意一致。
   // serverOp 的判準一字未改（read.c:842-880 的邊界條件）。
   _moveSelection: function(op, opts) {
+    this._userListResync = null;
+    this._userListReturn = null;
     const seq = this._sequence();
     if (!seq.length) return;
     const len = seq.length;
@@ -5184,8 +5610,8 @@ ListSession.prototype = {
     const lines = this._termBuf.listLines || [];
     const texts = [];
     for (let i = 0; i < lines.length; ++i) texts.push(rowToText(lines[i]));
-    // Mail rows are never hidden: the filter reads article columns.
-    if (this.isMailList()) return texts.map((t, i) => i);
+    // Mail and user rows are never hidden: the filter reads article columns.
+    if (this.isMailList() || this.isUserList()) return texts.map((t, i) => i);
     return visibleListIndices(texts, this._view.blacklist, this._view.titleBlacklist);
   },
 

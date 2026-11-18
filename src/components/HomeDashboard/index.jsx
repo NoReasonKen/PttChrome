@@ -210,6 +210,14 @@ export const HomeDashboard = ({ pttchrome, layer = false }) => {
             >
               {i18n("home_boardGroups")}
             </Button>
+            {/* 線上使用者（#199）：Ctrl+Z u，列表好讀接手使用者列表。 */}
+            <Button
+              className="homeChip"
+              data-home-users
+              onClick={() => home.openUsers()}
+            >
+              {i18n("home_users")}
+            </Button>
           </div>
         </section>
         {!mobile && <p className="homeHint">{i18n("home_hint")}</p>}

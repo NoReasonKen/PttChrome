@@ -74,6 +74,21 @@ describe("refreshTargetFromFacts — 哪些畫面接手", () => {
       kind: "article-list",
     });
   });
+  // #199: row 0 of the user list names the last board, and its `s` is talk.c's
+  // user search, so a refresh there would send `s` plus that board name.
+  test("線上使用者列表 ⇒ 不接（標題列的看板名不是這個畫面的）", () => {
+    const users = (title) =>
+      frame(
+        {
+          0: title + "                     批踢踢實業坊    看板《Test》",
+          2: "   編號 P 代號         暱稱              故鄉             動態              發呆",
+          23: " 休閒聊天  (w)丟水球 (q)查詢 (→)聊天 (m)寄信 (Tab)排序       (←)離開 (h)說明  ",
+        },
+        { listOwner: OWNER_ARTICLE_LIST },
+      );
+    expect(refreshTargetFromFacts(users("【休閒聊天】"), 2)).toBeNull();
+    expect(refreshTargetFromFacts(users("【好友列表】"), 2)).toBeNull();
+  });
   test("文章列表上開著 prompt（游標在輸入欄）⇒ 不接", () => {
     expect(refreshTargetFromFacts(frame(LIST, { inputField: true }), 2)).toBeNull();
   });

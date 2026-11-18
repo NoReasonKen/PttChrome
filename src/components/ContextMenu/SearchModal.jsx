@@ -9,7 +9,8 @@ import {
 } from "@mantine/core";
 import { i18n } from "../../js/i18n";
 import MobileSheet from "../MobileSheet";
-import { normalizeSearchText } from "../../js/article_search";
+import { normalizeSearchText as normalizeArticleSearch } from "../../js/article_search";
+import { USER_QUERY_ID_RE } from "../../js/user_query";
 import {
   sanitizeBoardQuery,
   resolvedBoardName,
@@ -40,6 +41,14 @@ const KIND_PLACEHOLDER_KEY = {
   push: "searchModal_placeholderPush",
   board: "searchModal_placeholderBoard",
 };
+// 種類 user＝查詢網友（user_query.js，#199）：同一個輸入外殼，標題、欄位名、
+// 送出鈕換成查詢網友的字，只收 PTT 的帳號格式，沒有搜尋紀錄。
+const USER_KIND = "user";
+function normalizeSearchText(kind, text) {
+  if (kind !== USER_KIND) return normalizeArticleSearch(kind, text);
+  const t = String(text == null ? "" : text).trim();
+  return USER_QUERY_ID_RE.test(t) ? t : "";
+}
 // 搜尋紀錄區：compact-sm 按鈕高 26px，最多三行。
 const HISTORY_GAP = 8;
 const HISTORY_AREA_MAX_HEIGHT = 3 * 26 + 2 * HISTORY_GAP;
@@ -196,6 +205,11 @@ export const SearchModal = ({
   const submit = useCallback(
     (text) => {
       if (!normalizeSearchText(currentKind, text)) return;
+      if (currentKind === USER_KIND)
+        return onConfirm({
+          kind: currentKind,
+          text: normalizeSearchText(currentKind, text),
+        });
       if (currentKind !== "board")
         return onConfirm({ kind: currentKind, text });
       // 唯一符合時 PTT 會進那個板：記憶裡存完整板名，不存打到一半的字。
@@ -222,9 +236,10 @@ export const SearchModal = ({
   );
 
   const shownKinds = kinds && kinds.length ? kinds : [currentKind];
+  const isUser = currentKind === USER_KIND;
   const title = aidTarget
     ? i18n("aidBoardChoice_pickTitle").replace("{0}", "#" + aidTarget.aid)
-    : i18n("searchModal_title");
+    : i18n(isUser ? "userQuery_title" : "searchModal_title");
 
   const form = (
     <form onSubmit={onSubmit} data-search-modal>
@@ -243,10 +258,17 @@ export const SearchModal = ({
         label={
           shownKinds.length > 1
             ? undefined
-            : i18n(SEARCH_KIND_LABEL_KEY[currentKind])
+            : i18n(
+                isUser ? "userQuery_label" : SEARCH_KIND_LABEL_KEY[currentKind],
+              )
         }
-        placeholder={i18n(KIND_PLACEHOLDER_KEY[currentKind])}
+        placeholder={i18n(
+          isUser ? "userQuery_placeholder" : KIND_PLACEHOLDER_KEY[currentKind],
+        )}
         inputMode={currentKind === "push" ? "numeric" : undefined}
+        autoCapitalize={isUser ? "none" : undefined}
+        autoCorrect={isUser ? "off" : undefined}
+        spellCheck={isUser ? false : undefined}
         autoComplete="off"
         value={value}
         onChange={onChange}
@@ -304,7 +326,13 @@ export const SearchModal = ({
           {i18n("searchModal_cancel")}
         </Button>
         <Button type="submit" disabled={!valid}>
-          {i18n(aidTarget ? "aidBoardChoice_jump" : "searchModal_confirm")}
+          {i18n(
+            aidTarget
+              ? "aidBoardChoice_jump"
+              : isUser
+                ? "userQuery_confirm"
+                : "searchModal_confirm",
+          )}
         </Button>
       </Group>
     </form>

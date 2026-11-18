@@ -12,7 +12,7 @@
 | 我的最愛 | 呈現 | 首頁儀表板的我的最愛區塊（`docs/home-dashboard.md`） |
 | 分組討論區 | 呈現 | #229 |
 | 私人信件區（信件列表、一封信） | 呈現（只讀信） | #196；見下「信箱」 |
-| 休閒聊天區（線上使用者列表、查詢網友） | 呈現 | #199 |
+| 休閒聊天區（線上使用者列表、查詢網友） | 呈現（只看名單與查詢） | #199；見下「線上使用者」。入口是首頁儀表板的「線上使用者」，休閒聊天區子選單沒有入口 |
 | 精華公佈欄 | 不呈現 | #195 已以不實作關閉 |
 | 個人設定區 | 不呈現 | #200 已以不實作關閉 |
 | 系統資訊區 | 不呈現 | #201 已以不實作關閉 |
@@ -29,7 +29,58 @@
 - **按鍵**：信件列表留方向鍵／翻頁／Home／End、數字跳號、`h` 說明、`←`／`q`／`e` 離開，讀信用 `mail.c#mail_comms` 讀信的全部鍵（`→`／Enter／`r`／`l`／`L`）；其餘（回信、轉寄、刪信、標記、全部已讀、信件夾、搜尋 `/` `?` `a` `Z` `s`、文章列表的原地鍵）擋下並提示。讀信時回信鍵（`y` `Y` `r` `R`）與同標題跳擋下（寄信、回信是 #230）。
 - **依據**：信件列表的畫面（標題、表頭與容量標籤的顏色、短信箱、80x45）已對照過實機；讀信畫面、空信箱與舊 caption 沒有實機畫面，形狀照 pttbbs 原始碼（`mail.c#mailtitle`／`maildoent`／`mail_comms`／`m_read`、`read.c#i_read_caption`、`menu.c` ZA），e2e 用 `tests/e2e/helpers/mail_box.js` 的受控信箱。空信箱（`vmsg("您沒有來信")`）由「開信箱」按一個空白鍵清掉、留在首頁並提示。
 
-「呈現」的區還沒做完的部分是缺口：在補上之前每次進去都顯示同樣的 PTT 原生畫面，原生畫面守門（`tests/e2e/helpers/native_grid_guard.js`）以各自的 issue 放行。「不呈現」的區在守門裡沒有放行條目。守護 `tests/e2e/offline/mobile_easy_reading_gaps.offline.spec.js`（首頁按不呈現區的鍵 ⇒ 擋下、提示、一個 byte 都不送、沒有原生畫面）。
+### 線上使用者（#199）
+
+第一階段做列表本身：認得、做成卡片、捲動與跳號。第二階段做查詢網友（下面「查詢網友頁」）。第三階段做首頁入口、頁面堆疊、按鍵政策、`f`／`F` 的接線與工具列入口。
+
+- **入口**只有首頁儀表板的「線上使用者」（瀏覽區，分組討論區旁，`docs/home-dashboard.md`）：`Ctrl+Z u`（`menu.c` ZA → `t_users`），列表好讀接手。主功能表的 `T`（休閒聊天區）與它的子選單照舊沒有入口，首頁按 `t` 與其他不呈現區一樣擋下。名單要 PERM_LOGINOK：訪客按 `u` 時 PTT 什麼都不開、重畫主功能表，入口一看到沒有 ZA「快速切換」底列的主功能表就失敗。PTT 給的列表在 `USER_LIST_PRESENT_MS`（1 秒）內沒有被列表好讀呈現也失敗。兩種失敗都提示「開不了線上使用者名單」（錯誤等級），留在首頁。別的操作正在驅動 PTT 時只提示忙碌、不送鍵。閱讀紀錄的鍵是 `home-users`（`reading_record.js`，和 `home-mail` 同一組格子）。
+- **頁面堆疊**（手機）：和信箱一樣，送鍵前先把儀表板留成活的下層（`ArticleGestures.holdHomeLayer`），PTT 給了列表就讓卡片從右邊滑進來蓋在儀表板上（`enterHomeLayer`）。`←`、`e`／`E` 與左緣右滑都立刻露出儀表板，不等 PTT 回應；沒開成就丟掉這份儀表板（`dropHomeLayer`）。兩個視圖在堆疊裡是同一頁（`stack_handoff.listBoard` 把 `FRIEND_LIST_KEY` 當成 `USER_LIST_KEY`），所以切換視圖不會開新的一頁、不會丟掉下層的儀表板（[article-swipe-drawer-spec.md](article-swipe-drawer-spec.md)「Pages in the stack」）。
+- **認得**：`【休閒聊天】`（全部使用者）與 `【好友列表】`（只有好友）是列表好讀的另一種列表（`list_session.classifyUserListScreen`）。條件：row 0 反白標題含其中一個、row 2 反白表頭含「編號」與「代號」、底列由 caption ` 休閒聊天 ` 找（`screen_captions.userListFooterRow`：最後一個非空白列，row 3 以後），表頭與底列之間每個非空白列都有編號、游標停在有編號的列（col ≤ 1）。PTT 的版面晚 NAWS 一次重繪，底列可能在倒數第二列、最後一列空白，所以底列一律照 caption 找，不假設是最後一列；一頁的人數是「底列列號 − 3」。說明畫面（底列 caption ` 操作說明 `）與查詢畫面沒有表頭和底列，不算列表。
+- **身分鍵**：`screen_titles.USER_LIST_KEY`（`'【休閒聊天】'`）與 `FRIEND_LIST_KEY`（`'【好友列表】'`），永遠不是板名（row 0 右邊的 `看板《X》` 是上次待的看板，不讀）。兩個視圖各有自己的鍵，切換視圖等於換一個列表：列表好讀重建 buffer，編號重新從 1 開始。`screen_titles.isUserListKey(key)` 判斷一個鍵是不是使用者列表。
+- **空列表**：沒有上線好友的 `【好友列表】` 只有標題、表頭和自己的底列（` 休閒聊天  (Tab)排序 (f)好友 (s)搜尋 (b)廣播 (S)顯示切換 … (←)離開 (h)說明`），沒有任何編號列。它仍是 clean-list（`emptyList: true`），列表好讀以它開始或重建（[easy-reading-list.md](easy-reading-list.md) 不變量 17a），兩端都已到底，視窗只有一列空狀態（`render/list_card.buildListEmptyRow`，`data-list-empty="friends"`／`"all"`，文字 `list_emptyFriends`／`list_emptyUsers`），不顯示 PTT 的畫面。
+- **卡片**（`cardKind: 'user'`，`list_card.CARD_LAYOUT.user`）：第一行代號（粗體）與暱稱；第二行編號、動態，右側發呆時間。不顯示 pager 字元（cell 8）與故鄉欄（cell 41–57，`S` 切換的那欄）。好友（代號格亮青）的卡片有 `data-user-friend`，左緣一條青色；在 PTT 數人數與畫列表之間離站的 `< 離站中..>` 列沒有代號，卡片有 `data-user-gone`、整張變灰（用顏色，不用 opacity）。每張卡片有 `data-user-id`（代號；離站列沒有）。黑名單不套用（不藏列、不掛標註），沒有已讀標記。
+- **捲動與累積**與文章列表相同：方向鍵、翻頁、Home／End、數字跳號（跳號輸入框開著時，按鍵面板的鍵與軟鍵盤打進終端機的字都歸輸入框：Enter 送出、`Esc` 與系統返回取消、⌫ 刪字，不會落到底下的列表，`term_view.promptListInput`）；編號從 1 連續、最後一頁較短。編號 1 就是頂端，往上不再探。上線的人來來去去，同一個編號在兩次讀取之間可能換人（照列表好讀既有的累積接受）。
+- **按鍵**（`list_session.userListKeyClass`，兩個視圖相同）：
+
+  | 類別 | 鍵 | 動作 |
+  |---|---|---|
+  | 導覽 | `↑` `k`、`↓` `j` `n`、PgUp `P` Ctrl+B、PgDn 空白 Ctrl+F、Home `0`、End `$`、數字 1–9 跳號 | 列表好讀的捲動與跳號 |
+  | 離開 | `←` `e` `E` | 回首頁，下層的儀表板立刻露出 |
+  | 查詢 | `q`、Enter、`→` | 查詢選取的使用者（`user_query.queryUser(core, selectedUserId(core))`） |
+  | 依代號查詢 | `Q` | `user_query.promptUserQuery(core)` |
+  | 切換視圖 | `f` `F` | 全部使用者 ⇄ 只看好友，見下 |
+  | 說明 | `h` `?` | 說明選單 |
+  | 其他 | 所有其他鍵（水球 `w`、聊天 `t`、寄信 `m`、排序 Tab、搜尋 `s` `/`、顯示切換 `S`、加減好友 `a` `d` `o`、廣播 `b`、`N`、`H`、其他 Ctrl／Alt 組合…） | 擋下並提示「好讀模式目前不支援這個按鍵」，一個 byte 都不送 |
+
+  `H` 在 `talk.c` 是站長的隱身切換（一般使用者按了才落到說明），所以不當說明的別名。工具列送的 Enter／`→` 也是查詢，`H` 擋下（`ListSession._classifyBytes`）。這個列表沒有搜尋 sheet（`article_search.availableSearchKinds` 回空），沒有重新整理、跳到未讀、設為全部已讀、發文（row 0 右邊的看板名不是這個畫面的，`s` 是 `talk.c` 的搜尋），也沒有可以標已讀的列。
+- **切換視圖**：`f`／`F`、手機工具列「更多」裡的「只看好友」／「顯示全部使用者」、桌機右鍵選單與指令面板的同名項目都送 `f`（標籤寫切過去的那個視圖；只在列表好讀拿著使用者列表、沒有 prompt 時出現，`user_list.userListToggleTarget`）。它和文章列表的原地鍵一樣是凍結交易（`ListSession.toggleUserListView`）：列表留在畫面上（不滑動、不開新頁），PTT 重畫另一個視圖後從落地的畫面重建，編號從 1 開始，沒有上線好友就是空狀態。**視圖是帳號旗標**（`UF_FRIEND`）：PTT 記在帳號上，下次從首頁進來仍是上次離開時的視圖。
+- **查詢網友頁**（`src/js/user_query.js`）：點一張使用者卡片，或工具列「更多」（手機）、右鍵選單與指令面板（桌機）的「查詢網友」，都送同一串：`Q` ⇒ 等 PTT 畫出 `【查詢網友】` 提示 ⇒ 代號＋Enter ⇒ 等 PTT 回答。每一鍵都等前一鍵的回答才送。「查詢網友」只在線上使用者列表出現（`UserQuery.available()`，各入口共用）；「更多」等入口開的是 app 自己的輸入 sheet（與搜尋同一個外殼，種類 `user`，只收 PTT 帳號格式，可只打開頭幾個字，由 PTT 補完），沒有搜尋紀錄。
+  - **頁面**：PTT 的查詢畫面（`talk.c#my_query`）做成一頁，疊在列表上面（列表留在底下，是活的一層）。整齊的列：代號、暱稱、經濟狀況、登入次數、有效文章、目前動態、私人信箱、上次上站、上次故鄉、戰績（五子棋／象棋）；PTT 沒畫的列（有些人沒有上次上站那列）就不出現。名片照純文字顯示（保留空行），沒有名片時寫「沒有名片」。不顯示 PTT 的格線，也不顯示「請按任意鍵繼續」那條。解析：`user_list.parseUserQueryScreen`。App Bar 標題是「查詢網友」，副標是代號。
+  - **離開**：返回、系統返回、`←`（也接受 `Esc`、`q`）、或在頁面上往右滑。離開時列表立刻出現，只送一個空白鍵給 PTT 的「請按任意鍵繼續」。PTT 收到後可能先睡一下才重畫列表（`talk.c#my_query`：與上一次查詢結束相隔不到 1 秒睡 2 秒，不到 2 秒睡 1 秒，否則不睡），這段時間裡列表一直留在畫面上，PTT 的畫面一幀都不畫（`term_view._navigationHeld`）。等 PTT 畫回列表，列表好讀才把畫面收回來，列和選取都不變（`ListSession.resumeAfterHelp`）。往左滑沒有作用（沒有抽屜）。頁面上的方向鍵、翻頁、空白鍵捲動頁面。手機工具列按鍵面板的鍵（`view.sendKeyAsUser`，不是 window 上的 keydown）也由頁面接手（`UserQuery.takeKey`）：面板的 `←`／`Esc` 一樣離開、`↑`／`↓`／翻頁捲動，不會落到查詢佔線的「查詢網友中，請稍候…」提示。頁面顯示時，其餘按鍵（`Enter`、`→`、`Backspace`、`Tab`、`Del`、字母）都不會落到頁面底下被拿著的列表，一律顯示好讀的「目前不支援這個按鍵」提示；軟鍵盤打的字也一樣：單一字元當按鍵（`q` 離開、其他字元提示），輸入法的詞與貼上提示不支援在查詢頁輸入文字（`UserQuery.ownsInput`／`refuseText`，`term_view.onTextInput`）。手機工具列：「按鍵」可開關（按鍵面板在頁面出現前就開著也一樣）、按鍵面板的鍵盤鈕可叫出軟鍵盤、「更多」可開；針對頁面底下列表的動作一律關掉（推／回／發文／搜尋格留空，重整與到底反灰，「更多」裡沒有查詢網友、切換視圖、未讀、全部已讀、操作說明、全選與圖片上傳），登出反灰（PTT 被查詢佔線，送不出去）；「選取」與「設定」照常。頁面出現前（`Q`、代號送出中）整條工具列仍反灰。有別的 sheet 開在頁面上時，按鍵歸那個 sheet。
+  - **失敗都留在列表並提示**：PTT 沒有這個使用者（它不畫查詢畫面，直接重畫列表）⇒「找不到這個使用者」；PTT 的使用限制（`alert_screen(" 使用限制 ", …)`）⇒ 送一個空白鍵關掉它，狀態是 ` 查詢 ` 的拒絕回到列表並提示，` 限速中 ` 繼續到查詢畫面；PTT 沒有回答（逾時）⇒ 提示，列表留著。別的操作正在跑時，只給提示，什麼都不送。查詢從 `Q` 到列表回來的整段期間，終端按鍵與點擊都擋下（`setModalOpen('userQuery')`）。
+  - **依據**：查詢畫面的欄位排法、名片從第 7 列起、沒有名片那一行、按鍵後的 sleep、找不到使用者與使用限制的流程照 pttbbs 原始碼（`talk.c#my_query`／`t_query`、`activity_alert`），沒有實機的名片、使用限制畫面。e2e 用受控列表（`plans`、`state.flood`、`sleepMs`），`tests/e2e/offline/mobile_user_query.offline.spec.js`。
+- **依據**：列表、表頭與底列的顏色、好友代號的亮青、空好友列表的底列、說明畫面、查詢畫面與 `Q` 提示都對照過實機畫面；數字跳號、列表兩端的方向鍵與翻頁、空視圖的游標位置、`< 離站中..>` 列的樣子沒有實機畫面。e2e 用 `tests/e2e/helpers/user_list.js` 的受控列表（虛構的使用者），`tests/e2e/offline/mobile_user_list.offline.spec.js`。
+
+給列表以外的呼叫端的介面（純函式在 `src/js/user_list.js`，除非另註）：
+
+| 介面 | 回傳 |
+|---|---|
+| `userListView(buf)` | 畫面是使用者列表時 `'all'`（`【休閒聊天】`）或 `'friends'`（`【好友列表】`），否則 `null`（說明畫面、查詢畫面雖然留著標題也是 `null`） |
+| `selectedUserId(core)` | 列表好讀拿著使用者列表時，選取卡片的代號；沒有選取、選到離站列或不是使用者列表時 `null` |
+| `isUserQueryScreen(buf)` | 一位使用者的查詢畫面（`q` 或 `Q`＋代號之後）：某列以 `《ＩＤ暱稱》` 開頭，其下有一列以 `《登入次數》`／`《目前動態》`／`《上次上站》` 開頭。row 0 與 `請按任意鍵繼續` 那條都不讀（PTT 不清 row 0；resize 後的重繪沒有那條） |
+| `isUserQueryPrompt(buf)` | `Q` 的提示：row 0 標題 `【查詢網友】`、row 1 以 `請輸入使用者代號:` 開頭 |
+| `parseUserListRow(chars)` | 一列的格子 ⇒ `{ id, friend, gone }`（離站列 `id: null, gone: true`），不是使用者列時 `null` |
+| `userListViewOfTexts(texts)` | 同 `userListView`，讀各列文字（首頁入口的 expect 用） |
+| `userListToggleTarget(facts)` | `f` 會切到的視圖 `'friends'`／`'all'`；列表好讀沒拿著使用者列表或 prompt 開著時 `null`（工具列、右鍵選單、指令面板用） |
+| `ListSession.isUserList()` | 列表好讀拿著的是使用者列表（任一視圖；說明畫面期間仍算） |
+| `ListSession.userListView()` | 拿著的視圖：`'all'`／`'friends'`／`null` |
+| `ListSession.selectedListRow()` | 選取的那列（PTT 畫的格子），或 `null` |
+| `parseUserQueryScreen(rowTexts)` | 查詢畫面的各欄 `{ id, nick, money, logins, posts, activity, mail, lastLogin, lastHost, five, chess, plan }`（`plan` 是名片各行，沒有名片時 `[]`），不是查詢畫面時 `null` |
+| `userQueryAlert(rowTexts)` | PTT 的使用限制畫面 ⇒ `{ status: 'denied'｜'slowed', reason }`，否則 `null` |
+| `queryUser(core, id)`（`user_query.js`） | 查詢 `id`（卡片點擊，以及列表按鍵 `q`、Enter、`→`）。送出了回 `true`；別的操作在跑或不在使用者列表時回 `false` 並提示 |
+| `promptUserQuery(core)`（`user_query.js`） | 開「查詢網友」輸入 sheet，送出時查詢那個代號（`Q`、「更多」、右鍵選單、指令面板共用）。開了回 `true`；不行時回 `false` 並提示 |
+
+「呈現」的區還沒做完的部分是缺口：在補上之前每次進去都顯示同樣的 PTT 原生畫面，原生畫面守門（`tests/e2e/helpers/native_grid_guard.js`）以各自的 issue 放行。目前沒有缺口：信箱（#196）與線上使用者（#199）都由首頁儀表板的入口進去、由好讀呈現，守門裡沒有任何主功能表區的放行條目。「不呈現」的區（含私人信件區與休閒聊天區的子選單）沒有入口。守護 `tests/e2e/offline/mobile_easy_reading_gaps.offline.spec.js`（首頁按不呈現區的鍵 ⇒ 擋下、提示、一個 byte 都不送、沒有原生畫面）、`mobile_user_list_entry.offline.spec.js`（線上使用者的入口、頁面堆疊、按鍵政策與原地切換）。
 
 ## 機制（CONFIRMED）
 

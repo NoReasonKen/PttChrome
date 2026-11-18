@@ -1016,6 +1016,18 @@ export const en_US = {
   "inbox_newMail": {
     "message": "You have new mail"
   },
+  "list_emptyFriends": {
+    "message": "No friends online"
+  },
+  "list_emptyUsers": {
+    "message": "No users online"
+  },
+  "userList_showFriends": {
+    "message": "Friends only"
+  },
+  "userList_showAll": {
+    "message": "Show all users"
+  },
   "options_deepLinkHandoffNotify": {
     "message": "Notify when this tab picks up an external link (tab title flash + system notification)."
   },
@@ -1091,6 +1103,72 @@ export const en_US = {
   "palette_unreadJump": {
     "message": "Jump to first unread"
   },
+  "userQuery_title": {
+    "message": "Query user"
+  },
+  "userQuery_label": {
+    "message": "User ID"
+  },
+  "userQuery_placeholder": {
+    "message": "Enter an ID (its first letters work too)"
+  },
+  "userQuery_confirm": {
+    "message": "Query"
+  },
+  "userQuery_notFound": {
+    "message": "User not found"
+  },
+  "userQuery_flood": {
+    "message": "PTT is limiting queries for now; try again later"
+  },
+  "userQuery_failed": {
+    "message": "The user query got no answer; try again"
+  },
+  "userQuery_busy": {
+    "message": "Querying a user, please wait…"
+  },
+  "userQuery_unavailable": {
+    "message": "Users can be queried only from the online user list"
+  },
+  "userQuery_gone": {
+    "message": "This user has left and cannot be queried"
+  },
+  "userQuery_plan": {
+    "message": "Plan"
+  },
+  "userQuery_noPlan": {
+    "message": "No plan"
+  },
+  "userQuery_fieldId": {
+    "message": "ID"
+  },
+  "userQuery_fieldNick": {
+    "message": "Nickname"
+  },
+  "userQuery_fieldMoney": {
+    "message": "Finances"
+  },
+  "userQuery_fieldLogins": {
+    "message": "Logins"
+  },
+  "userQuery_fieldPosts": {
+    "message": "Valid posts"
+  },
+  "userQuery_fieldActivity": {
+    "message": "Activity"
+  },
+  "userQuery_fieldMail": {
+    "message": "Mailbox"
+  },
+  "userQuery_fieldLastLogin": {
+    "message": "Last login"
+  },
+  "userQuery_fieldLastHost": {
+    "message": "Last from"
+  },
+  "userQuery_fieldRecord": {
+    "message": "Game record"
+  },
   "palette_markAllRead": {
     "message": "Mark all as read"
   },
@@ -1147,6 +1225,9 @@ export const en_US = {
   },
   "home_boardGroups": {
     "message": "Board groups"
+  },
+  "home_users": {
+    "message": "Online users"
   },
   "home_recents": {
     "message": "Recent boards"

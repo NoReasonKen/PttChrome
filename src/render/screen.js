@@ -19,7 +19,7 @@
 // 見 screen_annotate_cache.js 檔頭的實測）。
 import { el } from "./dom";
 import { buildRow } from "./row";
-import { buildListCard } from "./list_card";
+import { buildListCard, buildListEmptyRow } from "./list_card";
 import { buildMenuCard, buildMenuBlankRow, isBlankRow } from "./menu_card";
 import { buildCollapsedRow } from "./collapsed_row";
 import {
@@ -1120,6 +1120,13 @@ export class ScreenController {
       (row < ls.bodyStart || row === lines.length - 1)
     )
       return buildCollapsedRow(row, "listChromeRow");
+    // An empty user list's window (#199): its one body row says so.
+    if (ls && lines[row] && lines[row].listEmpty)
+      return buildListEmptyRow({
+        row,
+        view: lines[row].listEmpty,
+        cards: !!enhance.listCards,
+      });
     if (
       enhance &&
       enhance.listCards &&

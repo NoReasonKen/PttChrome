@@ -12,7 +12,7 @@
 //      輸入欄」時出現；抓我的最愛的任何一步落地不符就停手，人留在 PTT 給的畫面上。
 //   3. **每個動作都是原生鍵**：抓最愛＝Ctrl+Z f（menu.c#ZA_Select 的「我的最愛」）→ 讀頁
 //      →（跳號翻頁）→ 跳回原游標 → q；開看板＝搜尋彈窗同一條 s<板>⏎（submitSearch）；
-//      開信箱＝Ctrl+Z m。抓最愛只在面板打開、快取過期時做一次；手動更新（按鈕、F5、
+//      開信箱＝Ctrl+Z m；線上使用者＝Ctrl+Z u。抓最愛只在面板打開、快取過期時做一次；手動更新（按鈕、F5、
 //      手機工具列、下拉）一律經 screen_refresh。
 //
 // 進看板之後的「有新文章」不重抓：文章列表看得到最新一篇的已讀標記就照它改
@@ -24,6 +24,7 @@ import {
   MAIN_MENU,
   BOARD_LIST,
   MAIL_LIST_KEY,
+  USER_LIST_KEY,
   parseBoardName,
   isArticleListTitleRow,
   isMailListTitleRow
@@ -31,6 +32,7 @@ import {
 import { isArticleListFooter, isMailListFooter, isSubListFooter } from './screen_captions';
 import { parseListEntry } from './agent_parse';
 import { listRowMark } from './unread_jump';
+import { userListViewOfTexts } from './user_list';
 import { parseMenuItemRow } from './menu_items';
 import {
   BRD_HEADER_ROWS,
@@ -97,6 +99,17 @@ const ZA_FAVORITE = '\x1af';
 const ZA_MAIL = '\x1am';
 // The class root, PTT's board groups (menu.c za_cmds 'c' → Class(), #229).
 const ZA_CLASS = '\x1ac';
+// The online user list (menu.c za_cmds 'u' → t_users, #199).
+const ZA_USERS = '\x1au';
+// How long a user list PTT showed may take to be presented by easy reading.
+const USER_LIST_PRESENT_MS = 1000;
+// ZA's bar on the bottom row while it waits for its key (menu.c
+// cmd_footer_select's caption).
+const ZA_BAR = '快速切換';
+function isZaBar(facts) {
+  const rowTexts = (facts && facts.rowTexts) || [];
+  return (rowTexts[rowTexts.length - 1] || '').indexOf(ZA_BAR) >= 0;
+}
 // The class root's page under its stacked lists (PTT's caption for it).
 const CLASS_ROOT_PAGE = '分類看板';
 const STEP_TIMEOUT_MS = 3000;
@@ -974,6 +987,90 @@ HomeDashboard.prototype = {
       }
     ];
     const sent = submitSerializedSteps(core, steps, { kind: 'home-mail' });
+    if (!sent) {
+      dropHome();
+      hold.release();
+      finish('cancel');
+      this._hint(serializedOpHint(core) || '指令處理中，請稍候再試');
+    }
+    return sent;
+  },
+
+  // The online user list (#199): Ctrl+Z u (menu.c za_cmds 'u' → talk.c
+  // t_users, PERM_LOGINOK). Laid out as openMail: the dashboard is copied now
+  // as the list's lower page, the page is held while PTT answers, and the list
+  // slides in over the copy once easy reading presents it. A guest has no
+  // PERM_LOGINOK: ZA reads the key and PTT redraws the main menu, so the main
+  // menu without ZA's 快速切換 bar fails the step at once, as does a list easy
+  // reading does not present within USER_LIST_PRESENT_MS. Another operation
+  // driving PTT: only told, nothing starts.
+  openUsers: function() {
+    const core = this._core;
+    if (this._state.fetching) return false;
+    const busy = serializedOpHint(core);
+    if (busy) {
+      this._hint(busy);
+      return false;
+    }
+    let bm = recordFor(core).begin('home-users');
+    const finish = function(outcome) {
+      if (bm) recordFor(core).end(bm, outcome);
+      bm = null;
+    };
+    const gestures = core.articleGestures;
+    let held = gestures && gestures.holdHomeLayer ? gestures.holdHomeLayer() : null;
+    const dropHome = () => {
+      if (held) gestures.dropHomeLayer(held);
+      held = null;
+    };
+    const hold = beginBoardSearchHold(core);
+    const fail = () => {
+      stopWatch();
+      dropHome();
+      hold.release();
+      finish('fail');
+      this._hint('開不了線上使用者名單', 0, HINT_ERROR);
+    };
+    const listShown = () => {
+      if (core.buf.listRenderMode === 'buffer' && core.listSession?.isUserList?.()) {
+        stopWatch();
+        finish('done');
+      }
+    };
+    const onSettled = () => queueMicrotask(listShown);
+    let watch = null;
+    const stopWatch = () => {
+      clearTimeout(watch);
+      watch = null;
+      core.buf.removeEventListener?.('screenSettled', onSettled);
+    };
+    const awaitList = () => {
+      core.buf.addEventListener?.('screenSettled', onSettled);
+      watch = setTimeout(fail, USER_LIST_PRESENT_MS);
+      queueMicrotask(listShown);
+    };
+    const steps = [
+      {
+        keys: ZA_USERS,
+        kind: 'home-users',
+        timeoutMs: STEP_TIMEOUT_MS,
+        expect: function(snap, facts) {
+          if (userListViewOfTexts((facts && facts.rowTexts) || [])) return true;
+          return isHomeScreen(facts) && !isZaBar(facts) ? { refused: true } : false;
+        },
+        onDone: function(result) {
+          if (result && result.refused) return fail();
+          // The entry over the dashboard copy holds the screen from here.
+          const entered = held && gestures.enterHomeLayer(held, USER_LIST_KEY);
+          if (entered) hold.release();
+          else hold.land({});
+          awaitList();
+        },
+        onFail: fail,
+        onFlushed: fail
+      }
+    ];
+    const sent = submitSerializedSteps(core, steps, { kind: 'home-users' });
     if (!sent) {
       dropHome();
       hold.release();

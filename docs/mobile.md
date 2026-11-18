@@ -75,9 +75,10 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
     搜尋**直接開搜尋彈窗**（預設第一個可用種類，無子選單；見 `docs/article-search.md`）。分享＝`deep_link_controller.shareCurrentPostLink(title)`（與複製本篇連結同一條 AID 解析；`navigator.share`，AbortError＝完成，其他拒絕／無 API 退回複製；**click 內同步呼叫**）。
     更多＝bottom sheet（見「Bottom sheet」）：外部搜尋（**選取模式開＋有選取**才列；選取模式下長按走原生選單，
     我們的長按選單出不來。選取在工具列 `pointerdown` 當下記住——tap 收尾時瀏覽器可能先清選取才發 click）／
-    跳到第一篇未讀／設為全部已讀（文章列表才有）／顯示文章數（或顯示看板編號，跟著現在的顯示方式；好讀的我的最愛與
+    跳到第一篇未讀／設為全部已讀（文章列表才有）／查詢網友（線上使用者列表才有，開輸入 sheet，`user_query.promptUserQuery`）／只看好友（或顯示全部使用者，跟著現在的視圖；線上使用者列表才有，送 PTT 的 `f`）／顯示文章數（或顯示看板編號，跟著現在的顯示方式；好讀的我的最愛與
     分類的看板列表才有，送 PTT 的 `c`）／切換排序（依板名／依類別）（好讀的分類看板列表才有，送 PTT 的 `S`）／
     重新排序我的最愛（好讀的我的最愛才有：先開確認 sheet 說明會覆寫目前排列且無法復原，選了依板名／依類別才送 `S` 與答案）。
+    使用者查詢頁顯示時（`mobile_toolbar.queryPage`）：按鍵與「更多」可用，針對底下列表的格位與項目關掉（見 `docs/easy-reading.md` 的查詢頁），「更多」裡的登出反灰；頁面出現前整條反灰（`locked`）。
     都問 `boardListSession.listToggles`，見
     `docs/board-list-smooth-scroll.md` §4.7／操作說明（底列有 `(h)說明` 才有、主功能表不給（同 `contentTools`），送 h；底列在卡片／好讀文章
     畫面被收起、點不到原生提示，見 `docs/help-menu.md`）／分享／文章導覽／選取模式／全選／

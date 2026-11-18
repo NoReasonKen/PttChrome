@@ -30,6 +30,7 @@ import { LogoutSession } from './logout_session';
 import { BoardNoteSkip } from './board_note_skip';
 import { BackPauseHold } from './back_pause_hold';
 import { HelpMenuController } from './help_menu';
+import { UserQuery } from './user_query';
 import { installToolbarDiagnostics, logToolbarContext } from './toolbar_diag';
 import { DeepLinkController } from './deep_link_controller';
 import { AutoLogin } from './auto_login';
@@ -249,6 +250,7 @@ export const App = function() {
   // 說明選單好讀（h 的新版游標選單 → 彈窗／bottom sheet 列出全部頁，見 help_menu.js）。
   // listener 排在列表 session 之後：同一個 settle 裡佇列的命令先完成，補頁的 PgDn 才排得上線。
   this.helpMenu = new HelpMenuController(this, this.buf);
+  this.userQuery = new UserQuery(this);
   // 搜尋彈窗送出的兩步在途（article_search.submitSearch 寫、serialized_op_gate 讀）。
   this.searchInFlight = false;
   this.view.onAidClick = (aid, board) => this.onAidClick(aid, board);
@@ -343,6 +345,7 @@ export const App = function() {
   // 最後一個 modal 關閉的時間（performance.now() 基準）。term_view 用它擋掉「關框
   // 的那一下」按鍵（modal_key_gate.js）。
   this.modalClosedAt = -Infinity;
+  this.anyModalClosedAt = -Infinity;
 
   this.imageViewer = new ImageViewer(this);
 
@@ -686,6 +689,8 @@ App.prototype.onClose = function() {
   this.boardNoteSkip.reset();
   this.backPause.reset();
   this.helpMenu.reset();
+  // A user query mid-run (#199) belongs to the connection that closed too.
+  this.userQuery?.reset();
   // 長推文的探路成果同理：錨點是這條連線的列表游標（pttbbs getkeep），斷線就失效。
   // 不丟掉的話，重連後按下「送出」會拿舊錨點去比對新畫面。
   this.longPush.disarm();
@@ -1013,7 +1018,8 @@ App.prototype.setMobileSelectMode = function(on) {
 // 即時生效（鍵盤不會自己彈出／收起），所以切換後 blur→focus 讓瀏覽器重新判斷。
 // 回傳新狀態。
 App.prototype.toggleSoftKeyboard = function() {
-  if (!this.mobile || this.modalShown) return this.softKeyboard;
+  // The user query page (#199) is a modal that takes the soft keyboard's text.
+  if (!this.mobile || (this.modalShown && !this.userQuery?.ownsInput())) return this.softKeyboard;
   this.softKeyboard = !this.softKeyboard;
   this._keyboardSeen = false;
   this._applyInputMode();
@@ -1064,6 +1070,8 @@ App.prototype._onVisualViewport = function() {
   document.documentElement.style.setProperty('--safe-bottom', chrome.safeBottom + 'px');
   if (this.view && this.view.setTopInset)
     this.view.setTopInset(this.mobile ? chrome.top : 0);
+  // Top overlays that must not sit under the App Bar (the user query page).
+  document.documentElement.style.setProperty('--term-top-inset', (this.mobile ? chrome.top : 0) + 'px');
   var bottomInset = this.mobile ? chrome.bottom : 0;
   // Bottom terminal prompts keep their position above the toolbar/key panel.
   document.documentElement.style.setProperty('--term-bottom-inset', bottomInset + 'px');
@@ -1108,6 +1116,10 @@ App.prototype._readSafeInsets = function() {
 //     結構上不可能失同步。
 //   - 關掉最後一個 modal 時才把焦點還給終端機。
 App.prototype.setModalOpen = function(source, open) {
+  // Any source closing, not only the last: a key that closed a sheet over the
+  // user query page belongs to that sheet (UserQuery.takeKey).
+  if (!open && this._openModals.has(source) && typeof performance !== 'undefined')
+    this.anyModalClosedAt = performance.now();
   if (open)
     this._openModals.add(source);
   else
@@ -2016,8 +2028,13 @@ App.prototype.onMouse_move = function(cX, cY, overAnchor, target) {
   if (this.buf.listRenderMode === 'buffer' || this.buf.listRenderMode === 'frozen') {
     // 第三個參數是**螢幕**列號：pos.row 在 body 區是序列 index（可以到幾千），
     // 邊緣翻頁區的上下半分界必須用螢幕座標算（見 mouse_geometry.rowFromClientY）。
+    // Cards: only a card hovers, as only a card opens (mouse_click). A tap
+    // anywhere else also reaches here as a mouse move — on the phone's keypad
+    // below the list among others — and its grid row would read as a card's
+    // index: that card stayed highlighted while the keypad's arrows moved `>`.
+    var overCard = !this.view.listCards || isListCardBodyTarget(target);
     this.view.onListMouseMove(
-      pos.row,
+      overCard ? pos.row : -1,
       pos.col,
       rowFromClientY(cY, this.gridGeometry()),
       overAnchor

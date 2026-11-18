@@ -1,5 +1,6 @@
 import { i18n } from "../../js/i18n";
 import { externalSearchLabel } from "../../js/external_search";
+import { userListToggleLabel } from "../../js/user_list";
 
 // 右鍵／長按選單的項目清單（純資料）。桌機畫成 Mantine Menu（DropdownMenu.jsx），手機
 // 畫成 bottom sheet（ContextSheet.jsx）——兩邊共用這一份，順序與出現條件只有一個真相源。
@@ -89,6 +90,20 @@ export function buildContextMenuEntries(p) {
       ),
       (e) => p.onMenuSelect("boardSort", e),
     );
+  // 線上使用者列表的「只看好友」／「顯示全部使用者」（#199，user_list.userListToggleTarget）：
+  // label 是切過去的視圖。手機不放這裡：在工具列「更多」。
+  const userListToggle =
+    p.normalEnabled && !p.mobile ? p.userListToggle || null : null;
+  if (userListToggle)
+    item("userListToggle", i18n(userListToggleLabel(userListToggle)), (e) =>
+      p.onMenuSelect("userListToggle", e),
+    );
+  // 「查詢網友」：線上使用者列表（判定在 user_query.available）。手機同樣在「更多」。
+  const userQuery = p.normalEnabled && p.userQueryEnabled && !p.mobile;
+  if (userQuery)
+    item("userQuery", i18n("userQuery_title"), (e) =>
+      p.onMenuSelect("userQuery", e),
+    );
   if (
     p.normalEnabled &&
     (p.authorBlacklistId ||
@@ -96,7 +111,9 @@ export function buildContextMenuEntries(p) {
       p.markReadTarget ||
       p.boardMarkReadTarget ||
       markAllRead ||
-      boardToggles)
+      boardToggles ||
+      userListToggle ||
+      userQuery)
   )
     divider("d-blacklist");
   // 回覆這則推文（推文列預填 → 與帳號）：放在推文那一段的最前面。出現條件在 index.jsx

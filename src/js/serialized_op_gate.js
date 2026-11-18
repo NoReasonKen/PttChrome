@@ -38,6 +38,8 @@ export function serializedOpHint(core) {
   if (core.boardNoteSkip && core.boardNoteSkip.busy) return '略過進板畫面中，請稍候…';
   // The key dismissing a pause after Back is on the wire (back_pause_hold.js).
   if (core.backPause?.busy) return i18n('backPause_busy');
+  // A user query over the user list, its page, or the way back (user_query.js, #199).
+  if (core.userQuery?.busy) return i18n('userQuery_busy');
   // 搜尋彈窗送出的兩步（搜尋鍵 → 等 prompt → 關鍵字），見 article_search.js。
   if (core.searchInFlight) return '搜尋中，請稍候…';
   // 列表的重新整理（s<板>⏎／看板列表 /⏎），見 screen_refresh.js。

@@ -47,6 +47,7 @@ function fakeHome(state) {
     openBoard: vi.fn(),
     openMail: vi.fn(),
     openBoardGroups: vi.fn(),
+    openUsers: vi.fn(),
     refresh: vi.fn(),
     applyPendingViewport: vi.fn(),
   };
@@ -113,6 +114,16 @@ test("分組討論區鈕 → openBoardGroups", () => {
   expect(button.textContent).toBe(i18n("home_boardGroups"));
   fireEvent.click(button);
   expect(home.openBoardGroups).toHaveBeenCalled();
+});
+
+// #199: one entrance to the online user list, beside the board groups.
+test("線上使用者鈕 → openUsers", () => {
+  const home = fakeHome({ boards: [] });
+  render(<HomeDashboard pttchrome={{ homeDashboard: home }} />);
+  const button = q("[data-home-users]");
+  expect(button.textContent).toBe(i18n("home_users"));
+  fireEvent.click(button);
+  expect(home.openUsers).toHaveBeenCalled();
 });
 
 // Easy reading is one switch (#191): no control on the dashboard shows PTT's

@@ -82,6 +82,10 @@ describe("決策表", () => {
     ["help-menu", "cancel", "none", "origin", "origin"],
     ["help-menu", "fail", "none", "origin", "origin"],
     ["help-menu", "done", "none", "none", "none"],
+    // 查詢網友（#199）：查詢頁底下就是同一份使用者列表，不論結果都回原處。
+    ["user-query", "done", "none", "origin", "none"],
+    ["user-query", "cancel", "none", "origin", "none"],
+    ["user-query", "fail", "none", "origin", "none"],
     // 使用者拍板：找不到第一篇未讀時停在翻到的那頁。
     ["unread-jump", "done", "none", "none", "none"],
     ["unread-jump", "fail", "none", "none", "none"],
@@ -90,6 +94,8 @@ describe("決策表", () => {
     ["home-favorites", "fail", "none", "none", "none"],
     ["home-mail", "done", "none", "none", "none"],
     ["home-mail", "fail", "none", "none", "none"],
+    ["home-users", "done", "none", "none", "none"],
+    ["home-users", "fail", "none", "none", "none"],
     ["split-open", "done", "none", "none", "none"],
     ["split-open", "cancel", "none", "none", "none"],
     ["split-open", "fail", "none", "none", "none"],
@@ -110,7 +116,7 @@ describe("決策表", () => {
 
   // 首頁儀表板的捲動位置：從面板出發的交易（點看板＝board-search、抓最愛、開信箱）不論
   // 結果，回到首頁時捲回原處。其餘功能都不碰它（面板沒畫著時本來就量不到）。
-  const HOME_ORIGIN = ["board-search", "home-favorites", "home-mail"];
+  const HOME_ORIGIN = ["board-search", "home-favorites", "home-mail", "home-users"];
   test.each(Object.keys(RESTORE_TABLE))("%s ⇒ 首頁紀錄", (feature) => {
     for (const outcome of OUTCOMES)
       expect(restorePlan(feature, outcome).home).toBe(HOME_ORIGIN.includes(feature) ? "origin" : "none");

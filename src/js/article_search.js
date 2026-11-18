@@ -14,7 +14,14 @@
 import { u2b, ansiHalfColorConv } from './string_util';
 import { boardListContextKind } from './board_list_parse';
 import { listRenderOwnerOf, OWNER_ARTICLE_LIST, OWNER_BOARD_LIST } from './list_render_owner';
-import { rowHasTitle, MAIN_MENU, parseBoardName, boardNameFromKey, isMailListTitleRow } from './screen_titles';
+import {
+  rowHasTitle,
+  MAIN_MENU,
+  parseBoardName,
+  boardNameFromKey,
+  isMailListTitleRow,
+  isUserListTitleRow
+} from './screen_titles';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { recordFor } from './reading_record';
 import { SLOW_STEP_BUDGET } from './aid_navigation';
@@ -124,6 +131,9 @@ export function availableSearchKinds(facts) {
   // The mailbox (#196): mail.c#mail_comms has its own s/a/Z and easy reading
   // presents none of the searches there.
   if (isMailListTitleRow((facts.rowTexts || [])[0])) return [];
+  // The online user list (#199): talk.c's s and / are its own, and easy
+  // reading presents none of the searches there either.
+  if (isUserListTitleRow((facts.rowTexts || [])[0] || '')) return [];
   if (facts.listOwner === OWNER_ARTICLE_LIST) return SEARCH_KINDS.slice();
   if (facts.listOwner === OWNER_BOARD_LIST) return ['board'];
   const ctx = boardListContextKind(facts);

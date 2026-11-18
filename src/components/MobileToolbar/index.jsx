@@ -18,6 +18,7 @@ import {
 } from "@tabler/icons-react";
 import { i18n } from "../../js/i18n";
 import { readValuesWithDefault } from "../../js/pref_storage";
+import { promptUserQuery } from "../../js/user_query";
 import {
   normalizeExternalSearchQuery,
   visibleExternalSearchItems,
@@ -37,6 +38,7 @@ import {
   toolbarSlots,
 } from "../../js/mobile_toolbar";
 import { toolbarDiag, toolbarContextId } from "../../js/toolbar_diag";
+import { userListToggleLabel } from "../../js/user_list";
 import { ARTICLE_TAP_SLOP } from "../../js/article_horizontal_gesture";
 import "./MobileToolbar.css";
 
@@ -493,6 +495,17 @@ export const MobileToolbar = ({
   }, [pttchrome, whenReady]);
 
   // 設為全部已讀：與桌機右鍵選單同一個入口（mark_all_read.js）。
+  // 查詢網友（#199）：開 app 自己的輸入 sheet，送出才送 Q、代號、Enter（user_query.js）。
+  const onUserQuery = useCallback(() => {
+    setPanel(null);
+    setConfirmLogout(false);
+    whenReady(() => {
+      if (typeof pttchrome.noteUserAction === "function")
+        pttchrome.noteUserAction();
+      promptUserQuery(pttchrome);
+    });
+  }, [pttchrome, whenReady]);
+
   const onMarkAllRead = useCallback(() => {
     setPanel(null);
     setConfirmLogout(false);
@@ -529,6 +542,13 @@ export const MobileToolbar = ({
     setPanel(null);
     setConfirmLogout(false);
     sendKey(TOOLBAR_KEYS.help.key);
+  }, [sendKey]);
+
+  // 線上使用者列表的「只看好友」／「顯示全部使用者」（#199）：送 f，與實體鍵盤同一條分派。
+  const onUserListToggle = useCallback(() => {
+    setPanel(null);
+    setConfirmLogout(false);
+    sendKey(TOOLBAR_KEYS.userListToggle.key);
   }, [sendKey]);
 
   // 全選／圖片上傳：與桌機右鍵選單同一組 App 入口（ContextMenu 的 menuHandlerByEventKey）。
@@ -829,6 +849,16 @@ export const MobileToolbar = ({
             {i18n("mobileToolbar_unreadJump")}
           </button>
         ) : null}
+        {context.userQuery ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__userQuery"
+            onClick={onUserQuery}
+          >
+            {i18n("userQuery_title")}
+          </button>
+        ) : null}
         {context.markAllRead ? (
           <button
             type="button"
@@ -865,6 +895,17 @@ export const MobileToolbar = ({
                 ? "boardList_reorderFavorites"
                 : "boardList_toggleSort",
             )}
+          </button>
+        ) : null}
+        {context.userListToggle ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__userListToggle"
+            data-target-view={context.userListToggle}
+            onClick={onUserListToggle}
+          >
+            {i18n(userListToggleLabel(context.userListToggle))}
           </button>
         ) : null}
         {context.help ? (
@@ -982,6 +1023,7 @@ export const MobileToolbar = ({
             type="button"
             className="nomouse_command mobileSheetItem mobileSheetDanger pttRipple"
             data-key="__logout"
+            disabled={!!context.queryPage}
             onClick={() => setConfirmLogout(true)}
           >
             {i18n("mobileKeypad_logout")}

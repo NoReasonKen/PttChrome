@@ -1031,6 +1031,18 @@
   "inbox_newMail": {
     "message": "你有新信件"
   },
+  "list_emptyFriends": {
+    "message": "目前沒有上線的好友"
+  },
+  "list_emptyUsers": {
+    "message": "目前沒有上線的使用者"
+  },
+  "userList_showFriends": {
+    "message": "只看好友"
+  },
+  "userList_showAll": {
+    "message": "顯示全部使用者"
+  },
   "options_deepLinkHandoffNotify": {
     "message": "外部連結被這個分頁接手時發出通知（分頁標題閃爍＋系統通知）"
   },
@@ -1106,6 +1118,72 @@
   "palette_unreadJump": {
     "message": "跳到第一篇未讀"
   },
+  "userQuery_title": {
+    "message": "查詢網友"
+  },
+  "userQuery_label": {
+    "message": "使用者代號"
+  },
+  "userQuery_placeholder": {
+    "message": "輸入代號（開頭幾個字也可以）"
+  },
+  "userQuery_confirm": {
+    "message": "查詢"
+  },
+  "userQuery_notFound": {
+    "message": "找不到這個使用者"
+  },
+  "userQuery_flood": {
+    "message": "PTT 暫時限制查詢，請稍後再試"
+  },
+  "userQuery_failed": {
+    "message": "查詢網友沒有回應，請再試一次"
+  },
+  "userQuery_busy": {
+    "message": "查詢網友中，請稍候…"
+  },
+  "userQuery_unavailable": {
+    "message": "只能在線上使用者列表查詢網友"
+  },
+  "userQuery_gone": {
+    "message": "這位網友已離站，無法查詢"
+  },
+  "userQuery_plan": {
+    "message": "名片"
+  },
+  "userQuery_noPlan": {
+    "message": "沒有名片"
+  },
+  "userQuery_fieldId": {
+    "message": "代號"
+  },
+  "userQuery_fieldNick": {
+    "message": "暱稱"
+  },
+  "userQuery_fieldMoney": {
+    "message": "經濟狀況"
+  },
+  "userQuery_fieldLogins": {
+    "message": "登入次數"
+  },
+  "userQuery_fieldPosts": {
+    "message": "有效文章"
+  },
+  "userQuery_fieldActivity": {
+    "message": "目前動態"
+  },
+  "userQuery_fieldMail": {
+    "message": "私人信箱"
+  },
+  "userQuery_fieldLastLogin": {
+    "message": "上次上站"
+  },
+  "userQuery_fieldLastHost": {
+    "message": "上次故鄉"
+  },
+  "userQuery_fieldRecord": {
+    "message": "戰績"
+  },
   "palette_markAllRead": {
     "message": "設為全部已讀"
   },
@@ -1162,6 +1240,9 @@
   },
   "home_boardGroups": {
     "message": "分組討論區"
+  },
+  "home_users": {
+    "message": "線上使用者"
   },
   "home_recents": {
     "message": "最近看板"
