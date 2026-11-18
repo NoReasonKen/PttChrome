@@ -319,7 +319,8 @@ export class StackListLayer extends ScreenCopyLayer {
       const markable = this.frame.enhance.listCards !== 'boardClass' && !counts;
       return { kind: 'board', id: cardIdentity(card), boardMarkRead: markable ? boardMarkReadTargetOfText(text) : null };
     }
-    const entry = listEntryOf(text);
+    // The mailbox has no mark-read (#252).
+    const entry = this.frame.enhance.listCards === 'mail' ? null : listEntryOf(text);
     return { kind: 'article', id: cardIdentity(card), markRead: entry ? { num: entry.num } : null };
   }
 }
