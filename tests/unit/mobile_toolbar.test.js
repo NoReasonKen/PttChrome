@@ -83,10 +83,10 @@ describe("toolbarContextFromFacts", () => {
   });
   test("文章：回文／分享／文章導覽；信件：只有回文（label 回信）", () => {
     expect(toolbarContextFromFacts(frame({ 23: READ_ROW }), 3)).toMatchObject({
-      push: true, reply: true, mail: false, share: true, threadNav: true, post: false,
+      push: true, reply: true, mail: false, share: true, switchBoard: true, threadNav: true, post: false,
     });
     expect(toolbarContextFromFacts(frame({ 23: MAIL_ROW }), 3)).toMatchObject({
-      push: false, reply: true, mail: true, share: false, threadNav: false, post: false,
+      push: false, reply: true, mail: true, share: false, switchBoard: false, threadNav: false, post: false,
     });
   });
   test("prompt 幀（沿用 pageState 3）⇒ 文章動作全收", () => {

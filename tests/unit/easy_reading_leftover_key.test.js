@@ -49,14 +49,14 @@ test("keys that send PTT nothing are not commands", () => {
 describe("articleWouldRefuse (help menu rows over an article)", () => {
   const prefs = {};
   test("reading keys, push keys, reply and help are kept", () => {
-    for (const key of ["ArrowDown", "ArrowUp", "PageDown", "PageUp", " ", "Home", "End", "0", "$", "g", "G", "j", "k", "ArrowLeft", "Enter", "a", "=", "[", "]", "X", "%", "y", "r", "h"])
+    for (const key of ["ArrowDown", "ArrowUp", "PageDown", "PageUp", " ", "Home", "End", "0", "$", "g", "G", "j", "k", "ArrowLeft", "Enter", "a", "=", "[", "]", "X", "%", "y", "r", "h", "s"])
       expect([key, articleWouldRefuse({ key }, prefs)]).toEqual([key, false]);
     expect(articleWouldRefuse({ key: "f", ctrlKey: true }, prefs)).toBe(false);
     expect(articleWouldRefuse({ key: "b", ctrlKey: true }, prefs)).toBe(false);
   });
 
   test("refused, swallowed and find keys are not", () => {
-    for (const key of ["s", "Q", "E", "c", "Tab", "/"]) expect([key, articleWouldRefuse({ key }, prefs)]).toEqual([key, true]);
+    for (const key of ["Q", "E", "c", "Tab", "/"]) expect([key, articleWouldRefuse({ key }, prefs)]).toEqual([key, true]);
     expect(articleWouldRefuse({ key: "x", ctrlKey: true }, prefs)).toBe(true);
     expect(articleWouldRefuse({ key: "u", ctrlKey: true }, prefs)).toBe(true);
   });
@@ -65,7 +65,9 @@ describe("articleWouldRefuse (help menu rows over an article)", () => {
     expect(articleReadingKey(ev("PageDown"))).toBe("pageDown");
     expect(articleReadingKey(ev("f", { ctrlKey: true }))).toBe("scrollPageDown");
     expect(articleReadingKey(ev("=", { code: "Equal" }))).toBe("threadJump");
-    expect(articleReadingKey(ev("s"))).toBe(null);
+    // Switch board (#262): the article opens the board sheet for it.
+    expect(articleReadingKey(ev("s"))).toBe("switchBoard");
+    expect(articleReadingKey(ev("s", { ctrlKey: true }))).not.toBe("switchBoard");
   });
 });
 
@@ -114,7 +116,8 @@ describe("a mail open in easy reading", () => {
   });
 
   test("the help sheet's rows follow (articleWouldRefuse)", () => {
-    for (const key of ["y", "r", "=", "[", "a", "f"]) expect([key, articleWouldRefuse({ key }, {}, mail)]).toEqual([key, true]);
+    // Switch board is refused over a mail: RMAIL would take the board name's keys as shortcuts (#262).
+    for (const key of ["y", "r", "=", "[", "a", "f", "s"]) expect([key, articleWouldRefuse({ key }, {}, mail)]).toEqual([key, true]);
     for (const key of ["ArrowDown", "PageDown", " ", "ArrowLeft", "End", "h"])
       expect([key, articleWouldRefuse({ key }, {}, mail)]).toEqual([key, false]);
   });
@@ -136,6 +139,49 @@ describe("a mail open in easy reading", () => {
     er._view = { flashListHint: (...a) => hints.push(a) };
     er.enterNativeRoute = () => { throw new Error("no native route for a mail reply"); };
     expect(er._leftoverKey(ev("y"))).toBe(true);
+    expect(hints).toHaveLength(1);
+  });
+});
+
+// #262: `s` over an article opens the board switch sheet; over a mail it is
+// refused with the hint and nothing is sent.
+describe("switch board over an article (#262)", () => {
+  const make = (mail, open) => {
+    const hints = [];
+    const er = Object.create(EasyReading.prototype);
+    er._core = { openBoardSwitch: open, listSession: { state: mail ? "suspended" : "idle", isMailList: () => mail } };
+    er._view = { flashListHint: (...a) => hints.push(a) };
+    er._bottomStick = null;
+    return { er, hints };
+  };
+  const press = (er) => {
+    const e = { ...ev("s"), preventDefault: vi.fn() };
+    er._onKeyDownProcessUI(e);
+    return e;
+  };
+
+  test("opens the sheet and swallows the key", () => {
+    const open = vi.fn(() => true);
+    const { er, hints } = make(false, open);
+    const e = press(er);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(e.preventDefault).toHaveBeenCalled();
+    expect(hints).toEqual([]);
+  });
+
+  test("refuses with the hint when the sheet is not there", () => {
+    const { er, hints } = make(false, vi.fn(() => false));
+    const e = press(er);
+    expect(e.preventDefault).toHaveBeenCalled();
+    expect(hints).toHaveLength(1);
+  });
+
+  test("over a mail it never opens the sheet", () => {
+    const open = vi.fn(() => true);
+    const { er, hints } = make(true, open);
+    const e = press(er);
+    expect(open).not.toHaveBeenCalled();
+    expect(e.preventDefault).toHaveBeenCalled();
     expect(hints).toHaveLength(1);
   });
 });
