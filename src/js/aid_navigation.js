@@ -174,6 +174,27 @@ export function landedOnBoardList(facts, boardLower) {
   return name != null && name.toLowerCase() === boardLower ? { sub: true } : false;
 }
 
+// The 進板畫面 PTT shows on a session's first entry to a board (bbs.c#Read):
+// the board's notes, then pressanykey, or, in pmore's auto-exit mode, no footer
+// at all: the last row stays blank and the cursor parks on it (classified
+// 'prompt'). The jump from inside an article cannot tell a footed pager from the
+// article it left, so only these two shapes count. A name prompt has its cursor
+// on an input field, and 主功能表 in row 0 means the jump never left it.
+export function boardEntryScreen(facts) {
+  if (!facts) return false;
+  const rowTexts = facts.rowTexts || [];
+  const rows = facts.rows || rowTexts.length;
+  const last = rowTexts[rows - 1] || '';
+  if (PRESS_ANY_KEY_RE.test(last)) return !isMainMenuRow(rowTexts[0] || '');
+  return (
+    facts.kind === 'prompt' &&
+    !facts.inputField &&
+    facts.curY === rows - 1 &&
+    last.trim() === '' &&
+    !isMainMenuRow(rowTexts[0] || '')
+  );
+}
+
 export function aidSearchLanded(facts) {
   if (!facts || facts.boardName == null) return false;
   if (facts.curY < 3 || facts.curY > facts.rows - 2) return false;
@@ -1682,8 +1703,10 @@ AidNavigation.prototype = {
   // clean list; a candidate menu / typo never satisfies the expect and ends as a
   // visible miss on the probed full frame.
   //   viaMenu=false: sent from INSIDE the article (pmore handles s directly,
-  //     more.c:177 → Select() only). No 進板畫面 is possible → the expect stays
-  //     exactly what it always was.
+  //     more.c:177 → Select()). The landing is the board's list, but the board's
+  //     進板畫面 can come first: live PTT shows it on the session's first entry
+  //     to a board (a note without a footer, blank last row, nothing to dismiss
+  //     it but a key), so the expect also knows that shape (boardEntryScreen).
   //   viaMenu=true:  sent at 主功能表 after the escape preamble (menu.c:498 →
   //     ReadSelect() → do_select() + Read()), so the landing may be preceded by
   //     the board's 進板畫面 + pressanykey — dismissed by _onBoardLanding.
@@ -1717,10 +1740,14 @@ AidNavigation.prototype = {
       expect: viaMenu
         ? this._boardLandingExpect(boardLower)
         : function(snapshot, facts) {
-            return landedOnBoardList(facts, boardLower);
+            const landed = landedOnBoardList(facts, boardLower);
+            if (landed) return landed;
+            // Not while the Q box's key is still ahead of us: its pressanykey
+            // is on screen until the space in this same write dismisses it.
+            return !dismissFirst && boardEntryScreen(facts) ? { dismiss: true } : false;
           },
       onDone: function(result) {
-        if (viaMenu) {
+        if (viaMenu || result.dismiss) {
           self._onBoardLanding(run, result, 0);
           return;
         }
