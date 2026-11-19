@@ -16,7 +16,8 @@ import {
   isAidc,
   parseArticleUrl,
   aidPostTime,
-  BOARD_RE
+  BOARD_RE,
+  parseAidWithBoard,
 } from "../../src/js/aid_codec";
 
 const PAIRS = [
@@ -182,5 +183,22 @@ describe("BOARD_RE（與 deep_link.js 共用同一份）", () => {
   test("送進 `s<board>\\r` 前必須擋掉的東西", () => {
     for (const b of ["", "a", "-abc", "a b", "a\rb", "a/b"])
       expect(BOARD_RE.test(b)).toBe(false);
+  });
+});
+
+describe("parseAidWithBoard", () => {
+  test("reads PTT's spellings", () => {
+    const want = { aid: "1gU3xHKD", board: "Gossiping" };
+    for (const text of ["#1gU3xHKD (Gossiping)", "#1gU3xHKD Gossiping", "#1gU3xHKD(Gossiping)", "#1gU3xHKD （ Gossiping ）", "#1gU3xHKD  ( Gossiping", "Gossiping #1gU3xHKD", "Gossiping/#1gU3xHKD", "Gossiping/1gU3xHKD"])
+      expect(parseAidWithBoard(text)).toEqual(want);
+    for (const text of ["#1gU3xHKD", "1gU3xHKD", "#1gU3xHK (Gossiping)", "ABC 12345678"])
+      expect(parseAidWithBoard(text)).toBeNull();
+  });
+  test("a long run of spaces is answered at once", () => {
+    const start = Date.now();
+    expect(parseAidWithBoard("#12345678" + " ".repeat(50000) + "x(")).toBeNull();
+    expect(parseAidWithBoard("#12345678" + " ".repeat(50000) + "(")).toBeNull();
+    expect(parseAidWithBoard("#12345678" + " ".repeat(50000) + "Test")).toEqual({ aid: "12345678", board: "Test" });
+    expect(Date.now() - start).toBeLessThan(500);
   });
 });

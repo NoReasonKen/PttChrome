@@ -63,6 +63,7 @@ import { LEFT_ARROW } from './function_key_plan';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { HINT_ERROR } from './status_hint';
 import { refuseUnsupported } from './list_refusal';
+import { parseAidJumpInput, requestAidJump, startAidJump } from './aid_jump';
 import { resolveDismiss } from './screen_dismiss';
 import { parseVmsgText } from './push_screen';
 import {
@@ -1716,6 +1717,23 @@ ListSession.prototype = {
     this._forceRedraw();
   },
 
+  // The reader's selection, kept across a jump by code that finds nothing
+  // (#253): PTT's cursor did not move, and the page the list takes back
+  // adopts it, so the selection is put back where the reader had it.
+  selectionOrigin: function() {
+    return { board: this._boardName, num: this._selectedNum, pinnedKey: this._selectedPinnedKey };
+  },
+
+  restoreSelection: function(origin) {
+    if (!origin || this.state !== 'active' || this._renderMode !== 'buffer') return;
+    if (origin.board !== this._boardName) return;
+    if (origin.num === this._selectedNum && origin.pinnedKey === this._selectedPinnedKey) return;
+    if (origin.num != null && (this._termBuf.listLineNums || []).indexOf(origin.num) === -1) return;
+    this._selectedNum = origin.num;
+    this._selectedPinnedKey = origin.pinnedKey;
+    this._forceRedraw();
+  },
+
   // A key the help menu sheet offers (help_menu.js, #222): whether this list
   // refuses it when typed. The search keys open the search sheet before the
   // list sees them (term_view.onKeyDown); the rest is the list's own table.
@@ -2042,6 +2060,11 @@ ListSession.prototype = {
       return;
     }
     e.preventDefault();
+
+    if (key.class === 'aid-jump') {
+      requestAidJump(this._core);
+      return;
+    }
 
     if (key.class === 'jump-digit') {
       // Digits collect LOCALLY (no server prompt round-trip): overlay input
@@ -2648,8 +2671,21 @@ ListSession.prototype = {
 
   // Paste (Shift-Insert / context menu / middle click), routed here from
   // App.onPasteDone. true = taken over: the caller must not send the text.
-  onPaste: function() {
+  // A pasted article code is a jump (#253, aid_jump.js); other text is refused.
+  onPaste: function(text) {
+    if (this._renderMode === 'buffer' && this.state === 'active' && parseAidJumpInput(text))
+      return startAidJump(this._core, text) || true;
     return this._refuseText('paste');
+  },
+
+  // The board an article-code jump from this list searches (#253): the full
+  // list of a board the list shows, ready to take a command. null otherwise
+  // (the mailbox has no codes, a search's result set is another number space,
+  // and a list that is busy or held takes no command).
+  aidJumpBoard: function() {
+    if (this.state !== 'active' || this._renderMode !== 'buffer') return null;
+    if (this._boardName == null || this.isMailList() || this._selectMode) return null;
+    return this._boardName;
   },
 
   // Text committed by an input method over the list (compositionend →
@@ -3350,6 +3386,9 @@ ListSession.prototype = {
         // lists. `?` is not one here: on the article list it searches titles
         // (the search sheet takes it), and `Q` is PTT's article information.
         if (e.key === 'h' || e.key === 'H') return { class: 'help' };
+        // `#` (jump to an article by its code) is presented as PttChrome's own
+        // input (#253), where the list can take the jump.
+        if (e.key === '#' && this.aidJumpBoard()) return { class: 'aid-jump' };
         return { class: 'unsupported' };
     }
   },

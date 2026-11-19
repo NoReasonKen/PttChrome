@@ -129,3 +129,28 @@ export function parseArticleUrl(href) {
   const aid = fnToAid(tail) || (isAidc(tail) ? tail : null);
   return aid ? { board: board, aid: aid } : null;
 }
+
+// The longest text the article-code input takes (#253): "#" + the 8-character
+// code + a board in parentheses. PTT's board names are at most IDLEN = 12
+// characters (pttbbs include/pttstruct.h), so the longest real form
+// "#1abcDEFG (Gossiping)" is about 24; the rest is room for the spaces PTT's
+// own spellings carry. Longer text is no article code: the input stops
+// there, and a paste over the list longer than this is not parsed at all.
+export const AID_INPUT_MAX_LENGTH = 32;
+
+// PTT's own spellings of an article with its board: "#1abcDEFG (Gossiping)"
+// (the line of the article information box, Q) and "Gossiping #1abcDEFG".
+// A code without a board is not accepted here. Returns { board, aid } or null.
+const AID_WITH_BOARD_RE = /^#([0-9A-Za-z_-]{8})\s*(?:[(（]\s*)?([0-9A-Za-z_.-]+)(?:\s*[)）])?$/;
+// With a space between them the # is required: "ABC 12345678" is more likely a title to search.
+const BOARD_WITH_AID_RE = /^([0-9A-Za-z_.-]+)(?:\/#?|\s+#)([0-9A-Za-z_-]{8})$/;
+
+export function parseAidWithBoard(text) {
+  const s = String(text || "").trim();
+  const pick = (aid, board) => (isAidc(aid) && BOARD_RE.test(board) ? { board, aid } : null);
+  let m = AID_WITH_BOARD_RE.exec(s);
+  if (m) return pick(m[1], m[2]);
+  m = BOARD_WITH_AID_RE.exec(s);
+  if (m) return pick(m[2], m[1]);
+  return null;
+}

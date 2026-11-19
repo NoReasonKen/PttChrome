@@ -56,10 +56,23 @@ function makeSession() {
   return { s, sent, enqueued, queue };
 }
 
-const AID = "#1gTTD8RU";
+// An article code is a jump now (#253, aid_jump.test.js); other text is refused.
+const AID = "not an article code";
 const PASTE_HINT = "好讀模式目前不支援在列表貼上文字";
 
 describe("ListSession.onPaste — refused in easy reading", () => {
+  test("text longer than an article code can be is refused, never parsed as one", () => {
+    const { s, enqueued, sent } = makeSession();
+    const hints = [];
+    s._view.flashListHint = (...a) => hints.push(a);
+    s.state = "active";
+    s._renderMode = "buffer";
+    expect(s.onPaste("#1gTTD8RU" + " ".repeat(5000) + "Test")).toBe(true);
+    expect(enqueued).toEqual([]);
+    expect(sent).toEqual([]);
+    expect(hints).toEqual([[PASTE_HINT, 4000, "error"]]);
+  });
+
   test("active on the buffer: refused, nothing enqueued or sent, state unchanged, hint shown", () => {
     const { s, sent, enqueued } = makeSession();
     const hints = [];

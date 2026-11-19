@@ -10,7 +10,7 @@
 //   - 快捷鍵用 F 鍵：F 鍵在 term_keyboard 沒有對應，永遠送不到 PTT。Ctrl+K 不行 ——
 //     pttbbs 的編輯器（edit.c 刪至行尾）、輸入欄（vtuikit.c）、pager（more.c）都在用。
 import { parseDeepLink } from "./deep_link";
-import { BOARD_RE, isAidc, parseArticleUrl } from "./aid_codec";
+import { BOARD_RE, parseAidWithBoard, parseArticleUrl } from "./aid_codec";
 import { searchPrefSettings } from "./pref_search";
 
 // 面板一次最多列幾筆設定項（設定搜尋只是其中一類，不該把指令擠出畫面）。
@@ -65,24 +65,13 @@ export const PALETTE_ACTIONS = [
 
 const norm = (s) => String(s || "").trim().toLowerCase();
 
-// 文章：ptt.cc 網址、本站 deep link、或 PTT 自己顯示 AID 的寫法
-// 「#1abcDEFG (Gossiping)」（文章資訊框 Q 的那一行）與「Gossiping #1abcDEFG」。
+// 文章：ptt.cc 網址、本站 deep link、或 PTT 自己顯示 AID 的寫法（aid_codec.parseAidWithBoard）。
 // 沒寫看板的 #AID 不收：面板外的畫面沒有可靠的「目前看板」可以補。
-const AID_WITH_BOARD_RE = /^#([0-9A-Za-z_-]{8})\s*[(（]?\s*([0-9A-Za-z_.-]+)\s*[)）]?$/;
-// 空白隔開時 # 必填：「ABC 12345678」更可能是要搜的標題。
-const BOARD_WITH_AID_RE = /^([0-9A-Za-z_.-]+)(?:\/#?|\s+#)([0-9A-Za-z_-]{8})$/;
-
 export function parseArticleTarget(text) {
   const s = String(text || "").trim();
   if (!s) return null;
   if (/^https?:\/\//i.test(s)) return parseArticleUrl(s) || parseDeepLink(s);
-  const pick = (aid, board) =>
-    isAidc(aid) && BOARD_RE.test(board) ? { board, aid } : null;
-  let m = AID_WITH_BOARD_RE.exec(s);
-  if (m) return pick(m[1], m[2]);
-  m = BOARD_WITH_AID_RE.exec(s);
-  if (m) return pick(m[2], m[1]);
-  return null;
+  return parseAidWithBoard(s);
 }
 
 // 2 ＝標題或某個關鍵字以 q 開頭（排在搜尋前面：打「未讀」「refresh」就是要那個動作），

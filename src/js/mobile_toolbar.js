@@ -57,7 +57,7 @@ import { userListToggleTarget } from './user_list';
 
 export const EMPTY_TOOLBAR_CONTEXT = Object.freeze({
   push: false, reply: false, mail: false, share: false, threadNav: false, post: false,
-  unreadJump: false, markAllRead: false, boardCountsSwitch: false, boardCounts: false, boardSort: false, boardSortFavorites: false, help: false, contentTools: false, refresh: false, end: false,
+  unreadJump: false, aidJump: false, markAllRead: false, boardCountsSwitch: false, boardCounts: false, boardSort: false, boardSortFavorites: false, help: false, contentTools: false, refresh: false, end: false,
   userListToggle: null, userQuery: false, queryPage: false, search: [], appBar: EMPTY_APP_BAR, locked: false
 });
 
@@ -138,6 +138,9 @@ export function toolbarContextFromFacts(facts, pageState, opts) {
     threadNav: article,
     post: articles,
     unreadJump: articles,
+    // Needs the list session's say (mobileToolbarContext): a search result set
+    // or the mailbox takes no jump by code.
+    aidJump: false,
     markAllRead: articles,
     boardCountsSwitch: !pager && !!o.boardToggles && o.boardToggles.counts != null,
     boardCounts: !pager && !!(o.boardToggles && o.boardToggles.counts),
@@ -195,11 +198,12 @@ export function mobileToolbarContext(core) {
     boardToggles: (core && core.boardListSession && core.boardListSession.listToggles &&
       core.boardListSession.listToggles()) || null
   });
-  return core && core.userQuery && core.userQuery.available() ? { ...ctx, userQuery: true } : ctx;
+  const withQuery = core && core.userQuery && core.userQuery.available() ? { ...ctx, userQuery: true } : ctx;
+  return ctx.post && ls && ls.aidJumpBoard && ls.aidJumpBoard() ? { ...withQuery, aidJump: true } : withQuery;
 }
 
 const FLAGS = [
-  'push', 'reply', 'mail', 'share', 'threadNav', 'post', 'unreadJump', 'markAllRead', 'boardCountsSwitch', 'boardCounts', 'boardSort', 'boardSortFavorites', 'help', 'contentTools', 'refresh', 'end',
+  'push', 'reply', 'mail', 'share', 'threadNav', 'post', 'unreadJump', 'aidJump', 'markAllRead', 'boardCountsSwitch', 'boardCounts', 'boardSort', 'boardSortFavorites', 'help', 'contentTools', 'refresh', 'end',
   'userQuery', 'queryPage', 'locked'
 ];
 

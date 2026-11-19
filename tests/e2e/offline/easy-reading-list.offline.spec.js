@@ -796,7 +796,8 @@ test.describe('文章列表好读模式（离线）', () => {
     // real paste event (App.onPasteDone → ListSession.onPaste) is refused.
     test.setTimeout(60000);
     const logs = ptt.attachConsole(page);
-    const AID = '#1gTTD8RU';
+    // An article code is a jump now (#253, aid_jump.offline.spec.js); other text stays refused.
+    const TEXT = 'not an article code';
     try {
       await bootOffline(page, ptt);
       // 好讀預設開：不先關的話列表好讀在首幀就會自己 engage、用預設預抓 200 開始 fill，
@@ -822,11 +823,11 @@ test.describe('文章列表好读模式（离线）', () => {
       // ② A real paste (clipboard → Ctrl/Cmd+V, the browser makes the paste
       // event): refused, nothing reaches PTT.
       await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-      await pasteText(page, AID);
+      await pasteText(page, TEXT);
       await expectRefused(page, before, '好讀模式目前不支援在列表貼上文字');
       const all = await page.evaluate(() => window.__replay.sent.join(''));
       expect(all).not.toContain('\x1b[2~');
-      expect(all).not.toContain(AID);
+      expect(all).not.toContain(TEXT);
     } catch (e) {
       console.log('--- console tail ---');
       for (const l of logs.slice(-25)) console.log(l);
