@@ -81,10 +81,15 @@ const twoLogIn = (page) => page.evaluate(() => {
 test.describe('the user list follows PTT\'s snapshot', () => {
   test('after a query, PTT\'s re-sorted page replaces the old rows and the selection stays on its user', async ({ page }) => {
     await enterAndFill(page, 60);
-    await twoLogIn(page);
     // A query and back: PTT draws its list again from the new snapshot.
     await main(page).locator('.listCard[data-user-id="user010"]').tap();
     await page.waitForFunction(() => window.__app.userQuery.phase === 'shown' && window.__app.commandQueue.idle);
+    // The users log in while PTT shows the query, so the list PTT draws on the
+    // way back is the first page from the new snapshot. Before the query, the
+    // tap can read on below the rows held (PgDn); from the new snapshot that
+    // page lists users at numbers no row held has, and nothing tells it from
+    // a page of the old one (userListPageDisagrees).
+    await twoLogIn(page);
     await page.waitForFunction(() => !!window.history.state?.pttchromeBackGuard);
     await page.goBack();
     await userListActive(page);
