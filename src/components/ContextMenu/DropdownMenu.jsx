@@ -29,6 +29,8 @@ export const DropdownMenu = (props) => {
   const entries = buildContextMenuEntries(props);
   return (
     <Menu
+      // 重新右鍵在別處 ⇒ 換位置重開（否則 floating-ui 不會跟著零尺寸錨點搬家）。
+      key={pageX + "," + pageY}
       opened={open}
       onChange={(opened) => {
         if (!opened) onHide();

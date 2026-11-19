@@ -81,6 +81,10 @@ import {
   replyTargetId,
 } from "../../js/context_menu_items";
 import { isNativeMenuTarget } from "../../js/preview_targets";
+import {
+  isHomeDashboardTarget,
+  isHomeNativeMenuTarget,
+} from "../../js/home_dashboard";
 import { pushMaxBytes } from "../../js/long_push";
 import { longPushAvailable } from "../../js/long_push_gate";
 import { clearDraft, writeDraft } from "../../js/long_push_draft";
@@ -242,6 +246,7 @@ const initialState = {
   pageX: 0,
   pageY: 0,
   contextOnUrl: "",
+  onHomeDashboard: false,
   aElement: undefined,
   // 游標下的連結指向哪一篇文章（{ board, aid }）；null → 兩個文章選項不出現。
   contextArticle: null,
@@ -508,7 +513,10 @@ export const ContextMenu = ({ pttchrome }) => {
       const { CmdHandler } = pttchrome;
       const touch = isTouchContextMenu(event);
       const disposition = contextMenuDisposition({
-        nativeTarget: isNativeMenuTarget(event.target),
+        nativeTarget:
+          isNativeMenuTarget(event.target) ||
+          (isHomeDashboardTarget(event.target) &&
+            isHomeNativeMenuTarget(event.target)),
         doDOMMouseScroll: CmdHandler.getAttribute("doDOMMouseScroll") === "1",
         // 不帶 touch：拖選取把手後補發的 contextmenu 沒有觸控標記（見該函式註解）。
         mobile: pttchrome.mobile,
@@ -704,6 +712,9 @@ export const ContextMenu = ({ pttchrome }) => {
         pageX: event.pageX,
         pageY: event.pageY,
         contextOnUrl,
+        // 首頁上沒有可選的文字（面板 user-select:none），全選只會選到藏在後面的
+        // 終端機格子 ⇒ 不給這一項。
+        onHomeDashboard: isHomeDashboardTarget(target),
         aElement,
         contextArticle,
         currentArticle,
@@ -793,6 +804,7 @@ export const ContextMenu = ({ pttchrome }) => {
       update({
         open: false,
         contextOnUrl: "",
+        onHomeDashboard: false,
         aElement: undefined,
         currentArticle: null,
         previews: {},
@@ -1553,6 +1565,20 @@ export const ContextMenu = ({ pttchrome }) => {
     const bbsWindow = document.getElementById("BBSWindow");
     const contextMenuHandler = (event) => onContextMenu(event);
     bbsWindow.addEventListener("contextmenu", contextMenuHandler, true);
+    // 首頁儀表板在 #cmenuReact（#BBSWindow 的兄弟），右鍵到不了上面那個監聽 ⇒ 另掛
+    // 一份，走同一條處理。只限桌機：手機的工具列已能進設定，長按另有專屬處理。
+    const dashboardRoot = document.getElementById("cmenuReact");
+    const dashboardHandler = (event) => {
+      if (pttchrome.mobile || !isHomeDashboardTarget(event.target)) return;
+      onContextMenu(event);
+    };
+    dashboardRoot?.addEventListener("contextmenu", dashboardHandler, true);
+    // 面板自己 stopPropagation（不讓點擊漏給終端機），window 的 click 收不到 ⇒
+    // 在 capture 階段先關選單；面板的點擊照常處理，不放行給終端機。
+    const dashboardClickHandler = (event) => {
+      if (isHomeDashboardTarget(event.target)) onHide();
+    };
+    dashboardRoot?.addEventListener("click", dashboardClickHandler, true);
 
     const clickHandler = () => onHide();
     window.addEventListener("click", clickHandler, false);
@@ -1563,6 +1589,10 @@ export const ContextMenu = ({ pttchrome }) => {
       }
       event.preventDefault();
       event.stopPropagation();
+      if (event.key === "Escape") {
+        onHide();
+        return;
+      }
       if (event.altKey || event.ctrlKey || event.shiftKey) {
         return;
       }
@@ -1577,6 +1607,8 @@ export const ContextMenu = ({ pttchrome }) => {
       window.removeEventListener("keyup", hotKeyUpHandler, false);
       window.removeEventListener("click", clickHandler, false);
       bbsWindow.removeEventListener("contextmenu", contextMenuHandler, true);
+      dashboardRoot?.removeEventListener("contextmenu", dashboardHandler, true);
+      dashboardRoot?.removeEventListener("click", dashboardClickHandler, true);
     };
   }, [onContextMenu, onHide, onMenuSelect]);
 
@@ -1585,6 +1617,7 @@ export const ContextMenu = ({ pttchrome }) => {
     pageY,
     open,
     urlEnabled,
+    onHomeDashboard,
     normalEnabled,
     selEnabled,
     blacklistAuthorTarget,
@@ -1646,6 +1679,7 @@ export const ContextMenu = ({ pttchrome }) => {
         pageX={pageX}
         pageY={pageY}
         urlEnabled={urlEnabled}
+        onHomeDashboard={onHomeDashboard}
         normalEnabled={normalEnabled}
         pasteEnabled={!layerEntry}
         selEnabled={selEnabled}

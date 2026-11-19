@@ -208,7 +208,7 @@ export function buildContextMenuEntries(p) {
   divider("d-main");
   if (p.normalEnabled) {
     // 全選、圖片上傳兩項：手機搬到工具列「更多」（p.mobile ＝ ContextSheet 畫的）。
-    if (!p.mobile)
+    if (!p.mobile && !p.onHomeDashboard)
       item(
         "selectAll",
         i18n("cmenu_selectAll"),
