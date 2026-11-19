@@ -19,6 +19,7 @@ import {
 import { i18n } from "../../js/i18n";
 import { readValuesWithDefault } from "../../js/pref_storage";
 import { promptUserQuery } from "../../js/user_query";
+import { requestAidJump } from "../../js/aid_jump";
 import {
   normalizeExternalSearchQuery,
   visibleExternalSearchItems,
@@ -494,6 +495,17 @@ export const MobileToolbar = ({
     });
   }, [pttchrome, whenReady]);
 
+  // Jump to an article by its code (#253): the same input as `#` on a keyboard.
+  const onAidJump = useCallback(() => {
+    setPanel(null);
+    setConfirmLogout(false);
+    whenReady(() => {
+      if (typeof pttchrome.noteUserAction === "function")
+        pttchrome.noteUserAction();
+      requestAidJump(pttchrome);
+    });
+  }, [pttchrome, whenReady]);
+
   // 設為全部已讀：與桌機右鍵選單同一個入口（mark_all_read.js）。
   // 查詢網友（#199）：開 app 自己的輸入 sheet，送出才送 Q、代號、Enter（user_query.js）。
   const onUserQuery = useCallback(() => {
@@ -857,6 +869,16 @@ export const MobileToolbar = ({
             onClick={onUserQuery}
           >
             {i18n("userQuery_title")}
+          </button>
+        ) : null}
+        {context.aidJump ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__aidJump"
+            onClick={onAidJump}
+          >
+            {i18n("mobileToolbar_aidJump")}
           </button>
         ) : null}
         {context.markAllRead ? (

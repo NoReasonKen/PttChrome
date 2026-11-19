@@ -1658,6 +1658,30 @@
   "mobileToolbar_share": {
     "message": "分享"
   },
+  "aidJump_title": {
+    "message": "跳至文章代碼"
+  },
+  "aidJump_label": {
+    "message": "文章代碼（AID）"
+  },
+  "aidJump_placeholder": {
+    "message": "#1AbCdEfG，或 #1AbCdEfG (看板)"
+  },
+  "aidJump_confirm": {
+    "message": "跳轉"
+  },
+  "aidJump_unavailable": {
+    "message": "這個列表無法用文章代碼跳轉"
+  },
+  "aidJump_notFound": {
+    "message": "找不到文章 {0}，列表維持原位"
+  },
+  "aidJump_failed": {
+    "message": "跳至 {0} 失敗，列表維持原位"
+  },
+  "mobileToolbar_aidJump": {
+    "message": "跳至文章代碼"
+  },
   "mobileToolbar_unreadJump": {
     "message": "跳到第一篇未讀"
   },

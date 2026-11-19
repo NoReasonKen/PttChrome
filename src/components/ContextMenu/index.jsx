@@ -32,6 +32,8 @@ const LiveHelperModal = lazy(() => import("./LiveHelperModal"));
 const LongPushModal = lazy(() => import("./LongPushModal"));
 import { pixivLookupAvailable } from "../../js/pixiv_lookup";
 import { currentBoardOption } from "../../js/aid_board_choice";
+import { startAidJump } from "../../js/aid_jump";
+import AidJumpModal from "./AidJumpModal";
 import DebugRecordNotice from "../DebugRecordNotice";
 import MobileToolbar from "../MobileToolbar";
 import MobileAppBar from "../MobileAppBar";
@@ -343,6 +345,7 @@ const initialState = {
   // Reordering the favorites (#221, board_list_session._askFavSort): the
   // confirmation sheet before PTT's `S` prompt.
   showsFavSort: false,
+  showsAidJump: false,
   // 指令面板（js/command_palette.js）：paletteCtx＝開的當下量好的「這一刻能做什麼」。
   showsPalette: false,
   paletteCtx: null,
@@ -436,6 +439,7 @@ export const ContextMenu = ({ pttchrome }) => {
     state.showsPalette ||
     !!state.aidChoice ||
     state.showsFavSort ||
+    state.showsAidJump ||
     !!state.longPushProgress ||
     !!state.longPushError;
   useEffect(() => {
@@ -1088,6 +1092,29 @@ export const ContextMenu = ({ pttchrome }) => {
     },
     [pttchrome, update],
   );
+  // `#` on the easy-reading article list and the More sheet's entry (#253,
+  // js/aid_jump.js): true = the input opened.
+  const openAidJump = useCallback(() => {
+    update({ ...initialState, showsAidJump: true });
+    return true;
+  }, [update]);
+  useEffect(() => {
+    pttchrome.openAidJumpModal = openAidJump;
+    return () => {
+      pttchrome.openAidJumpModal = noop;
+    };
+  }, [pttchrome, openAidJump]);
+  const onAidJumpHide = useCallback(
+    () => update({ showsAidJump: false }),
+    [update],
+  );
+  const onAidJumpConfirm = useCallback(
+    (text) => {
+      update({ showsAidJump: false });
+      startAidJump(pttchrome, text);
+    },
+    [pttchrome, update],
+  );
   const onAidChoiceHide = useCallback(
     () => update({ aidChoice: null }),
     [update],
@@ -1657,6 +1684,7 @@ export const ContextMenu = ({ pttchrome }) => {
     aidChoice,
     searchAidTarget,
     showsFavSort,
+    showsAidJump,
     showsPalette,
     paletteCtx,
     prefJump,
@@ -1781,6 +1809,13 @@ export const ContextMenu = ({ pttchrome }) => {
         onHide={onAidChoiceHide}
         onCurrent={onAidChoiceCurrent}
         onPickBoard={onAidChoicePick}
+        mobile={mobile}
+        pttchrome={pttchrome}
+      />
+      <AidJumpModal
+        show={showsAidJump}
+        onHide={onAidJumpHide}
+        onConfirm={onAidJumpConfirm}
         mobile={mobile}
         pttchrome={pttchrome}
       />

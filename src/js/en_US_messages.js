@@ -1643,6 +1643,30 @@ export const en_US = {
   "mobileToolbar_share": {
     "message": "Share"
   },
+  "aidJump_title": {
+    "message": "Jump to article code"
+  },
+  "aidJump_label": {
+    "message": "Article code (AID)"
+  },
+  "aidJump_placeholder": {
+    "message": "#1AbCdEfG, or #1AbCdEfG (Board)"
+  },
+  "aidJump_confirm": {
+    "message": "Jump"
+  },
+  "aidJump_unavailable": {
+    "message": "This list cannot jump by article code"
+  },
+  "aidJump_notFound": {
+    "message": "No article {0} here; the list stays where it was"
+  },
+  "aidJump_failed": {
+    "message": "Could not jump to {0}; the list stays where it was"
+  },
+  "mobileToolbar_aidJump": {
+    "message": "Jump to article code"
+  },
   "mobileToolbar_unreadJump": {
     "message": "First unread"
   },
