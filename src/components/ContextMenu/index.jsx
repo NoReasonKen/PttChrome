@@ -1296,7 +1296,7 @@ export const ContextMenu = ({ pttchrome }) => {
         pttchrome.view?.flashListHint?.(msg, 3000, level);
       // The board switch of an article (#262): the safe `s<board>` navigation.
       if (switchBoard) {
-        if (!pttchrome.aidNavigation?.startBoard(value))
+        if (!pttchrome.aidNavigation?.switchBoard(value))
           hint(
             serializedOpHint(pttchrome) || i18n("searchModal_busy"),
             HINT_ERROR,

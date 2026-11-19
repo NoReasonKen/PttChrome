@@ -690,6 +690,50 @@ AidNavigation.prototype = {
     return true;
   },
 
+  // Switch board from the easy-reading article on screen (#262). A run that
+  // fails leaves PTT on a screen nothing may recognise, so the article is
+  // brought back under its cover (_recover): the origin is measured now, before
+  // the run drives PTT away. Without the article's code (no URL line shown) there
+  // is nothing to reopen it by, and the failure keeps the hold alone.
+  switchBoard: function(board) {
+    if (this.active || !board) return false;
+    let origin = null;
+    const post = articlePresented(this._core) ? this.currentPostAid() : null;
+    if (post && post.aid)
+      origin = {
+        board: post.board || (this._view && this._view._articleBoard),
+        aid: post.aid,
+        bookmark: recordFor(this._core).begin('article-switch-return', this._ctx())
+      };
+    return this.startBoard(board, {}, (result) => {
+      if (result.ok) this._recovery = null;
+      else if (origin) this._recover(origin);
+    });
+  },
+
+  // Bring PTT back to the article a failed switch left (escape to 主功能表, the
+  // board and the code), then lift the hold. A failed recovery keeps the hold and
+  // the origin: the hold's retry (pull or toolbar refresh) runs it again.
+  _recover: function(origin) {
+    this._recovery = origin;
+    const started = this.startResume(
+      { kind: 'article', board: origin.board, aid: origin.aid, bookmark: origin.bookmark, quiet: true },
+      (result) => {
+        if (!result.ok) return;
+        this._recovery = null;
+        this._core.articleHold?.recovered();
+      }
+    );
+    if (!started) this._core.articleHold?.hold({
+      source: 'aidNavigation', reason: 'recovery not started', text: '無法回到原文，下拉重新整理以重試。'
+    });
+    return started;
+  },
+
+  retryRecovery: function() {
+    return !this.active && !!this._recovery && this._recover(this._recovery);
+  },
+
   // Select a stable article identity in the full board list without opening
   // it. Search shortcuts need its native header for same-thread matching.
   // opts.forList: the easy-reading list's jump by code (#253). The caller
@@ -1027,7 +1071,9 @@ AidNavigation.prototype = {
     // the server list, even if a legacy footer still looks identical.
     clearSearchResultsContext(this._core);
     // Read before the native mirror below: a failure holds this article (#209).
-    this._overArticle = !!this._core.articleHold && articlePresented(this._core);
+    // A held article (a failed run's cover) counts: the recovery runs under it.
+    this._overArticle = !!this._core.articleHold &&
+      (articlePresented(this._core) || !!this._core.articleHold.held);
     this.active = true;
     this._updateBackButton(); // active → hidden: no second run mid-flight
     // Claim the leaveCurrentPost that our own landing will produce — see
@@ -1563,7 +1609,10 @@ AidNavigation.prototype = {
   _finishGoto: function(run) {
     this.active = false;
     this.opHint = null;
-    recordFor(this._core).releaseExternal(run.forList ? { landed: true } : undefined);
+    // Every goto run ends on a list its last step verified, so the list session
+    // presents it at once (landed): waiting for the idle probe would leave PTT's
+    // own list on the grid in between (#262).
+    recordFor(this._core).releaseExternal({ landed: true });
     this._history.invalidate();
     this._updateBackButton();
     if (!this._quietEnd) this._hint('已進入 ' + run.target.board + ' 看板', 1200);

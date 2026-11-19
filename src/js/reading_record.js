@@ -184,6 +184,14 @@ export const RESTORE_TABLE = {
     done: cell('auto', 'origin'),
     cancel: NONE,
     fail: cell(null, 'origin')
+  },
+  // A board switch over an article that failed (aid_navigation.switchBoard): PTT
+  // is brought back to the article by its code, and the reading position returns
+  // as after a reconnect.
+  'article-switch-return': {
+    done: cell('auto', 'origin'),
+    cancel: NONE,
+    fail: cell(null, 'origin')
   }
 };
 
