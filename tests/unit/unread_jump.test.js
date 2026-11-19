@@ -13,6 +13,7 @@ import {
 import { pageArticleNums, parseBlacklist, parseTitleBlacklist } from "../../src/js/comment_parse";
 import { serializedOpHint } from "../../src/js/serialized_op_gate";
 import { HINT_ERROR } from "../../src/js/status_hint";
+import { UNSUPPORTED_KEY_HINT } from "../../src/js/unsupported_hint";
 
 const ROWS = 24;
 const END = "\x1b[4~";
@@ -162,6 +163,20 @@ function land(cmd, frame) {
   expect(cmd.expect(null, frame)).toBe(true);
   cmd.onDone(true);
 }
+
+describe("信箱列表（#252）", () => {
+  test("不可用；F7 的 start() 仍接手但拒絕並提示、不送鍵", () => {
+    const mail = page(range(1, 20, () => " "));
+    mail.rowTexts[0] = "【郵件選單】     批踢踢實業坊      看板《Test》";
+    mail.rowTexts[ROWS - 1] = " 信件列表  (y)回信 (d)刪信 (←)離開 ";
+    const { core, enqueued, hints } = makeCore(mail);
+    const u = new UnreadJump(core);
+    expect(u.available()).toBe(false);
+    expect(u.start()).toBe(true);
+    expect(enqueued).toEqual([]);
+    expect(hints.at(-1)).toEqual({ m: UNSUPPORTED_KEY_HINT, level: HINT_ERROR });
+  });
+});
 
 describe("UnreadJump.start：End → PgUp… → 跳號", () => {
   test("使用者的例子：End 這頁還沒走進已讀區 ⇒ PgUp，下一頁湊滿 ⇒ 跳 202614", () => {

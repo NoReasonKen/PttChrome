@@ -19,6 +19,7 @@ import { submitSerializedSteps, beginInFlight, endInFlight } from './article_sea
 import { endLanded, numJumpLanded } from './aid_navigation';
 import { serializedOpHint } from './serialized_op_gate';
 import { HINT_ERROR } from './status_hint';
+import { UNSUPPORTED_KEY_HINT } from './unsupported_hint';
 import { recordFor } from './reading_record';
 
 export const UNREAD_JUMP_FLAG = 'unreadJumpInFlight';
@@ -137,6 +138,11 @@ UnreadJump.prototype = {
   // 交給瀏覽器（F7 在 Chrome 是「鍵盤瀏覽模式」對話框）。
   start: function() {
     const core = this._core;
+    // The mailbox has no such function (#252): refused, nothing sent.
+    if (refreshTargetOf(core)?.kind === 'mail') {
+      this._hint(UNSUPPORTED_KEY_HINT, 4000, HINT_ERROR);
+      return true;
+    }
     if (!this.available()) {
       this._hint('只有在文章列表才能跳到第一篇未讀');
       return true;

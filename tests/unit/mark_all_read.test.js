@@ -5,6 +5,7 @@
 import { MarkAllRead, markReadPromptShown } from "../../src/js/mark_all_read";
 import { serializedOpHint } from "../../src/js/serialized_op_gate";
 import { HINT_ERROR } from "../../src/js/status_hint";
+import { UNSUPPORTED_KEY_HINT } from "../../src/js/unsupported_hint";
 
 const ROWS = 24;
 const HEADER = "【板主:someone】                  看板《Test》";
@@ -142,6 +143,19 @@ describe("不適用／忙碌時不送鍵但不靜默", () => {
     expect(m.start()).toBe(false);
     expect(enqueued).toEqual([]);
     expect(hints.at(-1).m).toContain("只有在文章列表");
+  });
+
+  // #252: the mailbox's title row names the board last visited, but it is no
+  // article list: `v` there is not "mark all read".
+  test("信箱列表 → 不可用、拒絕並提示、不送鍵", () => {
+    const { core, enqueued, hints } = makeCore(
+      listFrame({ 0: "【郵件選單】     批踢踢實業坊      看板《Test》", 23: " 信件列表  (y)回信 (d)刪信 (←)離開 " }),
+    );
+    const m = new MarkAllRead(core);
+    expect(m.available()).toBe(false);
+    expect(m.start()).toBe(false);
+    expect(enqueued).toEqual([]);
+    expect(hints.at(-1)).toEqual({ m: UNSUPPORTED_KEY_HINT, level: HINT_ERROR });
   });
 
   test("沒連線 → 不可用", () => {

@@ -25,6 +25,13 @@
 // A failure stays on the list with a hint: no answer in time, the alert's
 // denial, an unknown ID. A query asked for while another operation runs is
 // refused with a hint and sends nothing.
+//
+// The author of an article (#254) is queried the same way from the article
+// list: Ctrl-Q (read.c#read_cmd_query) queries the author of the article under
+// PTT's cursor, so ListSession.beginAuthorQuery moves PTT's cursor to the
+// selected article first, then sends Ctrl-Q alone. PTT answers with the same
+// query screen, the alert, or nothing for an author it does not know (the
+// list again, drawn by the repaint every step asks for).
 import { i18n } from './i18n';
 import { HINT_ERROR } from './status_hint';
 import { keyEventPredatesModalClose } from './modal_key_gate';
@@ -77,9 +84,10 @@ function screenTexts(buf) {
   return out;
 }
 
-// What PTT answered ID + Enter (or the space over an alert) with, or false
-// while it has not.
-function queryAnswer(buf) {
+// What PTT answered ID + Enter (or Ctrl-Q, or the space over an alert) with,
+// or false while it has not. `listShown` tells the list the query was asked
+// from (UserQuery._listShown).
+function queryAnswer(buf, listShown) {
   const texts = screenTexts(buf);
   const alert = userQueryAlert(texts);
   if (alert) return { alert };
@@ -87,7 +95,7 @@ function queryAnswer(buf) {
     const query = parseUserQueryScreen(texts);
     return query ? { query } : false;
   }
-  if (userListView(buf)) return { list: true };
+  if (listShown()) return { list: true };
   return false;
 }
 
@@ -97,6 +105,9 @@ export class UserQuery {
     // idle → asking (`Q` sent) → typing (ID sent) [→ alert (space sent)]
     //      → shown (the page) → leaving (space sent) → idle
     this.phase = 'idle';
+    // 'user': asked from the online user list; 'author': an article's author,
+    // asked from the article list (#254).
+    this._source = 'user';
     this._id = null;
     this._listAppBar = null;
     this._parsed = null;
@@ -130,6 +141,26 @@ export class UserQuery {
     if (ls.state !== 'active' || !core.buf || core.buf.listRenderMode !== 'buffer') return false;
     if (typeof core.activeListSession === 'function' && core.activeListSession() !== ls) return false;
     return !serializedOpHint(core);
+  }
+
+  // Whether an article's author can be queried now (#254): list easy reading
+  // presents an article list (not the mailbox, not the user list) and is idle,
+  // and nothing else runs on the wire.
+  authorAvailable() {
+    const core = this.core;
+    const ls = core && core.listSession;
+    if (this.phase !== 'idle' || !ls || !ls.selectedAuthorTarget) return false;
+    if (ls.isUserList() || ls.isMailList()) return false;
+    if (ls.state !== 'active' || !core.buf || core.buf.listRenderMode !== 'buffer') return false;
+    if (typeof core.activeListSession === 'function' && core.activeListSession() !== ls) return false;
+    return !serializedOpHint(core);
+  }
+
+  // Whether PTT shows the list the query was asked from again.
+  _listShown() {
+    const core = this.core;
+    if (this._source === 'author') return !!core.listSession?.showsHeldList?.();
+    return !!userListView(core.buf);
   }
 
   // The App Bar while the query runs (mobile_toolbar.mobileToolbarContext):
@@ -177,18 +208,7 @@ export class UserQuery {
       return false;
     }
     if (!USER_QUERY_ID_RE.test(String(id || ''))) return false;
-    this._id = String(id);
-    this._alert = null;
-    this._parsed = null;
-    this._listAppBar = core._screenContext?.appBar || null;
-    this._bookmark = recordFor(core).begin('user-query');
-    this.phase = 'asking';
-    // The system Back is the query's for the whole run (see _back).
-    this._offBack = core.registerSheetDismiss ? core.registerSheetDismiss(() => this._back()) : null;
-    // Terminal keys and taps stop until the list is back: the screens under
-    // the held list are PTT's, and a tap there must not answer them.
-    core.setModalOpen?.(SOURCE, true);
-    core._refreshScreenContext?.();
+    this._begin('user', id, 'asking');
     ls.beginUserQuery([
       {
         keys: 'Q',
@@ -203,12 +223,68 @@ export class UserQuery {
         keys: this._id + '\r',
         kind: 'user-query',
         ...QUERY_STEP_BUDGET,
-        expect: () => queryAnswer(core.buf),
+        expect: () => queryAnswer(core.buf, () => this._listShown()),
         onDone: (answer) => this._answered(answer),
         onFail: () => this._fail()
       }
     ]);
     return true;
+  }
+
+  // Ask PTT for the author of the selected article (#254, see the module
+  // comment); `target` (authorQueryTargetAtRow's) selects that article first.
+  // Returns whether Ctrl-Q was sent; when not, a hint says why.
+  queryAuthor(target) {
+    const core = this.core;
+    const ls = core && core.listSession;
+    const busy = serializedOpHint(core);
+    if (busy) {
+      this._hint(busy);
+      return false;
+    }
+    if (!this.authorAvailable()) {
+      this._hint(i18n('authorQuery_unavailable'));
+      return false;
+    }
+    if (target && !ls.selectAuthorQueryTarget(target)) {
+      this._hint(i18n('authorQuery_noAuthor'));
+      return false;
+    }
+    const article = ls.selectedAuthorTarget();
+    if (!article || !USER_QUERY_ID_RE.test(article.author)) {
+      this._hint(i18n('authorQuery_noAuthor'));
+      return false;
+    }
+    this._begin('author', article.author, 'typing');
+    ls.beginAuthorQuery([
+      {
+        keys: '\x11',
+        kind: 'author-query',
+        ...QUERY_STEP_BUDGET,
+        expect: () => queryAnswer(core.buf, () => this._listShown()),
+        onDone: (answer) => this._answered(answer),
+        onFail: () => this._fail()
+      }
+    ], () => this.reset());
+    return true;
+  }
+
+  // The state a query starts in, whichever its entrance.
+  _begin(source, id, phase) {
+    const core = this.core;
+    this._source = source;
+    this._id = String(id);
+    this._alert = null;
+    this._parsed = null;
+    this._listAppBar = core._screenContext?.appBar || null;
+    this._bookmark = recordFor(core).begin('user-query');
+    this.phase = phase;
+    // The system Back is the query's for the whole run (see _back).
+    this._offBack = core.registerSheetDismiss ? core.registerSheetDismiss(() => this._back()) : null;
+    // Terminal keys and taps stop until the list is back: the screens under
+    // the held list are PTT's, and a tap there must not answer them.
+    core.setModalOpen?.(SOURCE, true);
+    core._refreshScreenContext?.();
   }
 
   _answered(answer) {
@@ -217,7 +293,8 @@ export class UserQuery {
     if (answer.query) return this._show(answer.query);
     // PTT drew the list again: no such user, or the alert's denial. The list
     // takes its frame back after this settle (help_menu does the same).
-    const text = this._alert && this._alert.status === 'denied' ? i18n('userQuery_flood') : i18n('userQuery_notFound');
+    const text = this._alert && this._alert.status === 'denied' ? i18n('userQuery_flood')
+      : i18n(this._source === 'author' ? 'authorQuery_notFound' : 'userQuery_notFound');
     queueMicrotask(() => this._backOnList('cancel', text, HINT_ERROR));
   }
 
@@ -231,7 +308,7 @@ export class UserQuery {
       kind: 'user-query-alert',
       ...QUERY_STEP_BUDGET,
       expect: () => {
-        const a = queryAnswer(core.buf);
+        const a = queryAnswer(core.buf, () => this._listShown());
         // The alert still up (its own redraw) is not an answer.
         return a && !a.alert ? a : false;
       },
@@ -246,13 +323,16 @@ export class UserQuery {
   // waiting for a key: one more key (Enter leaves the prompt, the alert and the
   // query screen; a space after a leave) makes it draw its list, and only then
   // does the list take its frame back. When that cannot be sent, or is not
-  // answered either, the list takes the frame anyway, with the hint.
+  // answered either, the list takes the frame anyway, with the hint. Over the
+  // article list (#254) Enter opens an article, so the key goes out only while
+  // PTT shows the query screen or the alert.
   _fail() {
     if (this.phase === 'idle') return;
     const text = this._alert ? i18n('userQuery_flood') : i18n('userQuery_failed');
     const core = this.core;
     const waiting = ['typing', 'alert', 'leaving'].includes(this.phase) && !this._recovering &&
-      !userListView(core.buf);
+      !this._listShown() && (this._source !== 'author' || isUserQueryScreen(core.buf) ||
+        !!userQueryAlert(screenTexts(core.buf)));
     if (waiting) {
       this._recovering = true;
       this._closePage(false);
@@ -260,7 +340,7 @@ export class UserQuery {
         keys: this.phase === 'leaving' ? KEY_DISMISS : '\r',
         kind: 'user-query-recover',
         ...QUERY_STEP_BUDGET,
-        expect: () => !!userListView(core.buf),
+        expect: () => this._listShown(),
         onDone: () => queueMicrotask(() => this._backOnList('fail', text, HINT_ERROR)),
         onFail: () => this._backOnList('fail', text, HINT_ERROR)
       });
@@ -340,7 +420,7 @@ export class UserQuery {
       return;
     }
     // PTT left the query screen by itself and shows the list.
-    if (userListView(buf)) queueMicrotask(() => this._backOnList('cancel'));
+    if (this._listShown()) queueMicrotask(() => this._backOnList('cancel'));
   }
 
   // Leave the page: Back, system Back, ←, a swipe right. The list shows at
@@ -353,7 +433,7 @@ export class UserQuery {
     this._closePage(true);
     core._refreshScreenContext?.();
     if (!isUserQueryScreen(core.buf)) {
-      if (userListView(core.buf)) this._backOnList('cancel');
+      if (this._listShown()) this._backOnList('cancel');
       else this._fail();
       return true;
     }
@@ -361,7 +441,7 @@ export class UserQuery {
       keys: KEY_DISMISS,
       kind: 'user-query-leave',
       ...QUERY_STEP_BUDGET,
-      expect: () => !!userListView(core.buf),
+      expect: () => this._listShown(),
       onDone: () => queueMicrotask(() => this._backOnList('cancel')),
       onFail: () => this._fail()
     });
@@ -615,6 +695,15 @@ function controller(core) {
 export function queryUser(core, id) {
   const q = controller(core);
   return !!q && q.query(id);
+}
+
+// Query the author of the selected article on the article list (#254): Ctrl-Q,
+// and 查詢作者 in the context menu, whose `target` (a row's article) is
+// selected first. Returns true when Ctrl-Q was sent, false (with a hint) when
+// not.
+export function queryAuthor(core, target) {
+  const q = controller(core);
+  return !!q && q.queryAuthor(target);
 }
 
 // Open the app's 查詢網友 sheet (the search sheet asking for a user ID); its

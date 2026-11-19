@@ -99,7 +99,7 @@ import {
 import { PAGE } from './page_stack';
 import { searchKeyOpensSheet } from './article_search';
 import { selectedUserId } from './user_list';
-import { queryUser, promptUserQuery } from './user_query';
+import { queryUser, promptUserQuery, queryAuthor } from './user_query';
 
 // A plain `←`, for a key that leaves as it does (article_gestures.handleBack).
 const PLAIN_BACK_EVENT = Object.freeze({
@@ -2020,9 +2020,10 @@ ListSession.prototype = {
       // like any other: refused (#159). It is caught here because
       // keyEventToBytes returns null for altKey, which _classifyKey would read
       // as 'ignore', and before _classifyKey because j/k/n/p are navigation
-      // synonyms there.
+      // synonyms there. Alt+Q is Ctrl-Q, the author query (#254).
       e.preventDefault();
-      this._refuseUnsupported('key');
+      if (altRemap === 17 && this._authorQueryList()) queryAuthor(this._core);
+      else this._refuseUnsupported('key');
       return;
     }
 
@@ -2051,6 +2052,11 @@ ListSession.prototype = {
 
     if (key.class === 'help') {
       this._beginHelp();
+      return;
+    }
+
+    if (key.class === 'author-query') {
+      queryAuthor(this._core);
       return;
     }
 
@@ -2152,6 +2158,96 @@ ListSession.prototype = {
     this._beginPassthroughBytes(steps, { kind: 'user-query', hint: null, noSync: true });
   },
 
+  // A query of the selected article's author (#254, user_query.queryAuthor):
+  // as beginUserQuery, but Ctrl-Q acts on PTT's cursor row, so PTT's cursor
+  // is moved to the selection first. When that fails nothing is sent:
+  // `onSyncFail` runs and the list holds with the failure (_fail).
+  // The move is never skipped: a background read in flight (a page of the
+  // prefetch) still moves PTT's cursor after `_serverNum` was taught, and the
+  // native excursion would send Ctrl-Q right behind it. The jump is queued
+  // behind it instead, and its landing checks the row's author and title.
+  beginAuthorQuery: function(steps, onSyncFail) {
+    this._spendLayer('nativePassthrough');
+    if (this._selectedNum != null) this._serverNum = null;
+    this._helpBoard = this._boardName;
+    this._helpSelection = { num: this._selectedNum, pinnedKey: this._selectedPinnedKey };
+    const self = this;
+    this._beginPassthroughBytes(steps, {
+      kind: 'author-query',
+      hint: null,
+      onSyncFail: function() {
+        self._helpBoard = null;
+        self._helpSelection = null;
+        onSyncFail();
+      }
+    });
+  },
+
+  // Whether PTT shows the list the author query let go of again, as easy
+  // reading presents it (user_query._listShown).
+  showsHeldList: function() {
+    const facts = this._collectFacts(null);
+    return facts.kind === 'clean-list' && facts.boardName != null &&
+      facts.boardName === (this._helpBoard ?? this._boardName);
+  },
+
+  // The lists whose article rows have an author for Ctrl-Q: an article list,
+  // not the mailbox (#196) or the online user list (#199).
+  _authorQueryList: function() {
+    return !this.isUserList() && !this.isMailList();
+  },
+
+  // The article at `abs` (a listLines index) as an author-query target
+  // ({ num, pinnedKey, author }), or null when it has no author PTT's cursor
+  // can be moved to.
+  _authorQueryTarget: function(abs) {
+    if (abs == null || abs < 0) return null;
+    const lines = this._termBuf.listLines || [];
+    if (!lines[abs]) return null;
+    const author = parseListAuthor(rowToText(lines[abs]));
+    if (!author) return null;
+    const num = (this._termBuf.listLineNums || [])[abs];
+    if (num != null) return { num: num, pinnedKey: null, author: author };
+    // A pinned row is reached from a numbered one (_enqueuePinnedCursorSync).
+    const pinnedKey = this._pinnedKeyAt(abs);
+    if (pinnedKey == null || bufferEdgeNum(this._termBuf.listLineNums, 1) == null) return null;
+    return { num: null, pinnedKey: pinnedKey, author: author };
+  },
+
+  // The author of the selected article, for Ctrl-Q, or null.
+  selectedAuthorTarget: function() {
+    if (!this._authorQueryList()) return null;
+    return this._authorQueryTarget(this._resolveSelectedIndex());
+  },
+
+  // 查詢作者 in the context menu (#254): the article on render row
+  // `renderRow`, or null (the entry is hidden). Pure query, as
+  // markReadTargetAtRow.
+  authorQueryTargetAtRow: function(renderRow) {
+    if (this.state !== 'active' || this._renderMode !== 'buffer') return null;
+    if (!this._authorQueryList()) return null;
+    const idx = renderRow - this.headerRows();
+    if (idx < 0) return null;
+    const view = this.getListView();
+    if (!view || idx >= view.seq.length) return null;
+    return this._authorQueryTarget(view.seq[idx]);
+  },
+
+  // Select the article of an author-query target (the context menu's row).
+  // Returns whether it is still listed.
+  selectAuthorQueryTarget: function(target) {
+    if (!target) return false;
+    const nums = this._termBuf.listLineNums || [];
+    const abs = target.num != null ? nums.indexOf(target.num) : this._pinnedIndexOf(target.pinnedKey);
+    const now = this._authorQueryTarget(abs);
+    if (!now || now.author !== target.author) return false;
+    if (this._selectedNum === now.num && this._selectedPinnedKey === now.pinnedKey) return true;
+    this._selectedNum = now.num;
+    this._selectedPinnedKey = now.pinnedKey;
+    this._forceRedraw();
+    return true;
+  },
+
   // One more step of that query (the space over PTT's alert or its
   // 請按任意鍵繼續), while the list is still let go of. Returns whether it went out.
   continueUserQuery: function(step) {
@@ -2205,12 +2301,19 @@ ListSession.prototype = {
     // native excursion flushes the queue, so the key is not stuck behind an
     // in-flight prefetch either.
     if (opts && opts.noSync) return finish();
+    // opts.onSyncFail: the caller is told when the sync fails (and nothing is
+    // sent), before the list holds with the failure.
+    const syncFail = opts && opts.onSyncFail;
     if (this._selectedNum != null && !this._cursorOnSelection()) {
       this._freezeForTransaction();
       // A sync that fails sends nothing: the key would act on another row (#158).
       this._enqueueCursorSyncJump('native-sync-jump', finish, function() {
+        if (syncFail) syncFail();
         self._fail('游標同步逾時');
-      });
+      }, syncFail ? function() {
+        syncFail();
+        self._fail('列表已變動，游標對不上選取的文章');
+      } : undefined);
       return;
     }
     if (this._selectedNum == null && this._canPinnedCursorSync()) {
@@ -2219,6 +2322,7 @@ ListSession.prototype = {
       // 可能停在任一中間列 ⇒ Ctrl-D／Ctrl-X 這類破壞性鍵會落在錯列且無法收回。
       // 等同編號腿 checkCursorAnchor === 'moved' 的處理：明示失敗、不代送。
       this._enqueuePinnedCursorSync('native-pinned', finish, function() {
+        if (syncFail) syncFail();
         self._fail('游標無法對到置底列');
       });
       return;
@@ -3184,6 +3288,9 @@ ListSession.prototype = {
     if (keyEventToBytes(e) == null) return { class: 'ignore' };
     // The online user list (#199) has its own table (talk.c's userlist_cmds).
     if (this.isUserList()) return userListKeyClass(e);
+    // Ctrl-Q queries the author of the article selected (#254, user_query.js).
+    if (e.ctrlKey && (e.key === 'q' || e.key === 'Q') && this._authorQueryList())
+      return { class: 'author-query' };
     if (e.ctrlKey) return { class: 'unsupported' }; // Ctrl-P 發文 etc.
     // The mailbox (#196) reads a mail with every key mail.c#mail_comms gives
     // mail_cmd_read (→ Enter r l L); its other commands (reply, forward,
@@ -3426,6 +3533,8 @@ ListSession.prototype = {
   // 純查詢、零副作用：右鍵選單問「這一列做得了嗎、對象是第幾篇」。回 null ＝
   // 那個選單項不出現（條件全收在這裡，React 端不重複判斷）。
   markReadTargetAtRow: function(renderRow) {
+    // `v` and `w` are other commands in the mailbox (#252).
+    if (this.isMailList()) return null;
     if (this.state !== 'active' || this._renderMode !== 'buffer') return null;
     // The online user list (#199) has no read marks.
     if (this.isUserList()) return null;
@@ -3454,6 +3563,10 @@ ListSession.prototype = {
   // 拒絕（vmsg 等按鍵）或落點認不出 ⇒ 停在原生鏡像，由靜置探針接手。
   markReadUnreadBefore: function(num) {
     if (this._renderMode === 'native') return false; // 沒接管，交給一般路徑
+    if (this.isMailList()) {
+      this._refuseUnsupported('key');
+      return true;
+    }
     if (this.state === 'opening') {
       if (this._view.flashListHint)
         this._view.flashListHint('好讀列表：開啟文章中，請稍候…');

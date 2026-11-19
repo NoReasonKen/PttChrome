@@ -4,3 +4,8 @@ export const UNSUPPORTED_KEY_HINT = '好讀模式目前不支援這個按鍵（�
 
 export const unsupportedPasteHint = (page) => '好讀模式目前不支援在' + page + '貼上文字';
 export const unsupportedTextHint = (page) => '好讀模式目前不支援在' + page + '輸入文字';
+
+// Refresh (F5, pull-to-refresh, the toolbar's refresh) over the mailbox and an
+// open mail: no refresh is presented there, and F5 is not handed to the
+// browser either (#252).
+export const UNSUPPORTED_REFRESH_HINT = '好讀模式目前不支援重新整理信箱（關閉好讀模式可使用 PTT 原生操作）';

@@ -16,7 +16,7 @@
 
 import { boardListContextKind } from './board_list_parse';
 import { OWNER_ARTICLE_LIST } from './list_render_owner';
-import { parseBoardName, parseHeaderTitle } from './screen_titles';
+import { parseBoardName, parseHeaderTitle, isMailListTitleRow, MAIL_LIST } from './screen_titles';
 
 export const NEW_MAIL_MARK = '你有新信件';
 
@@ -45,6 +45,8 @@ export function appBarFromFacts(facts, opts) {
   if (o.pageState === 3) {
     return bar('article', o.articleTitle, o.articleBoard, false, o.articleTime, o.articleByline);
   }
+  // The mail list's title row names the board last visited (#252).
+  if (isMailListTitleRow(row0)) return bar('list', MAIL_LIST, '', newMail);
   const ctx = boardListContextKind(facts);
   if (facts.listOwner === OWNER_ARTICLE_LIST || ctx === 'article-list') {
     const board = parseBoardName(row0) || (prev.kind === 'list' ? prev.title : '');
