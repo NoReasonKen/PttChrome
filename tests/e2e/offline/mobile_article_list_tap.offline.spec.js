@@ -11,13 +11,15 @@ const TARGET = '.main:not([data-stack-layer]) .listCard[data-list-title*="Beta t
 
 // Hold the real background response so discovering the top can straddle a
 // browser touch. Neither reserve dimensions nor session geometry are mocked.
+// Both legs of the upward fill are held: the number jump that anchors it
+// already shows the rows above the first held row.
 async function holdUpwardFill(page) {
   await page.evaluate(() => {
     const app = window.__app;
     const receive = app.onData;
     const held = [];
     app.onData = function (data) {
-      if (app.commandQueue.inFlightKind === 'prefetch-up') held.push(data);
+      if (['prefetch-anchor-up', 'prefetch-up'].includes(app.commandQueue.inFlightKind)) held.push(data);
       else receive.call(this, data);
     };
     window.__heldListFill = {
@@ -49,9 +51,15 @@ async function releaseUpwardFill(page) {
   await waitListAtRest(page);
 }
 
+// Earlier results above Alpha keep the top of the results unread: the reserve
+// above the first held row covers only rows that can still come (#255).
+// Results after Beta make the held page, which ends at the newest result,
+// start at Alpha.
+const ABOVE_RESULTS = { leadingArticles: 8, extraArticles: 18 };
+
 for (const releaseAt of ['before contact', 'during contact']) {
   test(`a result tap opens its article when the top is discovered ${releaseAt}`, async ({ page }, info) => {
-    await recordSearchTaps(page, () => bootNestedShortcutSearch(page));
+    await recordSearchTaps(page, () => bootNestedShortcutSearch(page, ABOVE_RESULTS));
     await holdUpwardFill(page);
     await tapShortcut(page, 'author');
     await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
