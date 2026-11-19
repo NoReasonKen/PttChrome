@@ -55,6 +55,16 @@ describe("appBarFromFacts", () => {
     });
   });
 
+  // #252: the mail list's title row still names the board last visited.
+  test("信箱列表：標題＝郵件選單，不是上次的看板", () => {
+    const row0 = "【郵件選單】                     批踢踢實業坊                     看板《Test》";
+    const foot = " 信件列表  (^P)寄信 (y)回信 (d)刪信       (←)離開 (h)說明 ";
+    expect(appBarFromFacts(frame({ 0: row0, 23: foot }, { listOwner: OWNER_ARTICLE_LIST }), { pageState: 2 })).toMatchObject({
+      kind: "list",
+      title: "郵件選單",
+    });
+    expect(appBarFromFacts(frame({ 0: row0, 23: foot }), { pageState: 2 })).toMatchObject({ title: "郵件選單" });
+  });
   test("列表好讀 session 持有時同樣是列表", () => {
     const f = frame({ 0: LIST_ROW0 }, { listOwner: OWNER_ARTICLE_LIST });
     expect(appBarFromFacts(f, { pageState: 2 })).toMatchObject({ kind: "list", title: "Test" });

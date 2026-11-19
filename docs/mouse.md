@@ -756,8 +756,13 @@ API**，唯一入口就是原生選單 ⇒ 依本檔「手勢與瀏覽器返回�
 
 順帶確認過、不必改：`App.mouse_click` 對 `e.button == 2` 是空分支；`App.mouse_up`
 的右鍵分支不 `preventDefault`（只有左鍵會），只呼叫 `setInputAreaFocus()`。
-`#cmenuReact` / `#reactAlert` / Mantine portal 都在 `#BBSWindow` 外，本來就有原生
-選單。代價（可接受）：圖片上按右鍵就沒有「設定」「複製本篇文章連結」等項目。
+`#reactAlert` / Mantine portal 都在 `#BBSWindow` 外，本來就有原生選單。**例外是首頁
+儀表板**（#251）：它在 `#cmenuReact`（`#BBSWindow` 的兄弟），桌機上 `index.jsx` 另在
+`#cmenuReact` 掛一份 capture 監聽，目標在 `#homeDashboard` 內才轉進同一個
+`onContextMenu`，所以空白處與看板卡片上右鍵開的是同一個選單，設定從首頁就進得去。
+面板內的連結與文字輸入（`home_dashboard.js#isHomeNativeMenuTarget`）照舊走原生選單，
+同圖片的放行。手機不掛這份監聽（工具列已能進設定，長按另有專屬處理）。
+守護 `tests/e2e/offline/home_context_menu.offline.spec.js`。代價（可接受）：圖片上按右鍵就沒有「設定」「複製本篇文章連結」等項目。
 
 真瀏覽器守護：`tests/e2e/offline/image_gray.offline.spec.js`（圖片上
 `defaultPrevented === false` 且我們的選單不開；文字上反之）。

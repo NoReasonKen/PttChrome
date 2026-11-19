@@ -12,7 +12,10 @@ const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { beginArticleTouch } = require('../helpers/article_gestures');
 const { bootMailbox, mailListActive, mailSurface, MAILS } = require('../helpers/mail_box');
+const { touchDrag, rightClickElement } = require('../helpers/real_input');
+const { waitRectStable } = require('../helpers/layout');
 
+const UNSUPPORTED_REFRESH = '好讀模式目前不支援重新整理信箱（關閉好讀模式可使用 PTT 原生操作）';
 const UNSUPPORTED_KEY = '好讀模式目前不支援這個按鍵（關閉好讀模式可使用 PTT 原生操作）';
 const guardHits = (page) => page.evaluate(() => window.__nativeGridGuard.hits);
 const dashboard = (page) => page.locator('#homeDashboard');
@@ -152,6 +155,92 @@ test.describe('easy-reading mail', () => {
     expect(await page.evaluate(() => window.__mailSent.length)).toBe(before);
     expect(await page.locator('input[name="searchKeyword"]').count()).toBe(0);
     expect(await mailSurface(page)).toBe('list');
+  });
+
+  // #252: the article list's entrances do not apply to a mailbox, whose title
+  // row still names the board last visited. None of them sends anything to
+  // PTT, and the reader is told.
+  const sentCount = (page) => page.evaluate(() => window.__mailSent.length);
+  const hint = (page) => page.locator('.ListHint');
+  // F5 is taken by easy reading (the browser would reload and disconnect).
+  const pressF5 = async (page) => {
+    await page.evaluate(() => {
+      window.__f5Prevented = null;
+      // Read after the dispatch, whichever listener of the page ran first.
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'F5') setTimeout(() => { window.__f5Prevented = e.defaultPrevented; });
+      }, { once: true, capture: true });
+    });
+    await ptt.sendKey(page, 'F5');
+    await page.waitForFunction(() => window.__f5Prevented !== null);
+    return page.evaluate(() => window.__f5Prevented);
+  };
+
+  test('F5 on the mail list is refused with the hint: nothing is sent and the page is not reloaded', async ({ page }) => {
+    await openMailList(page);
+    const before = await sentCount(page);
+    expect(await pressF5(page)).toBe(true);
+    await expect(hint(page)).toHaveText(UNSUPPORTED_REFRESH);
+    await expect(hint(page)).toHaveAttribute('data-level', 'error');
+    expect(await sentCount(page)).toBe(before);
+    expect(await mailSurface(page)).toBe('list');
+  });
+
+  test('F5 over an open mail is refused with the hint, not handed to the browser', async ({ page }) => {
+    await openNewestMail(page);
+    const before = await sentCount(page);
+    expect(await pressF5(page)).toBe(true);
+    await expect(hint(page)).toHaveText(UNSUPPORTED_REFRESH);
+    expect(await sentCount(page)).toBe(before);
+    expect(await mailSurface(page)).toBe('mail');
+  });
+
+  test('pull-to-refresh on the mail list is refused with the hint and sends nothing', async ({ page }) => {
+    await openMailList(page);
+    const r = await waitRectStable(page, '#mainContainer');
+    const x = r.left + r.width / 2;
+    const y = r.top + 40;
+    const before = await sentCount(page);
+    await touchDrag(page, { x, y }, { x, y: y + 260 });
+    await expect(hint(page)).toHaveText(UNSUPPORTED_REFRESH);
+    expect(await sentCount(page)).toBe(before);
+    expect(await mailSurface(page)).toBe('list');
+  });
+
+  test('the toolbar offers no refresh, post, jump to unread or mark all read on the mail list', async ({ page }) => {
+    await openMailList(page);
+    await expect(page.locator('[data-key="__refresh"]')).toBeDisabled();
+    await expect(page.locator('[data-key="__post"]')).toHaveCount(0);
+    await expect(page.locator('[data-key="__end"]')).toBeEnabled();
+    await page.locator('[data-key="__more"]').tap();
+    await expect(page.locator('[data-key="__help"]')).toBeVisible();
+    await expect(page.locator('[data-key="__unreadJump"]')).toHaveCount(0);
+    await expect(page.locator('[data-key="__markAllRead"]')).toHaveCount(0);
+  });
+
+  test('the F7 hotkey (jump to first unread) is refused with the hint and sends nothing', async ({ page }) => {
+    await openMailList(page);
+    const before = await sentCount(page);
+    await ptt.sendKey(page, 'F7');
+    await expect(hint(page)).toHaveText(UNSUPPORTED_KEY);
+    expect(await sentCount(page)).toBe(before);
+  });
+
+  test('a mail card\'s context menu has no mark-read entry', async ({ page }) => {
+    await openMailList(page);
+    const before = await sentCount(page);
+    const label = await page.evaluate(() => window.__i18n('cmenu_markReadUnread'));
+    await rightClickElement(page, '.main:not([data-stack-layer]) .listCard[data-list-mark] .listCardBody');
+    const menu = page.locator('[data-sheet="context"]').first();
+    await expect(menu.locator('[data-cmenu]').first()).toBeVisible();
+    await expect(menu.locator('[data-cmenu]').filter({ hasText: label })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    expect(await sentCount(page)).toBe(before);
+  });
+
+  test('the App Bar names the mail list, not the board last visited', async ({ page }) => {
+    await openMailList(page);
+    await expect(page.locator('#mobileAppBar [data-key="__title"]')).toHaveText('郵件選單');
   });
 
   test('tapping a mail card reads that mail', async ({ page }) => {
