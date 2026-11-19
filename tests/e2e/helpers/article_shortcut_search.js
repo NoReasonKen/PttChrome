@@ -170,6 +170,8 @@ const NESTED_ARTICLES = [
 //   login does, so reconnect/open resume may capture and store a plan.
 // `homeMenu`: the main menu has My Favorites, so the home dashboard shows on it.
 // `dynamicRows`: model negotiated terminal rows separately from application layout.
+// `leadingArticles`: that many of alice's articles come before Alpha, so her
+//   search results list them above Alpha and Beta.
 // `alphaLines`: Alpha runs that many lines, over several PTT pages.
 // `urls`: articles end with their URL line, so the app knows an article's
 //   AID without asking PTT.
@@ -177,10 +179,10 @@ const NESTED_ARTICLES = [
 // `ptList`: screens behave as PTT's do where the default server simplifies: a
 //   list's footer names its keys, (y)回應 among them, `s<board>` from a list
 //   lands on the board's full list, and the main menu has its title bar.
-async function bootNestedShortcutSearch(page, { loggedIn = false, startAtMain = false, boardEntry = null, legacyCaptions = false, extraArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false, images = false, ptList = false } = {}) {
+async function bootNestedShortcutSearch(page, { loggedIn = false, startAtMain = false, boardEntry = null, legacyCaptions = false, extraArticles = 0, leadingArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false, images = false, ptList = false } = {}) {
   if (startAtMain) await bootOffline(page, ptt);
   else await bootGestureArticle(page);
-  await installNestedServer(page, { surface: loggedIn || startAtMain ? 'main' : 'article', boardEntry, legacyCaptions, extraArticles, homeMenu, dynamicRows, pinned, alphaLines, urls, images, ptList });
+  await installNestedServer(page, { surface: loggedIn || startAtMain ? 'main' : 'article', boardEntry, legacyCaptions, extraArticles, leadingArticles, homeMenu, dynamicRows, pinned, alphaLines, urls, images, ptList });
   if (startAtMain) {
     await waitScreenSettled(page, { 0: '主功能表' });
     return;
@@ -211,6 +213,11 @@ async function installNestedServer(page, session) {
     title: '[Talk] Extra topic ' + String(index + 1).padStart(2, '0'),
     body: 'Extra ' + String(index + 1).padStart(2, '0'), push: 5
   }));
+  const leading = Array.from({ length: Math.min(30, Math.max(0, session.leadingArticles || 0)) }, (_, index) => ({
+    aid: '1gIeu-2' + alphabet[index], author: 'alice',
+    title: '[Talk] Earlier topic ' + String(index + 1).padStart(2, '0'),
+    body: 'Earlier ' + String(index + 1).padStart(2, '0'), push: 5
+  }));
   await page.evaluate(({ articles, session }) => {
     const app = window.__app;
     const encode = text => [...text].map(ch => {
@@ -223,7 +230,7 @@ async function installNestedServer(page, session) {
     // `squeezedFooter`: the pager footer has room only for its short hints,
     //   as a very long article's (more.c#common_pmore_footer_handler).
     const state = {
-      surface: session.surface, board: 'Test', filter: null, cursor: 0, open: articles[0], line: 1,
+      surface: session.surface, board: 'Test', filter: null, cursor: 0, open: articles.find(article => article.body === 'Alpha'), line: 1,
       deleted: new Set(session.deleted || []), prompt: null, promptless: false, squeezedFooter: false,
       // backPause: { kind: 'pause' | 'vmsg', message }: the next Back from an
       // article answers with that pause first (#189).
@@ -627,7 +634,7 @@ async function installNestedServer(page, session) {
     };
     app.onData(frame(true));
   }, {
-    articles: [...NESTED_ARTICLES.map(a => a.body === 'Alpha' && session.alphaLines ? { ...a, lines: session.alphaLines } : a),
+    articles: [...leading, ...NESTED_ARTICLES.map(a => a.body === 'Alpha' && session.alphaLines ? { ...a, lines: session.alphaLines } : a),
       ...extras, ...(session.pinned ? [{
       aid: '1gIeu-3P', author: 'mod', title: '[Notice] Pinned rules', body: 'Rules', pinned: true
     }] : [])],

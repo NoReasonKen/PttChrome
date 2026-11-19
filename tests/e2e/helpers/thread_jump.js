@@ -32,11 +32,12 @@ const NEAR_REPLY_BOARD = [...FAR_BOARD, { num: 1120, author: 'erin', title: 'Re:
 // `legacy`: every list under the legacy caption 文章選讀, as PTT shows them
 // (cassette cchat-list-search); only the title row tells results apart.
 // `beforeOpen`: runs on the list before `open` is opened from it.
+// `stayOnList`: with `fromList`, stay on the list, `open` selected, unopened.
 // An article of `thread` may carry its list row's read `mark` (default `+`,
 // unread; opening it reads it) and recommendation `score`, and `comments`
 // (pushes after its AID line, which `url` adds). A tagged article (`t`) shows
 // the tag mark `D` in place of its read mark.
-async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, fromList = false, nextArticle = false, legacy = false, thread = FAR_BOARD, beforeOpen = null } = {}) {
+async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, fromList = false, stayOnList = false, nextArticle = false, legacy = false, thread = FAR_BOARD, beforeOpen = null } = {}) {
   await bootOffline(page, ptt, { nextArticle });
   await ptt.applyPrefs(page, { enableEasyReading: true });
   await page.evaluate(({ thread, size, open, delay, fromList, legacy }) => {
@@ -288,6 +289,7 @@ async function bootThreadBoard(page, { open = 600, delay = 80, size = 1200, from
   }, { thread, size, open, delay, fromList, legacy });
   if (fromList) {
     await listActive(page);
+    if (stayOnList) return;
     if (beforeOpen) await beforeOpen(page);
     await ptt.sendKey(page, 'Enter');
     await expect.poll(() => page.locator('.main').first().innerText()).toContain(`Body of article ${open} by`);

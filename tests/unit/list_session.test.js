@@ -3267,6 +3267,8 @@ describe("甩動中補頁（scrollTop 寫入被 compositor 蓋掉）", () => {
       this.reserve = next;
       return true;
     },
+    // As screen.js: the reserve goes, scrollTop is not written.
+    dropListReserve() { this.reserve = 0; },
     setListReserveTarget(px) {
       if (this.flinging || px === this.reserve) return;
       this.dom += px - this.reserve;
@@ -3337,6 +3339,38 @@ describe("甩動中補頁（scrollTop 寫入被 compositor 蓋掉）", () => {
     }
     expect(pages).toBe(2); // 105 → 位置 5 → 25 → 45 ≥ 2B
     expect(screen.setCalls).toBe(0);
+  });
+
+  // #255: a fling reached #1 with the reserve still in view, and the blank
+  // space above #1 stayed.
+  test("the reserve is never more than the rows above the first held row", () => {
+    const h = demandSession({ numStart: 10, count: 60 });
+    h.s._renderMode = "buffer";
+    h.s._edgeDown = true;
+    h.s._topNum = 10;
+    h.s._selectedNum = 20;
+    const screen = flingScreen();
+    h.s._view.componentScreen = screen;
+    h.s.applyScrollAfterRender();
+    expect(screen.reserve).toBe(9 * ROW);
+    screen.flinging = true;
+    h.s.captureScrollAnchor();
+    prependPage(h.termBuf, 9);
+    h.s.applyScrollAfterRender();
+    expect(h.termBuf.listLineNums[0]).toBe(1);
+    expect(screen.reserve).toBe(0);
+    expect(screen.setCalls).toBe(0);
+  });
+
+  test("rows read in above past what the reserve holds drop it instead of leaving it above them", () => {
+    const { s, screen, termBuf } = setup();
+    const reserveRows = screen.reserve / ROW;
+    expect(reserveRows).toBeLessThan(99);
+    s.captureScrollAnchor();
+    prependPage(termBuf, 99);
+    s.applyScrollAfterRender();
+    expect(termBuf.listLineNums[0]).toBe(1);
+    expect(screen.reserve).toBe(0);
   });
 
   test("吸收時同步 _lastScrollTop：下一個 scroll 事件不被誤判成往下捲", () => {

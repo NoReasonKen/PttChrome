@@ -119,6 +119,24 @@ describe("列表視口頂端保留區", () => {
     expect(m.controller.absorbListShift(10 * rowH(m))).toBe(false);
   });
 
+  // #255: left in place, the reserve stays above the rows read in, where a
+  // fling up runs into it as blank space above #1.
+  test("rows past what the reserve absorbs: dropping it writes no scrollTop, and the caller's write lands on the content", () => {
+    const m = mountScreen(props(100, 140));
+    m.controller.setListReserveTarget(50);
+    const h = rowH(m);
+    m.update(props(90, 140));
+    expect(m.controller.absorbListShift(10 * h)).toBe(false);
+    const v = view(m);
+    const domTop = v.scrollTop;
+    m.controller.dropListReserve();
+    expect(v.scrollTop).toBe(domTop);
+    expect(v.style.getPropertyValue("--list-reserve")).toBe("");
+    m.controller.setListScrollTop(10 * h);
+    expect(v.scrollTop).toBeCloseTo(10 * h, 0);
+    expect(rowY(m, 100)).toBeCloseTo(0, 0);
+  });
+
   test("回補到目標大小只在捲動靜止後做，而且畫面不動", async () => {
     const m = mountScreen(props(100, 140));
     m.controller.setListReserveTarget(3000);

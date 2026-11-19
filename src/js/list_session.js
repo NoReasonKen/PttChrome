@@ -5254,6 +5254,22 @@ ListSession.prototype = {
     this._capturedAnchor = { pos: t.pos, num: this._topNum, key: this._topPinnedKey };
   },
 
+  // How many rows PTT can still list above the first held row: its number - 1,
+  // null when no held row has a number. Every list read here is numbered by
+  // position from 1 (read.c#read_renderer shows the view index + 1, search
+  // results included; the mail list is i_read too). The top reserve is capped
+  // by it (list_scroll.listReservePx), as the board list's is, so a fast fling
+  // uses the reserve up exactly at #1 instead of leaving blank space above it
+  // (#255). Rows hidden by the blacklists only make it an overestimate.
+  _rowsAboveHeld: function() {
+    const nums = this._termBuf.listLineNums || [];
+    for (let i = 0; i < nums.length; ++i) {
+      const n = nums[i];
+      if (n != null) return n >= 1 ? n - 1 : null;
+    }
+    return null;
+  },
+
   // 重繪後：錨 → 新的序列位置 → scrollTop。接著消費 _pendingReveal。
   applyScrollAfterRender: function() {
     const screen = this._screen();
@@ -5266,7 +5282,12 @@ ListSession.prototype = {
     const cap = this._capturedAnchor;
     this._capturedAnchor = null;
     if (screen.setListReserveTarget)
-      screen.setListReserveTarget(listReservePx({ edgeUp: this._edgeUp, bodyRows: B, rowH: rowH }));
+      screen.setListReserveTarget(listReservePx({
+        edgeUp: this._edgeUp,
+        bodyRows: B,
+        rowH: rowH,
+        rowsAbove: this._rowsAboveHeld()
+      }));
     const viewportPx = screen.getListViewportPx() || B * rowH;
     const maxScrollTop = maxScrollTopFor({
       len: seq.length,
@@ -5316,6 +5337,9 @@ ListSession.prototype = {
       cur: cur
     });
     const absorbed = shift != null && !!screen.absorbListShift && screen.absorbListShift(shift);
+    // More rows read in above than the reserve holds: the reserve goes and the
+    // write below moves by the rest (#255).
+    if (!absorbed && shift > 0 && screen.dropListReserve) screen.dropListReserve();
     // 吸收後 DOM 座標沒動 ⇒ 進行中的平滑動畫目標（內容座標）跟著位移，不必重發。
     // _lastScrollTop 同理（內容座標整段平移了 shift）——不跟上的話下一個 scroll 事件
     // 會被 _onScrollFrame 讀成「使用者往反方向捲」而偷送一次反向 demand。
