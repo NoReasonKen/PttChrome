@@ -1238,7 +1238,7 @@ BoardListSession.prototype = {
       this._expediteBackground();
       return finish();
     }
-    if (this._selectedNum != null && this._selectedNum !== this._serverNum) {
+    if (this._selectedNum != null && !this._cursorOnSelection()) {
       this._freezeForTransaction();
       // A sync that fails sends nothing: the key would act on another row (#158).
       this._enqueueCursorSyncJump('native-sync-jump', finish, function() {
@@ -1272,7 +1272,7 @@ BoardListSession.prototype = {
       if (self.state === 'functionMode' && self._renderMode === 'frozen')
         self._fail('游標同步逾時');
     };
-    if (this._selectedNum != null && this._selectedNum !== this._serverNum) {
+    if (this._selectedNum != null && !this._cursorOnSelection()) {
       this._enqueueCursorSyncJump('native-sync-jump', send, abort);
       return;
     }
@@ -1359,7 +1359,7 @@ BoardListSession.prototype = {
     const send = function() {
       self._enqueueInplaceKey(bytes, opts && opts.onDone);
     };
-    if (this._selectedNum != null && this._selectedNum !== this._serverNum) {
+    if (this._selectedNum != null && !this._cursorOnSelection()) {
       this._enqueueCursorSyncJump('inplace-sync-jump', send, function() {
         self._fail('操作逾時');
       });
@@ -2137,6 +2137,17 @@ BoardListSession.prototype = {
     }, FROZEN_WATCHDOG_MS);
   },
 
+  // Whether PTT's cursor is known to be on the selected board, so a key that
+  // acts on the cursor row can go out without moving it there first.
+  // `_serverNum` is where the last landing left PTT's cursor; a command still
+  // on the wire (a background read's number jump) moves it again before a
+  // key sent now arrives, so the cursor is known only while the queue is
+  // idle. Otherwise the caller's number jump queues behind that command and
+  // moves the cursor back.
+  _cursorOnSelection: function() {
+    return this._selectedNum != null && this._selectedNum === this._serverNum && this._queue.idle;
+  },
+
   // 把 server 的真游標對到本地選取。`choose_board` 的 `num` 是 **static**
   // （board.c:1646）⇒ 離開／進板的落點都由它決定，游標不同步就會進錯看板。
   _enqueueCursorSyncJump: function(kind, onSynced, onFail) {
@@ -2200,7 +2211,7 @@ BoardListSession.prototype = {
         enteringBoard: true
       });
     };
-    if (num === this._serverNum) send();
+    if (this._cursorOnSelection()) send();
     else this._enqueueCursorSyncJump('open-sync-jump', send, function() {
       // The board never opens: its article list slides back out.
       self._core.articleGestures?.dropPendingLayer();
@@ -2222,7 +2233,7 @@ BoardListSession.prototype = {
     const send = function() {
       self._enqueueLandingKey(LEFT_ARROW, 'leave', '回上層逾時', { leaving: true });
     };
-    if (this._selectedNum == null || this._selectedNum === this._serverNum) send();
+    if (this._selectedNum == null || this._cursorOnSelection()) send();
     // The sync only keeps the next entry's position: a sync that fails still
     // leaves, so Back is never lost.
     else this._enqueueCursorSyncJump('leave-sync-jump', send, send);

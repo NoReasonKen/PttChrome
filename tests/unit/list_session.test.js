@@ -1067,6 +1067,80 @@ describe("prefetch anchor response ownership", () => {
   });
 });
 
+// A background page read still on the wire moves PTT's cursor after
+// `_serverNum` was taught: a key that acts on the cursor row must not take the
+// "PTT's cursor is already on the selection" shortcut then, or it lands on the
+// row the read left the cursor on (#254's Ctrl-Q queried the wrong author).
+describe("cursor-row keys behind a background read in flight", () => {
+  afterEach(() => vi.useRealTimers());
+
+  const landedOn = (cursorRowNum) => ({ kind: "clean-list", cursorRowNum, curX: 0, curY: 3, rows: 24 });
+
+  // A session whose last landing left PTT's cursor on its selection (115),
+  // with a page read in flight whose answer has not been judged yet.
+  function busySession() {
+    vi.useFakeTimers();
+    const ctx = demandSession({ numStart: 100, count: 60 });
+    const sent = [];
+    const queue = new CommandQueue({ send: (keys) => sent.push(keys) });
+    ctx.s._queue = queue;
+    ctx.s._selectedNum = 115;
+    ctx.s._serverNum = 115;
+    queue.enqueue({
+      keys: "\x1b[6~", kind: "prefetch-down",
+      expect: (_, f) => f.pageRead,
+    });
+    expect(sent).toEqual(["\x1b[6~"]);
+    // The read lands on 135: PTT's cursor left the selection.
+    const readLands = () => queue.onSettle({}, { pageRead: true });
+    return { ...ctx, sent, queue, readLands };
+  }
+
+  test("a list operation's passthrough moves PTT's cursor back first", () => {
+    const { s, sent, queue, readLands } = busySession();
+    s._beginPassthroughBytes("a");
+    expect(sent).toEqual(["\x1b[6~"]);
+    readLands();
+    expect(sent.at(-1)).toBe("115\r\f");
+    queue.onSettle({}, landedOn(115));
+    expect(sent.at(-1)).toBe("a\f");
+    queue.flush();
+  });
+
+  test("an in-place key (t) moves PTT's cursor back first", () => {
+    const { s, sent, queue, readLands } = busySession();
+    s._beginInplaceTransaction("t");
+    readLands();
+    expect(sent.at(-1)).toBe("115\r\f");
+    queue.onSettle({}, landedOn(115));
+    expect(sent.at(-1)).toBe("t\f");
+    queue.flush();
+  });
+
+  test("Back moves PTT's cursor back first, so the board is re-entered at the selection", () => {
+    const { s, sent, queue, readLands } = busySession();
+    s._beginLeave();
+    readLands();
+    expect(sent.at(-1)).toBe("115\r\f");
+    queue.onSettle({}, landedOn(115));
+    expect(sent.at(-1)).toBe("\x1b[D");
+    queue.flush();
+  });
+
+  test("with nothing on the wire the cursor is trusted: the key goes out alone", () => {
+    vi.useFakeTimers();
+    const { s } = demandSession({ numStart: 100, count: 60 });
+    const sent = [];
+    const queue = new CommandQueue({ send: (keys) => sent.push(keys) });
+    s._queue = queue;
+    s._selectedNum = 115;
+    s._serverNum = 115;
+    s._beginInplaceTransaction("t");
+    expect(sent).toEqual(["t\f"]);
+    queue.flush();
+  });
+});
+
 describe("demand 邊距（提早預補隱藏 round-trip 延遲）", () => {
   // bodyRows B = 20。視窗距 buffer 邊 < 2B 就該補（舊規則 < B 太晚：使用者
   // 已貼近邊緣才開始抓，每次都吃滿兩個 round-trip 的等待）。

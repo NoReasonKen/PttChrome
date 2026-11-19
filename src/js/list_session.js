@@ -2304,7 +2304,7 @@ ListSession.prototype = {
     // opts.onSyncFail: the caller is told when the sync fails (and nothing is
     // sent), before the list holds with the failure.
     const syncFail = opts && opts.onSyncFail;
-    if (this._selectedNum != null && this._selectedNum !== this._serverNum) {
+    if (this._selectedNum != null && !this._cursorOnSelection()) {
       this._freezeForTransaction();
       // A sync that fails sends nothing: the key would act on another row (#158).
       this._enqueueCursorSyncJump('native-sync-jump', finish, function() {
@@ -2366,7 +2366,7 @@ ListSession.prototype = {
       if (self.state === 'functionMode' && self._renderMode === 'frozen')
         self._fail('游標同步逾時');
     };
-    if (this._selectedNum != null && this._selectedNum !== this._serverNum) {
+    if (this._selectedNum != null && !this._cursorOnSelection()) {
       this._enqueueCursorSyncJump('native-sync-jump', send, abort);
       return;
     }
@@ -2660,6 +2660,17 @@ ListSession.prototype = {
     return this._refuseText('text');
   },
 
+  // Whether PTT's cursor is known to be on the selected article, so a key
+  // that acts on the cursor row can go out without moving it there first.
+  // `_serverNum` is where the last landing left PTT's cursor; a command still
+  // on the wire (a background read's number jump or page key) moves it again
+  // before a key sent now arrives, so the cursor is known only while the
+  // queue is idle. Otherwise the caller's number jump queues behind that
+  // command and moves the cursor back.
+  _cursorOnSelection: function() {
+    return this._selectedNum != null && this._selectedNum === this._serverNum && this._queue.idle;
+  },
+
   // A sync jump that continues with `next` however it lands.
   _enqueueCursorSyncJumpThen: function(kind, next) {
     this._enqueueCursorSyncJump(kind, next, next, next);
@@ -2775,7 +2786,7 @@ ListSession.prototype = {
       });
       return;
     }
-    if (num == null || num === this._serverNum) {
+    if (num == null || this._cursorOnSelection()) {
       // No selection (nothing to jump to) or the real cursor is already on
       // the selection — skip the sync leg (one round-trip).
       this._enqueueLeaveKey();
@@ -2810,7 +2821,7 @@ ListSession.prototype = {
     };
     // A 類鍵幾乎都是**對真游標所在那一列**動作的（thread 家族從游標找關聯文、
     // t 標記游標那一列），本地導覽零網路 ⇒ 真游標落後時必須先跳號同步。
-    if (this._selectedNum != null && this._selectedNum !== this._serverNum) {
+    if (this._selectedNum != null && !this._cursorOnSelection()) {
       this._enqueueCursorSyncJump('inplace-sync-jump', send, function() {
         self._fail('操作逾時');
       });
@@ -3071,7 +3082,7 @@ ListSession.prototype = {
   // was deleted or renumbered meanwhile) the list stays as it is and PTT's
   // selection counts as unknown; opening an article runs its own check.
   _alignServerCursor: function() {
-    if (this._selectedNum == null || this._selectedNum === this._serverNum) return;
+    if (this._selectedNum == null || this._cursorOnSelection()) return;
     this._enqueueCursorSyncJumpThen('align-sync-jump', function() {});
   },
 
