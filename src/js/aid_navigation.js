@@ -686,6 +686,7 @@ AidNavigation.prototype = {
       'goto'
     );
     run.external = true;
+    run.presentsList = !!(opts && opts.presentsList);
     this._hint('前往 ' + board + ' 看板…', PROGRESS_HINT_MS);
     this._begin(run);
     return true;
@@ -706,7 +707,7 @@ AidNavigation.prototype = {
         aid: post.aid,
         bookmark: recordFor(this._core).begin('article-switch-return', this._ctx())
       };
-    return this.startBoard(board, {}, (result) => {
+    return this.startBoard(board, { presentsList: true }, (result) => {
       if (result.ok) this._recovery = null;
       else if (origin) this._recover(origin);
     });
@@ -1614,10 +1615,12 @@ AidNavigation.prototype = {
   _finishGoto: function(run) {
     this.active = false;
     this.opHint = null;
-    // Every goto run ends on a list its last step verified, so the list session
-    // presents it at once (landed): waiting for the idle probe would leave PTT's
-    // own list on the grid in between (#262).
-    recordFor(this._core).releaseExternal({ landed: true });
+    // A run that ends on the board's list its last step verified (the board
+    // switch, #262) has the list session present it at once (landed): waiting
+    // for the idle probe would leave PTT's own list on the grid in between. The
+    // other goto runs (shortcut search, thread jumps, agent tools) keep the
+    // quiet wait: their callers finish the page change themselves.
+    recordFor(this._core).releaseExternal(run.forList || run.presentsList ? { landed: true } : undefined);
     this._history.invalidate();
     this._updateBackButton();
     if (!this._quietEnd) this._hint('已進入 ' + run.target.board + ' 看板', 1200);
