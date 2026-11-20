@@ -322,6 +322,26 @@ async function installNestedServer(page, session) {
       rows[termRows - 1] = '▄'.repeat(15) + ' 請按任意鍵繼續 ' + '▄'.repeat(15);
       return rows;
     };
+    // bbs.c#view_postinfo over the screen: a 5-row box (QUERY_ARTICLE_URL),
+    // the row next to it cleared, the right border printed at column 76 over
+    // the content rows. `line`: the screen row of the article (crs_ln + 3).
+    // `noAid`: fn2aidu fails and the AID row is a bare frame line; no `fn`:
+    // the board gives no web address.
+    const postInfoRows = (article, line, termRows) => {
+      const bLines = termRows - 1;
+      let area = line + 1;
+      if (area + 5 > bLines || line >= Math.floor(bLines * 2 / 3)) area -= 6;
+      const content = text => padCells(text, 76) + '│';
+      const head = `│ 文章代碼(AID): #${article.aid} (Test) [ptt.cc] `;
+      return {
+        [area > line ? line - 1 : line + 1]: '',
+        [area]: '┌' + '─'.repeat(37) + '┐',
+        [area + 1]: article.noAid ? content('│') : content(head + article.title.slice(0, 75 - cellWidth(head)) + ' '),
+        [area + 2]: content(article.fn ? `│ 文章網址: https://www.ptt.cc/bbs/Test/${article.fn}.html` : '│ 本看板目前不提供文章網址 '),
+        [area + 3]: content(`│ 這一篇文章值 ${article.push || 0} Ptt幣`),
+        [area + 4]: '└' + '─'.repeat(24) + ' [再按 Q 切換價格列表]  ─┘'
+      };
+    };
     const frame = (fullRepaint = false) => {
       const termRows = session.dynamicRows ? state.applicationRows : 24;
       const bodyRows = termRows - 4;
@@ -385,7 +405,11 @@ async function installNestedServer(page, session) {
         });
         cursor = [4 + state.cursor - start, 1];
         if (state.surface === 'info') {
-          rows[18] = `│ 文章代碼(AID): #${state.open.aid} (Test) [ptt.cc] ${state.open.title}`;
+          // From the list the box sits under the cursor row (above it past
+          // two thirds of the screen); from an article PTT asked for it at
+          // b_lines-3, after read_post left the pager.
+          const line = state.infoFrom === 'list' ? 3 + state.cursor - start : termRows - 1;
+          Object.assign(rows, postInfoRows(state.infoOf, line, termRows));
           rows[termRows - 1] = '請按任意鍵繼續';
           cursor = [termRows, 1];
         } else if (state.surface === 'prompt') {
@@ -539,7 +563,15 @@ async function installNestedServer(page, session) {
       }
       const head = rest[0];
       if (head === ' ' && ['info', 'empty', 'missing'].includes(state.surface)) state.surface = 'list';
-      else if (head === 'Q' && state.surface === 'article') state.surface = 'info';
+      else if (head === 'Q' && state.surface === 'article') {
+        state.surface = 'info';
+        state.infoFrom = 'article';
+        state.infoOf = state.open;
+      } else if (head === 'Q' && state.surface === 'list' && selected()) {
+        state.surface = 'info';
+        state.infoFrom = 'list';
+        state.infoOf = selected();
+      }
       else if (head === '\x11' && state.surface === 'list') {
         const author = selected()?.author;
         if (author && !state.goneAuthors.has(author)) {

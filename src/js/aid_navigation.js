@@ -62,6 +62,7 @@ import {
   parsePostInfoAid,
   parseArticleUrlLine,
   parsePostInfoUrl,
+  parsePostInfoBox,
   isCrossPostHeaderLine
 } from './aid_parse';
 import { aidPostTime, isAidc } from './aid_codec';
@@ -106,6 +107,50 @@ export function isMainMenuRow(rowText) {
 // The board's 進板畫面 tail: mbbsd/bbs.c#Read → pressanykey(). Same literals
 // term_buf.setPageState matches for pageState 5.
 const PRESS_ANY_KEY_RE = /請按任意鍵繼續|請按 空白鍵 繼續/;
+
+// The `Q` of the post-info transaction (AidNavigation.queryPostAid), also sent
+// by the article information over the easy-reading list (post_info.js) as a
+// step of the list's own sequence. The three non-obvious constraints — no
+// fullRepaint, a pressanykey tail IS the answer "this post has no AID", and
+// the box may only be dismissed with KEY_DISMISS (the caller's job) — exist in
+// this one place. The answer is { info, box }: info { aid, board } (board may
+// be null) or null. opts.wholeBox: wait for the box's closing pressanykey and
+// answer with the whole box too (aid_parse.parsePostInfoBox; null with no
+// box), not as soon as the AID line shows.
+export function postInfoQueryStep(opts) {
+  const wholeBox = !!(opts && opts.wholeBox);
+  return {
+    keys: 'Q',
+    // NO fullRepaint: the appended \f would be eaten by view_postinfo's
+    // closing pressanykey() and the box would be gone by the time the screen
+    // settles — we would read the list back instead of the AID.
+    fullRepaint: false,
+    timeoutMs: STEP_PROBE_AFTER_MS,
+    probeTimeoutMs: STEP_PROBE_WINDOW_MS,
+    hardTimeoutMs: STEP_HARD_MS,
+    expect: function(snapshot, facts) {
+      const lastRow = facts.rowTexts[facts.rows - 1] || '';
+      const pressed = PRESS_ANY_KEY_RE.test(lastRow);
+      if (wholeBox && !pressed) return false;
+      let info = null;
+      let fromUrl = null;
+      for (let r = 0; r < facts.rowTexts.length; ++r) {
+        if (!info) info = parsePostInfoAid(facts.rowTexts[r]);
+        if (!fromUrl) fromUrl = parsePostInfoUrl(facts.rowTexts[r]);
+      }
+      // 同一個框的第二列（bbs.c:3713）帶著完整網址。currboard 為空時第一列的
+      // 板名會印「不明」（bbs.c:3701），網址裡的看板卻一直是對的 ⇒ 補得回來。
+      if (info && !info.board && fromUrl)
+        info = { aid: info.aid, board: fromUrl.board };
+      if (!info && fromUrl) info = fromUrl;
+      if (wholeBox) return { info: info, box: parsePostInfoBox(facts.rowTexts) };
+      if (info) return { info: info };
+      // Box is up but this post has no AID (bbs.c:3707 prints a bare frame
+      // line). A real answer — stop waiting and move on without an upgrade.
+      return pressed ? { info: null } : false;
+    }
+  };
+}
 
 // Escape presses allowed before giving up. 站內信 needs 3 (信件內容 → 信件列表 →
 // 郵件選單 → 主功能表); the slack covers deeper nests. A cap is mandatory: with an
@@ -1343,48 +1388,22 @@ AidNavigation.prototype = {
     });
   },
 
-  // The Q post-info transaction itself, shared by the jump's anchor upgrade
-  // above and by "複製本篇連結" (deep_link_controller): the three non-obvious
-  // constraints — no fullRepaint, a pressanykey tail IS the answer "this post
-  // has no AID", and the box may only be dismissed with KEY_DISMISS — must
-  // exist in exactly one place.
+  // The Q post-info transaction itself (postInfoQueryStep), shared by the
+  // jump's anchor upgrade above, by "複製本篇連結" (deep_link_controller) and
+  // by the article information over an article (post_info.js).
   //
-  // onDone receives { aid, board } (board may be null) or null. Dismissing the
+  // onDone receives { aid, board } (board may be null) or null, and with
+  // handlers.box the whole box (postInfoQueryStep's wholeBox). Dismissing the
   // box is the CALLER's job: the jump folds it into its next command, a caller
   // with no next command must send dismissPostInfo() itself or the user is left
   // staring at the box.
   queryPostAid: function(handlers) {
     this._queue.enqueue({
-      keys: 'Q',
+      ...postInfoQueryStep({ wholeBox: !!handlers.box }),
       kind: handlers.kind || 'aid-post-info',
-      // NO fullRepaint: the appended \f would be eaten by view_postinfo's
-      // closing pressanykey() and the box would be gone by the time the screen
-      // settles — we would read the list back instead of the AID.
-      fullRepaint: false,
       onFlushed: handlers.onFlushed,
-      timeoutMs: STEP_PROBE_AFTER_MS,
-      probeTimeoutMs: STEP_PROBE_WINDOW_MS,
-      hardTimeoutMs: STEP_HARD_MS,
-      expect: function(snapshot, facts) {
-        let info = null;
-        let fromUrl = null;
-        for (let r = 0; r < facts.rowTexts.length; ++r) {
-          if (!info) info = parsePostInfoAid(facts.rowTexts[r]);
-          if (!fromUrl) fromUrl = parsePostInfoUrl(facts.rowTexts[r]);
-        }
-        // 同一個框的第二列（bbs.c:3713）帶著完整網址。currboard 為空時第一列的
-        // 板名會印「不明」（bbs.c:3701），網址裡的看板卻一直是對的 ⇒ 補得回來。
-        if (info && !info.board && fromUrl)
-          info = { aid: info.aid, board: fromUrl.board };
-        if (info) return { info: info };
-        if (fromUrl) return { info: fromUrl };
-        // Box is up but this post has no AID (bbs.c:3707 prints a bare frame
-        // line). A real answer — stop waiting and move on without an upgrade.
-        const lastRow = facts.rowTexts[facts.rows - 1] || '';
-        return PRESS_ANY_KEY_RE.test(lastRow) ? { info: null } : false;
-      },
       onDone: function(result) {
-        handlers.onDone(result.info);
+        handlers.onDone(result.info, result.box);
       },
       onFail: function(reason) {
         handlers.onFail(reason);

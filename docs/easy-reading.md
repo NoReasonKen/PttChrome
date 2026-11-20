@@ -63,6 +63,13 @@
   - **頁面與離開**：同查詢網友頁（上面）：疊在列表上、列表留在底下；離開送一個空白鍵，列表立刻出現、選取不變，PTT 睡完重畫列表後列表好讀才收回畫面（`ListSession.showsHeldList` 認得 PTT 畫回的是同一個看板的列表）。
   - **失敗都留在列表並提示，不送猜的鍵**：PTT 不認得這個作者（帳號已不存在：`my_query` 什麼都不畫，只有 `\f` 重畫列表）⇒「查不到這位作者（帳號可能已不存在）」，`Ctrl-Q` 之後什麼都不送；使用限制同查詢網友；游標同步失敗（逾時、列表變動）⇒ `Ctrl-Q` 不送，列表停在失敗狀態並提示，下拉重新整理；`Ctrl-Q` 沒有回答 ⇒ 只在 PTT 畫著查詢畫面或使用限制時才補一個 Enter（文章列表上的 Enter 會開文），否則什麼都不送。不在列表好讀的文章列表時提示「只能在好讀的文章列表查詢作者」。
   - **依據**：流程照 pttbbs 原始碼（`read.c#read_cmd_query` 對游標列呼叫 `talk.c#my_query`：找不到使用者回 `DONOTHING` 不畫任何東西，查到時從第 1 列清到底再畫，第 0 列的看板標題留著），沒有實機的作者查詢畫面。e2e 用受控文章列表（`tests/e2e/helpers/article_shortcut_search.js` 的 `goneAuthors`、`querySleepMs`，查詢畫面與 `user_list.js` 的一致），`tests/e2e/offline/mobile_author_query.offline.spec.js`（手機長按、返回、找不到作者）與 `author_query.offline.spec.js`（桌機 `Ctrl-Q`、右鍵選單）。
+- **文章資訊**（#261，`src/js/post_info.js`）：PTT 的 `Q`（`bbs.c#view_postinfo`）畫一個框，裡面是文章代碼（AID）、文章網址、價格（或匿名管理編號、投票限制），按任意鍵關掉。好讀把這個框讀出來，做成 app 自己的 sheet（手機）或對話框（桌機）：文章代碼（`#AID (看板)`，與「複製文章代碼」同一格式）與文章網址各有一顆複製鈕；看板不提供網址時寫 PTT 印的那句（「本看板目前不提供文章網址」等）；價格那類的其他列照 PTT 的字列出來。PTT 的框本身一幀都不畫（`term_view._navigationHeld`）。
+  - **入口**：文章列表（不含信箱與線上使用者列表）按 `Q` 查選取的那一篇；右鍵選單（桌機）與卡片長按選單（手機）在文章列上多一項「文章資訊」，緊跟在查詢作者後面，查那一列（先選取它）。好讀文章裡按 `Q`；桌機右鍵選單與手機長按選單都在「複製本篇文章連結」後面多一項「文章資訊」，手機的工具列「更多」也有（`mobile_toolbar` 的 `postInfo`）。不論從哪個入口打開，焦點都落在資訊本身而不是複製鈕，所以打開時沒有焦點框；按 Tab 才進到複製鈕。信件裡的 `Q` 維持「目前不支援這個按鍵」提示（信件沒有文章資訊）；線上使用者列表的 `Q` 是它自己的查詢網友。各入口共用同一個判準（`PostInfo.listAvailable`／`articleAvailable`），能問的時候才出現。
+  - **送給 PTT 的鍵**（每一鍵都等前一鍵的回答才送，`docs/pttbbs-screen-protocol.md` §8.2）：列表上先把 PTT 的游標移到選取的那篇（與查詢作者同一條同步腿，`ListSession.beginPostInfo`），送 `Q`（**不帶** `\f`，否則 `pressanykey()` 會把它吃掉、框還沒讀到就關了），等框畫完、底列出現「請按任意鍵繼續」，再送一個空白鍵關掉它（永遠是空白，不是 `Q`——`Q` 會切換 PTT 的價格列表模式——也不是 `\f` 或 `←`），等 PTT 畫回同一個看板的列表，列表好讀收回畫面，列和選取都不變（`resumeAfterHelp`）。文章裡的 `Q` 會讓 PTT 離開 pager，框畫在文章上、關掉後是列表（`read_post` 回 `FULLUPDATE`），所以和「複製本篇連結」走同一條：`Q` ⇒ 空白 ⇒ Enter 重開同一篇，回到原本讀的那一列（`aid_navigation.queryPostAid`／`reopenAfterPostInfo`，閱讀紀錄 `post-info`）；過程中文章一直留在畫面上（`ArticleHold`）；重開的文章是從頂端重新讀的，所以在讀回原本那一列之前，畫面上一直蓋著原本那一列的文章副本（`ArticleHold.run` 的 `cover`，`EasyReading.restorePending` 為假才拿掉），不會先閃一下文章開頭。框一讀到 sheet 就開，PTT 在底下被關掉，所以關 sheet 什麼都不送，之後的按鍵照常給列表或文章。
+  - **一律問 PTT**：文章本文末的「※ 文章網址」雖然免費換算得到 AID（`aid_navigation.findLocalPostAid`），價格與匿名管理編號只有 PTT 的框有；兩個入口都按 `Q`，sheet 的欄位才一致。
+  - **沒有文章代碼**：框裡 AID 那列只有 `│`（`fn2aidu` 失敗）⇒ 提示「這篇文章沒有文章資訊」，不開 sheet，框照樣用空白關掉。
+  - **失敗都留在原處並提示，不送猜的鍵**：列表上游標同步失敗 ⇒ `Q` 不送；`Q` 沒有回答 ⇒ 提示「讀不到文章資訊」，列表收回畫面，沒看到框就不送空白；文章裡任何一步失敗 ⇒ 文章被拿住並提示「讀不到文章資訊：下拉重新整理以重試」（`ArticleHold.fail`）。別的操作正在跑時只給提示，什麼都不送；從 `Q` 到列表回來的整段期間終端按鍵與點擊都擋下（`setModalOpen('postInfo')`），忙碌提示是「讀取文章資訊中，請稍候…」。
+  - **依據**：框的各列照 pttbbs 原始碼（`bbs.c#view_postinfo`：右框線印在第 76 欄、AID 那列在 `fn2aidu<=0` 時只有 `│`、網址列的三種替代輸出、價格／匿名／投票限制三選一），解析是 `aid_parse.parsePostInfoBox`。e2e 用受控文章列表（`tests/e2e/helpers/article_shortcut_search.js`），`tests/e2e/offline/post_info.offline.spec.js`（桌機）與 `mobile_post_info.offline.spec.js`（手機）。
 - **依據**：列表、表頭與底列的顏色、好友代號的亮青、空好友列表的底列、說明畫面、查詢畫面與 `Q` 提示都對照過實機畫面；數字跳號、列表兩端的方向鍵與翻頁、空視圖的游標位置、`< 離站中..>` 列的樣子沒有實機畫面。e2e 用 `tests/e2e/helpers/user_list.js` 的受控列表（虛構的使用者），`tests/e2e/offline/mobile_user_list.offline.spec.js`。
 
 給列表以外的呼叫端的介面（純函式在 `src/js/user_list.js`，除非另註）：
@@ -85,6 +92,8 @@
 | `promptUserQuery(core)`（`user_query.js`） | 開「查詢網友」輸入 sheet，送出時查詢那個代號（`Q`、「更多」、右鍵選單、指令面板共用）。開了回 `true`；不行時回 `false` 並提示 |
 | `queryAuthor(core, target)`（`user_query.js`） | 查詢文章列表上選取那篇的作者（`Ctrl-Q`）；`target`（`ListSession.authorQueryTargetAtRow` 給的那一列，右鍵／長按選單）先被選取。送出了回 `true`；不行時回 `false` 並提示 |
 | `ListSession.authorQueryTargetAtRow(row)` | 右鍵／長按那一列可查詢的作者 `{ num, pinnedKey, author }`，不能查時 `null`（選單項不出現） |
+| `showListPostInfo(core, target)`／`showArticlePostInfo(core)`（`post_info.js`） | 文章列表選取那篇（`target` 是 `ListSession.postInfoTargetAtRow` 給的那一列，先被選取）／好讀文章本身的文章資訊（`Q`）。送出了回 `true`；不行時回 `false` 並提示 |
+| `parsePostInfoBox(rowTexts)`（`aid_parse.js`） | PTT 的 `Q` 框 ⇒ `{ aid, board, url, urlNote, details }`（沒有 AID 時 `aid` 是 `null`），畫面上沒有完整的框時 `null` |
 
 「呈現」的區還沒做完的部分是缺口：在補上之前每次進去都顯示同樣的 PTT 原生畫面，原生畫面守門（`tests/e2e/helpers/native_grid_guard.js`）以各自的 issue 放行。目前沒有缺口：信箱（#196）與線上使用者（#199）都由首頁儀表板的入口進去、由好讀呈現，守門裡沒有任何主功能表區的放行條目。「不呈現」的區（含私人信件區與休閒聊天區的子選單）沒有入口。守護 `tests/e2e/offline/mobile_easy_reading_gaps.offline.spec.js`（首頁按不呈現區的鍵 ⇒ 擋下、提示、一個 byte 都不送、沒有原生畫面）、`mobile_user_list_entry.offline.spec.js`（線上使用者的入口、頁面堆疊、按鍵政策與原地切換）。
 

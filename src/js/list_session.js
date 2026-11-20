@@ -101,6 +101,7 @@ import { PAGE } from './page_stack';
 import { searchKeyOpensSheet } from './article_search';
 import { selectedUserId } from './user_list';
 import { queryUser, promptUserQuery, queryAuthor } from './user_query';
+import { showListPostInfo } from './post_info';
 
 // A plain `←`, for a key that leaves as it does (article_gestures.handleBack).
 const PLAIN_BACK_EVENT = Object.freeze({
@@ -2083,6 +2084,11 @@ ListSession.prototype = {
       return;
     }
 
+    if (key.class === 'post-info') {
+      showListPostInfo(this._core);
+      return;
+    }
+
     if (key.class === 'native-inplace') {
       // A 類鍵：凍結交易（畫面凍住 → 送真鍵 → 採用真落點 → 直接回 buffer）。
       this._beginInplaceTransaction(key.bytes);
@@ -2190,13 +2196,23 @@ ListSession.prototype = {
   // native excursion would send Ctrl-Q right behind it. The jump is queued
   // behind it instead, and its landing checks the row's author and title.
   beginAuthorQuery: function(steps, onSyncFail) {
+    this._beginCursorQuery(steps, onSyncFail, 'author-query');
+  },
+
+  // The selected article's information (#261, post_info.js): `Q` acts on
+  // PTT's cursor row as Ctrl-Q does, so it goes out as beginAuthorQuery's.
+  beginPostInfo: function(steps, onSyncFail) {
+    this._beginCursorQuery(steps, onSyncFail, 'post-info');
+  },
+
+  _beginCursorQuery: function(steps, onSyncFail, kind) {
     this._spendLayer('nativePassthrough');
     if (this._selectedNum != null) this._serverNum = null;
     this._helpBoard = this._boardName;
     this._helpSelection = { num: this._selectedNum, pinnedKey: this._selectedPinnedKey };
     const self = this;
     this._beginPassthroughBytes(steps, {
-      kind: 'author-query',
+      kind: kind,
       hint: null,
       onSyncFail: function() {
         self._helpBoard = null;
@@ -2224,17 +2240,68 @@ ListSession.prototype = {
   // ({ num, pinnedKey, author }), or null when it has no author PTT's cursor
   // can be moved to.
   _authorQueryTarget: function(abs) {
+    const lines = this._termBuf.listLines || [];
+    const author = abs != null && lines[abs] ? parseListAuthor(rowToText(lines[abs])) : null;
+    if (!author) return null;
+    const at = this._cursorTargetAt(abs);
+    return at && { num: at.num, pinnedKey: at.pinnedKey, author: author };
+  },
+
+  // The listLines row `abs` as a place PTT's cursor can be moved to
+  // ({ num, pinnedKey }), or null.
+  _cursorTargetAt: function(abs) {
     if (abs == null || abs < 0) return null;
     const lines = this._termBuf.listLines || [];
     if (!lines[abs]) return null;
-    const author = parseListAuthor(rowToText(lines[abs]));
-    if (!author) return null;
     const num = (this._termBuf.listLineNums || [])[abs];
-    if (num != null) return { num: num, pinnedKey: null, author: author };
+    if (num != null) return { num: num, pinnedKey: null };
     // A pinned row is reached from a numbered one (_enqueuePinnedCursorSync).
     const pinnedKey = this._pinnedKeyAt(abs);
     if (pinnedKey == null || bufferEdgeNum(this._termBuf.listLineNums, 1) == null) return null;
-    return { num: null, pinnedKey: pinnedKey, author: author };
+    return { num: null, pinnedKey: pinnedKey };
+  },
+
+  // The article at `abs` as a target of `Q` (#261): { num, pinnedKey, title },
+  // the title telling the article apart when the list has changed since; or
+  // null. Any article row has information, an author or not (a deleted one).
+  _postInfoTarget: function(abs) {
+    if (!this._authorQueryList()) return null;
+    const at = this._cursorTargetAt(abs);
+    if (!at) return null;
+    const title = parseListTitleRaw(rowToText(this._termBuf.listLines[abs]));
+    return { num: at.num, pinnedKey: at.pinnedKey, title: title };
+  },
+
+  // The selected article as a target of `Q`, or null.
+  selectedPostInfoTarget: function() {
+    return this._postInfoTarget(this._resolveSelectedIndex());
+  },
+
+  // 文章資訊 in the context menu (#261): the article on render row
+  // `renderRow`, or null (the entry is hidden). Pure query, as
+  // authorQueryTargetAtRow.
+  postInfoTargetAtRow: function(renderRow) {
+    if (this.state !== 'active' || this._renderMode !== 'buffer') return null;
+    const idx = renderRow - this.headerRows();
+    if (idx < 0) return null;
+    const view = this.getListView();
+    if (!view || idx >= view.seq.length) return null;
+    return this._postInfoTarget(view.seq[idx]);
+  },
+
+  // Select the article of a post-info target (the context menu's row).
+  // Returns whether it is still listed.
+  selectPostInfoTarget: function(target) {
+    if (!target) return false;
+    const nums = this._termBuf.listLineNums || [];
+    const abs = target.num != null ? nums.indexOf(target.num) : this._pinnedIndexOf(target.pinnedKey);
+    const now = this._postInfoTarget(abs);
+    if (!now || now.title !== target.title) return false;
+    if (this._selectedNum === now.num && this._selectedPinnedKey === now.pinnedKey) return true;
+    this._selectedNum = now.num;
+    this._selectedPinnedKey = now.pinnedKey;
+    this._forceRedraw();
+    return true;
   },
 
   // The author of the selected article, for Ctrl-Q, or null.
@@ -3332,6 +3399,8 @@ ListSession.prototype = {
     // mail_cmd_read (→ Enter r l L); its other commands (reply, forward,
     // delete, marks…) and the article list's in-place keys are refused below.
     const mail = this.isMailList();
+    // Q shows the selected article's information (#261, post_info.js).
+    if (!mail && e.key === 'Q') return { class: 'post-info' };
     if (mail && (e.key === 'r' || e.key === 'l' || e.key === 'L')) return { class: 'open' };
     // Navigation synonyms follow pttbbs read.c:858-902 (' ' / 'N' / KEY_PGDN /
     // Ctrl-F = next page, 'P' / KEY_PGUP / Ctrl-B = prev page, 'p'/'k'/KEY_UP,

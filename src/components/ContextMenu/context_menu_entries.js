@@ -44,6 +44,12 @@ export function buildContextMenuEntries(p) {
       `${i18n("authorQuery_title")} '${p.authorQueryTarget.author}'`,
       (e) => p.onMenuSelect("queryAuthor", e),
     );
+  // 「文章資訊」（#261）：那一列文章的 Q 資訊框（js/post_info.js）。桌機右鍵、手機長按
+  // 都在這裡。判定在 list_session.postInfoTargetAtRow。
+  if (p.normalEnabled && p.postInfoTarget)
+    item("postInfo", i18n("postInfo_title"), (e) =>
+      p.onMenuSelect("postInfo", e),
+    );
   if (p.normalEnabled && p.titleBlacklistText)
     item(
       "addTitleBlacklist",
@@ -117,6 +123,7 @@ export function buildContextMenuEntries(p) {
     p.normalEnabled &&
     (p.authorBlacklistId ||
       p.authorQueryTarget ||
+      p.postInfoTarget ||
       p.titleBlacklistText ||
       p.markReadTarget ||
       p.boardMarkReadTarget ||
@@ -225,6 +232,12 @@ export function buildContextMenuEntries(p) {
         i18n("cmenu_copyArticleLink"),
         (e) => p.onMenuSelect("copyArticleLink", e),
         { preview: previews.copyArticleLink, copy: true },
+      );
+    // 文章本身的「文章資訊」（#261，postInfo.articleAvailable）：桌機右鍵、手機長按；
+    // 手機的工具列「更多」也有。
+    if (p.articlePostInfoEnabled)
+      item("articlePostInfo", i18n("postInfo_title"), (e) =>
+        p.onMenuSelect("articlePostInfo", e),
       );
     // 長推文一鍵發送：打一大段話，自動依 PTT 單則上限分段依序推出。
     // 只在文章畫面出現（要按得到 X），好讀開著才有。

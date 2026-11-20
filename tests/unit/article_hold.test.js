@@ -3,7 +3,7 @@
 // wait, and pull-to-refresh retries from what PTT shows.
 // real-input: tests/e2e/offline/mobile_thread_jump.offline.spec.js
 import { ArticleHold, LANDING_MS } from '../../src/js/article_hold';
-import { HiddenArticleRoute } from '../../src/js/hidden_article_route';
+import { HiddenArticleRoute, coverWithArticle } from '../../src/js/hidden_article_route';
 import { HeaderlessReopen } from '../../src/js/headerless_reopen';
 import { ScreenRefresh } from '../../src/js/screen_refresh';
 import { serializedOpHint } from '../../src/js/serialized_op_gate';
@@ -13,6 +13,11 @@ import { HINT_ERROR } from '../../src/js/status_hint';
 import { i18n, setupI18n } from '../../src/js/i18n';
 import { zh_TW } from '../../src/js/zh_TW_messages';
 import { en_US } from '../../src/js/en_US_messages';
+
+vi.mock('../../src/js/hidden_article_route', async (importOriginal) => ({
+  ...(await importOriginal()),
+  coverWithArticle: vi.fn(() => ({ destroy: vi.fn() })),
+}));
 
 const ROWS = 24;
 const READ_ROW = '  瀏覽 第 2/4 頁 ( 45%)  目前顯示: 第 23~45 行  (y)回應(X%)推文(h)說明(←)離開 ';
@@ -352,6 +357,70 @@ describe('Operation over the article', () => {
     expect(core.articleHold.holding).toBe(false);
     expect(core.articleHold.held).toBe(false);
     expect(core.view.navigationEnded).toHaveBeenCalled();
+  });
+});
+
+// An operation that opens the same article again (post_info's Q): easy reading
+// reads the reopened article from its top, so the article as it was covers the
+// reading area until the reading position has been restored.
+describe('Operation that reopens the article', () => {
+  let frames;
+  beforeEach(() => {
+    frames = [];
+    vi.stubGlobal('requestAnimationFrame', (cb) => frames.push(cb));
+  });
+  afterEach(() => vi.unstubAllGlobals());
+  const nextFrame = () => frames.splice(0).forEach((cb) => cb());
+  const runWithCover = () => {
+    const made = makeCore();
+    made.core.easyReading.restorePending = vi.fn(() => true);
+    expect(made.core.articleHold.run('postInfo', { cover: true })).toBe(true);
+    const cover = coverWithArticle.mock.results.at(-1).value;
+    return { ...made, cover };
+  };
+
+  test('keeps the article covered until the restore is applied', () => {
+    const { core, cover } = runWithCover();
+    core.articleHold.done('postInfo');
+    expect(core.articleHold.holding).toBe(false);
+    nextFrame();
+    expect(cover.destroy).not.toHaveBeenCalled();
+    core.easyReading.restorePending = vi.fn(() => false);
+    nextFrame();
+    expect(cover.destroy).toHaveBeenCalledTimes(1);
+    expect(frames).toEqual([]);
+  });
+
+  test('lifts the cover past LANDING_MS even if the restore never applies', () => {
+    const { core, cover } = runWithCover();
+    const now = Date.now();
+    core.articleHold.done('postInfo');
+    vi.spyOn(Date, 'now').mockReturnValue(now + LANDING_MS);
+    nextFrame();
+    vi.restoreAllMocks();
+    expect(cover.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  test('a failure hands the cover to the hold', () => {
+    const { core, cover } = runWithCover();
+    core.articleHold.fail('postInfo', { reason: 'timeout', message: 'postInfo_failedArticle' });
+    expect(core.articleHold.held).toBe(true);
+    expect(core.articleHold.cover).toBe(cover);
+    expect(cover.destroy).not.toHaveBeenCalled();
+  });
+
+  test('disconnection drops the cover', () => {
+    const { core, cover } = runWithCover();
+    core.articleHold.reset();
+    expect(cover.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  test('an operation without opts.cover covers nothing', () => {
+    const { core } = makeCore();
+    coverWithArticle.mockClear();
+    core.articleHold.run('longPush');
+    core.articleHold.done('longPush');
+    expect(coverWithArticle).not.toHaveBeenCalled();
   });
 });
 

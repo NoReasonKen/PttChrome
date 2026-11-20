@@ -15,6 +15,7 @@ import TitleBlacklistModal from "./TitleBlacklistModal";
 import LongPushProgressModal from "./LongPushProgressModal";
 import LongPushErrorModal from "./LongPushErrorModal";
 import AidBoardChoiceModal from "./AidBoardChoiceModal";
+import PostInfoModal from "./PostInfoModal";
 import FavSortModal from "./FavSortModal";
 import PixivLookup from "../PixivLookup";
 
@@ -102,6 +103,7 @@ import { refreshOffered } from "../../js/screen_refresh";
 import { userListToggleTarget } from "../../js/user_list";
 import { rememberSearch } from "../../js/search_history";
 import { promptUserQuery, queryAuthor } from "../../js/user_query";
+import { showArticlePostInfo, showListPostInfo } from "../../js/post_info";
 import { BoardSearchBridge } from "../../js/board_search_bridge";
 import { readSelectionText } from "../../render/screen_chunk";
 import { commentCardCopyText } from "../../render/comment_card";
@@ -184,6 +186,10 @@ const menuHandlerByEventKey = {
   // 查詢作者（文章列表，#254）：選取那一列再送 Ctrl-Q（js/user_query.js）。
   queryAuthor: (pttchrome, { authorQueryTarget }) =>
     queryAuthor(pttchrome, authorQueryTarget),
+  // 文章資訊（#261）：文章列表那一列（先選取再送 Q），或文章本身（js/post_info.js）。
+  postInfo: (pttchrome, { postInfoTarget }) =>
+    showListPostInfo(pttchrome, postInfoTarget),
+  articlePostInfo: (pttchrome) => showArticlePostInfo(pttchrome),
   // 看板列表：把右鍵那一列的看板設為已讀（跳號 → v）。目標在開選單當下就算好了。
   boardMarkRead: (pttchrome, { boardMarkReadTarget }) =>
     pttchrome.boardMarkRead.start(boardMarkReadTarget),
@@ -283,6 +289,11 @@ const initialState = {
   // 「查詢作者」的對象（{ num, pinnedKey, author } / null，#254）：
   // listSession.authorQueryTargetAtRow。
   authorQueryTarget: null,
+  // 「文章資訊」的文章列（{ num, pinnedKey, title } / null，#261）：
+  // listSession.postInfoTargetAtRow。
+  postInfoTarget: null,
+  // 文章畫面的「文章資訊」出不出現（postInfo.articleAvailable，#261）。
+  articlePostInfoEnabled: false,
   // 看板列表右鍵那一列的看板（{ num, name } / null），boardMarkRead.targetAtRow。
   boardMarkReadTarget: null,
   // The live layer's entry the menu was opened on (#124; NavigationStack
@@ -345,6 +356,9 @@ const initialState = {
   // 選「指定看板」後搜尋彈窗以看板種類開啟，searchAidTarget＝{ aid } 讓它只挑板名。
   aidChoice: null,
   searchAidTarget: null,
+  // Article information (#261, js/post_info.js): the box PTT drew, read
+  // ({ aid, board, url, urlNote, details }); null = closed.
+  postInfo: null,
   // Reordering the favorites (#221, board_list_session._askFavSort): the
   // confirmation sheet before PTT's `S` prompt.
   showsFavSort: false,
@@ -441,6 +455,7 @@ export const ContextMenu = ({ pttchrome }) => {
     state.showsSearch ||
     state.showsPalette ||
     !!state.aidChoice ||
+    !!state.postInfo ||
     state.showsFavSort ||
     state.showsAidJump ||
     !!state.longPushProgress ||
@@ -768,6 +783,16 @@ export const ContextMenu = ({ pttchrome }) => {
             pttchrome.userQuery?.authorAvailable?.() &&
             pttchrome.listSession.authorQueryTargetAtRow(pos.row)) ||
           null,
+        postInfoTarget:
+          (onScreen &&
+            normalEnabled &&
+            pttchrome.postInfo?.listAvailable?.() &&
+            pttchrome.listSession.postInfoTargetAtRow(pos.row)) ||
+          null,
+        articlePostInfoEnabled:
+          onScreen &&
+          !!normalEnabled &&
+          !!pttchrome.postInfo?.articleAvailable?.(),
         menuTarget:
           normalEnabled && prefs.highlightMenuTarget
             ? menuTargetFromElement(target)
@@ -829,6 +854,8 @@ export const ContextMenu = ({ pttchrome }) => {
         userListToggle: null,
         userQueryEnabled: false,
         authorQueryTarget: null,
+        postInfoTarget: null,
+        articlePostInfoEnabled: false,
         boardMarkReadTarget: null,
         layerEntry: null,
         menuTarget: null,
@@ -1095,6 +1122,24 @@ export const ContextMenu = ({ pttchrome }) => {
       pttchrome.openAidBoardChoice = noop;
     };
   }, [pttchrome, openAidBoardChoice]);
+  // Article information (js/post_info.js, #261): the box PTT drew, read.
+  const openPostInfo = useCallback(
+    (info) => {
+      update({ ...initialState, postInfo: info });
+      return true;
+    },
+    [update],
+  );
+  useEffect(() => {
+    pttchrome.openPostInfo = openPostInfo;
+    return () => {
+      pttchrome.openPostInfo = noop;
+    };
+  }, [pttchrome, openPostInfo]);
+  const onPostInfoHide = useCallback(
+    () => update({ postInfo: null }),
+    [update],
+  );
   // `S` on the easy-reading favorites (board_list_session._askFavSort): true =
   // the sheet took it.
   const openFavSortChoice = useCallback(() => {
@@ -1693,6 +1738,8 @@ export const ContextMenu = ({ pttchrome }) => {
     userListToggle,
     userQueryEnabled,
     authorQueryTarget,
+    postInfoTarget,
+    articlePostInfoEnabled,
     boardMarkReadTarget,
     layerEntry,
     replyCommentTarget,
@@ -1719,6 +1766,7 @@ export const ContextMenu = ({ pttchrome }) => {
     searchKind,
     searchKinds,
     aidChoice,
+    postInfo,
     searchAidTarget,
     searchSwitchBoard,
     showsFavSort,
@@ -1761,6 +1809,8 @@ export const ContextMenu = ({ pttchrome }) => {
         userListToggle={userListToggle}
         userQueryEnabled={userQueryEnabled}
         authorQueryTarget={authorQueryTarget}
+        postInfoTarget={postInfoTarget}
+        articlePostInfoEnabled={articlePostInfoEnabled}
         boardMarkReadTarget={boardMarkReadTarget}
         menuAnchor={menuAnchor}
         articleLinkEnabled={articleLinkEnabled}
@@ -1857,6 +1907,12 @@ export const ContextMenu = ({ pttchrome }) => {
         show={showsAidJump}
         onHide={onAidJumpHide}
         onConfirm={onAidJumpConfirm}
+        mobile={mobile}
+        pttchrome={pttchrome}
+      />
+      <PostInfoModal
+        info={postInfo}
+        onHide={onPostInfoHide}
         mobile={mobile}
         pttchrome={pttchrome}
       />

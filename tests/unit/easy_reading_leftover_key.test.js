@@ -2,6 +2,9 @@
 // reading (#160): a help or reply key keeps the native route, every other PTT command
 // is refused, and keys PTT never sees are left to the browser or the app.
 import { EasyReading, articleLeftoverKey, articleReadingKey, articleWouldRefuse } from "../../src/js/easy_reading";
+import { showArticlePostInfo } from "../../src/js/post_info";
+
+vi.mock("../../src/js/post_info", () => ({ showArticlePostInfo: vi.fn(() => true) }));
 
 const ev = (key, mods = {}) => ({
   key,
@@ -18,7 +21,7 @@ test("help and reply keys keep the native route", () => {
 });
 
 test("other PTT command keys are refused", () => {
-  for (const k of ["s", "#", "/", ";", ":", "Q", "E", "T", "v", "o", "p", "5", "c"])
+  for (const k of ["s", "#", "/", ";", ":", "E", "T", "v", "o", "p", "5", "c"])
     expect(articleLeftoverKey(ev(k))).toBe("refuse");
   for (const k of ["Escape", "Delete", "Insert"]) expect(articleLeftoverKey(ev(k))).toBe("refuse");
 });
@@ -56,7 +59,7 @@ describe("articleWouldRefuse (help menu rows over an article)", () => {
   });
 
   test("refused, swallowed and find keys are not", () => {
-    for (const key of ["Q", "E", "c", "Tab", "/"]) expect([key, articleWouldRefuse({ key }, prefs)]).toEqual([key, true]);
+    for (const key of ["E", "c", "Tab", "/"]) expect([key, articleWouldRefuse({ key }, prefs)]).toEqual([key, true]);
     expect(articleWouldRefuse({ key: "x", ctrlKey: true }, prefs)).toBe(true);
     expect(articleWouldRefuse({ key: "u", ctrlKey: true }, prefs)).toBe(true);
   });
@@ -182,6 +185,42 @@ describe("switch board over an article (#262)", () => {
     const e = press(er);
     expect(open).not.toHaveBeenCalled();
     expect(e.preventDefault).toHaveBeenCalled();
+    expect(hints).toHaveLength(1);
+  });
+});
+
+// #261: Q shows the article's information (post_info.js); a mail has none, and
+// refuses it with the hint.
+describe("Q over an article", () => {
+  beforeEach(() => showArticlePostInfo.mockClear());
+  const reader = (mail) => {
+    const hints = [];
+    const er = Object.create(EasyReading.prototype);
+    er._core = { listSession: { state: "suspended", isMailList: () => mail } };
+    er._view = { flashListHint: (...a) => hints.push(a) };
+    er.enterNativeRoute = () => { throw new Error("Q has no native route"); };
+    return { er, hints };
+  };
+
+  test("Q is the article information, and the help sheet offers it", () => {
+    expect(articleLeftoverKey(ev("Q"))).toBe("post-info");
+    expect(articleWouldRefuse({ key: "Q" }, {})).toBe(false);
+    const { er, hints } = reader(false);
+    expect(er._leftoverKey(ev("Q"))).toBe(true);
+    expect(showArticlePostInfo).toHaveBeenCalledWith(er._core);
+    expect(hints).toEqual([]);
+  });
+
+  test("Ctrl-Q is not it", () => {
+    expect(articleLeftoverKey(ev("q", { ctrlKey: true }))).toBe("refuse");
+  });
+
+  test("a mail refuses Q with the hint", () => {
+    expect(articleLeftoverKey(ev("Q"), { mail: true })).toBe("refuse");
+    expect(articleWouldRefuse({ key: "Q" }, {}, { mail: true })).toBe(true);
+    const { er, hints } = reader(true);
+    expect(er._leftoverKey(ev("Q"))).toBe(true);
+    expect(showArticlePostInfo).not.toHaveBeenCalled();
     expect(hints).toHaveLength(1);
   });
 });
