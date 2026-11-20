@@ -41,6 +41,44 @@ const state = (page) => page.evaluate((sel) => {
   };
 }, VIEW);
 
+// state() after a fling, once a list near the top of its scroll has come to
+// rest: its scroll position and the rows it holds stay the same for a few
+// frames, and while it rests at the top of its scroll its reads are answered
+// (the rows read in above, or the read that finds the top). A drag that
+// starts at the top of the scroll is a pull, and a pull refreshes the list
+// (pull_refresh.js), which reads it again away from #1. Judged while still
+// gliding or reading there, the list looked short of the top, and the next
+// fling refreshed it. Farther down, flings follow one another without a
+// rest, as fast as the reader's.
+async function stateAfterFling(page) {
+  await page.evaluate((sel) => new Promise((resolve) => {
+    const app = window.__app;
+    const view = document.querySelector(sel);
+    // What is left of the fling cannot carry it to the top from here.
+    if (!view || view.scrollTop > 3 * view.clientHeight) return resolve();
+    const now = () => {
+      const nums = app.buf.listLineNums || [];
+      return {
+        key: [view.scrollTop, nums.length, nums.find((n) => n != null)].join(),
+        reading: view.scrollTop === 0 && !app.commandQueue.idle,
+      };
+    };
+    let last = now().key;
+    let still = 0;
+    let frames = 0;
+    const tick = () => {
+      const s = now();
+      still = s.key === last && !s.reading ? still + 1 : 0;
+      last = s.key;
+      // A list that never comes to rest is left to the assertions.
+      if (still >= 3 || ++frames > 600) resolve();
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }), VIEW);
+  return state(page);
+}
+
 // Fast upward flings, one after another, until the list holds #1, knows it
 // is the top and shows card #1 no higher than its top edge (a fling can end
 // with #1 still above the screen). No more after that: a pull at the top
@@ -53,7 +91,7 @@ async function flingToTop(page) {
   const atTop = (t) => t.first === 1 && t.edgeUp && t.idle && t.gap != null && t.gap >= 0;
   for (let i = 0; i < 200 && !atTop(s); i++) {
     await touchDrag(page, { x: 200, y: 90 }, { x: 200, y: 330 }, 3);
-    s = await state(page);
+    s = await stateAfterFling(page);
   }
   expect(s).toMatchObject({ first: 1, edgeUp: true });
 }
