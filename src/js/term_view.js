@@ -32,7 +32,7 @@ import { hintColors, shouldShowHint } from './status_hint';
 import { isPushKey, pushGateFacts, shouldInterceptPushKey } from './long_push_gate';
 import { tryOpenSearchModal } from './article_search';
 import { isRefreshKeyEvent } from './screen_refresh';
-import { mobileCtrlKey, mobileMenuLayout, mobileFillLayout, listViewportGeometry, listFillRows, listRowSpan } from './mobile_layout';
+import { mobileCtrlKey, mobileMenuLayout, mobileFillLayout, mobileListViewportPx, listViewportGeometry, listFillRows, listRowSpan } from './mobile_layout';
 
 // 單獨按下修飾鍵本身（實體鍵盤按 Shift 準備打大寫）不算「下一個按鍵」，黏滯 Ctrl 不解除。
 var MODIFIER_KEY_NAMES = ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'AltGraph'];
@@ -1241,13 +1241,14 @@ TermView.prototype = {
       lsOv.viewportRows = listViewportGeometry({
         rows: this.buf.rows, headerRows: lsOv.bodyStart, cards: this.listCards
       }).viewportRows;
-      lsOv.viewportPx = this.listCards ? this.listCardViewportPx() : (lsOv.viewportRows || 0) * this.chh;
-      // Cards: pad a short list to the viewport height, which is not a whole number of
-      // cards (main.css `.listBodyView::after`). Body rows sit between the header and the footer.
-      var bodyCount = Math.max(0, lines.length - (lsOv.bodyStart || 0) - 1);
-      lsOv.tailPx = this.listCards
-        ? Math.max(0, lsOv.viewportPx - bodyCount * listRowSpan(true) * this.chh)
-        : 0;
+      if (this.listCards) {
+        var fit = this.fitListCardScroll(lsOv, lines.length, this.chh);
+        lsOv.viewportPx = fit.viewportPx;
+        lsOv.tailPx = fit.tailPx;
+      } else {
+        lsOv.viewportPx = (lsOv.viewportRows || 0) * this.chh;
+        lsOv.tailPx = 0;
+      }
       enhanceOverrides.listCards = this.listCards ? lsOv.cardKind || lsOv.kind : undefined;
     }
     // 這一幀實際畫出去的那一份 lines。`data-row` 的定義就是「傳給 <Screen> 的
@@ -1929,11 +1930,32 @@ TermView.prototype = {
       return;
   },
 
+  // A list card frame's scroll at the current viewport (listCardViewportPx):
+  // `listScroll` with its viewport height, and the tail that pads a short list
+  // of `lineCount` lines (header, body, footer) at row height `chh` to it
+  // (main.css `.listBodyView::after`). The viewport is not a whole number of cards.
+  fitListCardScroll: function(listScroll, lineCount, chh) {
+    var viewportPx = this.listCardViewportPx();
+    var bodyCount = Math.max(0, lineCount - (listScroll.bodyStart || 0) - 1);
+    return Object.assign({}, listScroll, {
+      viewportPx: viewportPx,
+      tailPx: Math.max(0, viewportPx - bodyCount * listRowSpan(true) * chh)
+    });
+  },
+
   // List-card viewport (px): the whole height between the two bars (mobileRowsPx, written
   // by App._applyMobileGeometry), so the rows' leftover is not a strip under the App Bar.
-  // Steady while the keyboard or keys panel opens, like the row count.
+  // The key panel shortens it to the space above the panel, as it does the article's view
+  // (#256); the soft keyboard covers it without resizing it.
   listCardViewportPx: function() {
-    return this.mobileRowsPx > 0 ? this.mobileRowsPx : this.buf.rows * this.chh;
+    var rowsPx = this.mobileRowsPx > 0 ? this.mobileRowsPx : this.buf.rows * this.chh;
+    if (!this.innerBounds) return rowsPx;
+    return mobileListViewportPx({
+      rowsPx: rowsPx,
+      innerHeight: this.innerBounds.height,
+      topInset: this.topInset,
+      bottomInset: this.keyboardInset
+    });
   },
 
   // Android text scaling (the WebView's text zoom, Chrome's text size) multiplies every
@@ -2053,8 +2075,7 @@ TermView.prototype = {
       var fill = mobileFillLayout({
         innerHeight: innerBounds.height,
         bottomInset: this.keyboardInset,
-        topInset: this.topInset,
-        contentPx: this.listCards ? this.listCardViewportPx() : 0
+        topInset: this.topInset
       });
       this.mainDisplay.style.height = fill.height + 'px';
       this.mainDisplay.style.marginTop = fill.marginTop + 'px';
@@ -2079,6 +2100,31 @@ TermView.prototype = {
     if (inset === this.keyboardInset) return;
     this.keyboardInset = inset;
     if (this.chh) this.setTermFontSize(this.chw, this.chh);
+    // List cards: the viewport follows the key panel (listCardViewportPx). The list
+    // redraws at its new height, keeping its cards in place and its selection in view.
+    if (this.listCards) {
+      var session = listOwnerOf(this.bbscore);
+      if (session && session.refitViewport) session.refitViewport();
+      else this._refitShownListFrame();
+    }
+  },
+
+  // The list frame on screen while no list session owns it: app-driven
+  // navigation holds PTT's frames, as under the user query page (user_query.js)
+  // until PTT draws its list again. It is fitted to the new viewport as a list
+  // kept under an article is (StackListLayer._render), its cards in place, so
+  // no band is left unpainted where the key panel was.
+  _refitShownListFrame: function() {
+    var screen = this.componentScreen;
+    var props = screen && screen.props;
+    var listScroll = props && props.enhance && props.enhance.listScroll;
+    if (!listScroll || !props.enhance.listCards || !screen.hasListViewport()) return;
+    if (Math.abs(listScroll.viewportPx - this.listCardViewportPx()) < 1) return;
+    screen.update(Object.assign({}, props, {
+      enhance: Object.assign({}, props.enhance, {
+        listScroll: this.fitListCardScroll(listScroll, props.lines.length, props.forceWidth)
+      })
+    }));
   },
 
   // 同上，頂部（手機 App Bar）。

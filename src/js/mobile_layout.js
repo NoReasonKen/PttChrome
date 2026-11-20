@@ -72,7 +72,8 @@ export const MOBILE_TOOLBAR_PX = 48;
 export const MOBILE_APPBAR_PX = 64;
 
 // 手機模式下終端機可用的高度（決定列數）：視窗高扣掉兩條常駐 bar。軟鍵盤／按鍵面板
-// 是暫態，不在這裡扣（它們只改位置，見 term_size.termLayoutOffsets 的 inset）。
+// 是暫態，不在這裡扣（格線畫面只改位置，見 term_size.termLayoutOffsets 的 inset；
+// 文章與列表卡片只縮短可視高，見 mobileFillLayout）。
 // safe：瀏海／手勢列的 safe-area（viewport-fit=cover 時 env(safe-area-inset-*)，
 // App._readSafeInsets 量），兩條 bar 各自往內讓，同樣常駐 ⇒ 一起扣。
 export function mobileRowsHeight(innerHeight, safe) {
@@ -303,16 +304,22 @@ export function mobileMenuLayout({ innerHeight, bottomInset, topInset, chh, rows
 // `.main` height and top offset for the article and list-card surfaces. termLayoutOffsets
 // centres chh*rows, so the rows' leftover height showed as a black strip under the App Bar.
 // Both surfaces scroll inside their own viewport, so `.main` starts at the App Bar and
-// fills down to the bottom inset. contentPx is the height the content needs (list cards:
-// their viewport; article: 0, its scroller takes whatever is visible). Content that does
-// not fit (keys panel open) is bottom-aligned, like termLayoutOffsets.
-export function mobileFillLayout({ innerHeight, bottomInset, topInset, contentPx }) {
+// fills down to the bottom inset. The key panel shortens it from below and never moves
+// it (#256): what the panel would cover stays reachable by scrolling.
+export function mobileFillLayout({ innerHeight, bottomInset, topInset }) {
   const inset = bottomInset > 0 ? bottomInset : 0;
   const top = topInset > 0 ? topInset : 0;
   const avail = Math.max(0, (Number(innerHeight) || 0) - inset - top);
-  const content = contentPx > 0 ? contentPx : 0;
-  if (content <= avail) return { marginTop: top, height: avail };
-  return { marginTop: top + avail - content, height: content };
+  return { marginTop: top, height: avail };
+}
+
+// The list-card viewport (px): the height between the two bars (rowsPx,
+// mobileRowsHeight), shortened to the space above the key panel while it is open, as
+// the article's view is (mobileFillLayout). The soft keyboard is no part of the bottom
+// inset (mobileChromeInsets), so it covers the list without resizing it.
+export function mobileListViewportPx({ rowsPx, innerHeight, bottomInset, topInset }) {
+  const rows = Math.max(0, Number(rowsPx) || 0);
+  return Math.min(rows, mobileFillLayout({ innerHeight, bottomInset, topInset }).height);
 }
 
 // 手機主功能表（Phase 5）：點到的是哪一顆選單按鈕（render/menu_card.js 的

@@ -3097,6 +3097,18 @@ BoardListSession.prototype = {
     });
   },
 
+  // The viewport changed height under the list (the key panel opened or closed,
+  // term_view.setKeyboardInset): redraw at the new height, keeping the cards where
+  // they are. A selection that was in view and is now covered comes back into view
+  // by the least scroll (#256); one the reader had scrolled away stays away.
+  refitViewport: function() {
+    const pos = this._sequenceLength() ? this._cursorPos() : -1;
+    if (pos >= 0 && this._termBuf.listRenderMode === 'buffer' && !this._scrollAnim &&
+        this._isPosVisible(pos))
+      this._pendingReveal = { pos: pos, block: 'nearest', behavior: 'auto' };
+    this._forceRedraw();
+  },
+
   _maxScrollTop: function() {
     const screen = this._screen();
     const rowH = this._rowHeight();
