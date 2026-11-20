@@ -113,6 +113,7 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
   - 按鍵面板（`#mobileKeypad`，6 欄 grid 貼在工具列上方）：`MOBILE_KEYPAD_ROWS` ＋ ⌨（`toggleSoftKeyboard`）＋ Ctrl ＋
     `MOBILE_KEYPAD_EXTRA_ROW`（Esc／Tab／Del：Gboard 等軟鍵盤打不出來）。每個 key 必須在 `term_keyboard.KeyMap`。
     展開時以 `App.setMobileKeysPanelInset(offsetHeight)` 回報 ⇒ 終端機排到面板上方（暫態，不改列數、不重送 NAWS）。
+    文章、列表卡片與其他捲動頁面只縮短可視高、內容不動，見下方「The key panel shortens the visible area」。
   - **黏滯 Ctrl**：`App.mobileCtrlArmed`（唯一寫入點 `setMobileCtrlArmed`，經 `onMobileChange` 第 4 參數亮燈）。
     term_view `onKeyDown`（單按修飾鍵不算）與 `onTextInput`（軟鍵盤字走 input 事件）吃下一個字元 →
     `mobile_layout.mobileCtrlKey`：字母走 **Alt remap**（`altKey`；byte 同 Ctrl，但繞過 Ctrl+A/C/V 的全選／複製／貼上），
@@ -128,6 +129,23 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
   值裡沒有 `termSizeMode` 不動尺寸。
 - **手機欄數同樣恆 80，不送窄欄 NAWS**：pttbbs 雖已允許 20 欄（`4488584e`），但畫面層沒跟著重排，
   理由見 `docs/terminal-size.md` §3。
+- **The key panel shortens the visible area; it never moves content (#256).** Every scrolling surface
+  behaves as article easy reading does. Opening or closing `#mobileKeypad` keeps the content and its
+  scroll position where they are. The visible area runs from the App Bar to the panel, and what the
+  panel would cover stays reachable by scrolling, including the last rows of a list and the end of an
+  article. Article easy reading and list cards get this from `mobile_layout.mobileFillLayout` (`.main`)
+  and `mobileListViewportPx` (`term_view.listCardViewportPx`, the `.listBodyView` height). When the
+  panel changes the list viewport, `term_view.setKeyboardInset` asks the list session to
+  `refitViewport()`: the list redraws at the new height with its cards in place. A selection the panel
+  now covers comes back into view by the least scroll; one the reader had scrolled away stays away.
+  Keypad ↑/↓ reveal against the shortened viewport, because the sessions measure it from the DOM. A
+  list held on screen while no session owns it (under the user query page until PTT draws its list
+  again) is re-rendered at the new height (`term_view._refitShownListFrame`), as a list kept under an
+  article is (`StackListLayer`); both share `term_view.fitListCardScroll`. Pages
+  placed with `--term-top-inset` / `--term-bottom-inset` (the user query page) follow the same rule.
+  A new surface does the same; pushing the whole page up is the worst behaviour. Native grid screens
+  are the exception: they stay bottom-aligned (`term_size.termLayoutOffsets`), because PTT's input
+  line is on the last row. Guarded by `mobile_keypad_view.offline.spec.js`.
 - **The key-panel keyboard overlays the reading page.** Keep the toolbar, key panel,
   reading position and terminal geometry unchanged as the keyboard opens or closes.
   Lower PTT input prompts and controls may be covered until the keyboard is dismissed.
@@ -179,7 +197,7 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
   Phase 6–10：`mobile_app_bar.test.js(x)`、`article_meta_card.test.js`、`page_row_top_collapsed.test.js`、`context_sheet.test.jsx`、
   `mobile_busy.test.js`、`ripple.test.js`、`index_html_meta.test.js`、`history_back_guard`（sheet）、`modal_shown_sources`（sheet 登記）、`deep_link_controller`（分享）
 - offline e2e：project `offline-mobile`（Pixel 7 模擬，只跑 `offline/mobile_*.spec.js`：換行版面、長按選單、推文卡片與收起的檔頭在
-  `mobile_reflow`、列表卡片在 `mobile_list_cards`、底部導覽／按鍵面板／黏滯 Ctrl／進度條在 `mobile_toolbar`、「⋯」與設定頁窄版在 `mobile_float_tools`、
+  `mobile_reflow`、列表卡片在 `mobile_list_cards`、底部導覽／按鍵面板／黏滯 Ctrl／進度條在 `mobile_toolbar`、按鍵面板縮短可視範圍在 `mobile_keypad_view`、「⋯」與設定頁窄版在 `mobile_float_tools`、
   App Bar 在 `mobile_app_bar`、sheet（遮罩不漏點、返回收 sheet、拖把手、搜尋 sheet）在 `mobile_sheet`；`offline` project 以 testIgnore 排除 mobile_*）。
   手機的長按／右鍵選單是 `[data-sheet="context"]`（項目 `[data-cmenu=<key>]`），**不是** `.DropdownMenu`；Drawer 內容非同步掛上、
   有 slide-up 動畫 ⇒ 先 `toBeVisible` 再 `waitRectStable` 才量座標。已併入
@@ -457,8 +475,8 @@ Chromium 長按**先選字、後發 contextmenu** ⇒ 事件到時選取必不�
   written by `App._applyMobileGeometry`; `term_view.listCardViewportPx`), and `App.clientToPos` maps taps over the same
   range. A short card list is padded to that height (`listScroll.tailPx` → `--list-tail` on `.listBodyView::after`):
   otherwise a scrollTop write past the top reserve is clamped and the list lands lower than its reading position
-  (seen when Back reveals search results). With the key panel open and no room, content is still bottom-aligned.
-  Grid surfaces (native PTT screens) stay centred. Guarded by `mobile_app_bar.offline.spec.js`,
+  (seen when Back reveals search results). The key panel shortens both from below without moving their content
+  (see "The key panel shortens the visible area" above). Grid surfaces (native PTT screens) stay centred. Guarded by `mobile_app_bar.offline.spec.js`,
   `mobile_list_cards.offline.spec.js` and `mobile_stack_search_results.offline.spec.js`.
 
 ## Phase 8：收起終端機標頭／狀態列

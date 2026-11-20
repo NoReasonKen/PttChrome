@@ -5165,6 +5165,19 @@ ListSession.prototype = {
     this._pendingReveal = { pos: pos, block: plan.block, behavior: plan.behavior };
   },
 
+  // The viewport changed height under the list (the key panel opened or closed,
+  // term_view.setKeyboardInset): redraw at the new height, keeping the cards where
+  // they are. A selection that was in view and is now covered comes back into view
+  // by the least scroll (#256); one the reader had scrolled away stays away.
+  refitViewport: function() {
+    const seq = this._sequence();
+    const pos = seq.length ? this._cursorPos(seq) : -1;
+    if (pos >= 0 && this._termBuf.listRenderMode === 'buffer' && !this._scrollAnim &&
+        this._isPosVisible(seq, pos))
+      this._scheduleReveal(pos, { block: 'nearest', behavior: 'auto' });
+    this._forceRedraw();
+  },
+
   // The render contract with term_view.buildListWindowLines(): 整段過濾後序列
   // （絕對 listLines 索引）＋游標那一列的絕對索引。body 不再是 20 格切片——
   // 全部畫出去，捲動交給瀏覽器。

@@ -903,7 +903,8 @@ App.prototype.setMobileCtrlArmed = function(on) {
 };
 
 // 底部工具列的按鍵面板高度（展開＝面板高，收合＝0）。併進終端機的底部 inset：
-// 面板蓋住的那段不排終端機，放不下就底對齊（PTT 的輸入列在底列，見 term_size）。
+// 面板蓋住的那段不排終端機：格線畫面放不下就底對齊（PTT 的輸入列在底列，見 term_size）；
+// 文章與列表卡片只縮短可視高、內容不動（mobile_layout.mobileFillLayout，#256）。
 App.prototype.setMobileKeysPanelInset = function(px) {
   var v = this.mobile && px > 0 ? Math.round(px) : 0;
   if (v === this._keysPanelInset) return;

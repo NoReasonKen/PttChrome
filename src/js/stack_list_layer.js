@@ -8,7 +8,7 @@ import { listEntryOf } from './split_reader';
 import { KeptListPage } from './stack_list_page';
 import { i18n } from './i18n';
 import { PAGE } from './page_stack';
-import { mobileFillLayout, listRowSpan } from './mobile_layout';
+import { mobileFillLayout } from './mobile_layout';
 import { boardMarkReadTargetOfText } from './board_list_parse';
 
 // Layout sizes that differ by less than a pixel are the same size: the
@@ -95,28 +95,18 @@ export class StackListLayer extends ScreenCopyLayer {
     // The live screen's text size, undoing the page's text scaling (TermView.syncTextScale).
     this.el.style.fontSize = this.el.style.lineHeight = this.view.textFontPx(forceWidth) + 'px';
     this.el.style.setProperty('--cell-h', forceWidth + 'px');
+    const listScroll = Object.assign({}, this.frame.enhance.listScroll, { scrollable: true });
     const enhance = Object.assign({}, this.frame.enhance, {
-      listScroll: Object.assign({}, this.frame.enhance.listScroll, { scrollable: true })
+      listScroll: this.frame.enhance.listCards
+        ? this.view.fitListCardScroll(listScroll, this.frame.lines.length, forceWidth)
+        : listScroll
     });
-    if (enhance.listCards) {
-      enhance.listScroll.viewportPx = this.view.listCardViewportPx();
-      const count = Math.max(0, this.frame.lines.length - enhance.listScroll.bodyStart - 1);
-      enhance.listScroll.tailPx = Math.max(0, enhance.listScroll.viewportPx - count * listRowSpan(true) * forceWidth);
-    }
     this._renderOver(rect, forceWidth, false, enhance);
-    this._clipToAppBar(rect);
   }
 
-  // The real App Bar covers a list shifted upward by the keyboard. Its lower
-  // copy lives behind this layer, so keep those same covered rows clipped.
-  _clipToAppBar(rect) {
-    const bottom = document.getElementById('mobileAppBar')?.getBoundingClientRect().bottom ?? rect.top;
-    const top = this.frame.enhance.listCards ? Math.max(0, bottom - rect.top) : 0;
-    this.el.style.clipPath = top ? `inset(${top}px 0 0)` : '';
-  }
-
-  // The list keeps its content height above a keyboard, unlike an article.
-  // Share the real list's layout rule without changing the foreground surface.
+  // The list's box between the App Bar and the bottom inset, shortened by the
+  // key panel as the real list's is (#256). Share the real list's layout rule
+  // without changing the foreground surface.
   _viewportRect() {
     const main = this.view.mainDisplay;
     const box = main.getBoundingClientRect();
@@ -128,8 +118,7 @@ export class StackListLayer extends ScreenCopyLayer {
     const fill = mobileFillLayout({
       innerHeight: this.view.innerBounds.height,
       topInset: this.view.topInset,
-      bottomInset: this.view.keyboardInset,
-      contentPx: this.view.listCardViewportPx()
+      bottomInset: this.view.keyboardInset
     });
     return {
       left: rect.left, width: rect.width, height: fill.height,
@@ -180,13 +169,13 @@ export class StackListLayer extends ScreenCopyLayer {
       !sameSize(this.screen.props.enhance.listScroll.viewportPx, this.view.listCardViewportPx());
     if (!force && sameSize(this.width, window.innerWidth) && sameSize(rect.width, this.rect.width) &&
         this.forceWidth === this.view.chh && !viewportChanged) {
-      // Keyboard-only changes move the box, preserving the prepared rows.
+      // Inset changes that keep the viewport height move the box, preserving
+      // the prepared rows.
       if (rect.top !== this.rect.top || rect.height !== this.rect.height) {
         Object.assign(this.el.style, { top: rect.top + 'px', height: rect.height + 'px' });
         // The foreground can still be translated while canceling an exit.
         // Cache only the geometry applied to this stationary lower page.
         this.rect = { left: this.rect.left, width: this.rect.width, top: rect.top, height: rect.height };
-        this._clipToAppBar(rect);
       }
       return true;
     }

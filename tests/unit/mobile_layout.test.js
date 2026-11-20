@@ -14,6 +14,7 @@ import {
   mobileChromeInsets,
   mobileRowsHeight,
   mobileFillLayout,
+  mobileListViewportPx,
   MOBILE_APPBAR_PX,
   KEYBOARD_MIN_PX,
   MOBILE_KEYPAD_EXTRA_ROW,
@@ -232,18 +233,29 @@ describe("mobileChromeInsets／mobileRowsHeight", () => {
 // Article and list-card surfaces sit flush under the App Bar: centring the rows' leftover
 // height left a black strip between the bar and the first line.
 describe("mobileFillLayout (article / list cards flush under the App Bar)", () => {
-  test("content fits ⇒ starts at the App Bar and fills down to the bottom inset", () => {
+  test("starts at the App Bar and fills down to the bottom inset", () => {
     expect(
-      mobileFillLayout({ innerHeight: 915, topInset: 64, bottomInset: 48, contentPx: 803 }),
-    ).toEqual({ marginTop: 64, height: 803 });
-    expect(
-      mobileFillLayout({ innerHeight: 915, topInset: 64, bottomInset: 48, contentPx: 0 }),
+      mobileFillLayout({ innerHeight: 915, topInset: 64, bottomInset: 48 }),
     ).toEqual({ marginTop: 64, height: 803 });
   });
-  test("content taller than the visible area (keys panel open) ⇒ bottom-aligned", () => {
+  // #256: the key panel shortens the view as it does the article's; content never moves up.
+  test("the key panel open ⇒ still at the App Bar, shortened to the space above the panel", () => {
     expect(
-      mobileFillLayout({ innerHeight: 915, topInset: 64, bottomInset: 248, contentPx: 803 }),
-    ).toEqual({ marginTop: 64 + 603 - 803, height: 803 });
+      mobileFillLayout({ innerHeight: 915, topInset: 64, bottomInset: 248 }),
+    ).toEqual({ marginTop: 64, height: 603 });
+  });
+});
+
+describe("mobileListViewportPx (the list-card viewport)", () => {
+  const bars = { innerHeight: 915, topInset: 64 };
+  test("panel closed ⇒ the whole height between the two bars", () => {
+    expect(mobileListViewportPx({ ...bars, rowsPx: 803, bottomInset: 48 })).toBe(803);
+  });
+  test("panel open ⇒ the space between the App Bar and the panel", () => {
+    expect(mobileListViewportPx({ ...bars, rowsPx: 803, bottomInset: 248 })).toBe(603);
+  });
+  test("insets not yet known ⇒ never taller than the rows' height", () => {
+    expect(mobileListViewportPx({ innerHeight: 915, rowsPx: 803, topInset: 0, bottomInset: 0 })).toBe(803);
   });
 });
 

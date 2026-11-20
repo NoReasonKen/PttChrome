@@ -3,6 +3,7 @@
 import { StackListLayer } from '../../src/js/stack_list_layer';
 import { mountScreen, unmountAll } from './helpers/mount_screen';
 import { row, seg, listRow } from './helpers/screen_fixtures';
+import { listRowSpan } from '../../src/js/mobile_layout';
 
 const layers = [];
 
@@ -25,7 +26,13 @@ function captureList({ cards = false } = {}) {
   const view = {
     mainDisplay: mounted.root, componentScreen: mounted.controller, chh: 20,
     innerBounds: { height: 400 }, topInset: 0, keyboardInset: 0,
-    listCardViewportPx: () => 300, textFontPx: (px) => px
+    listCardViewportPx: () => 300, textFontPx: (px) => px,
+    // TermView.fitListCardScroll, against this view's listCardViewportPx.
+    fitListCardScroll(listScroll, lineCount, chh) {
+      const viewportPx = this.listCardViewportPx();
+      const bodyCount = Math.max(0, lineCount - (listScroll.bodyStart || 0) - 1);
+      return { ...listScroll, viewportPx, tailPx: Math.max(0, viewportPx - bodyCount * listRowSpan(true) * chh) };
+    }
   };
   const layer = StackListLayer.capture(view);
   expect(layer).not.toBeNull();
@@ -82,17 +89,19 @@ test('a width and font change prepares the list box instead of the article box',
   const captured = layer.frame.enhance.listScroll;
   Object.assign(view, {
     innerBounds: { height: 600 }, topInset: 64, keyboardInset: 236,
-    listCardViewportPx: () => 480, chh: 24
+    // The key panel shortens the list viewport to the 300px above it (#256).
+    listCardViewportPx: () => 300, chh: 24
   });
   Object.assign(view.mainDisplay.style, { width: '320px', height: '300px', marginTop: '64px' });
   layer.prepare();
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   expect(layer.el.style.width).toBe('320px');
-  expect(layer.el.style.height).toBe('480px');
+  expect(layer.el.style.height).toBe('300px');
   expect(layer.el.style.fontSize).toBe('24px');
-  expect(layer.el.querySelector('.listBodyView').style.height).toBe('480px');
+  expect(layer.el.querySelector('.listBodyView').style.height).toBe('300px');
   const origin = view.mainDisplay.getBoundingClientRect().top - 64;
-  expect(layer.el.getBoundingClientRect().top).toBeCloseTo(origin - 116, 1);
+  // Top-aligned under the App Bar, never pushed up behind it.
+  expect(layer.el.getBoundingClientRect().top).toBeCloseTo(origin + 64, 1);
   expect(captured.viewportPx).toBe(300);
 });
 
