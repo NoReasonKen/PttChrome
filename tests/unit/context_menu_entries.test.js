@@ -205,3 +205,47 @@ test("文章列：查詢作者帶作者 ID，桌機手機都有，點下去走 o
   const at = only.findIndex((e) => e.key === "queryAuthor");
   expect(only[at + 1]).toMatchObject({ type: "divider", key: "d-blacklist" });
 });
+
+// #261: article information. On a list row, desktop and mobile alike, after the
+// author query; over an article, desktop only (mobile has it in More).
+test("文章列：文章資訊在查詢作者之後，桌機手機都有，點下去走 onMenuSelect('postInfo')", () => {
+  for (const mobile of [false, true]) {
+    const calls = [];
+    const entries = buildContextMenuEntries({
+      ...BASE,
+      mobile,
+      authorQueryTarget: { num: 103, pinnedKey: null, author: "bob" },
+      postInfoTarget: { num: 103, pinnedKey: null, title: "[問題] 一篇" },
+      onMenuSelect: (k) => calls.push(k),
+    });
+    const at = entries.findIndex((e) => e.key === "postInfo");
+    expect(at).toBe(entries.findIndex((e) => e.key === "queryAuthor") + 1);
+    expect(entries[at].label).toBe(i18n("postInfo_title"));
+    entries[at].onClick({});
+    expect(calls).toEqual(["postInfo"]);
+  }
+  expect(keys({ ...BASE, postInfoTarget: null })).not.toContain("postInfo");
+  expect(keys({ ...BASE, normalEnabled: false, postInfoTarget: { num: 1 } })).not.toContain("postInfo");
+  const only = buildContextMenuEntries({ ...BASE, markAllReadEnabled: false, postInfoTarget: { num: 1 } });
+  const at = only.findIndex((e) => e.key === "postInfo");
+  expect(only[at + 1]).toMatchObject({ type: "divider", key: "d-blacklist" });
+});
+
+test("文章：文章資訊在複製本篇文章連結之後，桌機右鍵與手機長按都有", () => {
+  for (const mobile of [false, true]) {
+    const calls = [];
+    const entries = buildContextMenuEntries({
+      ...BASE,
+      mobile,
+      articleLinkEnabled: true,
+      articlePostInfoEnabled: true,
+      onMenuSelect: (k) => calls.push(k),
+    });
+    const at = entries.findIndex((e) => e.key === "articlePostInfo");
+    expect(at).toBe(entries.findIndex((e) => e.key === "copyArticleLink") + 1);
+    expect(entries[at].label).toBe(i18n("postInfo_title"));
+    entries[at].onClick({});
+    expect(calls).toEqual(["articlePostInfo"]);
+  }
+  expect(keys({ ...BASE, articlePostInfoEnabled: false })).not.toContain("articlePostInfo");
+});

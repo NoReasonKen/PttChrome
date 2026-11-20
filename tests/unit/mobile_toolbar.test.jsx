@@ -203,6 +203,25 @@ describe("依畫面的動作（文章／信件／文章列表）", () => {
     await sheetClosed();
   });
 
+  // #261: article information, in More over an article it can be asked for.
+  test("文章資訊（在「更多」裡）：走 postInfo.fromArticle；不能問時沒有", async () => {
+    const core = makeCore({ context: { ...ARTICLE, postInfo: true } });
+    core.postInfo = { fromArticle: vi.fn(() => true) };
+    renderBar(core);
+    expect(byKey("__postInfo")).toBeNull();
+    await openMore();
+    expect(byKey("__postInfo").textContent).toBe(i18n("postInfo_title"));
+    fireEvent.click(byKey("__postInfo"));
+    await sheetClosed();
+    expect(core.postInfo.fromArticle).toHaveBeenCalledTimes(1);
+  });
+
+  test("更多：postInfo false 就沒有文章資訊", async () => {
+    renderBar(makeCore({ context: { ...ARTICLE, postInfo: false } }));
+    await openMore();
+    expect(byKey("__postInfo")).toBeNull();
+  });
+
   test("更多：不是文章（share false）就沒有分享", async () => {
     renderBar(makeCore({ context: { ...ARTICLE, share: false } }));
     await openMore();

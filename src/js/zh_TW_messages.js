@@ -117,6 +117,45 @@
   "authorQuery_noAuthor": {
     "message": "這一列沒有可以查詢的作者"
   },
+  "postInfo_title": {
+    "message": "文章資訊"
+  },
+  "postInfo_code": {
+    "message": "文章代碼"
+  },
+  "postInfo_url": {
+    "message": "文章網址"
+  },
+  "postInfo_copyCode": {
+    "message": "複製文章代碼"
+  },
+  "postInfo_copyUrl": {
+    "message": "複製文章網址"
+  },
+  "postInfo_copied": {
+    "message": "已複製"
+  },
+  "postInfo_copyFailed": {
+    "message": "無法複製"
+  },
+  "postInfo_none": {
+    "message": "這篇文章沒有文章資訊"
+  },
+  "postInfo_busy": {
+    "message": "讀取文章資訊中，請稍候…"
+  },
+  "postInfo_unavailable": {
+    "message": "只能在好讀的文章列表或文章裡查看文章資訊"
+  },
+  "postInfo_gone": {
+    "message": "這一列已經不是那篇文章"
+  },
+  "postInfo_failed": {
+    "message": "讀不到文章資訊"
+  },
+  "postInfo_failedArticle": {
+    "message": "讀不到文章資訊：下拉重新整理以重試。"
+  },
   "cmenu_addTitleBlacklist": {
     "message": "加入標題黑名單 ..."
   },

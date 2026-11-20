@@ -7,6 +7,7 @@ import { altRemapCharCode, isAltRemapEvent, isBrowserClipboardEvent, keyEventToB
 import { HINT_ERROR } from './status_hint';
 import { UNSUPPORTED_KEY_HINT, unsupportedPasteHint, unsupportedTextHint } from './unsupported_hint';
 import { i18n } from './i18n';
+import { showArticlePostInfo } from './post_info';
 import { findShortcutLabel } from './platform';
 import { offsetTopWithin } from './scroll_anchor';
 import { renderChunksAround } from '../render/screen_chunk';
@@ -1573,7 +1574,7 @@ const UNSUPPORTED_PASTE_HINT = unsupportedPasteHint('文章');
 const UNSUPPORTED_TEXT_HINT = unsupportedTextHint('文章');
 
 // What a key the reading keys did not take means: 'native' (keeps the native
-// route), 'refuse', or null (not a PTT key: the browser or the app owns it).
+// route), 'post-info' (the article information, #261), 'refuse', or null (not a PTT key: the browser or the app owns it).
 // opts.mail: a mail is open (#196). Easy reading presents reading a mail, not
 // answering it (sending is #230), so only help keeps the native route.
 export function articleLeftoverKey(e, opts) {
@@ -1585,6 +1586,8 @@ export function articleLeftoverKey(e, opts) {
   // A key that sends PTT nothing (CapsLock, F-keys) is not a command.
   if (keyEventToBytes(e) == null) return null;
   if (!e.ctrlKey && e.key.length === 1 && nativeKeys.indexOf(e.key) >= 0) return 'native';
+  // Q shows the article's information (#261, post_info.js); a mail has none.
+  if (!opts?.mail && !e.ctrlKey && e.key === 'Q') return 'post-info';
   return 'refuse';
 }
 
@@ -2347,6 +2350,12 @@ EasyReading.prototype._diagScrollRestoreSettled = function(lineIndex) {
   }, SCROLL_RESTORE_SETTLED_MS);
 };
 
+// Whether a reading-position restore (requestScrollRestore, or the bottom
+// one) still waits to be applied (ArticleHold keeps its cover until it is).
+EasyReading.prototype.restorePending = function() {
+  return !!this._pendingScrollRestore;
+};
+
 // 長推文送完回到文章：落在文末（＝按 End：捲到底黏住，讀取中則反向讀取直接跳文末）。
 // 與 requestScrollRestore 共用同一個 one-shot 欄位 ⇒ 離開文章／使用者按鍵接手的清除
 // 點一併適用，兩者也不會同時掛著。
@@ -2535,7 +2544,8 @@ export function articleWouldRefuse(k, prefs, opts) {
   if (mail && (reading === 'threadJump' || reading === 'switchBoard')) return true;
   // A swallowed key does nothing in the article: a row for it would do nothing.
   if (reading) return reading === 'swallow';
-  return articleLeftoverKey(e, opts) !== 'native';
+  const what = articleLeftoverKey(e, opts);
+  return what !== 'native' && what !== 'post-info';
 }
 
 EasyReading.prototype.wouldRefuse = function(k) {
@@ -2664,6 +2674,10 @@ EasyReading.prototype.enterNativeRoute = function(ch) {
 // caller prevents it); a help or reply key opens the native mirror and still goes out.
 EasyReading.prototype._leftoverKey = function(e) {
   const what = articleLeftoverKey(e, { mail: this._readingMail() });
+  if (what === 'post-info') {
+    showArticlePostInfo(this._core);
+    return true;
+  }
   if (what === 'native') {
     this.enterNativeRoute(e.key);
     // The help sheet opens at this keypress (help_menu.expect, #222) and is a

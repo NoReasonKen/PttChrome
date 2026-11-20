@@ -48,6 +48,9 @@ export class ArticleHold {
     this.running = null;
     // The operation has ended while easy reading still mirrors PTT's screen.
     this._landing = null;
+    // A copy of the article over the reading area for an operation that opens
+    // it again (run's opts.cover), or null.
+    this._runCover = null;
   }
 
   // An operation PttChrome runs itself over an easy-reading article (a long
@@ -57,11 +60,17 @@ export class ArticleHold {
   // and the App Bar stays the article's, locked. Call before the operation
   // enters easy reading's native mirror. Returns false, holding nothing, when
   // no easy-reading article is shown (easy reading off, a list, a prompt).
-  run(source) {
+  // opts.cover: the operation opens the same article again and restores the
+  // reading position (reading_record.restoreArticle). Easy reading reads the
+  // reopened article from its top, so a copy of the article as it is now
+  // covers the reading area until the restore has been applied (see done).
+  run(source, opts) {
     const core = this.core;
     if (this.held || this.running || !articlePresented(core)) return false;
     this._clearLanding();
+    this._dropRunCover();
     this.running = source;
+    if (opts && opts.cover) this._runCover = coverWithArticle(core.view);
     this.appBar = core._screenContext?.appBar || null;
     core._refreshScreenContext?.();
     return true;
@@ -81,6 +90,34 @@ export class ArticleHold {
     } else {
       this._released();
     }
+    if (this._runCover) this._liftRunCoverWhenRestored();
+  }
+
+  // The run's cover (run's opts.cover) lifts once easy reading presents the
+  // article again with the reading position applied, checked every frame; past
+  // LANDING_MS it lifts anyway (a mirror that outlasts it is held, _landed).
+  _liftRunCoverWhenRestored() {
+    const core = this.core;
+    const cover = this._runCover;
+    const until = Date.now() + LANDING_MS;
+    const check = () => {
+      if (this._runCover !== cover) return;
+      const restored = !core.buf.easyReadingFunctionMode && !core.easyReading?.restorePending?.();
+      if (restored || Date.now() >= until) return void this._dropRunCover();
+      requestAnimationFrame(check);
+    };
+    check();
+  }
+
+  // The run's cover, handed to a hold that keeps it, or null.
+  _takeRunCover() {
+    const cover = this._runCover;
+    this._runCover = null;
+    return cover || undefined;
+  }
+
+  _dropRunCover() {
+    this._takeRunCover()?.destroy();
   }
 
   // The operation `source` failed: the article stays shown, held (see hold),
@@ -88,7 +125,7 @@ export class ArticleHold {
   // the operation's sessions are still parked (see hold).
   fail(source, { reason, message, text, parked = false }) {
     if (!source || this.running !== source) return false;
-    this.hold({ source, reason, message, text, appBar: this.appBar, parked });
+    this.hold({ source, reason, message, text, cover: this._takeRunCover(), appBar: this.appBar, parked });
     this.core.view.navigationEnded?.();
     return true;
   }
@@ -109,7 +146,7 @@ export class ArticleHold {
       return;
     }
     this.hold({ source: landing.source, reason: 'unpresented', message: 'articleHold_unpresented',
-      appBar: this.appBar, parked: true });
+      cover: this._takeRunCover(), appBar: this.appBar, parked: true });
     this.core.view.navigationEnded?.();
   }
 
@@ -215,6 +252,7 @@ export class ArticleHold {
   // Disconnection: an operation still running goes on without the hold.
   reset() {
     this._clearLanding();
+    this._dropRunCover();
     const running = this.running;
     this.running = null;
     if (this.held) this._release();

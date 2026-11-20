@@ -7,7 +7,8 @@ import {
   detectAids,
   parsePostInfoAid,
   parseArticleUrlLine,
-  parsePostInfoUrl
+  parsePostInfoUrl,
+  parsePostInfoBox
 } from "../../src/js/aid_parse";
 
 const cell = (ch, isLeadByte = false) => ({ ch, isLeadByte });
@@ -387,5 +388,90 @@ describe("parsePostInfoUrl", () => {
         "※ 文章網址: https://www.ptt.cc/bbs/Browsers/M.1786265274.A.5E3.html"
       )
     ).toBe(null);
+  });
+});
+
+// The whole Q post-info box (mbbsd/bbs.c#view_postinfo): the right border is
+// printed at column 76 over the content rows, list rows around it stay.
+describe("parsePostInfoBox", () => {
+  const pad = (text) => (text + " ".repeat(76)).slice(0, 76) + "│";
+  const screen = (box) => [
+    "【板主:someone】                 Browsers 看板",
+    " 1234 + 3 8/16 alice        □ [討論] 上一篇",
+    ...box,
+    " 1236   1 8/16 bob          □ [問題] 下一篇",
+    "                                                  請按任意鍵繼續"
+  ];
+  const TOP = "┌─────────────────────────────────────┐";
+  const BOTTOM = "└──────────────────────── [再按 Q 切換價格列表]  ─┘";
+
+  test("an article's code, board, address and price", () => {
+    expect(
+      parsePostInfoBox(
+        screen([
+          TOP,
+          pad("│ 文章代碼(AID): #1gU3wwNZ (Browsers) [ptt.cc] [討論] 新版本 "),
+          pad("│ 文章網址: https://www.ptt.cc/bbs/Browsers/M.1786265274.A.5E3.html"),
+          pad("│ 這一篇文章值 25 Ptt幣"),
+          BOTTOM
+        ])
+      )
+    ).toEqual({
+      aid: "1gU3wwNZ",
+      board: "Browsers",
+      url: "https://www.ptt.cc/bbs/Browsers/M.1786265274.A.5E3.html",
+      urlNote: null,
+      details: ["這一篇文章值 25 Ptt幣"]
+    });
+  });
+
+  test("the board comes from the address when the code line names none", () => {
+    const box = parsePostInfoBox(
+      screen([
+        TOP,
+        pad("│ 文章代碼(AID): #1gU3wwNZ (未知) [ptt.cc] [討論] 新版本 "),
+        pad("│ 文章網址: https://www.ptt.cc/bbs/Browsers/M.1786265274.A.5E3.html"),
+        pad("│ 特殊文章，無價格記錄"),
+        BOTTOM
+      ])
+    );
+    expect(box.board).toBe("Browsers");
+    expect(box.details).toEqual(["特殊文章，無價格記錄"]);
+  });
+
+  test("a board without web addresses gives the note instead", () => {
+    const box = parsePostInfoBox(
+      screen([
+        TOP,
+        pad("│ 文章代碼(AID): #1gU3wwNZ (Browsers) [ptt.cc] [討論] 新版本 "),
+        pad("│ 本看板目前不提供文章網址 "),
+        pad("│ 匿名管理編號: 123456 (同一人同一天在本板發文，號碼會一樣)"),
+        BOTTOM
+      ])
+    );
+    expect(box).toMatchObject({
+      aid: "1gU3wwNZ",
+      url: null,
+      urlNote: "本看板目前不提供文章網址",
+      details: ["匿名管理編號: 123456 (同一人同一天在本板發文，號碼會一樣)"]
+    });
+  });
+
+  test("a bare frame line is an article without a code", () => {
+    expect(
+      parsePostInfoBox(
+        screen([TOP, pad("│"), pad("│"), pad("│ 這一篇文章值 0 Ptt幣"), BOTTOM])
+      )
+    ).toEqual({ aid: null, board: null, url: null, urlNote: null, details: ["這一篇文章值 0 Ptt幣"] });
+  });
+
+  test("no box, or one still being drawn, is no answer", () => {
+    expect(parsePostInfoBox(screen([]))).toBe(null);
+    expect(
+      parsePostInfoBox(
+        screen([TOP, pad("│ 文章代碼(AID): #1gU3wwNZ (Browsers) [ptt.cc] [討論] 新版本 ")])
+      )
+    ).toBe(null);
+    expect(parsePostInfoBox(null)).toBe(null);
   });
 });

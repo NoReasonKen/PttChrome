@@ -19,6 +19,7 @@ import {
 import { i18n } from "../../js/i18n";
 import { readValuesWithDefault } from "../../js/pref_storage";
 import { promptUserQuery } from "../../js/user_query";
+import { showArticlePostInfo } from "../../js/post_info";
 import { requestAidJump } from "../../js/aid_jump";
 import {
   normalizeExternalSearchQuery,
@@ -497,6 +498,17 @@ export const MobileToolbar = ({
     else sendKey("s");
   }, [pttchrome, sendKey]);
 
+  // Article information (#261, js/post_info.js): PTT's Q box, as a sheet.
+  const onPostInfo = useCallback(() => {
+    setPanel(null);
+    setConfirmLogout(false);
+    whenReady(() => {
+      if (typeof pttchrome.noteUserAction === "function")
+        pttchrome.noteUserAction();
+      showArticlePostInfo(pttchrome);
+    });
+  }, [pttchrome, whenReady]);
+
   // 跳到第一篇未讀：與桌機快捷鍵（預設 F7）同一個入口（unread_jump.js）。
   const onUnreadJump = useCallback(() => {
     setPanel(null);
@@ -963,6 +975,16 @@ export const MobileToolbar = ({
             onClick={onShare}
           >
             {i18n("mobileToolbar_share")}
+          </button>
+        ) : null}
+        {context.postInfo ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__postInfo"
+            onClick={onPostInfo}
+          >
+            {i18n("postInfo_title")}
           </button>
         ) : null}
         {context.switchBoard ? (

@@ -8,11 +8,15 @@
 import { ListSession, transitionListSession, userListKeyClass } from "../../src/js/list_session";
 import { FRIEND_LIST_KEY, MAIL_LIST_KEY, USER_LIST_KEY } from "../../src/js/screen_titles";
 import { queryUser, promptUserQuery, queryAuthor } from "../../src/js/user_query";
+import { showListPostInfo } from "../../src/js/post_info";
 
 vi.mock("../../src/js/user_query", () => ({
   queryUser: vi.fn(() => true),
   promptUserQuery: vi.fn(() => true),
   queryAuthor: vi.fn(() => true),
+}));
+vi.mock("../../src/js/post_info", () => ({
+  showListPostInfo: vi.fn(() => true),
 }));
 vi.mock("../../src/js/user_list", async (importOriginal) => ({
   ...(await importOriginal()),
@@ -987,6 +991,40 @@ describe("Ctrl-Q queries the selected article's author (#254)", () => {
       expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
     }
     expect(queryAuthor).not.toHaveBeenCalled();
+  });
+});
+
+// Q on an article list shows the selected article's information (#261):
+// post_info.showListPostInfo takes it and sends it, the session itself sends
+// nothing. The mailbox keeps refusing it (the user list's Q is its query).
+describe("Q shows the selected article's information (#261)", () => {
+  beforeEach(() => showListPostInfo.mockClear());
+
+  test("Q → prevented, handed to showListPostInfo, nothing enqueued or sent here", () => {
+    const ctx = activeRefusalSession();
+    const e = keyEvent("Q");
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(showListPostInfo).toHaveBeenCalledTimes(1);
+    expect(showListPostInfo).toHaveBeenCalledWith(ctx.s._core);
+    expect(ctx.sent).toEqual([]);
+    expect(ctx.enqueued).toEqual([]);
+    expect(ctx.s.state).toBe("active");
+    expect(ctx.hints).toEqual([]);
+  });
+
+  test("the help sheet's Q row is offered on an article list (wouldRefuse)", () => {
+    expect(activeRefusalSession().s.wouldRefuse({ key: "Q" })).toBe(false);
+  });
+
+  test("the mailbox refuses Q with the hint", () => {
+    const ctx = activeRefusalSession();
+    ctx.s._boardName = MAIL_LIST_KEY;
+    const e = keyEvent("Q");
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
+    expect(showListPostInfo).not.toHaveBeenCalled();
   });
 });
 

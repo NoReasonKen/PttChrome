@@ -172,6 +172,64 @@ export function parsePostInfoUrl(rowText) {
   return urlLine(POST_INFO_URL_RE, rowText);
 }
 
+// The whole Q post-info box (mbbsd/bbs.c#view_postinfo), for the article
+// information page (#261). `rowTexts`: the screen's decoded rows. The box is
+//   ┌───…┐
+//   │ 文章代碼(AID): #<aid> (<board>) [ptt.cc] <title>   │   or a bare │ (no AID)
+//   │ 文章網址: <url>                                   │   or a note, or a bare │
+//   │ 這一篇文章值 N Ptt幣                              │   (or the anonymous id,
+//   └──────── [再按 Q 切換價格列表]  ─┘                    the vote limit, ...)
+// with the right border printed at column 76 over the content rows. Returns
+// { aid, board, url, urlNote, details } — aid null for an article without a
+// code; board from the code line, else from the address; urlNote the line
+// pttbbs prints instead of an address; details the remaining lines as shown —
+// or null while no whole box is on screen.
+const POST_INFO_TOP_RE = /^\s*┌─/;
+const POST_INFO_BOTTOM_RE = /^\s*└─/;
+const POST_INFO_URL_NOTE_RE = /不提供文章網址/;
+
+function postInfoContent(rowText) {
+  return String(rowText || '')
+    .replace(/^\s*│/, '')
+    .replace(/\s*│\s*$/, '')
+    .trim();
+}
+
+export function parsePostInfoBox(rowTexts) {
+  if (!rowTexts) return null;
+  const top = rowTexts.findIndex((t) => POST_INFO_TOP_RE.test(t || ''));
+  if (top < 0) return null;
+  let bottom = -1;
+  for (let r = top + 1; r < rowTexts.length; ++r) {
+    if (POST_INFO_BOTTOM_RE.test(rowTexts[r] || '')) {
+      bottom = r;
+      break;
+    }
+  }
+  if (bottom < 0) return null;
+  const box = { aid: null, board: null, url: null, urlNote: null, details: [] };
+  let fromUrl = null;
+  for (let r = top + 1; r < bottom; ++r) {
+    const text = rowTexts[r] || '';
+    const code = r === top + 1 ? parsePostInfoAid(text) : null;
+    if (code) {
+      box.aid = code.aid;
+      box.board = code.board;
+      continue;
+    }
+    const content = postInfoContent(text);
+    if (!content) continue;
+    const m = POST_INFO_URL_RE.exec(text);
+    if (m) {
+      box.url = m[1].replace(/│$/, '');
+      fromUrl = parseArticleUrl(box.url);
+    } else if (POST_INFO_URL_NOTE_RE.test(content)) box.urlNote = content;
+    else box.details.push(content);
+  }
+  if (!box.board && fromUrl) box.board = fromUrl.board;
+  return box;
+}
+
 // Returns [{ startCol, endCol, aid, board }] where startCol is the '#' column
 // and endCol is exclusive (first column past the 8 AID chars). board is null
 // when no suffix parsed — the caller falls back to the current article board.

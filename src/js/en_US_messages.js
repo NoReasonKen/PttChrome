@@ -101,6 +101,45 @@ export const en_US = {
   "authorQuery_noAuthor": {
     "message": "This row has no author to query"
   },
+  "postInfo_title": {
+    "message": "Article information"
+  },
+  "postInfo_code": {
+    "message": "Article code"
+  },
+  "postInfo_url": {
+    "message": "Web address"
+  },
+  "postInfo_copyCode": {
+    "message": "Copy article code"
+  },
+  "postInfo_copyUrl": {
+    "message": "Copy web address"
+  },
+  "postInfo_copied": {
+    "message": "Copied"
+  },
+  "postInfo_copyFailed": {
+    "message": "Could not copy"
+  },
+  "postInfo_none": {
+    "message": "This article has no information"
+  },
+  "postInfo_busy": {
+    "message": "Reading the article information…"
+  },
+  "postInfo_unavailable": {
+    "message": "Article information is available only on an easy-reading article list or article"
+  },
+  "postInfo_gone": {
+    "message": "That row no longer shows the article"
+  },
+  "postInfo_failed": {
+    "message": "Could not read the article information"
+  },
+  "postInfo_failedArticle": {
+    "message": "Could not read the article information: pull down to refresh and retry."
+  },
   "cmenu_addTitleBlacklist": {
     "message": "Blacklist title keyword ..."
   },
