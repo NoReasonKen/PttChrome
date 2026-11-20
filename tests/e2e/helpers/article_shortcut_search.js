@@ -655,6 +655,19 @@ async function waitIdle(page) {
   })).toBe(true);
 }
 
+// The list is at rest once the background fill has found the top and no
+// command is in flight, and the reserve above the first row has settled. Until
+// then the list's own reads are still going out, so a byte count taken earlier
+// would include them.
+async function waitListAtRest(page) {
+  await page.waitForFunction(() => {
+    const app = window.__app;
+    const screen = app.view.componentScreen;
+    return app.listSession._edgeUp && app.commandQueue.idle &&
+      !screen._listReserveTimer && !screen._listScrollBusy();
+  });
+}
+
 // Distinct per-screen evidence: result articles and their lists share titles.
 async function waitArticle(page, body) {
   await expect.poll(() => visibleText(page)).toContain(`${body} line 04:`);
@@ -737,6 +750,6 @@ async function tapShortcut(page, key) {
 
 module.exports = {
   bootShortcutSearch, searchAuthor, nativeBack, openSearchResult, visibleText, waitSearchResults, hinted,
-  bootNestedShortcutSearch, nestedSessionAfterLogin, waitArticle, waitList, waitIdle, tapShortcut, topLine, readToMiddle,
+  bootNestedShortcutSearch, nestedSessionAfterLogin, waitArticle, waitList, waitIdle, waitListAtRest, tapShortcut, topLine, readToMiddle,
   tapCard, disconnectAndReconnect
 };

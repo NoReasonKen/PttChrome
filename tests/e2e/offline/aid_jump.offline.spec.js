@@ -6,7 +6,7 @@
 // the not-found box). Mobile: mobile_aid_jump.offline.spec.js.
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
-const { bootNestedShortcutSearch, waitList, waitIdle } = require('../helpers/article_shortcut_search');
+const { bootNestedShortcutSearch, waitList, waitIdle, waitListAtRest } = require('../helpers/article_shortcut_search');
 const { recordHints, recordedHints } = require('../helpers/stack_routes');
 
 const DIALOG = '[data-aid-jump]';
@@ -22,6 +22,9 @@ async function bootList(page) {
   });
   await waitList(page, { has: ['Alpha topic', 'Beta topic'] });
   await expect.poll(() => page.evaluate(() => window.__app.listSession.state)).toBe('active');
+  // Measure from a list at rest: its own reads must not count against a test's
+  // sent-byte baseline.
+  await waitListAtRest(page);
   await recordHints(page);
 }
 
