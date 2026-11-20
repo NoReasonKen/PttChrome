@@ -25,6 +25,12 @@ cp "$P/sample/pttbbs.conf" "$P/pttbbs.conf" &&
 X='EXT_CFLAGS=-finput-charset=big5 -fexec-charset=big5 -Wno-error -include osdep.h -include sys/time.h'
 make -s -C "$P" clean >/dev/null 2>&1
 make -j8 -C "$P/common" "$X" >"$OUT/build.log" 2>&1 || { tail -60 "$OUT/build.log"; exit 2; }
+# Upstream added bof (libbof.a, which mbbsd links); older checkouts have no bof directory.
+BOF=
+if [ -d "$P/bof" ]; then
+  BOF='-L../bof -lbof'
+  make -j8 -C "$P/bof" "$X" >>"$OUT/build.log" 2>&1 || { tail -60 "$OUT/build.log"; exit 2; }
+fi
 make -j8 -C "$P/mbbsd" "$X" >>"$OUT/build.log" 2>&1 || { tail -60 "$OUT/build.log"; exit 2; }
 
 cd "$P/mbbsd" || exit 2
@@ -44,7 +50,7 @@ clang -g -O0 -w -I../include -DBBSHOME='"/root"' -c "$HERE/driver.c" -o "$OUT/dr
 # --wrap=ipc_check_reconnect stands in for PTT's ipc.svc (see driver.c).
 # shellcheck disable=SC2086
 clang -o "$OUT/driver" -Wl,--wrap=read,--wrap=select,--wrap=poll,--wrap=ipc_check_reconnect "$OUT/driver.o" "$OUT/mbbsd_nomain.o" $OBJS "$OUT/vers.o" \
-  -L../common/bbs -L../common/sys -L../common/osdep -lcmbbs -lcmsys -losdep -lrt -pthread || exit 2
+  $BOF -L../common/bbs -L../common/sys -L../common/osdep -lcmbbs -lcmsys -losdep -lrt -pthread || exit 2
 
 iconv -f UTF-8 -t BIG5 "$HERE/seed.tsv" >"$OUT/seed.big5" || exit 2
 node "$HERE/capture.mjs" "$OUT/driver" "$OUT/seed.big5" "$ROOT/tests/unit/fixtures/ptt_src_screens" || exit 2
