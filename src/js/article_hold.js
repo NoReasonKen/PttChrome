@@ -171,6 +171,8 @@ export class ArticleHold {
     if (!this.held) return false;
     const core = this.core;
     const target = refreshTargetOf(core) || articleShown(core);
+    // A failed recovery (aid_navigation._recover) runs again from wherever PTT is.
+    if (!target && core.aidNavigation?.retryRecovery?.()) return true;
     if (!target) {
       reportBug(core, 'articleHold', 'unknownScreen', { pageState: core.buf?.pageState ?? null });
       core.view.flashListHint?.(i18n('articleHold_unknownScreen'), NOTICE_MS, HINT_ERROR);
@@ -190,6 +192,13 @@ export class ArticleHold {
     }
     recordFor(core).releaseExternal({ landed: true });
     return true;
+  }
+
+  // PTT is back on the article a failed operation left (aid_navigation._recover):
+  // the cover lifts and the article is easy reading's own again.
+  recovered() {
+    if (!this.held) return;
+    this._release();
   }
 
   // A repaint settles the screen, which reads the article's identity again

@@ -135,6 +135,7 @@ export function toolbarContextFromFacts(facts, pageState, opts) {
     reply: pager,
     mail: mail,
     share: article,
+    switchBoard: article,
     threadNav: article,
     post: articles,
     unreadJump: articles,
@@ -203,7 +204,7 @@ export function mobileToolbarContext(core) {
 }
 
 const FLAGS = [
-  'push', 'reply', 'mail', 'share', 'threadNav', 'post', 'unreadJump', 'aidJump', 'markAllRead', 'boardCountsSwitch', 'boardCounts', 'boardSort', 'boardSortFavorites', 'help', 'contentTools', 'refresh', 'end',
+  'push', 'reply', 'mail', 'share', 'switchBoard', 'threadNav', 'post', 'unreadJump', 'aidJump', 'markAllRead', 'boardCountsSwitch', 'boardCounts', 'boardSort', 'boardSortFavorites', 'help', 'contentTools', 'refresh', 'end',
   'userQuery', 'queryPage', 'locked'
 ];
 

@@ -249,8 +249,8 @@ test.describe('好讀 functionMode（scenario 重放）', () => {
     await refused('好讀模式目前不支援在文章輸入文字');
 
     // A function-key button of the footer, for a function easy reading does
-    // not present (switch board).
-    await page.evaluate(() => window.__app.onFunctionKey('s'));
+    // not present (edit the article).
+    await page.evaluate(() => window.__app.onFunctionKey('E'));
     await refused('好讀模式目前不支援這個按鍵');
   });
 });

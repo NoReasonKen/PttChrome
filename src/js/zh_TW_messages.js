@@ -341,6 +341,12 @@
   "commentBar_send": {
     "message": "送出"
   },
+  "switchBoard_title": {
+    "message": "切換看板"
+  },
+  "switchBoard_confirm": {
+    "message": "前往"
+  },
   "searchModal_title": {
     "message": "搜尋"
   },
@@ -1654,6 +1660,9 @@
   },
   "mobileToolbar_replyMail": {
     "message": "回信"
+  },
+  "mobileToolbar_switchBoard": {
+    "message": "切換看板"
   },
   "mobileToolbar_share": {
     "message": "分享"

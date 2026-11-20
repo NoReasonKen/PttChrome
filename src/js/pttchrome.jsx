@@ -1172,6 +1172,8 @@ App.prototype.openQuickPush = noop;
 // 搜尋彈窗（文章列表的 / ? a Z、工具列的各類搜尋）。合約同上：noop ＝ ContextMenu
 // 未 mount ⇒ 回 undefined ⇒ 攔截入口不吞鍵，照原生送出。見 article_search.js。
 App.prototype.openSearchModal = noop;
+// The board switch sheet over an easy-reading article (#262); ContextMenu mounts it.
+App.prototype.openBoardSwitch = noop;
 
 // 沒寫看板的 #AID → 看板選擇彈窗（本版跳轉／指定看板，見 aid_board_choice.js）。
 // 合約同上：noop ＝ ContextMenu 未 mount ⇒ 照舊遞補目前文章的看板直接跳。
@@ -1391,6 +1393,13 @@ App.prototype.onFunctionKey = function(bytes, label) {
   const fnOwner = this.activeListSession();
   if (fnOwner && fnOwner.onFunctionKey(bytes)) return;
 
+  // A footer button for switch board (#262): the board sheet like the key. The
+  // list sessions took theirs above; native mirrors keep PTT's own prompt.
+  if (bytes === 's' && this.view.useEasyReadingMode && this.buf.startedEasyReading &&
+      !this.buf.easyReadingFunctionMode) {
+    this.easyReading.switchBoard();
+    return;
+  }
   const plan = functionKeyClickPlan({
     bytes: bytes,
     mode:

@@ -174,6 +174,27 @@ export function landedOnBoardList(facts, boardLower) {
   return name != null && name.toLowerCase() === boardLower ? { sub: true } : false;
 }
 
+// The 進板畫面 PTT shows on a session's first entry to a board (bbs.c#Read):
+// the board's notes, then pressanykey, or, in pmore's auto-exit mode, no footer
+// at all: the last row stays blank and the cursor parks on it (classified
+// 'prompt'). The jump from inside an article cannot tell a footed pager from the
+// article it left, so only these two shapes count. A name prompt has its cursor
+// on an input field, and 主功能表 in row 0 means the jump never left it.
+export function boardEntryScreen(facts) {
+  if (!facts) return false;
+  const rowTexts = facts.rowTexts || [];
+  const rows = facts.rows || rowTexts.length;
+  const last = rowTexts[rows - 1] || '';
+  if (PRESS_ANY_KEY_RE.test(last)) return !isMainMenuRow(rowTexts[0] || '');
+  return (
+    facts.kind === 'prompt' &&
+    !facts.inputField &&
+    facts.curY === rows - 1 &&
+    last.trim() === '' &&
+    !isMainMenuRow(rowTexts[0] || '')
+  );
+}
+
 export function aidSearchLanded(facts) {
   if (!facts || facts.boardName == null) return false;
   if (facts.curY < 3 || facts.curY > facts.rows - 2) return false;
@@ -390,10 +411,11 @@ AidNavigation.prototype = {
     }
     if (this._resuming) {
       const quiet = this._resuming.quiet;
+      const failLabel = this._resuming.failLabel;
       this._resuming = false;
       this._history.abort();
       this._updateBackButton();
-      if (!quiet || overArticle) failed('回到斷線前的位置失敗：');
+      if (!quiet || overArticle) failed(failLabel || '回到斷線前的位置失敗：');
       this._endRun({ ok: false, error: msg });
       return;
     }
@@ -664,9 +686,57 @@ AidNavigation.prototype = {
       'goto'
     );
     run.external = true;
+    run.presentsList = !!(opts && opts.presentsList);
     this._hint('前往 ' + board + ' 看板…', PROGRESS_HINT_MS);
     this._begin(run);
     return true;
+  },
+
+  // Switch board from the easy-reading article on screen (#262). A run that
+  // fails leaves PTT on a screen nothing may recognise, so the article is
+  // brought back under its cover (_recover): the origin is measured now, before
+  // the run drives PTT away. Without the article's code (no URL line shown) there
+  // is nothing to reopen it by, and the failure keeps the hold alone.
+  switchBoard: function(board) {
+    if (this.active || !board) return false;
+    let origin = null;
+    const post = articlePresented(this._core) ? this.currentPostAid() : null;
+    if (post && post.aid)
+      origin = {
+        board: post.board || (this._view && this._view._articleBoard),
+        aid: post.aid,
+        bookmark: recordFor(this._core).begin('article-switch-return', this._ctx())
+      };
+    return this.startBoard(board, { presentsList: true }, (result) => {
+      if (result.ok) this._recovery = null;
+      else if (origin) this._recover(origin);
+    });
+  },
+
+  // Bring PTT back to the article a failed switch left (escape to 主功能表, the
+  // board and the code), then lift the hold. A failed recovery keeps the hold and
+  // the origin: the hold's retry (pull or toolbar refresh) runs it again.
+  _recover: function(origin) {
+    this._recovery = origin;
+    const started = this.startResume(
+      {
+        kind: 'article', board: origin.board, aid: origin.aid, bookmark: origin.bookmark, quiet: true,
+        failLabel: '切換看板失敗，也無法回到原文：'
+      },
+      (result) => {
+        if (!result.ok) return;
+        this._recovery = null;
+        this._core.articleHold?.recovered();
+      }
+    );
+    if (!started) this._core.articleHold?.hold({
+      source: 'aidNavigation', reason: 'recovery not started', text: '無法回到原文，下拉重新整理以重試。'
+    });
+    return started;
+  },
+
+  retryRecovery: function() {
+    return !this.active && !!this._recovery && this._recover(this._recovery);
   },
 
   // Select a stable article identity in the full board list without opening
@@ -748,7 +818,8 @@ AidNavigation.prototype = {
     run.external = true;
     run.bookmark = plan.bookmark || { feature: 'reconnect-resume' };
     run.quiet = !!plan.quiet;
-    this._resuming = { quiet: run.quiet };
+    // failLabel: the failure message's lead, for a resume that is not a reconnect's.
+    this._resuming = { quiet: run.quiet, failLabel: plan.failLabel || null };
     const label = plan.fromOpen ? '回到上次的地方' : '回到斷線前的位置';
     this.opHint = run.quiet ? null : label + '，請稍候…';
     if (!run.quiet) this._hint(label + '：' + plan.board + (plan.aid ? ' #' + plan.aid : ' 看板') + '…', PROGRESS_HINT_MS);
@@ -1006,7 +1077,9 @@ AidNavigation.prototype = {
     // the server list, even if a legacy footer still looks identical.
     clearSearchResultsContext(this._core);
     // Read before the native mirror below: a failure holds this article (#209).
-    this._overArticle = !!this._core.articleHold && articlePresented(this._core);
+    // A held article (a failed run's cover) counts: the recovery runs under it.
+    this._overArticle = !!this._core.articleHold &&
+      (articlePresented(this._core) || !!this._core.articleHold.held);
     this.active = true;
     this._updateBackButton(); // active → hidden: no second run mid-flight
     // Claim the leaveCurrentPost that our own landing will produce — see
@@ -1542,7 +1615,12 @@ AidNavigation.prototype = {
   _finishGoto: function(run) {
     this.active = false;
     this.opHint = null;
-    recordFor(this._core).releaseExternal(run.forList ? { landed: true } : undefined);
+    // A run that ends on the board's list its last step verified (the board
+    // switch, #262) has the list session present it at once (landed): waiting
+    // for the idle probe would leave PTT's own list on the grid in between. The
+    // other goto runs (shortcut search, thread jumps, agent tools) keep the
+    // quiet wait: their callers finish the page change themselves.
+    recordFor(this._core).releaseExternal(run.forList || run.presentsList ? { landed: true } : undefined);
     this._history.invalidate();
     this._updateBackButton();
     if (!this._quietEnd) this._hint('已進入 ' + run.target.board + ' 看板', 1200);
@@ -1682,8 +1760,10 @@ AidNavigation.prototype = {
   // clean list; a candidate menu / typo never satisfies the expect and ends as a
   // visible miss on the probed full frame.
   //   viaMenu=false: sent from INSIDE the article (pmore handles s directly,
-  //     more.c:177 → Select() only). No 進板畫面 is possible → the expect stays
-  //     exactly what it always was.
+  //     more.c:177 → Select()). The landing is the board's list, but the board's
+  //     進板畫面 can come first: live PTT shows it on the session's first entry
+  //     to a board (a note without a footer, blank last row, nothing to dismiss
+  //     it but a key), so the expect also knows that shape (boardEntryScreen).
   //   viaMenu=true:  sent at 主功能表 after the escape preamble (menu.c:498 →
   //     ReadSelect() → do_select() + Read()), so the landing may be preceded by
   //     the board's 進板畫面 + pressanykey — dismissed by _onBoardLanding.
@@ -1717,10 +1797,14 @@ AidNavigation.prototype = {
       expect: viaMenu
         ? this._boardLandingExpect(boardLower)
         : function(snapshot, facts) {
-            return landedOnBoardList(facts, boardLower);
+            const landed = landedOnBoardList(facts, boardLower);
+            if (landed) return landed;
+            // Not while the Q box's key is still ahead of us: its pressanykey
+            // is on screen until the space in this same write dismisses it.
+            return !dismissFirst && boardEntryScreen(facts) ? { dismiss: true } : false;
           },
       onDone: function(result) {
-        if (viaMenu) {
+        if (viaMenu || result.dismiss) {
           self._onBoardLanding(run, result, 0);
           return;
         }

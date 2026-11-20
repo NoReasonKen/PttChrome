@@ -8,6 +8,7 @@ import { CommandQueue } from "../../src/js/command_queue";
 import {
   AidNavigation,
   aidSearchLanded,
+  boardEntryScreen,
   numJumpLanded,
   endLanded,
   isSubListTitle,
@@ -2302,6 +2303,20 @@ describe("startResume（斷線重連後回到原處）", () => {
     expect(onEnd).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
   });
 
+  test("a resume with its own failure label does not claim a reconnect", () => {
+    const h = resumeHarness();
+    h.nav.startResume({ ...articlePlan(ARTICLE), failLabel: "切換看板失敗，也無法回到原文：" });
+    settle(h.queue, facts("prompt", { rowTexts: MAIN_MENU_SCREEN }));
+    vi.advanceTimersByTime(BOARD_PROBE_AFTER_MS);
+    settle(h.queue, facts("prompt", { rowTexts: MAIN_MENU_SCREEN }));
+    vi.advanceTimersByTime(STEP_PROBE_WINDOW_MS);
+    settle(h.queue, facts("prompt", { rowTexts: MAIN_MENU_SCREEN }));
+    vi.advanceTimersByTime(BOARD_PROBE_AFTER_MS * 4);
+    const last = h.hints[h.hints.length - 1];
+    expect(last).toContain("切換看板失敗，也無法回到原文：");
+    expect(last).not.toContain("回到斷線前的位置失敗");
+  });
+
   test("跳文進行中 ⇒ 不開第二輪", () => {
     const h = resumeHarness();
     h.nav.startExternal("2AbCdEf0", "movie");
@@ -2752,5 +2767,34 @@ describe("failure over an easy-reading article", () => {
     failRefresh(h);
     expect(hold.hold).not.toHaveBeenCalled();
     expect(h.hints.at(-1)).toMatch(/^重新整理失敗：.*（已停在原生畫面）$/);
+  });
+});
+
+// The board's entry screen over the jump from an article: a note without a
+// footer (blank last row, cursor parked there) or a pressanykey tail.
+describe("boardEntryScreen", () => {
+  const rows = 24;
+  const frame = (over = {}) => {
+    const rowTexts = Array.from({ length: rows }, (_, i) => (i === 3 ? "note" : ""));
+    return facts("prompt", { rows, rowTexts, curY: rows - 1, ...over });
+  };
+  test("a footerless note with the cursor parked on the blank last row", () => {
+    expect(boardEntryScreen(frame())).toBe(true);
+  });
+  test("a pressanykey tail", () => {
+    const f = frame({ kind: "article" });
+    f.rowTexts[rows - 1] = "                        請按任意鍵繼續";
+    expect(boardEntryScreen(f)).toBe(true);
+  });
+  test("not a name prompt, a cursor elsewhere, a footed pager or 主功能表", () => {
+    expect(boardEntryScreen(frame({ inputField: true }))).toBe(false);
+    expect(boardEntryScreen(frame({ curY: 5 }))).toBe(false);
+    const footed = frame({ kind: "article" });
+    footed.rowTexts[rows - 1] = "  瀏覽 第 1/2 頁 ( 45%)  (h)按鍵說明 ←[q]離開 ";
+    expect(boardEntryScreen(footed)).toBe(false);
+    const menu = frame();
+    menu.rowTexts[0] = "【主功能表】    批踢踢實業坊";
+    expect(boardEntryScreen(menu)).toBe(false);
+    expect(boardEntryScreen(null)).toBe(false);
   });
 });

@@ -338,6 +338,9 @@ const initialState = {
   // Opened on a page revealed during a handoff (#119): the search waits for
   // the real page, and the board kind opens no native prompt meanwhile.
   searchHeld: false,
+  // The sheet is the board switch of an easy-reading article (#262): no background
+  // `s` prompt, the board is entered through aidNavigation.startBoard.
+  searchSwitchBoard: false,
   // 沒寫看板的 #AID（js/aid_board_choice.js）：aidChoice＝二選一彈窗 { aid, currentBoard }；
   // 選「指定看板」後搜尋彈窗以看板種類開啟，searchAidTarget＝{ aid } 讓它只挑板名。
   aidChoice: null,
@@ -1050,6 +1053,31 @@ export const ContextMenu = ({ pttchrome }) => {
       pttchrome.openSearchModal = noop;
     };
   }, [pttchrome, openSearch]);
+  // `s` over an easy-reading article (#262, easy_reading.switchBoard). The same
+  // sheet as the board search, but without the bridge: PTT's own prompt would
+  // leave the article, and cancelling here must send nothing. Contract as
+  // openSearch: true = the sheet took the key.
+  const openBoardSwitch = useCallback(() => {
+    const busy = serializedOpHint(pttchrome);
+    if (busy) {
+      pttchrome.view?.flashListHint?.(busy, 3000);
+      return true;
+    }
+    update({
+      ...initialState,
+      showsSearch: true,
+      searchKind: "board",
+      searchKinds: ["board"],
+      searchSwitchBoard: true,
+    });
+    return true;
+  }, [pttchrome, update]);
+  useEffect(() => {
+    pttchrome.openBoardSwitch = openBoardSwitch;
+    return () => {
+      pttchrome.openBoardSwitch = noop;
+    };
+  }, [pttchrome, openBoardSwitch]);
   // 沒寫看板的 #AID 點擊（App.onAidClick）。合約同 openSearch：true ＝我接手了。
   const openAidBoardChoice = useCallback(
     (aid, currentBoard) => {
@@ -1254,7 +1282,7 @@ export const ContextMenu = ({ pttchrome }) => {
     [pttchrome, pickTarget],
   );
   const onSearchConfirm = useCallback(
-    ({ kind, text, bridge, aidTarget }) => {
+    ({ kind, text, bridge, aidTarget, switchBoard }) => {
       update({ showsSearch: false });
       // 查詢網友：沒有搜尋紀錄，送出就問 PTT（不行時 user_query 自己給提示）。
       if (kind === "user") {
@@ -1266,6 +1294,15 @@ export const ContextMenu = ({ pttchrome }) => {
       rememberSearch(kind, value);
       const hint = (msg, level) =>
         pttchrome.view?.flashListHint?.(msg, 3000, level);
+      // The board switch of an article (#262): the safe `s<board>` navigation.
+      if (switchBoard) {
+        if (!pttchrome.aidNavigation?.switchBoard(value))
+          hint(
+            serializedOpHint(pttchrome) || i18n("searchModal_busy"),
+            HINT_ERROR,
+          );
+        return;
+      }
       // 替 #AID 挑看板：背景的 `s` prompt 照常送出進板，落地後由 aidNavigation 接手
       // #AID（返回錨在開彈窗前已記下，aid_navigation.preparePicked）。
       if (aidTarget) {
@@ -1683,6 +1720,7 @@ export const ContextMenu = ({ pttchrome }) => {
     searchKinds,
     aidChoice,
     searchAidTarget,
+    searchSwitchBoard,
     showsFavSort,
     showsAidJump,
     showsPalette,
@@ -1798,8 +1836,11 @@ export const ContextMenu = ({ pttchrome }) => {
           kinds={searchKinds}
           onHide={onSearchHide}
           onConfirm={onSearchConfirm}
-          createBoardSearch={searchHeld ? null : createBoardSearch}
+          createBoardSearch={
+            searchHeld || searchSwitchBoard ? null : createBoardSearch
+          }
           aidTarget={searchAidTarget}
+          switchBoard={searchSwitchBoard}
           mobile={mobile}
           pttchrome={pttchrome}
         />

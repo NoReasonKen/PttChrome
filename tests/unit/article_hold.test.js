@@ -170,6 +170,22 @@ describe('ArticleHold', () => {
     expect(logs.at(-1).info).toEqual(expect.objectContaining({ source: 'articleHold', reason: 'unknownScreen' }));
   });
 
+  test('a retry over an unreadable screen runs the pending recovery instead of giving up', () => {
+    const { core, show, hints } = makeCore();
+    const cover = fakeCover();
+    core.aidNavigation.retryRecovery = vi.fn(() => true);
+    core.articleHold.hold({ source: 'aidNavigation', reason: 'miss', text: 'failed', cover });
+    show({ 10: 'something else' }, 0);
+    expect(core.articleHold.retry()).toBe(true);
+    expect(core.aidNavigation.retryRecovery).toHaveBeenCalledTimes(1);
+    // The hold stays until the recovery lands; recovered() lifts it.
+    expect(core.articleHold.held).toBe(true);
+    expect(hints.at(-1)?.text).not.toBe(i18n('articleHold_unknownScreen'));
+    core.articleHold.recovered();
+    expect(core.articleHold.held).toBe(false);
+    expect(cover.destroy).toHaveBeenCalledTimes(1);
+  });
+
   test('disconnection drops the hold', () => {
     const { core } = makeCore();
     const cover = fakeCover();

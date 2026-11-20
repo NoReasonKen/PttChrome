@@ -2474,6 +2474,7 @@ EasyReading.prototype._stickBottom = function() {
 //   leave                   back to the list
 //   threadJump              same-thread and author jumps (a b f = + - [ ] A B F)
 //   swallow                 taken and nothing done (Tab, Ctrl with @ ^ _ ?)
+//   switchBoard             s: the board switch sheet (#262)
 // Ctrl and Alt letters share one route (ctrlLetterOf).
 export function articleReadingKey(e) {
   if (!e.ctrlKey && !e.altKey) {
@@ -2503,6 +2504,8 @@ export function articleReadingKey(e) {
       case 'G':
         return 'bottom';
       case 'Tab': return 'swallow';
+      // Switch board (#262): the board sheet, not PTT's own prompt.
+      case 's': return 'switchBoard';
     }
     if (!e.metaKey && "abf=+-[]ABF".indexOf(e.key) >= 0) return 'threadJump';
     return null;
@@ -2529,7 +2532,7 @@ export function articleWouldRefuse(k, prefs, opts) {
   if (!mail && !e.ctrlKey && isPushKey(e.key)) return false;
   if (easyReadingFindKeyAction(e, prefs)) return true;
   const reading = articleReadingKey(e);
-  if (mail && reading === 'threadJump') return true;
+  if (mail && (reading === 'threadJump' || reading === 'switchBoard')) return true;
   // A swallowed key does nothing in the article: a row for it would do nothing.
   if (reading) return reading === 'swallow';
   return articleLeftoverKey(e, opts) !== 'native';
@@ -2615,6 +2618,10 @@ EasyReading.prototype._onKeyDownProcessUI = function(e) {
     case 'swallow':
       stop = true;
       break;
+    case 'switchBoard':
+      this.switchBoard();
+      stop = true;
+      break;
     case 'threadJump':
       // A mail has no thread easy reading presents (#196).
       if (this._readingMail()) {
@@ -2633,6 +2640,17 @@ EasyReading.prototype._onKeyDownProcessUI = function(e) {
   }
   if (stop)
     e.preventDefault();
+};
+
+// Switch board from the article (#262): the board sheet the lists and home
+// open for `s`, without PTT's own prompt: cancelling sends nothing, and the
+// board is entered through the safe navigation (aid_navigation.startBoard).
+// A mail refuses it: PTT's `s` works only while reading (more.c), and RMAIL
+// takes the board name's letters as shortcuts. Returns whether the sheet opened.
+EasyReading.prototype.switchBoard = function() {
+  if (!this._readingMail() && this._core?.openBoardSwitch?.()) return true;
+  this._refuseUnsupported('key');
+  return false;
 };
 
 // A help or reply character goes to PTT through the native mirror. For help,

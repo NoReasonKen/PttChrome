@@ -482,6 +482,21 @@ export const MobileToolbar = ({
       whenReady(() => dl.shareCurrentPostLink(title));
   }, [pttchrome, context, whenReady]);
 
+  // Switch board (#262): over an easy-reading article it opens the board sheet
+  // like `s` does; with easy reading off the native `s` is the way.
+  const onSwitchBoard = useCallback(() => {
+    setPanel(null);
+    setConfirmLogout(false);
+    const er = pttchrome.easyReading;
+    if (
+      pttchrome.view?.useEasyReadingMode &&
+      pttchrome.buf?.startedEasyReading &&
+      er
+    )
+      er.switchBoard();
+    else sendKey("s");
+  }, [pttchrome, sendKey]);
+
   // 跳到第一篇未讀：與桌機快捷鍵（預設 F7）同一個入口（unread_jump.js）。
   const onUnreadJump = useCallback(() => {
     setPanel(null);
@@ -948,6 +963,16 @@ export const MobileToolbar = ({
             onClick={onShare}
           >
             {i18n("mobileToolbar_share")}
+          </button>
+        ) : null}
+        {context.switchBoard ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__switchBoard"
+            onClick={onSwitchBoard}
+          >
+            {i18n("mobileToolbar_switchBoard")}
           </button>
         ) : null}
         {context.threadNav ? (

@@ -325,6 +325,12 @@ export const en_US = {
   "commentBar_send": {
     "message": "Post"
   },
+  "switchBoard_title": {
+    "message": "Switch board"
+  },
+  "switchBoard_confirm": {
+    "message": "Go"
+  },
   "searchModal_title": {
     "message": "Search"
   },
@@ -1639,6 +1645,9 @@ export const en_US = {
   },
   "mobileToolbar_replyMail": {
     "message": "Reply"
+  },
+  "mobileToolbar_switchBoard": {
+    "message": "Switch board"
   },
   "mobileToolbar_share": {
     "message": "Share"

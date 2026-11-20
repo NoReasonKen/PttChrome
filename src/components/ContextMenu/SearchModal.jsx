@@ -64,6 +64,7 @@ export const SearchModal = ({
   pttchrome,
   createBoardSearch,
   aidTarget,
+  switchBoard,
 }) => {
   // aidTarget＝{ aid, token }：沒寫看板的 #AID 要跳到哪個看板（aid_board_choice.js）。
   // 輸入與原生補全跟一般的看板搜尋完全相同，只有標題／送出鈕的字不同，送出後
@@ -221,9 +222,10 @@ export const SearchModal = ({
       const payload = { kind: currentKind, text: resolved || text };
       if (bridge) payload.bridge = bridge;
       if (aidTarget) payload.aidTarget = aidTarget;
+      if (switchBoard) payload.switchBoard = true;
       onConfirm(payload);
     },
-    [currentKind, onConfirm, aidTarget],
+    [currentKind, onConfirm, aidTarget, switchBoard],
   );
 
   const onSubmit = useCallback(
@@ -239,7 +241,9 @@ export const SearchModal = ({
   const isUser = currentKind === USER_KIND;
   const title = aidTarget
     ? i18n("aidBoardChoice_pickTitle").replace("{0}", "#" + aidTarget.aid)
-    : i18n(isUser ? "userQuery_title" : "searchModal_title");
+    : switchBoard
+      ? i18n("switchBoard_title")
+      : i18n(isUser ? "userQuery_title" : "searchModal_title");
 
   const form = (
     <form onSubmit={onSubmit} data-search-modal>
@@ -329,9 +333,11 @@ export const SearchModal = ({
           {i18n(
             aidTarget
               ? "aidBoardChoice_jump"
-              : isUser
-                ? "userQuery_confirm"
-                : "searchModal_confirm",
+              : switchBoard
+                ? "switchBoard_confirm"
+                : isUser
+                  ? "userQuery_confirm"
+                  : "searchModal_confirm",
           )}
         </Button>
       </Group>
