@@ -2303,6 +2303,20 @@ describe("startResume（斷線重連後回到原處）", () => {
     expect(onEnd).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
   });
 
+  test("a resume with its own failure label does not claim a reconnect", () => {
+    const h = resumeHarness();
+    h.nav.startResume({ ...articlePlan(ARTICLE), failLabel: "切換看板失敗，也無法回到原文：" });
+    settle(h.queue, facts("prompt", { rowTexts: MAIN_MENU_SCREEN }));
+    vi.advanceTimersByTime(BOARD_PROBE_AFTER_MS);
+    settle(h.queue, facts("prompt", { rowTexts: MAIN_MENU_SCREEN }));
+    vi.advanceTimersByTime(STEP_PROBE_WINDOW_MS);
+    settle(h.queue, facts("prompt", { rowTexts: MAIN_MENU_SCREEN }));
+    vi.advanceTimersByTime(BOARD_PROBE_AFTER_MS * 4);
+    const last = h.hints[h.hints.length - 1];
+    expect(last).toContain("切換看板失敗，也無法回到原文：");
+    expect(last).not.toContain("回到斷線前的位置失敗");
+  });
+
   test("跳文進行中 ⇒ 不開第二輪", () => {
     const h = resumeHarness();
     h.nav.startExternal("2AbCdEf0", "movie");

@@ -411,10 +411,11 @@ AidNavigation.prototype = {
     }
     if (this._resuming) {
       const quiet = this._resuming.quiet;
+      const failLabel = this._resuming.failLabel;
       this._resuming = false;
       this._history.abort();
       this._updateBackButton();
-      if (!quiet || overArticle) failed('回到斷線前的位置失敗：');
+      if (!quiet || overArticle) failed(failLabel || '回到斷線前的位置失敗：');
       this._endRun({ ok: false, error: msg });
       return;
     }
@@ -717,7 +718,10 @@ AidNavigation.prototype = {
   _recover: function(origin) {
     this._recovery = origin;
     const started = this.startResume(
-      { kind: 'article', board: origin.board, aid: origin.aid, bookmark: origin.bookmark, quiet: true },
+      {
+        kind: 'article', board: origin.board, aid: origin.aid, bookmark: origin.bookmark, quiet: true,
+        failLabel: '切換看板失敗，也無法回到原文：'
+      },
       (result) => {
         if (!result.ok) return;
         this._recovery = null;
@@ -813,7 +817,8 @@ AidNavigation.prototype = {
     run.external = true;
     run.bookmark = plan.bookmark || { feature: 'reconnect-resume' };
     run.quiet = !!plan.quiet;
-    this._resuming = { quiet: run.quiet };
+    // failLabel: the failure message's lead, for a resume that is not a reconnect's.
+    this._resuming = { quiet: run.quiet, failLabel: plan.failLabel || null };
     const label = plan.fromOpen ? '回到上次的地方' : '回到斷線前的位置';
     this.opHint = run.quiet ? null : label + '，請稍候…';
     if (!run.quiet) this._hint(label + '：' + plan.board + (plan.aid ? ' #' + plan.aid : ' 看板') + '…', PROGRESS_HINT_MS);
