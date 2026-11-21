@@ -126,6 +126,16 @@ The prepared list observes width and font changes, including geometry that settl
 
 The list layer is rendered by the same renderer with the same declared sizes, so it keeps the original text size, including Android system font scaling.
 
+The Android WebView can start a fling after a fast exit even when it filters
+out horizontal scroll updates. The next contact stops that fling, and Chromium
+can consume its long press before the page receives a context-menu event
+([fling controller](https://chromium.googlesource.com/chromium/src/+/HEAD/components/input/fling_controller.cc)).
+At the end of a committed horizontal Back, the page asks a supporting Android
+host to stop the old fling with `WebView.flingScroll(0, 0)` before handing input
+to the lower page. The request belongs to the end of the slide because release
+can arrive before WebView starts the fling. Native vertical scrolling and
+selection continue using the browser's usual gesture handling.
+
 After horizontal intent is recognized, a non-passive single-contact `touchmove` handler cancels native scrolling as well. It is bound only to the eligible mobile article surface and its drawer, rather than the whole application. Canceling `pointermove` alone does not cancel native panning ([Pointer Events specification](https://www.w3.org/TR/pointerevents/#the-touch-action-css-property)); a diagonal opening fling can otherwise leave native momentum that consumes the next tap. Undecided contacts, vertical scrolling and multiple contacts retain their native behavior. Real-touch coverage includes a diagonal fling released without the distance tests' stationary hold, followed by a single backdrop or shortcut tap. A tap stopping native momentum may receive no browser click. Drawer shortcuts and the backdrop therefore act when a tap's finger lifts and suppress a click that still follows; keyboard activation keeps the click handlers. A debug recording traces each contact, click and settle on the drawer (`articleGestures.*`).
 
 `article_shortcut_search.js` owns identity capture, the serialized search and Back routing; `search_trail.js` holds the pure trail transitions and `search_trail_storage.js` the local storage. Author search reuses native `a` semantics (case-insensitive substring matching), sent only after the native author prompt is recognized. Same-thread search uses native uppercase `S`, which takes the selected header's normalized subject (`read.c` `read_cmd_search_title`, `ask_filter_predicate`; `common/bbs/search.c` compares subjects case-insensitively); no client-side title normalization is used. Both capture the source reading bookmark before entering native mode, resolve its AID through `AidNavigation.resolvePostAid` (dismissing the information box only after a Q response) and select it in the full board list with `AidNavigation.selectArticle`, leaving any previous subset first.

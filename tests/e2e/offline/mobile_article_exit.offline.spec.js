@@ -6,8 +6,24 @@ const ptt = require('../helpers/ptt');
 const { bootOffline, loadCassette, replayListCassette } = require('../helpers/replay');
 const { MAIN } = require('../helpers/stack_routes');
 
+async function recordAndroidFlingRequests(page) {
+  await page.evaluate(() => {
+    window.__PTT_ANDROID__ = { stopFling: true };
+    window.__flingRequests = [];
+    window.PttAndroid = {
+      postMessage(message) {
+        const { id, op } = JSON.parse(message);
+        window.__flingRequests.push(op);
+        this.onmessage({ data: JSON.stringify({ id, ok: true }) });
+      },
+    };
+  });
+  return () => page.evaluate(() => window.__flingRequests);
+}
+
 test('right dragging retracts title and content together above a dark fallback while the toolbar stays fixed', async ({ page }, testInfo) => {
   await bootGestureArticle(page);
+  const requests = await recordAndroidFlingRequests(page);
   const main = await waitRectStable(page, '.main');
   const title = await waitRectStable(page, '#mobileAppBar');
   const toolbar = await waitRectStable(page, '#mobileToolbar');
@@ -26,18 +42,22 @@ test('right dragging retracts title and content together above a dark fallback w
   expect((await waitRectStable(page, '.main')).left).toBeCloseTo(main.left, 0);
   expect((await waitRectStable(page, '#mobileAppBar')).left).toBeCloseTo(title.left, 0);
   expect(await gestureSent(page)).toBe('');
+  expect(await requests()).toEqual([]);
 });
 
 test('a committed right drag sends one article exit only after release', async ({ page }) => {
   await bootGestureArticle(page);
+  const requests = await recordAndroidFlingRequests(page);
   const main = await waitRectStable(page, '.main');
   const y = main.top + 100;
   const contact = await beginArticleTouch(page, { x: 20, y });
   await contact.move({ x: 36, y });
   await contact.move({ x: page.viewportSize().width - 20, y });
   expect(await gestureSent(page)).toBe('');
+  expect(await requests()).toEqual([]);
   await contact.release();
   await expect.poll(() => gestureSent(page)).toBe('\x1b[D');
+  expect(await requests()).toEqual(['stopFling']);
   await expect(page.locator('[data-article-exit-underlay]')).toHaveCount(0);
 });
 
