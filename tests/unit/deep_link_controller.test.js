@@ -707,6 +707,27 @@ describe("copying the link over an easy-reading article", () => {
     expect(hold.done).toHaveBeenCalledWith("deepLinkCopy");
   });
 
+  // The reopened article is read again from its top: it stays covered at the
+  // reading position until that position is restored (ArticleHold's cover).
+  test.each([
+    ["copying", h => h.ctl.copyCurrentPostLink()],
+    ["sharing", h => h.ctl.shareCurrentPostLink("title")],
+  ])("%s by Q covers the article until it is restored", (name, start) => {
+    const h = makeHarness({ lastRow: STATUS_ROW });
+    const { hold } = overArticle(h);
+    start(h);
+    expect(hold.run).toHaveBeenCalledWith("deepLinkCopy", { cover: true });
+  });
+
+  test("the free path holds nothing", () => {
+    const h = makeHarness({ lastRow: STATUS_ROW });
+    const { hold } = overArticle(h);
+    h.nav.localAid = { aid: "1gIeu-3A", board: "movie" };
+    h.ctl.copyCurrentPostLink();
+    expect(h.nav.queries).toEqual([]);
+    expect(hold.run).not.toHaveBeenCalled();
+  });
+
   test.each([
     ["Q never answers", h => h.nav.queries[0].onFail()],
     ["the reopen fails", (h, reopens) => { h.nav.queries[0].onDone({ aid: "1gIeu-3A", board: "movie" }); reopens[0].onFail(); }],
