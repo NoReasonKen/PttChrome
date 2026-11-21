@@ -235,6 +235,7 @@ class MainActivity : ComponentActivity() {
             .put("encryptedCredentials", true)
             .put("credentialDeletion", true)
             .put("pixivLookup", true)
+            .put("stopFling", true)
             .put("updateBlocking", updater.blocking())
             .put("openUpdate", intent.getBooleanExtra("open_update", false))
             .put("site", site)
@@ -249,6 +250,12 @@ class MainActivity : ComponentActivity() {
             if (!isMainFrame || sourceOrigin.toString() != page.origin) return@addWebMessageListener
             val request = try { JSONObject(message.data ?: return@addWebMessageListener) } catch (_: Exception) { return@addWebMessageListener }
             when (request.optString("op")) {
+                "stopFling" -> {
+                    val active = webView === wv
+                    if (active) wv.flingScroll(0, 0)
+                    reply.postMessage(JSONObject().put("id", request.optInt("id")).put("ok", active).toString())
+                    return@addWebMessageListener
+                }
                 "pixivLookup", "pixivCancel" -> {
                     pagePixiv.handle(request) { if (webView === wv) reply.postMessage(it.toString()) }
                     return@addWebMessageListener

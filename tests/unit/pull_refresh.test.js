@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   pullState,
+  installPullRefresh,
   PULL_RESISTANCE,
   PULL_THRESHOLD_PX,
   PULL_MAX_PX,
@@ -38,5 +39,40 @@ describe("CSS：手機版面關掉原生 pull-to-refresh（只動 y 軸）", () 
     expect(m[1]).toMatch(/overscroll-behavior-y\s*:\s*contain/);
     // 兩軸簡寫或 x 軸會連瀏覽器返回導航一起關掉（native_gesture_css.test.js）。
     expect(m[1]).not.toMatch(/overscroll-behavior(-x|-inline)?\s*:/);
+  });
+});
+
+describe("下拉起手：列表上緣未知時不起手（#278）", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const run = (topShown) => {
+    vi.stubGlobal("document", { body: {}, documentElement: {} });
+    vi.stubGlobal("window", {});
+    const handlers = {};
+    const doc = {
+      addEventListener: (n, f) => (handlers[n] = f),
+      removeEventListener() {},
+      body: { appendChild() {} },
+      createElement: () => ({ style: {}, classList: { add() {}, remove() {}, toggle() {} }, setAttribute() {} }),
+      getElementById: () => null,
+    };
+    const core = {
+      mobile: true,
+      screenRefresh: { target: () => ({ kind: "article-list" }), topShown, refresh: vi.fn() },
+    };
+    installPullRefresh(core, doc);
+    const el = { nodeType: 1, closest: () => null, parentElement: null, scrollHeight: 0, clientHeight: 0 };
+    handlers.touchstart({ target: el, touches: [{ clientX: 0, clientY: 0 }] });
+    handlers.touchmove({ touches: [{ clientX: 0, clientY: 400 }] });
+    handlers.touchend();
+    return core.screenRefresh.refresh;
+  };
+  test("上緣已顯示 ⇒ 重整", () => {
+    expect(run(() => true)).toHaveBeenCalledWith("pull");
+  });
+  test("上緣未知 ⇒ 不重整", () => {
+    expect(run(() => false)).not.toHaveBeenCalled();
+  });
+  test("沒有 topShown（無列表 session）⇒ 照舊", () => {
+    expect(run(undefined)).toHaveBeenCalledWith("pull");
   });
 });
