@@ -180,6 +180,12 @@ export function androidNotify({ title, body, tag }) {
   return true;
 }
 
+export function stopAndroidFling() {
+  if (config()?.stopFling !== true || !androidBridgeAvailable()) return false;
+  requestAndroid('stopFling', {}, { timeoutMs: 1000 }).catch(() => null);
+  return true;
+}
+
 // 這個頁面是 renderer 被回收／process 被砍之後換上的（原生注入 config.restored）。
 export function androidRestored() {
   const c = config();

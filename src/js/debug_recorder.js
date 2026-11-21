@@ -7,6 +7,7 @@ import { setDiagSink } from './diag';
 import { OWNER_BOARD_LIST } from './list_render_owner';
 import { filterSummary } from './list_row_filter';
 import { credentialRedaction } from './credential_redaction';
+import { watchContextMenus } from './context_menu_diag';
 
 // 輕量狀態快照：純讀取，不深拷貝 buf。欄位缺就缺（防呆）。
 //
@@ -280,6 +281,7 @@ export class DebugRecorder {
     this._watchScroller(app.view && app.view.mainDisplay);
     this._watchList();
     this._watchErrors();
+    if (typeof window !== 'undefined') this._unwatchContextMenus = watchContextMenus(this, window);
 
     this.log('record.start', { url: app.connectedUrl && app.connectedUrl.url, detailedGestures: this.detailedGestures });
     this._watchEnvironment();
@@ -487,6 +489,8 @@ export class DebugRecorder {
     this._unwatchScroller();
     this._unwatchList();
     this._unwatchErrors();
+    this._unwatchContextMenus?.();
+    this._unwatchContextMenus = null;
     this._unwatchEnvironment();
     if (this._origOnData) this.app.onData = this._origOnData;
     if (this._origSendRaw && this._patchedConn) this._patchedConn._sendRaw = this._origSendRaw;

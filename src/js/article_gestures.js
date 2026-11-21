@@ -1,3 +1,5 @@
+import { contextTargetKind } from './context_menu_diag';
+import { stopAndroidFling } from './android_bridge';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { mobileToolbarContext } from './mobile_toolbar';
 import { i18n } from './i18n';
@@ -66,7 +68,16 @@ export class ArticleGestures {
       this.diag.log('clickSuppressed', event);
     }, true);
     this._listen(window, 'contextmenu', event => {
-      if (this.track?.gesture.operation || this.opened) this._consume(event);
+      if (this.track?.gesture.operation || this.opened) {
+        const reason = this.track?.gesture.operation ? 'gesture' : 'drawer-open';
+        this._consume(event);
+        this.core.debugRecorder?.log('contextMenu.blocked', {
+          reason, target: contextTargetKind(event.target),
+          pointer: ['touch', 'mouse', 'pen'].includes(event.pointerType) ? event.pointerType : 'unknown',
+          touchSource: !!event.sourceCapabilities?.firesTouchEvents,
+          preventedFinal: event.defaultPrevented,
+        });
+      }
     }, true);
     this._listen(window, 'keydown', event => this._key(event), true);
     this.diag = new DrawerDiagnostics(this);
@@ -276,7 +287,7 @@ export class ArticleGestures {
     this.suppressClickUntil = performance.now() + 400;
     const result = track.gesture.release(event.timeStamp, canceled);
     if (track.gesture.operation === 'exit') {
-      return track.layer ? this._settleLayerExit(result.exit) : this._settleExit(result.exit);
+      return track.layer ? this._settleLayerExit(result.exit) : this._settleExit(result.exit, { fromSwipe: true });
     }
     this._settle(result.opened);
   }
@@ -342,9 +353,11 @@ export class ArticleGestures {
     exit.layer.el.removeEventListener('touchmove', this._nativeTouchMove, true);
     releaseSurfaces(exit.surfaces);
     exit.underlay.remove();
-    if (back) this.stack.backDuringHandoff();
-    // A Back made meanwhile some other way may already show the page below.
-    else if (exit.below && exit.below !== this.stack.shownLayer()) {
+    if (back) {
+      stopAndroidFling();
+      this.stack.backDuringHandoff();
+    } else if (exit.below && exit.below !== this.stack.shownLayer()) {
+      // A Back made meanwhile some other way may already show the page below.
       if (exit.below.prepare) exit.below.prepare();
       else exit.below.hide();
     }
@@ -536,7 +549,7 @@ export class ArticleGestures {
     paintSurfaces(this.exitSurfaces || [], distance);
   }
 
-  _settleExit(commit) {
+  _settleExit(commit, { fromSwipe = false } = {}) {
     if (!this.exitUnderlay) return;
     this._stopMotion();
     this.exitSettling = true;
@@ -550,7 +563,13 @@ export class ArticleGestures {
       const backsDuringSlide = this.backsDuringSlide || 0;
       this.backsDuringSlide = null;
       const valid = commit && this._leaveable(this.exitLevel) && identity === this.identity;
-      if (valid) this._handoff(backsDuringSlide);
+      if (valid) {
+        // The WebView starts its fling after release, even when horizontal
+        // scrolling was filtered out. Stop it as the lower page opens to
+        // input, so the next tap or long press need not stop it.
+        if (fromSwipe) stopAndroidFling();
+        this._handoff(backsDuringSlide);
+      }
       else this._removeExit();
     }, duration);
   }

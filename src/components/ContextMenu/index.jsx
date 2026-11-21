@@ -412,6 +412,29 @@ export const ContextMenu = ({ pttchrome }) => {
   // callbacks to avoid stale closures.
   const stateRef = useRef(state);
   stateRef.current = state;
+  const menuDiag = useRef({ open: false, reason: "dismiss" });
+  useEffect(() => {
+    const previous = menuDiag.current;
+    if (previous.open !== state.open) {
+      pttchrome.debugRecorder?.log(
+        state.open ? "contextMenu.open" : "contextMenu.close",
+        {
+          reason: state.open ? "contextmenu" : previous.reason,
+        },
+      );
+      previous.open = state.open;
+      previous.reason = "dismiss";
+    }
+  }, [pttchrome, state.open]);
+  useEffect(
+    () => () => {
+      if (menuDiag.current.open)
+        pttchrome.debugRecorder?.log("contextMenu.close", {
+          reason: "unmount",
+        });
+    },
+    [pttchrome],
+  );
   // 底部推文列交給探路的那一則（{ text, type }）；onPreflight 一回來就取走清空。
   const quickPushRef = useRef(null);
   // Shallow-merge a partial into state; undefined → no-op.
@@ -543,6 +566,10 @@ export const ContextMenu = ({ pttchrome }) => {
         // 不帶 touch：拖選取把手後補發的 contextmenu 沒有觸控標記（見該函式註解）。
         mobile: pttchrome.mobile,
         selectMode: pttchrome.mobileSelectMode,
+      });
+      pttchrome.debugRecorder?.log("contextMenu.process", {
+        disposition,
+        touch,
       });
       if (disposition === "swallow") {
         // 「按住右鍵滾輪翻頁」放開右鍵時補發的那一次，照舊吞掉。
@@ -833,6 +860,7 @@ export const ContextMenu = ({ pttchrome }) => {
   const onHide = useCallback(() => {
     if (stateRef.current.open) {
       pttchrome.contextMenuShown = false;
+      menuDiag.current.reason = "dismiss";
       update({
         open: false,
         contextOnUrl: "",
@@ -884,6 +912,7 @@ export const ContextMenu = ({ pttchrome }) => {
       else menuHandlerByEventKey[eventKey](pttchrome, state);
       event.stopPropagation();
       pttchrome.contextMenuShown = false;
+      menuDiag.current.reason = "action";
       update(initialState);
     },
     [pttchrome, update],
@@ -893,6 +922,7 @@ export const ContextMenu = ({ pttchrome }) => {
     (event) => {
       event.stopPropagation();
       pttchrome.contextMenuShown = false;
+      menuDiag.current.reason = "action";
       update({ ...initialState, showsInputHelper: true });
     },
     [pttchrome, update],
@@ -905,6 +935,7 @@ export const ContextMenu = ({ pttchrome }) => {
     (event) => {
       event.stopPropagation();
       pttchrome.contextMenuShown = false;
+      menuDiag.current.reason = "action";
       update({
         ...initialState,
         showsTitleBlacklist: true,
@@ -969,6 +1000,7 @@ export const ContextMenu = ({ pttchrome }) => {
     (event) => {
       event.stopPropagation();
       pttchrome.contextMenuShown = false;
+      menuDiag.current.reason = "action";
       // 接不下來（線路上已經有別的序列化操作）就要說一聲，不能默默沒反應。
       if (!openLongPush())
         pttchrome.view?.flashListHint?.(
@@ -1296,6 +1328,7 @@ export const ContextMenu = ({ pttchrome }) => {
     (event) => {
       event.stopPropagation();
       pttchrome.contextMenuShown = false;
+      menuDiag.current.reason = "action";
       openPalette();
     },
     [pttchrome, openPalette],
@@ -1474,6 +1507,7 @@ export const ContextMenu = ({ pttchrome }) => {
     (event) => {
       event.stopPropagation();
       pttchrome.contextMenuShown = false;
+      menuDiag.current.reason = "action";
       update({ ...initialState, showsLiveArticleHelper: true });
     },
     [pttchrome, update],
@@ -1483,6 +1517,7 @@ export const ContextMenu = ({ pttchrome }) => {
     (event) => {
       event.stopPropagation();
       pttchrome.contextMenuShown = false;
+      menuDiag.current.reason = "action";
       pttchrome.onDisableLiveHelperModalState();
       update({ ...initialState, showsSettings: true });
     },

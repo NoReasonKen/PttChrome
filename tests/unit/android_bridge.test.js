@@ -9,6 +9,7 @@ import {
   requestAndroid,
   openAppSettings,
   androidNotify,
+  stopAndroidFling,
   androidImeInset,
   onAndroidIme,
   IME_EVENT,
@@ -130,6 +131,42 @@ describe("androidNotify（水球系統通知）", () => {
 
   test("不是 APK：什麼都不送", () => {
     expect(androidNotify({ title: "a", body: "b", tag: "c" })).toBe(false);
+  });
+});
+
+describe("stopAndroidFling", () => {
+  test("sends only the operation and id when the native capability is available, and clears the request on reply", () => {
+    vi.useFakeTimers();
+    const { sent, respond } = installAndroid();
+    window.__PTT_ANDROID__.stopFling = true;
+    expect(stopAndroidFling()).toBe(true);
+    expect(sent).toEqual([{ id: expect.any(Number), op: "stopFling" }]);
+    expect(vi.getTimerCount()).toBe(1);
+    respond({ id: sent[0].id, ok: true });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("does not send from an older Android app without the capability", () => {
+    const { sent } = installAndroid();
+    expect(stopAndroidFling()).toBe(false);
+    window.__PTT_ANDROID__.stopFling = 1;
+    expect(stopAndroidFling()).toBe(false);
+    expect(sent).toEqual([]);
+  });
+
+  test("does not send from a browser or when the channel is absent", () => {
+    expect(stopAndroidFling()).toBe(false);
+    window.__PTT_ANDROID__ = { stopFling: true };
+    expect(stopAndroidFling()).toBe(false);
+  });
+
+  test("absorbs a failed asynchronous request", async () => {
+    vi.useFakeTimers();
+    installAndroid();
+    window.__PTT_ANDROID__.stopFling = true;
+    expect(stopAndroidFling()).toBe(true);
+    await vi.runAllTimersAsync();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 
