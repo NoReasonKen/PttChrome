@@ -13,7 +13,9 @@ const { installPaintedFrameProbe } = require('../helpers/layout');
 const body = num => `Body of article ${num} by`;
 
 // Every painted frame: what the reading area shows (a cover over it, or the
-// page itself), and whether it is the terminal grid.
+// page itself), whether it is the terminal grid, and the row the reader sees
+// at its top (elementsFromPoint looks through to a cover, as in
+// mobile_post_info's watchTop).
 async function watchFrames(page, num) {
   await installPaintedFrameProbe(page);
   await page.evaluate((text) => {
@@ -25,7 +27,11 @@ async function watchFrames(page, num) {
       // kept list layer below the page.
       const layer = [...document.querySelectorAll('[data-stack-layer]')].find(el => el.style.zIndex === '150');
       const grid = !layer && !!app.view._gridRender;
-      frames.push({ grid, article: (layer || main).textContent.includes(text), functionMode: !!app.buf.easyReadingFunctionMode });
+      const r = main.getBoundingClientRect();
+      const row = document.elementsFromPoint(r.left + r.width / 2, r.top + 8)
+        .map(el => el.closest && el.closest('[type="bbsrow"]')).find(Boolean);
+      const top = row ? row.textContent.trim().slice(0, 24) : null;
+      frames.push({ grid, article: (layer || main).textContent.includes(text), top, functionMode: !!app.buf.easyReadingFunctionMode });
     };
     window.__stopOpFrames = () => window.__paintedFrame.remove(sample);
     window.__paintedFrame.add(sample);
@@ -82,7 +88,13 @@ test.describe('operations over an easy-reading article', () => {
       return !app.articleHold.holding && app.commandQueue.idle && !app.buf.easyReadingFunctionMode;
     }), { timeout: 15000 }).toBe(true);
     await expect.poll(() => page.evaluate(() => window.__app.view.currentLineIndex())).toBe(line);
-    expectArticleEveryFrame(await stopFrames(page));
+    const frames = await stopFrames(page);
+    expectArticleEveryFrame(frames);
+    // The article is read again from its top after Q; the reader never sees
+    // it move: one row stays at the top on every frame.
+    const tops = frames.map(f => f.top).filter((t, i, all) => i === 0 || t !== all[i - 1]);
+    expect(tops).toHaveLength(1);
+    expect(tops[0]).toMatch(/^Line \d+ of article 600/);
     expect(await page.evaluate(() => window.__app.articleHold.held)).toBe(false);
     expect(await guardHits(page)).toEqual([]);
   });

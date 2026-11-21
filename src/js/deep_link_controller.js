@@ -132,8 +132,10 @@ DeepLinkController.prototype = {
     // 按 Q 會蓋出一個原生資訊框：對好讀模式來說跟「r 回應」「X 推文」是同一類
     // 事件，先進 functionMode 停掉它的累積／翻頁，畫面才不會在交易途中被動。
     // Over an easy-reading article the article stays on screen meanwhile (#209).
+    // The reopened article is read again from its top, so it stays covered at
+    // the reading position until that position is restored (run's opts.cover).
     const hold = this._core.articleHold;
-    const held = !!(hold && hold.run('deepLinkCopy'));
+    const held = !!(hold && hold.run('deepLinkCopy', { cover: true }));
     const er = this._core.easyReading;
     if (er && er._enterFunctionMode) er._enterFunctionMode();
     const self = this;
