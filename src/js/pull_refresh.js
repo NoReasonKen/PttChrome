@@ -113,6 +113,8 @@ export function installPullRefresh(core, doc) {
     if (core.modalShown && target.kind !== 'revealed') return;
     const sp = scrollParentOf(e.target);
     if (sp && sp.scrollTop > 0) return;
+    // A list whose rows above are still being read is not at its top (#278).
+    if (refresh.topShown && !refresh.topShown()) return;
     const t = e.touches[0];
     track = { x: t.clientX, y: t.clientY, scroller: sp, state: 'idle' };
   };
