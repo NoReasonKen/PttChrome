@@ -3336,18 +3336,20 @@ ListSession.prototype = {
   // Number jump: digits collected locally (overlay input), one serialized
   // jump transaction on commit. The landing page may be far outside the
   // buffer → rebuild from the landed facts instead of resuming stale anchors.
-  _beginJumpCollect: function(firstDigit) {
+  _beginJumpCollect: function(firstDigit, whenReady = run => run()) {
     const self = this;
     if (!this._view.promptListInput) return; // no UI — stay put (tests)
     this._view.promptListInput('跳至第幾項：', firstDigit, function(val) {
       const num = val ? parseInt(val, 10) : NaN;
       if (!num || num <= 0) return; // cancelled / not a number: zero server
-      if (self._selectLoaded(num)) return;
-      const r = transitionListSession(self.state, { type: 'key', keyClass: 'transact' });
-      self.state = r.next;
-      // A number beyond the rows loaded asks PTT for another part of the list.
-      if ((self._termBuf.listLineNums || []).indexOf(num) === -1) self._spendLayer('jumpBeyondRows');
-      self._beginJumpNumber(num);
+      whenReady(() => {
+        if (self._selectLoaded(num)) return;
+        const r = transitionListSession(self.state, { type: 'key', keyClass: 'transact' });
+        self.state = r.next;
+        // A number beyond the held rows asks PTT for another part of the list.
+        if ((self._termBuf.listLineNums || []).indexOf(num) === -1) self._spendLayer('jumpBeyondRows');
+        self._beginJumpNumber(num);
+      });
     });
   },
 
@@ -3410,7 +3412,7 @@ ListSession.prototype = {
   // docs/easy-reading-list.md §Operation classes). Whitelist = navigation / open /
   // number jump / leave / in-place keys; anything else is 'unsupported': nothing
   // is sent and the reader is told (#159) — never a silent dead key.
-  _classifyKey: function(e) {
+  _classifyKey: function(e, page = null) {
     // Keys that produce NO bytes at all (CapsLock / F1-F12 / NumLock /
     // ScrollLock / unmappable Ctrl-Shift combos): swallow, never transition.
     // The passthrough contract assumes the un-prevented event still reaches
@@ -3423,15 +3425,16 @@ ListSession.prototype = {
     // reading has the same guard as `e.key.length === 1` (easy_reading.js).
     if (keyEventToBytes(e) == null) return { class: 'ignore' };
     // The online user list (#199) has its own table (talk.c's userlist_cmds).
-    if (this.isUserList()) return userListKeyClass(e);
+    const users = page ? isUserListKey(page.boardName) : this.isUserList();
+    if (users) return userListKeyClass(e);
+    const mail = page ? page.boardName === MAIL_LIST_KEY : this.isMailList();
     // Ctrl-Q queries the author of the article selected (#254, user_query.js).
-    if (e.ctrlKey && (e.key === 'q' || e.key === 'Q') && this._authorQueryList())
+    if (e.ctrlKey && (e.key === 'q' || e.key === 'Q') && (page ? !mail : this._authorQueryList()))
       return { class: 'author-query' };
     if (e.ctrlKey) return { class: 'unsupported' }; // Ctrl-P 發文 etc.
     // The mailbox (#196) reads a mail with every key mail.c#mail_comms gives
     // mail_cmd_read (→ Enter r l L); its other commands (reply, forward,
     // delete, marks…) and the article list's in-place keys are refused below.
-    const mail = this.isMailList();
     // Q shows the selected article's information (#261, post_info.js).
     if (!mail && e.key === 'Q') return { class: 'post-info' };
     if (mail && (e.key === 'r' || e.key === 'l' || e.key === 'L')) return { class: 'open' };
@@ -3462,7 +3465,7 @@ ListSession.prototype = {
         return { class: 'nav', op: 'end' };
       case 'Enter':
       case 'ArrowRight':
-        return { class: this._selectedNum == null ? 'open-pinned' : 'open' };
+        return { class: (page ? page.selectedNum : this._selectedNum) == null ? 'open-pinned' : 'open' };
       case 'ArrowLeft':
       case 'q':
       case 'e':
@@ -3490,7 +3493,8 @@ ListSession.prototype = {
         if (e.key === 'h' || e.key === 'H') return { class: 'help' };
         // `#` (jump to an article by its code) is presented as PttChrome's own
         // input (#253), where the list can take the jump.
-        if (e.key === '#' && this.aidJumpBoard()) return { class: 'aid-jump' };
+        if (e.key === '#' && (page ? !mail && !page.selectMode && page.boardName : this.aidJumpBoard()))
+          return { class: 'aid-jump' };
         return { class: 'unsupported' };
     }
   },

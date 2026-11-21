@@ -349,6 +349,7 @@ const initialState = {
   // Opened on a page revealed during a handoff (#119): the search waits for
   // the real page, and the board kind opens no native prompt meanwhile.
   searchHeld: false,
+  aidJumpHeld: null,
   // The sheet is the board switch of an easy-reading article (#262): no background
   // `s` prompt, the board is entered through aidNavigation.startBoard.
   searchSwitchBoard: false,
@@ -1093,14 +1094,19 @@ export const ContextMenu = ({ pttchrome }) => {
   // （availableSearchKinds，與工具列同一個判準）。
   const openSearch = useCallback(
     (kind) => {
-      if (serializedOpHint(pttchrome)) return false;
-      const kinds = availableSearchKinds(searchGateFacts(pttchrome));
+      const stack = pttchrome.navigationStack;
+      const whenReady = stack?.deferRevealedAction();
+      if (!whenReady && serializedOpHint(pttchrome)) return false;
+      const kinds = whenReady
+        ? stack.toolbarContext()?.search || []
+        : availableSearchKinds(searchGateFacts(pttchrome));
       if (kinds.indexOf(kind) < 0) return false;
       update({
         ...initialState,
         showsSearch: true,
         searchKind: kind,
         searchKinds: kinds,
+        searchHeld: whenReady,
       });
       return true;
     },
@@ -1117,7 +1123,8 @@ export const ContextMenu = ({ pttchrome }) => {
   // leave the article, and cancelling here must send nothing. Contract as
   // openSearch: true = the sheet took the key.
   const openBoardSwitch = useCallback(() => {
-    const busy = serializedOpHint(pttchrome);
+    const whenReady = pttchrome.navigationStack?.deferRevealedAction();
+    const busy = !whenReady && serializedOpHint(pttchrome);
     if (busy) {
       pttchrome.view?.flashListHint?.(busy, 3000);
       return true;
@@ -1128,6 +1135,7 @@ export const ContextMenu = ({ pttchrome }) => {
       searchKind: "board",
       searchKinds: ["board"],
       searchSwitchBoard: true,
+      searchHeld: whenReady,
     });
     return true;
   }, [pttchrome, update]);
@@ -1200,9 +1208,13 @@ export const ContextMenu = ({ pttchrome }) => {
   // `#` on the easy-reading article list and the More sheet's entry (#253,
   // js/aid_jump.js): true = the input opened.
   const openAidJump = useCallback(() => {
-    update({ ...initialState, showsAidJump: true });
+    update({
+      ...initialState,
+      showsAidJump: true,
+      aidJumpHeld: pttchrome.navigationStack?.deferRevealedAction(),
+    });
     return true;
-  }, [update]);
+  }, [pttchrome, update]);
   useEffect(() => {
     pttchrome.openAidJumpModal = openAidJump;
     return () => {
@@ -1210,15 +1222,17 @@ export const ContextMenu = ({ pttchrome }) => {
     };
   }, [pttchrome, openAidJump]);
   const onAidJumpHide = useCallback(
-    () => update({ showsAidJump: false }),
+    () => update({ showsAidJump: false, aidJumpHeld: null }),
     [update],
   );
   const onAidJumpConfirm = useCallback(
     (text) => {
-      update({ showsAidJump: false });
-      startAidJump(pttchrome, text);
+      update({ showsAidJump: false, aidJumpHeld: null });
+      const jump = () => startAidJump(pttchrome, text);
+      if (state.aidJumpHeld) state.aidJumpHeld(jump);
+      else jump();
     },
-    [pttchrome, update],
+    [pttchrome, state.aidJumpHeld, update],
   );
   const onAidChoiceHide = useCallback(
     () => update({ aidChoice: null }),
@@ -1273,7 +1287,7 @@ export const ContextMenu = ({ pttchrome }) => {
     };
   }, [pttchrome, openUserQuerySheet]);
   const onSearchHide = useCallback(
-    () => update({ showsSearch: false }),
+    () => update({ showsSearch: false, searchHeld: false }),
     [update],
   );
 
@@ -1361,7 +1375,7 @@ export const ContextMenu = ({ pttchrome }) => {
   );
   const onSearchConfirm = useCallback(
     ({ kind, text, bridge, aidTarget, switchBoard }) => {
-      update({ showsSearch: false });
+      update({ showsSearch: false, searchHeld: false });
       // 查詢網友：沒有搜尋紀錄，送出就問 PTT（不行時 user_query 自己給提示）。
       if (kind === "user") {
         if (text) pttchrome.userQuery?.query(text);
@@ -1374,11 +1388,15 @@ export const ContextMenu = ({ pttchrome }) => {
         pttchrome.view?.flashListHint?.(msg, 3000, level);
       // The board switch of an article (#262): the safe `s<board>` navigation.
       if (switchBoard) {
-        if (!pttchrome.aidNavigation?.switchBoard(value))
-          hint(
-            serializedOpHint(pttchrome) || i18n("searchModal_busy"),
-            HINT_ERROR,
-          );
+        const switchToBoard = () => {
+          if (!pttchrome.aidNavigation?.switchBoard(value))
+            hint(
+              serializedOpHint(pttchrome) || i18n("searchModal_busy"),
+              HINT_ERROR,
+            );
+        };
+        if (searchHeld) searchHeld(switchToBoard);
+        else switchToBoard();
         return;
       }
       // 替 #AID 挑看板：背景的 `s` prompt 照常送出進板，落地後由 aidNavigation 接手
@@ -1411,8 +1429,7 @@ export const ContextMenu = ({ pttchrome }) => {
         if (!sent)
           hint(serializedOpHint(pttchrome) || i18n("searchModal_busy"));
       };
-      const stack = pttchrome.navigationStack;
-      if (searchHeld && stack?.handingOff) stack.whenReady(submit);
+      if (searchHeld) searchHeld(submit);
       else submit();
     },
     [pttchrome, update, searchHeld],
@@ -1526,24 +1543,14 @@ export const ContextMenu = ({ pttchrome }) => {
 
   // 手機底部工具列（MobileToolbar）的兩個入口：與鍵盤／右鍵選單同一個實作。
   const onToolbarSearch = useCallback(
-    (kind, revealed) => {
-      if (revealed) {
-        update({
-          ...initialState,
-          showsSearch: true,
-          searchKind: kind,
-          searchKinds: revealed.kinds,
-          searchHeld: true,
-        });
-        return;
-      }
+    (kind) => {
       if (!openSearch(kind))
         pttchrome.view?.flashListHint?.(
           serializedOpHint(pttchrome) || i18n("searchModal_busy"),
           3000,
         );
     },
-    [pttchrome, openSearch, update],
+    [pttchrome, openSearch],
   );
   const onToolbarSettings = useCallback(() => {
     pttchrome.onDisableLiveHelperModalState();

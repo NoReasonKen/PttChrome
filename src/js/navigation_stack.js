@@ -213,7 +213,10 @@ export class NavigationStack {
   captureBoardList(board, namesBoard = true) {
     if (!this._stacksBoard(board)) return this.dropPending();
     this._capture(PAGE.BOARD_LIST, board, () => StackListLayer.capture(this.core.view, 'board'));
-    if (this.pending && !namesBoard) this.pending.anyBoard = true;
+    if (this.pending) {
+      this.pending.boardListVariant = this.core.boardListSession?._variant;
+      if (!namesBoard) this.pending.anyBoard = true;
+    }
   }
 
   _stacksBoard(board) {
@@ -517,10 +520,15 @@ export class NavigationStack {
     return !!this.handoff?.layer;
   }
 
-  // A key for PTT made on the revealed page (`send` sends it): see
-  // Handoff.holdKey. Returns whether it was held.
-  holdKey(send) {
-    return !!this.handoff?.holdKey(send);
+  // Both physical keys and the controls act on the page Back revealed.
+  takeHandoffKey(event) {
+    return this.handoff ? this.handoff.takeKey(event) : 'droppedBeforeHandoff';
+  }
+
+  // A dialog may outlive the handoff. Its submit belongs to the page that
+  // opened the dialog, including when that page has already taken over.
+  deferRevealedAction() {
+    return this.handoff?.pageAction();
   }
 
   // Such a refresh replaces any remembered action and runs once PTT shows the
@@ -705,7 +713,12 @@ export class NavigationStack {
     if (how === 'timeout' && h.hint) h.hint();
     // A remembered action runs from its own task, once the real page is shown.
     if (gone && h.action) this.refusesComment();
-    else h.settleAction(how);
+    else {
+      const page = this._top();
+      const connection = core.conn;
+      h.settleAction(how, () => this._top() === page && !this.handoff &&
+        !core.articleGestures?.holdsInput() && core.conn === connection && connection?.isConnected);
+    }
     if (!gone) h.layer?.destroy();
     // Prepare the next list outside a new contact, after the spent layer is
     // removed. Only that list remains connected below the real page.

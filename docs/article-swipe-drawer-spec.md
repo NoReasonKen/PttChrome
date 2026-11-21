@@ -74,6 +74,13 @@ Opening an article, or a board from the dashboard or a board list, is the same m
 
 Suspend background interaction once a panel drag is recognized and while the drawer is open. Enable menu activation only after it settles open; a fresh touch during the opening animation completes that animation immediately so the first intentional tap is accepted. The original drag release cannot activate a shortcut. Shortcut labels have a cyan underline to distinguish them from article text visible through the panel. Tapping any space outside the shorter panel, including above/below or to its left, closes it without passing the tap through. System Back and Escape also close the drawer. Closing without navigation preserves article reading position.
 
+During synchronization after Back, hardware and key-panel keys follow the
+revealed page's easy-reading key policy. Search and jump inputs can open
+immediately. Their submissions and the ordered queue of terminal keys belong
+to the page that received them, and run only when that page takes over.
+Returning again discards its pending keys. Overlays and editable controls
+retain their own keyboard input.
+
 ## Interruption and resizing
 
 - Touch cancellation or a second contact restores the pre-drag state without applying ordinary release/fling rules.

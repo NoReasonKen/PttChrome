@@ -463,10 +463,8 @@ export const MobileToolbar = ({
     setPanel(null);
     setConfirmLogout(false);
     if (!onOpenSearch || !context.search.length) return;
-    if (pttchrome.navigationStack?.handingOff)
-      onOpenSearch(context.search[0], { kinds: context.search });
-    else onOpenSearch(context.search[0]);
-  }, [pttchrome, onOpenSearch, context]);
+    onOpenSearch(context.search[0]);
+  }, [onOpenSearch, context]);
 
   // 系統分享面板（Web Share API）。**同步**呼叫：免費路徑要在這個 click 的 user
   // activation 內叫出 navigator.share（deep_link_controller.shareCurrentPostLink）。

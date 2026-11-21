@@ -951,7 +951,7 @@ BoardListSession.prototype = {
   // the tagged boards, and a page table takes precedence over psb.c.
   // Easy reading keeps only the keys of the features it presents (#192): `h`
   // is help (the help menu sheet), and every other key is 'unsupported'.
-  _classifyKey: function(e) {
+  _classifyKey: function(e, variant = this._variant) {
     // 送不出任何 byte 的鍵（CapsLock / F1-F12 / NumLock…）：吞掉、不轉態。
     // 判準就是送出路徑本身（term_keyboard），不硬列鍵清單。
     if (keyEventToBytes(e) == null) return { class: 'ignore' };
@@ -1002,7 +1002,7 @@ BoardListSession.prototype = {
         return { class: 'leave' };
       default:
         if (/^[1-9]$/.test(e.key)) return { class: 'jump-digit', digit: e.key };
-        if (e.key.length === 1 && LIST_TOGGLE_KEYS[e.key]) return this._toggleClass(e.key);
+        if (e.key.length === 1 && LIST_TOGGLE_KEYS[e.key]) return this._toggleClass(e.key, variant);
         // A 類鍵（INPLACE_KEYS）：原地重繪 ⇒ 凍結交易，全程不切原生。
         // 好讀關掉時 session 不運作；這裡的檢查只防關掉途中的殘留呼叫。
         if (
@@ -1371,9 +1371,9 @@ BoardListSession.prototype = {
   // ---- The list's view switches (`c`/`C`, `S`; #221) ---------------------------
 
   // A view switch typed or clicked on the list (_offersToggle).
-  _toggleClass: function(key) {
+  _toggleClass: function(key, variant = this._variant) {
     const which = LIST_TOGGLE_KEYS[key];
-    if (!this._autoResumeEnabled() || !this._offersToggle(which)) return { class: 'unsupported' };
+    if (!this._autoResumeEnabled() || !this._offersToggle(which, variant)) return { class: 'unsupported' };
     return { class: 'list-toggle', toggle: which };
   },
 
@@ -1386,9 +1386,8 @@ BoardListSession.prototype = {
   //            told apart from a class's list and keep it); the favorites (and their folders), where
   //            PTT rewrites their saved order once the reader confirms in
   //            easy reading's own sheet (_askFavSort).
-  _offersToggle: function(which) {
-    if (which === 'newflag') return this._variant === 'fav' || this._variant === 'class';
-    if (which === 'sort') return this._variant === 'class' || this._variant === 'fav';
+  _offersToggle: function(which, variant = this._variant) {
+    if (which === 'newflag' || which === 'sort') return variant === 'fav' || variant === 'class';
     return false;
   },
 
@@ -2300,18 +2299,17 @@ BoardListSession.prototype = {
   },
 
   // 數字跳號：數字在本地的浮層收集（零 server round-trip），送出時一次交易。
-  _beginJumpCollect: function(firstDigit) {
+  _beginJumpCollect: function(firstDigit, whenReady = run => run()) {
     const self = this;
     if (!this._view.promptListInput) return;
     this._view.promptListInput('跳至第幾項：', firstDigit, function(val) {
       const num = val ? parseInt(val, 10) : NaN;
       if (!num || num <= 0) return; // 取消／不是數字：零 server
-      const r = transitionBoardListSession(self.state, {
-        type: 'key',
-        keyClass: 'transact'
+      whenReady(() => {
+        const r = transitionBoardListSession(self.state, { type: 'key', keyClass: 'transact' });
+        self.state = r.next;
+        self._beginJumpNumber(num);
       });
-      self.state = r.next;
-      self._beginJumpNumber(num);
     });
   },
 
