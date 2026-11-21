@@ -1241,7 +1241,8 @@ ListSession.prototype = {
     const facts = this._collectFacts(snap);
     // Resize owners briefly visit native screens to rebuild layout. Drive
     // their queue without adopting those hidden intermediate screens.
-    if (this._core.articleResize?.active || this._core.listResize?.active) {
+    if (this._core.articleResize?.active || this._core.listResize?.active ||
+        this._core.articleComparison?.sendingPage) {
       this._queue.onSettle(snap, facts);
       return;
     }

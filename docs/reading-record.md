@@ -64,6 +64,7 @@ do not count as reader input. See `src/js/scroll_restore_follow.js` and
 | `article-search` 文章搜尋 | 列表：原處（有結果時落在搜尋結果，編號空間比對不符自動丟棄；找不到時 PTT `vmsg` 後回原列表） | 取消：不還原（零送出）；失敗（prompt 沒開出來）：列表原處 |
 | `article-shortcut-search` article shortcut search | No restore: results are the destination | Cancel: article origin; failure: leave the verified current screen |
 | `article-shortcut-return` return from shortcut results | Article origin | Failure: matching list origin; cancellation: no restore |
+| `article-comparison` compare a revealed article with PTT's copy | No restore: the shown rows retain their reading position | No restore |
 | `user-query` 查詢網友（#199）、查詢作者（#254） | 使用者列表或文章列表：原處（查詢頁底下就是同一份列表） | 使用者列表或文章列表：原處 |
 | `post-info` 文章資訊（`Q`，#261） | 文章列表：原處；文章：重開後回原列 | 文章列表：原處；文章：原列 |
 | `help-menu` 說明選單（`h`） | 不還原（執行的指令就是目的地） | 離開：列表、看板列表原處 |

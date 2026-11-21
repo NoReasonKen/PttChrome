@@ -266,6 +266,7 @@ NextArticle.prototype = {
     const core = this._core;
     const buf = core.buf;
     if (!buf || typeof buf.getRowText !== 'function') return;
+    if (core.articleComparison?.hidesFrames) return;
     this._maybeReleaseVeil();
     this._scheduleLayout();
     if (!enabled()) {
@@ -297,6 +298,14 @@ NextArticle.prototype = {
       this._hide();
       return;
     }
+    this.presentArticle();
+  },
+
+  // The visible article has reached its end, including when a live layer
+  // returns with its existing rows and no new PTT page to render.
+  presentArticle: function() {
+    const core = this._core;
+    const buf = core.buf;
     const view = core.view || {};
     const board = view._articleBoard;
     const article = { board: board, author: view._articleAuthor, title: view._articleTitle };
@@ -338,6 +347,7 @@ NextArticle.prototype = {
     const sub = this._pickMode === 'select';
     const snap = sub ? this._subSnapshot : this._snapshot;
     if (!st.visible || !entry || this._nav || !snap) return false;
+    if (core.articleComparison?.afterPage(() => this.open())) return true;
     const nav = core.aidNavigation;
     const busy = serializedOpHint(core);
     if (busy || this._wireBusy() || !nav || typeof (sub ? nav.startSubNum : nav.startNum) !== 'function') {

@@ -86,16 +86,24 @@ describe("seekBack：往回跳不得污染累積頁", () => {
     expect(t[0]).toBe("article line 1");
     expect(t[TOTAL - 1]).toBe(`article line ${TOTAL}`);
     expect(view._accEndRow).toBe(TOTAL);
+    expect(view.accumulation().pageIndex).toEqual({
+      cols: 80, rows: ROWS,
+      pages: [1, 23, 45, 67, LAST_START].map(start => ({
+        start, end: start + CONTENT - 1, offset: start - 1
+      }))
+    });
   });
 
   test("REGRESSION：:41 跳回中段 → pageLines／_accEndRow 不動，並回報落地列", () => {
     const view = makeView();
     readToEnd(view);
     const before = texts(view);
+    const index = view.accumulation().pageIndex;
     paint(view, 41);
     expect(texts(view)).toEqual(before);
     expect(view._accEndRow).toBe(TOTAL); // 修前：63（倒退）
     expect(view.buf.easyReadingSeekBack).toMatchObject({ row: 40, landingStart: 41 });
+    expect(view.accumulation().pageIndex).toEqual(index);
   });
 
   test("REGRESSION：跳回後自動翻頁一路走回文末，內容不得重複", () => {
