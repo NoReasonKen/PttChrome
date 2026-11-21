@@ -2205,6 +2205,16 @@ export function easyReadingFindKeyAction(e, prefs) {
   return null;
 }
 
+export function handleArticleFindKey(view, event, prefs) {
+  const action = easyReadingFindKeyAction(event, prefs);
+  if (action === 'hint') {
+    view.flashListHint?.(
+      String(i18n('hint_easyReadingUseBrowserFind') || '').replace('%s', findShortcutLabel()),
+      4000);
+  }
+  return action;
+}
+
 // 回傳 'browser' 代表「這個鍵交給瀏覽器」：呼叫端必須就此 return，既不 preventDefault
 // 也不往下送給 PTT（見 easyReadingFindKeyAction）。
 EasyReading.prototype._onKeyDown = function(e) {
@@ -2557,14 +2567,10 @@ EasyReading.prototype._onKeyDownProcessUI = function(e) {
   // 讀者按了別的鍵（捲動、翻頁、進 prompt…）⇒ 不再黏在文末。
   if (this._bottomStick && !(e.key === 'End' || e.key === '$' || e.key === 'G'))
     this._bottomStick.release();
-  const findAction = easyReadingFindKeyAction(e, readValuesWithDefault());
+  const findAction = handleArticleFindKey(this._view, e, readValuesWithDefault());
   if (findAction === 'browser')
     return 'browser';
   if (findAction === 'hint') {
-    if (this._view.flashListHint)
-      this._view.flashListHint(
-        String(i18n('hint_easyReadingUseBrowserFind') || '').replace('%s', findShortcutLabel()),
-        4000);
     e.preventDefault();
     return;
   }

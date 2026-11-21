@@ -676,19 +676,28 @@ export function TermView() {
   });
 
   addEventListener('keydown', (e) => {
-    // A Back while a leave is on its way to PTT reveals the next lower page at
-    // once, and PTT follows it (#125); the leave's own modal gate holds every
-    // other key.
-    if (this.bbscore.articleGestures?.holdsInput() && isPlainBack(e)) {
-      e.preventDefault();
-      this.bbscore.articleGestures.backDuringHandoff();
-      return;
-    }
-    // A refresh key then refreshes a revealed list once PTT shows it (#124).
-    if (this.bbscore.articleGestures?.holdsInput() && isRefreshKeyEvent(e) &&
-        easyReadingOn(readValuesWithDefault()) && this.bbscore.screenRefresh?.target()?.kind === 'revealed') {
-      e.preventDefault();
-      this.bbscore.screenRefresh.refresh('key');
+    const gestures = this.bbscore.articleGestures;
+    if (gestures?.holdsInput()) {
+      if (e.defaultPrevented || this.bbscore.contextMenuShown || this._listInputWrap ||
+          keyEventPredatesModalClose(e.timeStamp, this.bbscore.anyModalClosedAt) ||
+          (e.target !== this.input && (e.target?.isContentEditable ||
+            e.target?.closest?.('input, textarea, select, button, a[href]')))) return;
+      // Back still closes the drawer or reveals the next lower page (#125).
+      if (isPlainBack(e) && gestures.acceptsHandoffInput({ back: true })) {
+        e.preventDefault();
+        gestures.backDuringHandoff();
+        return;
+      }
+      if (!gestures.acceptsHandoffInput()) return;
+      // Refresh replaces the pending action on the revealed page (#124).
+      if (isRefreshKeyEvent(e) && easyReadingOn(readValuesWithDefault()) &&
+          this.bbscore.screenRefresh?.target()?.kind === 'revealed') {
+        e.preventDefault();
+        this.bbscore.screenRefresh.refresh('key');
+      } else if (keyEventFilter(e)) {
+        if (isAltRemapEvent(e)) this._altRemapAt = Date.now();
+        this.onKeyDown(e);
+      }
       return;
     }
     if (!shouldAcceptInput() || belongsToClosedModal(e) || !keyEventFilter(e))
@@ -1641,14 +1650,11 @@ TermView.prototype = {
   //     listSession 明明接手了，_keyboard 還會再送一次 [D。（已實測：對一個
   //     從未 dispatch 的合成事件呼叫 preventDefault，Chromium／Firefox 的
   //     defaultPrevented 都會變 true，這是 DOM 標準行為。）
-  //  2. 合成事件的 e.code 是空字串、isTrusted 為 false、target 為 null。目前鏈上
-  //     只有 term_keyboard 的 altRemapCharCode 與 isAltRemapEvent 讀 e.code，兩者
-  //     都經過 `e.code || ''`（isAltRemapEvent 也用不到：合成事件 altKey 為 false，
-  //     進不了 alt 分支）。
-  //     **日後在鏈上新增讀 e.code／e.target／e.isTrusted 的邏輯就會靜默壞掉。**
+  //  2. Replayed hardware keys keep their code and modifiers. Toolbar keys
+  //     may have no code. Synthetic events have no target and are not trusted.
   //  3. 用 this.onKeyDown(ev) **直接呼叫**，不要 dispatchEvent：#t 上已掛了 keydown
   //     listener，dispatch 會讓同一個事件跑兩次分派。
-  // mods（選用）：{ ctrlKey, altKey }——手機黏滯 Ctrl 合成組合鍵用（mobile_layout.mobileCtrlKey）。
+  // Toolbar modifiers and the keyboard details retained across a handoff.
   sendKeyAsUser: function(keyName, mods) {
     var ctrl = !!(mods && mods.ctrlKey);
     var alt = !!(mods && mods.altKey);
@@ -1673,9 +1679,7 @@ TermView.prototype = {
       });
       return;
     }
-    var down = new KeyboardEvent('keydown', {
-      key: keyName, ctrlKey: ctrl, altKey: alt, cancelable: true
-    });
+    var down = new KeyboardEvent('keydown', { ...mods, key: keyName, ctrlKey: ctrl, altKey: alt, cancelable: true });
     this._keyOutcome = null;
     this.onKeyDown(down);
     // What became of a toolbar or keypad key, for debug recordings. A single
@@ -1707,18 +1711,18 @@ TermView.prototype = {
     // leave reaches PTT until the real page takes over. A Back reveals the
     // next lower page at once (#125), whatever PTT is busy with meanwhile;
     // other keys made on the revealed page are sent once it takes over
-    // (#119). Toolbar and keypad keys come through here, past the modal gate
-    // that holds the hardware keyboard.
+    // (#119, #147). Physical keys and keys from the toolbar share this path.
     var gestures = this.bbscore.articleGestures;
     if (gestures?.holdsInput()) {
-      e.preventDefault();
       if (isPlainBack(e)) {
+        e.preventDefault();
         this._keyOutcome = 'backDuringHandoff';
         gestures.backDuringHandoff();
       } else if (gestures.stack.handingOff && MODIFIER_KEY_NAMES.indexOf(e.key) < 0) {
-        this._keyOutcome = 'heldForHandoff';
-        gestures.holdKey(e.key, { ctrlKey: e.ctrlKey, altKey: e.altKey });
+        this._keyOutcome = gestures.stack.takeHandoffKey(e);
+        if (this._keyOutcome) e.preventDefault();
       } else {
+        e.preventDefault();
         this._keyOutcome = gestures.stack.handingOff ? 'droppedModifier' : 'droppedBeforeHandoff';
       }
       return;

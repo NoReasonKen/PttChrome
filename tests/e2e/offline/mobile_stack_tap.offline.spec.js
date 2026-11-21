@@ -5,7 +5,7 @@ const { waitRectStable, OVERRIDING_SEL } = require('../helpers/layout');
 const { beginArticleTouch } = require('../helpers/article_gestures');
 const ptt = require('../helpers/ptt');
 const { loadCassette, bootScenario, waitFed } = require('../helpers/replay');
-const { MAIN, holdBackReply, heldBack, recordKeys } = require('../helpers/stack_routes');
+const { MAIN, holdBackReply, heldBack, recordHints, recordedHints, recordKeys } = require('../helpers/stack_routes');
 
 const reopen = loadCassette('scn-stack-article-reopen');
 const LAYER = '[data-stack-layer]:not([data-stack-parked])';
@@ -131,7 +131,7 @@ test('a tapped article missing from the refreshed list gives a notice, keeps the
   expect(await page.evaluate(n => window.__replay.sent.slice(n), sentBefore)).toEqual([]);
 });
 
-test('keypad keys on the revealed list wait for the swap and then reach the list in order', async ({ page }) => {
+test('hardware and keypad keys on the revealed list wait for the swap in one order', async ({ page }) => {
   await openRecordedArticle(page);
   // Leave by ← on the keypad, which stays open over the revealed list.
   await page.locator('#mobileToolbar [data-key="__keys"]').tap();
@@ -140,23 +140,80 @@ test('keypad keys on the revealed list wait for the swap and then reach the list
   await heldBack(page);
   await expect(page.locator(LAYER)).toBeVisible();
   await recordKeys(page);
+  await recordHints(page);
   const sentBefore = await page.evaluate(() => window.__replay.sent.length);
-  // The hardware keyboard stays behind the handoff's modal gate.
-  await page.keyboard.press('End');
-  await page.keyboard.press('j');
   // The toolbar is the revealed list's own.
   for (const key of ['__end', '__keys', '__more'])
     await expect(page.locator(`#mobileToolbar [data-key="${key}"]`)).toBeEnabled();
-  for (const key of ['ArrowDown', 'PageDown'])
-    await page.locator(`.mobileKeypadKey[data-key="${key}"]`).tap();
+  await page.keyboard.press('PageDown');
+  await page.keyboard.press('z');
+  await expect.poll(() => recordedHints(page)).toEqual([expect.stringContaining('不支援這個按鍵')]);
+  await page.locator('.mobileKeypadKey[data-key="ArrowDown"]').tap();
+  await page.keyboard.press('PageUp');
   expect(await page.evaluate(n => window.__replay.sent.slice(n), sentBefore)).toEqual([]);
   await reply();
   await expect(page.locator(UNDERLAY)).toHaveCount(0, { timeout: 10000 });
   await listActive(page);
   await expect.poll(() => page.evaluate(() => window.__keys)).toEqual([
-    ['ArrowDown', true], ['PageDown', true], ['ArrowDown', false], ['PageDown', false]
+    ['PageDown', true], ['z', true], ['ArrowDown', true], ['PageUp', true],
+    ['PageDown', false], ['ArrowDown', false], ['PageUp', false]
   ]);
   expect(await page.evaluate(() => window.__app.buf.pageState)).toBe(2);
+});
+
+test('keyboard search opens on the revealed list and keeps the input while PTT answers', async ({ page }) => {
+  await openRecordedArticle(page);
+  const reply = await leaveWithHeldReply(page);
+  const sentBefore = await page.evaluate(() => window.__replay.sent.length);
+  await page.keyboard.press('/');
+  const search = page.locator('[data-sheet="search"]');
+  const input = search.getByRole('textbox');
+  await expect(input).toBeFocused();
+  await page.keyboard.type('jz');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.type('x');
+  await expect(input).toHaveValue('jxz');
+  expect(await page.evaluate(n => window.__replay.sent.slice(n), sentBefore)).toEqual([]);
+  await reply();
+  await expect(page.locator(UNDERLAY)).toHaveCount(0, { timeout: 10000 });
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('jxz');
+  await page.keyboard.type('y');
+  await expect(input).toHaveValue('jxyz');
+  await page.keyboard.press('Escape');
+  await expect(search).toHaveCount(0);
+});
+
+test('a hardware Enter on the revealed list opens the selected article once after the reply', async ({ page }) => {
+  await openRecordedArticle(page);
+  const reply = await leaveWithHeldReply(page);
+  const sentBefore = await page.evaluate(() => window.__replay.sent.length);
+  await page.keyboard.press('Enter');
+  expect(await page.evaluate(n => window.__replay.sent.slice(n), sentBefore)).toEqual([]);
+  await reply();
+  await expect(page.locator(UNDERLAY)).toHaveCount(0, { timeout: 10000 });
+  await articleRead(page);
+  await waitFed(page, reopen.steps.length - 1);
+  // The preceding number-and-Enter aligns PTT's selection; the standalone
+  // Enter is the one that opens the article.
+  expect(await page.evaluate(n => window.__replay.sent.slice(n).filter(bytes => bytes === '\r').length, sentBefore)).toBe(1);
+});
+
+test('a number jump starts collecting digits before the real list takes over', async ({ page }) => {
+  await openRecordedArticle(page);
+  const reply = await leaveWithHeldReply(page);
+  const sentBefore = await page.evaluate(() => window.__replay.sent.length);
+  await page.keyboard.press('1');
+  const input = page.locator('[data-list-input]');
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('1');
+  await page.keyboard.press('2');
+  await expect(input).toHaveValue('12');
+  await page.keyboard.press('Escape');
+  await expect(input).toHaveCount(0);
+  expect(await page.evaluate(n => window.__replay.sent.slice(n), sentBefore)).toEqual([]);
+  await reply();
+  await listActive(page);
 });
 
 test('system Back during the handoff neither leaves the site nor reaches PTT', async ({ page }) => {

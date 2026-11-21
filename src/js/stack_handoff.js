@@ -10,6 +10,13 @@ import { MAIL_LIST_KEY, USER_LIST_KEY, isUserListKey, sameBoard } from './screen
 import { handoffStep, PAGE, HANDOFF_TIMEOUT_MS, HANDOFF_REACH_POLL_MS } from './page_stack';
 import { i18n } from './i18n';
 import { STACK_NOTICE_MS, LOCAL_INPUT, stopLocal } from './stack_layer';
+import { searchKindOfKey } from './article_search';
+import { homeKeyAction } from './home_dashboard';
+import { articleLeftoverKey, articleReadingKey, handleArticleFindKey } from './easy_reading';
+import { altRemapCharCode, isAltRemapEvent, isBrowserClipboardEvent, keyEventToBytes } from './term_keyboard';
+import { isPushKey } from './long_push_gate';
+import { HINT_ERROR } from './status_hint';
+import { UNSUPPORTED_KEY_HINT } from './unsupported_hint';
 
 // The progress bar's owner while a remembered action waits for PTT.
 const PENDING_OWNER = 'stackPending';
@@ -52,6 +59,7 @@ export class Handoff {
     this.identity = openArticleKey(core);
     this.appBar = revealed?.appBar || null;
     this.toolbar = revealed?.toolbar || null;
+    this.boardListVariant = revealed?.boardListVariant;
     this.post = revealed?.post || null;
     this.sentAt = performance.now();
     this.presentedAt = null;
@@ -157,6 +165,88 @@ export class Handoff {
     return this.remember({ run, drop: () => this.notRun() });
   }
 
+  pageAction() {
+    const layer = this.layer;
+    if (!layer) return null;
+    return run => {
+      if (this.layer === layer) {
+        if (!this.ended) return this.whenReady(run);
+        if (this.isPresentedPage?.()) return run();
+      }
+      this.notRun();
+    };
+  }
+
+  // Judge the visible page, not the terminal screen PTT might still be on.
+  // The eventual key runs through ordinary dispatch on that same real page.
+  takeKey(event) {
+    if (event.metaKey || isBrowserClipboardEvent(event)) return null;
+    const altRemap = isAltRemapEvent(event);
+    if (event.altKey && !altRemap) return null;
+    if (!this.layer) return 'droppedWithoutLayer';
+
+    const core = this.core;
+    const prefs = readValuesWithDefault();
+    const kind = this.shownTarget();
+    const searchKinds = this.toolbar?.search || [];
+    const plain = !event.ctrlKey && !event.altKey;
+    const search = plain && searchKindOfKey(kind === PAGE.HOME && event.key === 'S' ? 's' : event.key);
+    if (search && searchKinds.includes(search) && core.openSearchModal?.(search))
+      return 'openedSearch';
+
+    let accepted;
+    if (kind === PAGE.ARTICLE_LIST) {
+      const page = this.layer.listPage.session;
+      // The normal list handler reserves Alt+Q for author lookup; every
+      // other Alt remap is refused, including aliases of the user list.
+      const key = altRemap ? { key: 'q', ctrlKey: true } : event;
+      const action = core.listSession._classifyKey(key, page);
+      if (altRemap) accepted = altRemapCharCode(event) === 17 && action.class === 'author-query';
+      else if (action.class !== 'ignore') accepted = action.class !== 'unsupported';
+      if (action.class === 'aid-jump' && core.openAidJumpModal?.()) return 'openedAidJump';
+      if (action.class === 'jump-digit' && core.view.promptListInput) {
+        core.listSession._beginJumpCollect(action.digit, this.pageAction());
+        return 'openedNumberJump';
+      }
+    } else if (kind === PAGE.BOARD_LIST) {
+      const action = core.boardListSession._classifyKey(event, this.boardListVariant);
+      if (altRemap || action.class !== 'ignore') accepted = !altRemap && action.class !== 'unsupported';
+      if (action.class === 'jump-digit' && core.view.promptListInput) {
+        core.boardListSession._beginJumpCollect(action.digit, this.pageAction());
+        return 'openedNumberJump';
+      }
+    } else if (kind === PAGE.HOME) {
+      const action = homeKeyAction(event);
+      if (action) accepted = action !== 'refuse';
+    } else if (kind === PAGE.ARTICLE) {
+      const find = handleArticleFindKey(core.view, event, prefs);
+      if (find === 'browser') return null;
+      if (find === 'hint') return 'showedFindHint';
+      const mail = !!this.toolbar?.mail;
+      const reading = articleReadingKey(event);
+      if (reading === 'swallow') return 'ignoredKey';
+      if (reading === 'switchBoard' && !mail && core.openBoardSwitch?.()) return 'openedSearch';
+      if (!mail && plain && isPushKey(event.key) && core.commentBar?.state.available && core.commentBar.expand())
+        return 'openedComment';
+      if (reading) accepted = !mail || (reading !== 'threadJump' && reading !== 'switchBoard');
+      else if (!mail && plain && isPushKey(event.key)) accepted = true;
+      else if (keyEventToBytes(event) != null || altRemap)
+        accepted = articleLeftoverKey(event, { mail }) !== 'refuse';
+    }
+    if (accepted === false) {
+      core.view.flashListHint?.(UNSUPPORTED_KEY_HINT, 4000, HINT_ERROR);
+      return 'refusedOnLayer';
+    }
+    if (accepted === undefined && !(plain && [
+      prefs.aidNavBackKey, prefs.deepLinkCopyKey, prefs.unreadJumpKey,
+      prefs.enableCommandPalette ? prefs.commandPaletteKey : null,
+    ].includes(event.key))) return null;
+
+    const { key, code, ctrlKey, altKey, shiftKey, repeat } = event;
+    this.holdKey(() => core.view.sendKeyAsUser(key, { code, ctrlKey, altKey, shiftKey, repeat }));
+    return 'heldForHandoff';
+  }
+
   // A key for PTT made on the revealed page: keys made one after another are
   // all kept, in order, and sent together once the real page takes over.
   holdKey(send) {
@@ -166,7 +256,16 @@ export class Handoff {
       return true;
     }
     const sends = [send];
-    return this.remember({ sends, run: () => sends.forEach(key => key()), drop: () => this.notRun() });
+    return this.remember({
+      sends,
+      run: () => {
+        for (const send of sends) {
+          if (!this.isPresentedPage()) return this.notRun();
+          send();
+        }
+      },
+      drop: () => this.notRun()
+    });
   }
 
   notRun() {
@@ -242,6 +341,7 @@ export class Handoff {
     this.layer = revealed?.layer || null;
     this.appBar = revealed?.appBar || null;
     this.toolbar = revealed?.toolbar || null;
+    this.boardListVariant = revealed?.boardListVariant;
     this.post = revealed?.post || null;
     this.reveal?.(this.layer, revealed?.title || '', this.appBar);
     if (this.layer) {
@@ -426,9 +526,15 @@ export class Handoff {
   // The remembered action, once the end has shown the real page: run from its
   // own task when PTT presented the page, otherwise dropped. A comment on a
   // deleted source is refused by the stack instead.
-  settleAction(how) {
-    if (!this.action || how === 'gone') return;
-    if (how === 'presented') setTimeout(this.action.run);
-    else this.action.drop(how);
+  settleAction(how, isCurrent) {
+    if (how === 'presented') this.isPresentedPage = isCurrent;
+    const action = this.action;
+    this.action = null;
+    if (!action || how === 'gone') return;
+    if (how === 'presented') setTimeout(() => {
+      if (isCurrent()) action.run();
+      else action.drop('left');
+    });
+    else action.drop(how);
   }
 }

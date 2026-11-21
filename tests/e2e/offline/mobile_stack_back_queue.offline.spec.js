@@ -6,7 +6,7 @@ const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { loadCassette, waitFed } = require('../helpers/replay');
 const {
-  dashboardVisible, bootDashboard, boardOpened, holdLeaves, heldLeaves, releaseLeave, sentLeaves, articleRead
+  dashboardVisible, bootDashboard, boardOpened, holdLeaves, heldLeaves, releaseLeave, sentLeaves, articleRead, recordKeys
 } = require('../helpers/stack_routes');
 
 const homeArticle = loadCassette('scn-stack-home-article-back');
@@ -51,7 +51,17 @@ for (const [name, secondBack, afterLeave] of [
   ['← during the slide, before the leave is sent', pressBack, false]
 ]) {
   test(`a second Back by ${name} shows the dashboard at once, and PTT follows both Backs in order`, async ({ page }) => {
-    await twoQuickBacks(page, secondBack, afterLeave);
+    let beforeEnter;
+    await twoQuickBacks(page, async page => {
+      if (name === '← while the list is revealed') {
+        await recordKeys(page);
+        beforeEnter = await sentCount(page);
+        await page.keyboard.press('Enter');
+        expect(await page.evaluate(() => window.__keys.filter(([key]) => key === 'Enter'))).toEqual([['Enter', true]]);
+        expect(await sentSince(page, beforeEnter)).toEqual([]);
+      }
+      await secondBack(page);
+    }, afterLeave);
 
     // PTT answers the first leave with the list: it is sent the second Back
     // at once, while the dashboard stays shown.
@@ -67,6 +77,10 @@ for (const [name, secondBack, afterLeave] of [
     // One leave per level, in order: the article's while the list showed, then
     // the list's while the dashboard showed.
     expect(await sentLeaves(page)).toEqual([['articleList'], ['home']]);
+    if (beforeEnter !== undefined) {
+      expect(await page.evaluate(() => window.__keys.filter(([key]) => key === 'Enter'))).toEqual([['Enter', true]]);
+      expect((await sentSince(page, beforeEnter)).join('')).not.toContain('\r');
+    }
   });
 }
 

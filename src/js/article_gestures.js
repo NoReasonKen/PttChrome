@@ -478,6 +478,12 @@ export class ArticleGestures {
     return (this.stack.handingOff || this.backsDuringSlide != null) && !this.sendingBack;
   }
 
+  // The exit's own modal must not block keys on the revealed page. A drawer
+  // or another overlay covering that page still owns its input.
+  acceptsHandoffInput({ back = false } = {}) {
+    return !this._otherModalOpen() && (back || !this.root);
+  }
+
   // A Back made meanwhile reveals the next lower page at once, and PTT follows
   // it (#125); one made during the slide does so once the leave is sent. A
   // drawer open on the revealed page closes first, as a sheet does.
@@ -485,14 +491,6 @@ export class ArticleGestures {
     if (this.root) return this.close();
     this._finishLayerExit();
     if (!this.stack.backDuringHandoff() && this.backsDuringSlide != null) this.backsDuringSlide++;
-  }
-
-  // A key for PTT made on a page revealed during the handoff (the toolbar, the
-  // keypad): kept in order with the others made meanwhile and sent once the
-  // real page takes over.
-  holdKey(key, mods) {
-    const view = this.core.view;
-    this.stack.holdKey(() => view.sendKeyAsUser(key, mods));
   }
 
   // A session presented a real page: an article list, a board list or the
