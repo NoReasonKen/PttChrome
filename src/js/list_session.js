@@ -83,7 +83,7 @@ import {
   userListKeyOfRow
 } from './screen_titles';
 import { isArticleListFooter, isMailListFooter, isSubListFooter, userListFooterRow } from './screen_captions';
-import { recordFor, listRecordMatches } from './reading_record';
+import { recordFor, listRecordMatches, landingCursorNum } from './reading_record';
 import { parseUserListRow } from './user_list';
 import { markReadPromptShown } from './mark_read_prompt';
 import { readSearchResultsContext, recordSearchResults } from './search_results_context';
@@ -1894,6 +1894,20 @@ ListSession.prototype = {
     };
   },
 
+  // The reading position a list refresh keeps (#279), with `cursorNum` the
+  // row PTT's cursor will stand on when the refresh lands
+  // (reading_record.landingCursorNum): the refresh parks it there
+  // (_beginLandingTransaction's `parkNum`), so the landing verifies against
+  // it. null unless the list is shown from the buffer: the caller then takes
+  // the reading record's own measure, and PTT's cursor is synced to the
+  // selection as before.
+  refreshPosition: function() {
+    if (this.state !== 'active' || this._renderMode !== 'buffer') return null;
+    const pos = this.readingPosition();
+    if (!pos) return null;
+    return Object.assign({}, pos, { cursorNum: landingCursorNum(pos, this._bodyRows()) });
+  },
+
   _nativeListRecord: function() {
     const buf = this._termBuf;
     if (!buf || !buf.getRowText || !buf.isUnicolor) return null;
@@ -2370,7 +2384,7 @@ ListSession.prototype = {
     // '\r' 則會開文（docs/pttbbs-screen-protocol.md §11.5）。
     const steps = Array.isArray(bytes) ? bytes : [{ keys: bytes, kind: kind }];
     if (opts && opts.resumeOnLanding && Array.isArray(bytes) && this._autoResumeEnabled())
-      return this._beginLandingTransaction(steps);
+      return this._beginLandingTransaction(steps, opts.parkCursor);
     const r = transitionListSession(this.state, { type: 'key', keyClass: 'passthrough' });
     this.state = r.next; // functionMode: absorbs settles / swallows keys meanwhile
     const self = this;
@@ -2436,7 +2450,15 @@ ListSession.prototype = {
   //
   // 右鍵「前已讀後未讀」三道命令 218ms 就做完，
   // 之後卻是「切原生 → 空等探針 250ms → 切回來」，使用者看到畫面翻面兩次。
-  _beginLandingTransaction: function(steps) {
+  //
+  // `parkNum` (the list refresh, #279): the row PTT's cursor is to stand on
+  // before the steps, in place of the selection. A sequence that keeps PTT's
+  // cursor lands on PTT's page around it, and scrolling never moved it, so
+  // the selection can be far from what the reader sees. The landing adopts
+  // PTT's cursor as the selection, as every landing does (_seedAnchors): the
+  // selection is then that row, the first one the reader sees (owner's
+  // decision). No jump when PTT's cursor is known to be there already.
+  _beginLandingTransaction: function(steps, parkNum) {
     const r = transitionListSession(this.state, { type: 'key', keyClass: 'transact' });
     this.state = r.next; // functionMode（吸收在途 settle／吞鍵），render 是 frozen
     this._freezeForTransaction();
@@ -2456,6 +2478,13 @@ ListSession.prototype = {
       if (self.state === 'functionMode' && self._renderMode === 'frozen')
         self._fail('游標同步逾時');
     };
+    if (parkNum != null && parkNum !== this._selectedNum) {
+      if (this._serverNum === parkNum && this._queue.idle) return send();
+      // No identity check: nothing acts on that row, and a list that changed
+      // under it is what the refresh is for.
+      this._enqueueCursorJump(parkNum, null, 'native-park-jump', send, abort);
+      return;
+    }
     if (this._selectedNum != null && !this._cursorOnSelection()) {
       this._enqueueCursorSyncJump('native-sync-jump', send, abort);
       return;
@@ -2790,10 +2819,14 @@ ListSession.prototype = {
   // `onMoved`: runs instead of the native degrade when the landed row lists
   // another article.
   _enqueueCursorSyncJump: function(kind, onSynced, onFail, onMoved) {
-    const num = this._selectedNum;
-    const self = this;
     // 身分基準＝**跳之前**使用者畫面上那一列的作者／主題（見 onDone 的驗證）。
-    const anchor = this._selectedRowIdentity();
+    this._enqueueCursorJump(this._selectedNum, this._selectedRowIdentity(), kind, onSynced, onFail, onMoved);
+  },
+
+  // The number jump itself: PTT's cursor to `num`. `anchor` (the row's author
+  // and title, or null for no check) is verified on landing.
+  _enqueueCursorJump: function(num, anchor, kind, onSynced, onFail, onMoved) {
+    const self = this;
     let landed = null;
     this._queue.enqueue({
       keys: String(num) + '\r',

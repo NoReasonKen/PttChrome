@@ -7,6 +7,7 @@ import {
   restorePlan,
   resolveArticleMode,
   listRecordMatches,
+  landingCursorNum,
   boardListRecordMatches,
   ReadingRecord,
   recordFor
@@ -192,6 +193,27 @@ function articleCore({ lineIndex = 42.5, enabled = true, atBottom = false } = {}
   };
   return { core: { view, easyReading: er, buf, sendMachineBytes: vi.fn() }, view, er };
 }
+
+describe("landingCursorNum: where PTT's cursor stands for a refresh to keep the viewport (#279)", () => {
+  const rec = (topNum, cursorNum, extra) => ({ kind: "list", board: "Test", topNum, cursorNum, ...extra });
+
+  test("the selection within a page below the viewport's first row: PTT's cursor stays on the selection", () => {
+    expect(landingCursorNum(rec(100, 100), 20)).toBe(100);
+    expect(landingCursorNum(rec(100, 119), 20)).toBe(100 + 19);
+  });
+
+  test("the selection out of that page: PTT's cursor goes to the viewport's first row", () => {
+    expect(landingCursorNum(rec(1, 300), 20)).toBe(1);
+    expect(landingCursorNum(rec(100, 120), 20)).toBe(100);
+    expect(landingCursorNum(rec(100, 99), 20)).toBe(100);
+    expect(landingCursorNum(rec(150, null), 20)).toBe(150);
+  });
+
+  test("no numbered first row (a pinned row at the top), or no record: the selection, as before", () => {
+    expect(landingCursorNum(rec(null, 300, { topPinnedKey: "k" }), 20)).toBe(300);
+    expect(landingCursorNum(null, 20)).toBe(null);
+  });
+});
 
 describe("ReadingRecord：量測與凍結", () => {
   test("文章：列索引（含列內比例）、看板、在不在文末", () => {

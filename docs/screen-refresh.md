@@ -37,6 +37,15 @@ so its budget is `aid_navigation.SLOW_STEP_BUDGET` (as the board entry of an AID
 
 ### Reading position
 
+- Article list ([#279](https://github.com/NoReasonKen/PttChrome/issues/279)): the refresh keeps the reader's view, its first visible row, not PTT's page.
+  Scrolling an easy-reading list never moves PTT's cursor, and `s<this board>⏎` keeps it, so PTT lands on the page around wherever its cursor was.
+  Before `s`, the list session parks PTT's cursor where the view can be found again (`reading_record.landingCursorNum`): it stays on the selection
+  while the selection is within one PTT page below the view's first row (as before, no extra key), and otherwise jumps to that first row
+  (`<number>⏎`, skipped when PTT's cursor is known to be there; a view topped by a pinned row keeps the selection). The landing then restores the view
+  (`list-refresh` in `docs/reading-record.md`). After a jump the selection is that first row, where PTT's cursor now stands (the landing adopts PTT's
+  cursor, as every landing does; owner's decision): the list reads no page for the old selection, only what the view restore needs.
+- Board list: unchanged. Its refresh (`/⏎`) syncs PTT's cursor to the selection too, and its pending view reads at most four pages toward the view
+  (`board_list_session.PENDING_VIEWPORT_MAX_FILLS`), so a board list scrolled more than that away from its selection still lands around the selection.
 - Easy reading: when the article had been read to its end (`easyReadingReachedPageEnd` and scrolled within 2 rows of the bottom), `requestScrollToBottom()`
   (stick to the end, so the new comments are right in view); otherwise `requestScrollRestore(lineIndex)` returns to the same row.
 - Native pmore: with the status bar at 100%, the reopen is followed by a native End; otherwise it stays on the first page (pmore has no reliable "jump to line N" entry).
@@ -112,10 +121,12 @@ above, and has no rate protection (1 second minimum). This feature leaves it unc
 
 ## Guards
 
-- Unit: `screen_refresh.test.js` (criteria, keys, cooldown, sent sequences, busy), `aid_navigation.test.js` "refresh"
+- Unit: `screen_refresh.test.js` (criteria, keys, cooldown, sent sequences, busy), `reading_record.test.js` "landingCursorNum",
+  `reading_record_list.test.js` "list refresh" (#279: where PTT's cursor is parked, the selection after landing, no page read afterwards), `aid_navigation.test.js` "refresh"
   (sequence, free path, mail not taken over, position restore, no-AID fallback, failure messages), `mobile_toolbar.test.js(x)`, `pull_refresh.test.js`, `article_hold.test.js` (`article-retry`).
 - Offline e2e: `screen_refresh.offline.spec.js` (real F5: default action blocked, cooldown notice, handed back with the pref off),
-  `mobile_refresh.offline.spec.js` (toolbar button, CDP touch pull-down), `mobile_toolbar.offline.spec.js` (Share inside More),
+  `mobile_refresh.offline.spec.js` (toolbar button, CDP touch pull-down; #279: a pull at #1 with the selection far below keeps #1 at the top on every
+  painted frame and selects it, the toolbar refresh keeps a mid-list first row and selects it, and search results are not refreshed), `mobile_toolbar.offline.spec.js` (Share inside More),
   `home_dashboard.offline.spec.js` "F5", `mobile_home_dashboard.offline.spec.js` (pull-down and toolbar refresh on the home dashboard),
   `mobile_stack_layer_actions.offline.spec.js` (toolbar, F5 and pull-to-refresh on a revealed list before PTT catches up),
   `mobile_list_failures.offline.spec.js` (toolbar and pull-to-refresh retrying a failed article list or board list),
