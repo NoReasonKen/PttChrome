@@ -620,6 +620,73 @@ describe("落地即回好讀：重新整理／搜尋／跳到未讀不切原生�
     expect(h.s._topNum).toBe(350010);
   });
 
+  // #279: scrolling does not move PTT's cursor, and `s<this board>⏎` keeps it,
+  // so the page PTT lands on is the one around PTT's cursor. The refresh parks
+  // it where the reader's viewport starts instead of on the selection, and the
+  // selection is then that row (owner's decision).
+  // PTT's page 350001–350020 (the fixture's rows renumbered), its cursor on `cursorNum`.
+  const pageFrom = (h, from, cursorNum) => {
+    for (let i = 0; i < 20; ++i)
+      h.screen.rows[3 + i] = listRows[3 + (i % 15)].replace(/^ \d+/, " " + (from + i));
+    h.screen.curY = 3 + cursorNum - from;
+  };
+  const refreshFar = (h) => {
+    const sr = new ScreenRefresh(h.core);
+    expect(sr._dispatch({ kind: "article-list", board: "C_Chat" })).toBe(true);
+  };
+  const landAndRestore = (h) => {
+    pageFrom(h, 350001, 350010); // PTT's cursor on 350010, kept through s<board>⏎ (getkeep)
+    step(h, "refresh-open").onDone(true);
+    landOn(h, "refresh-submit");
+    expect(h.s.state).toBe("active");
+    expect(h.native.shown).toBe(0);
+    expect(h.s._serverNum).toBe(350010);
+    expect(h.s._selectedNum).toBe(350010);
+    expect(h.s._pendingViewport).not.toBe(null);
+    fillBuffer(h.termBuf, 350001, 350059);
+    h.s._seqCache = null;
+    h.s.applyScrollAfterRender();
+    expect(h.s._topNum).toBe(350010);
+    expect(h.s._pendingViewport).toBe(null);
+    expect(h.s._selectedNum).toBe(350010);
+  };
+
+  test("list refresh, the selection more than a page below the viewport: PTT's cursor goes to the viewport's first row, and the selection stays", () => {
+    const h = makeSession({ topNum: 350010, landing: [350001, 350020] });
+    h.s._selectedNum = 350055;
+    refreshFar(h);
+    expect(h.enqueued.map((c) => c.keys)).toEqual(["350010\r"]);
+    h.enqueued[0].onDone();
+    landAndRestore(h);
+  });
+
+  test("list refresh, the selection more than a page below the viewport: once the view is back, no page is read for the old selection", () => {
+    const h = makeSession({ topNum: 350010, landing: [350001, 350020] });
+    h.s._selectedNum = 350055;
+    refreshFar(h);
+    h.enqueued[0].onDone();
+    landAndRestore(h);
+    h.enqueued.length = 0;
+    h.s._maybeFill();
+    expect(h.enqueued).toEqual([]);
+    expect(h.s._selectedNum).toBe(350010);
+  });
+
+  test("list refresh, PTT's cursor already on the viewport's first row: no jump before s", () => {
+    const h = makeSession({ topNum: 350010, landing: [350001, 350020] });
+    h.s._selectedNum = 350055;
+    h.s._serverNum = 350010;
+    refreshFar(h);
+    expect(h.enqueued.map((c) => c.kind)).toEqual(["refresh-open"]);
+    landAndRestore(h);
+  });
+
+  test("list refresh, the selection within a page below the viewport: PTT's cursor stays on the selection, as before", () => {
+    const h = makeSession({ topNum: 350010 });
+    refreshFar(h);
+    expect(h.enqueued.map((c) => c.kind)).toEqual(["refresh-open"]);
+  });
+
   test("文章搜尋：打字回顯那一幀（prompt 還在）不算落地；結果列表一到就回好讀", () => {
     const h = makeSession();
     expect(submitSearch(h.core, "title", "found")).toBe(true);

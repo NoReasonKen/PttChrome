@@ -88,6 +88,10 @@ export const RESTORE_TABLE = {
   // 外部帶進來的連結：目的地就是結果；出發點進返回堆疊，返回時走 'aid-back'。
   'deep-link-jump': { done: NONE, cancel: NONE, fail: NONE },
   // 列表重新整理（F5／工具列／下拉）：游標原地（getkeep），視野也回原處。
+  // Scrolling does not move PTT's cursor, so the refresh first parks it where
+  // the viewport can be found again (landingCursorNum, #279). Parked on the
+  // viewport's first row, the selection becomes that row; within a page it
+  // stays.
   'list-refresh': {
     done: cell(null, 'origin'),
     cancel: cell(null, 'origin'),
@@ -236,6 +240,24 @@ export function listRecordMatches(record, landing) {
   if (record.mode && landing.mode && record.mode !== landing.mode) return false;
   if (record.matchBoardOnly) return true;
   return landing.cursorNum != null && landing.cursorNum === record.cursorNum;
+}
+
+// The row PTT's cursor has to stand on for a transaction that keeps PTT's
+// cursor (getkeep: the list refresh's `s<this board>⏎`) to land on a page
+// from which `record`'s viewport is restored (#279). PTT lands on the page
+// holding its cursor, and the restore reads at most two pages up for the
+// viewport's first row. So: the selection while it is within one PTT page
+// (`pageRows`) below that row, as before, and otherwise that row itself.
+// Scrolling an easy-reading list never moves PTT's cursor, so the selection
+// can be anywhere. A viewport topped by a pinned row (no number) keeps the
+// selection.
+export function landingCursorNum(record, pageRows) {
+  if (!record) return null;
+  const sel = record.cursorNum == null ? null : record.cursorNum;
+  const top = record.topNum;
+  if (top == null) return sel;
+  if (sel != null && sel >= top && sel - top < pageRows) return sel;
+  return top;
 }
 
 // 看板列表紀錄：{ kind:'boardList', variant, topNum, scrollFrac, cursorNum }

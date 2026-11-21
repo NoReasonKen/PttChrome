@@ -301,6 +301,9 @@ Not waiting for quiet is allowed on the premise that **the last step's landing p
   clean-list the cursor must be at the start of a numbered row (N9), so it must have been parked after the server finished redrawing, and hole 3 (settling twice with the cursor still in its old position) cannot occur;
 - The last step's expect proves the cursor itself: an old position passing the fingerprint means it is the same row as the real landing (End's `endLanded` = the cursor on the last non-empty row).
 
+`opts.parkCursor` (the article-list refresh, #279, through `submitSerializedSteps`): the sync leg parks PTT's cursor on that number instead of the selection
+(`native-park-jump`, no identity check: nothing acts on that row), so that the landing page holds the reader's view; the landing adopts that row as the selection,
+as any landing adopts PTT's cursor, and reads no page beyond what the view restore needs.
 Steps that cannot do this (PgUp's `pageLanded` only checks "in the entry area") are marked `trustLanding: false`: if such a step ends up last, the landing frame is treated as null ⇒ an unproven landing.
 **Sequences where none of it qualifies must not opt in** (e.g. multi-step paging with the cursor already on the list). Current users: the right-click 「前已讀後未讀」, 「設為全部已讀」,
 refresh (article list `s<this board>⏎`), submitting the search popup (`/` `a` `Z` `s` → keyword⏎; the second step's expect = the prompt disappears, and echo frames do not count),

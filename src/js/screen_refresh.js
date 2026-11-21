@@ -344,8 +344,16 @@ ScreenRefresh.prototype = {
     }
     // 閱讀紀錄（決策表 'list-refresh'／'board-list-refresh'）：游標本來就原地
     // （getkeep／ctx->curr），視野也要回到原處，而不是 PTT 的 20 列分頁。
+    // An article list keeps the reader's viewport, not PTT's page around the
+    // selection (#279): the list session says where PTT's cursor is parked so
+    // that the landing holds it, and the bookmark verifies against that row.
     const rr = recordFor(core);
-    const bm = rr.begin(target.kind === 'article-list' ? 'list-refresh' : 'board-list-refresh');
+    const ls = target.kind === 'article-list' ? core.listSession : null;
+    const list = ls && ls.refreshPosition ? ls.refreshPosition() : null;
+    const bm = rr.begin(
+      target.kind === 'article-list' ? 'list-refresh' : 'board-list-refresh',
+      list ? { list: list, listOwner: ls } : undefined
+    );
     const fail = function() {
       rr.end(bm, 'fail');
       self._hint('重新整理失敗', 0, HINT_ERROR);
@@ -374,7 +382,8 @@ ScreenRefresh.prototype = {
       submitSerializedSteps(core, steps, {
         kind: 'refresh',
         flag: 'refreshInFlight',
-        resumeOnLanding: true
+        resumeOnLanding: true,
+        parkCursor: list ? list.cursorNum : undefined
       })
     )
       return true;

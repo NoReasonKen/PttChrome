@@ -56,7 +56,7 @@ do not count as reader input. See `src/js/scroll_restore_follow.js` and
 | `deep-link-copy` 複製連結（Q 路徑） | 文章：原列 | 文章：原列 |
 | `headerless-reopen` headerless article read again for its list row and AID (#77) | Article origin | Article origin |
 | `deep-link-jump` 外部帶進來的連結 | 不還原（出發點推進返回堆疊） | 不還原 |
-| `list-refresh` 列表重新整理（F5／工具列／下拉） | 列表：原處 | 列表：原處 |
+| `list-refresh` 列表重新整理（F5／工具列／下拉） | 列表：原處（送 `s` 之前先把 PTT 的游標停到找得回視野的那一列，見下節） | 列表：原處 |
 | `board-list-refresh` 看板列表重新整理 | 看板列表：原處 | 看板列表：原處 |
 | `mark-read-before` 前已讀後未讀 | 列表：原處 | 列表：原處 |
 | `mark-all-read` 設為全部已讀 | 列表：原處 | 列表：原處 |
@@ -101,6 +101,8 @@ do not count as reader input. See `src/js/scroll_restore_follow.js` and
 
 - 文章列表（`listRecordMatches`）：同板，同編號空間，而且落點游標等於書籤的 `cursorNum`，也就是原生交易沒有移動游標。返回錨（`matchBoardOnly`）只比板與編號空間，因為 `s<板>` 回來時的 server 游標是 getkeep 的 `crs_ln`，不等於列表好讀的本地選取。
 - 看板列表（`boardListRecordMatches`）：同變體，游標仍在發起那一列。
+
+列表重新整理（#279）：捲動好讀列表不移動 PTT 的游標，`s<本板>⏎` 又保留游標，所以 PTT 落在游標那一頁，可能離使用者看的地方很遠。重新整理的書籤由 `list_session.refreshPosition` 量：`cursorNum` 換成 `landingCursorNum` 算出的那一列。選取在視野第一列往下一頁（PTT 一頁的列數）之內就是選取本身（照舊，不多送鍵）；否則是視野第一列，送 `s` 之前先 `<編號>⏎` 把游標停過去（已知游標就在那裡就不送）。落點游標等於這一列，比對照常通過。跳過號的話，落地後選取就是這一列（落地照常採用 PTT 的游標，使用者拍板），不為原本的選取另外補頁；選取在一頁之內時選取不動。
 
 驗證過之後，要等錨列**進了緩衝而且捲得到**才套用。rebuild 後緩衝只有落點那一頁，錨常在上一頁；下方列數不夠時，scrollTop 會被 maxScrollTop 夾住。所以期間會為了錨往上或往下補頁，有自己的頁數上限，逾時（10 秒）就放棄。以下情況會作廢待還原錨：使用者按鍵、滾輪、點擊，或 seed／進文章／cleanup。生命週期記進 debug 錄製檔：文章列表是 `listSession.viewportRestore`，看板列表是 `boardList.viewportRestore`，各有 saved、adopted、applied、dropped 四種事件，dropped 會帶原因。
 

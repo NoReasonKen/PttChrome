@@ -520,7 +520,9 @@ export function submitSerializedSteps(core, built, opts) {
     owner._beginPassthroughBytes(steps, {
       kind: o.kind || 'search',
       hint: null,
-      resumeOnLanding: !!o.resumeOnLanding
+      resumeOnLanding: !!o.resumeOnLanding,
+      // Where PTT's cursor is parked before the steps (ListSession, #279).
+      parkCursor: o.parkCursor
     });
     return true;
   }
