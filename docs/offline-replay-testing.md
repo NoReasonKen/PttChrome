@@ -614,3 +614,24 @@ project 名，同 `image_load_conditions.offline.spec.js`）。這樣兩個 job 
     的停止條件也改成它（舊版靠固定 sleep，在 `slow` 下會在圖還沒回來時就收工）。
 - Layer2 重建要 `pageScreens[p].slice(0,-1)` 去掉狀態列（與 accumulatePageLines 一致）。
 - `getRowText(row,0,cols,pageLines)` 第 4 參傳 pageLines 才讀累積頁（不傳讀 24 列原生 buf）。
+
+Context-menu diagnosis records fixed target categories, touch-source and pointer
+classification, the capture and final prevention state (`contextMenu.dispatch`),
+the handler disposition (`contextMenu.process`), drawer interception
+(`contextMenu.blocked`), and actual menu transitions (`contextMenu.open` and
+`contextMenu.close`). These fields contain no text, selection, account or URL.
+Desktop Chromium's CDP touch hold does not currently generate a contextmenu;
+the real-touch offline cases check the contact across a delayed handoff, while
+browser context-click cases cover event handling and menu transitions. Android
+native long-press delivery still requires a phone recording.
+
+While recording, `contextMenu.contact` samples a touch held for 700ms and records
+its end or expiry. It reports whether the original target and ancestors remain
+connected, whether they were removed (including removal followed by reinsertion),
+which input event types were finally prevented, pointer/touch cancellation, and
+whether selection is collapsed. It never records selected text or DOM attributes.
+Observation ends when the contact ends, recording stops, a new contact starts, or
+the five-second diagnostic limit expires. This observer does not recognize a
+long press or open a menu. Real-touch positive and negative controls cover target
+replacement and an unchanged target; desktop delivery still does not establish
+Android context-menu behavior.
