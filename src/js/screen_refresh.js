@@ -249,6 +249,18 @@ ScreenRefresh.prototype = {
     return refreshTargetOf(core);
   },
 
+  // Whether the screen's top is what the reader sees at scrollTop 0. False on
+  // an easy-reading list whose rows above the first held one are still to be
+  // read in (#278): a pull there is the reader reaching for them, not a
+  // refresh. Screens without a list session are always at their top.
+  topShown: function() {
+    const core = this._core;
+    const kind = this.target()?.kind;
+    const ls = kind === 'article-list' ? core.listSession
+      : kind === 'board-list' ? core.boardListSession : null;
+    return !(ls && ls.topKnown && !ls.topKnown());
+  },
+
   // 還要等幾毫秒才能再重整（0 ＝現在就可以）。與 refresh() 的冷卻判斷同一個式子。
   cooldownLeftMs: function() {
     return refreshCooldownLeftMs(

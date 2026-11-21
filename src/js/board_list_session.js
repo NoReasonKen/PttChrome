@@ -2870,6 +2870,11 @@ BoardListSession.prototype = {
     return this._edgeUp || bufferEdgeNum(this._termBuf.brdListLineNums || [], -1) === 1;
   },
 
+  // Whether the list's top is known and held (#278); pull-to-refresh asks.
+  topKnown: function() {
+    return this._atTopEdge();
+  },
+
   // 告知 render 層頂端保留區的目標（screen.js#absorbListShift）。**到頂一定要是 0**：
   // 保留區是視口頂端的空白，到頂還留著就捲得進去（我的最愛從第 1 項進來，滾輪往上捲出 3072px 空白）。上緣在沒有重繪的路徑上確認
   // （_enqueueFetch 的「已在第 1 項」、抓頁失敗）時也要呼叫，不能只靠下一幀。

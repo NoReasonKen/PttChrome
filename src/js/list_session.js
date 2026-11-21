@@ -5352,6 +5352,16 @@ ListSession.prototype = {
     return null;
   },
 
+  // Whether the first held row is the list's top: PTT found the top edge, or
+  // row #1 is held. While false, rows above it are still to be read in, so the
+  // viewport sitting at scrollTop 0 is only the blank top reserve (#278).
+  topKnown: function() {
+    if (this._edgeUp) return true;
+    const above = this._rowsAboveHeld();
+    // No numbered row held: nothing says rows are missing above.
+    return above === null || above === 0;
+  },
+
   // 重繪後：錨 → 新的序列位置 → scrollTop。接著消費 _pendingReveal。
   applyScrollAfterRender: function() {
     const screen = this._screen();
