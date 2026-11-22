@@ -1,7 +1,7 @@
 // Keep a restored row fraction while its lazy preview changes height. Like
 // BottomStick, ownership lasts until reader input or the article owner's cleanup;
 // neither a fixed delay nor a scroll event proves that the reader took over.
-export function followScrollRestore({ scroller, target, measure, isCurrent }) {
+export function followScrollRestore({ scroller, content, target, measure, isCurrent }) {
   if (!scroller?.isConnected || typeof ResizeObserver !== 'function') return null;
   let released = false;
   let frame = 0;
@@ -41,6 +41,7 @@ export function followScrollRestore({ scroller, target, measure, isCurrent }) {
     window.addEventListener(type, release, { capture: true, passive: true, signal: controller.signal });
   }
   observer.observe(scroller);
+  if (content) observer.observe(content);
   schedule();
   return { update: schedule, release };
 }

@@ -488,7 +488,7 @@ export class NavigationStack {
   // `run` sends it.
   holdComment(run) {
     if (this.refusesComment()) return 'refused';
-    if (!this.showsArticleLayer()) return null;
+    if (!this.showsArticleLayer()) return this.core.articleComparison?.afterPage(run) ? 'held' : null;
     this.remember({ run, drop: () => this.core.view.flashListHint?.(i18n('stack_commentNotSent'), STACK_NOTICE_MS) });
     return 'held';
   }

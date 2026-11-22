@@ -146,8 +146,8 @@ test('a nested search unwinds one level per Back, each revealing the page below'
 // A long Alpha opened from the board's list and read past its first PTT page
 // (#83). Returns the row at the top of the view. `comments`: Alpha ends with
 // its sign-off and comments up to that line (`withComments`).
-async function longSourceFromList(page, { comments = 0 } = {}) {
-  await bootNestedShortcutSearch(page, { alphaLines: 80 });
+async function longSourceFromList(page, { comments = 0, lines = 80 } = {}) {
+  await bootNestedShortcutSearch(page, { alphaLines: lines });
   // The article PTT opens and later reopens as Alpha.
   await page.evaluate(() => { window.__alpha = window.__shortcutServer.state.open; });
   if (comments) await withComments(page, comments);
@@ -262,7 +262,7 @@ test('Back from the results shows a source read past its first page at its readi
 const shownArticle = page => page.evaluate(() => {
   const app = window.__app;
   const lines = app.buf.pageLines;
-  return { rows: lines.length, last: app.buf.getRowText(lines.length - 1, 0, app.buf.cols, lines).trim() };
+  return { rows: lines.length, last: lines.length ? app.buf.getRowText(lines.length - 1, 0, app.buf.cols, lines).trim() : '' };
 });
 
 // Alpha's line 77 signs it off; each later line up to `last` is a comment.
@@ -291,18 +291,8 @@ async function readSourceThenSearch(page, whileAway) {
   return { row, before };
 }
 
-// PTT's pager shows the last page of the article as it now is.
-const atReopenedEnd = () => window.__shortcutServer.state.line === window.__alpha.lines - 22;
-
-// PTT has reopened the article to its end and is idle.
-const reopenedToEnd = page => page.waitForFunction(() => {
-  const app = window.__app;
-  return app.buf.pageState === 3 && app.commandQueue.idle && !app.buf._settleTimer &&
-    app.easyReading.easyReadingReachedPageEnd && window.__shortcutServer.state.line === window.__alpha.lines - 22;
-});
-
 const marker = page => page.locator(`${MAIN} .newCommentsStart`);
-const UPDATED = 'The article has been updated';
+const UPDATED = 'The article has been updated. Refresh to load the latest content.';
 
 test('Back from the results appends the comments PTT\'s copy gained behind the new-comments marker, at the same position (#126)', async ({ page }) => {
   const { row, before } = await readSourceThenSearch(page, () => withComments(page, 83));
@@ -326,8 +316,7 @@ test('comments wait to be appended while a finger is on the revealed source (#12
   const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   await page.waitForFunction(at => !!document.elementFromPoint(at.x, at.y)?.closest('[data-stack-layer]'), at);
   const contact = await beginArticleTouch(page, at);
-  await reopenedToEnd(page);
-  await page.waitForTimeout(300); // sleep-ok: holds the finger past any settle after the last page; nothing to wait for
+  await page.waitForFunction(() => window.__app.articleComparison?.nearReady);
   // Still the article as it was left.
   await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
   await expect(page.locator(ARTICLE_LAYER)).not.toContainText(commentText(81));
@@ -349,14 +338,22 @@ test('an article edited while the reader was away stays as it was left, with a n
   // The notice is the last one shown, once.
   await expect.poll(async () => (await recordedHints(page)).at(-1)).toBe(UPDATED);
   expect((await recordedHints(page)).filter(hint => hint === UPDATED)).toHaveLength(1);
-  // PTT did reopen the edited copy, to its end.
-  expect(await page.evaluate(atReopenedEnd)).toBe(true);
   expect(await shownArticle(page)).toEqual(before);
   expect(await rowAtTop(page, MAIN)).toEqual(row);
   await expect(marker(page)).toHaveCount(0);
 });
 
-test('the next page PTT sends for an article kept over its edited copy rebuilds it from that copy (#126)', async ({ page }) => {
+test('a title edit on the same article code retains the revealed title and shows the update notice', async ({ page }) => {
+  await readSourceThenSearch(page, () => page.evaluate(() => { window.__alpha.title = 'Changed Alpha title'; }));
+  await nativeBack(page);
+  await waitArticle(page, 'Alpha');
+  await settled(page);
+  await expect.poll(() => recordedHints(page)).toContain(UPDATED);
+  await expect(page.locator('#mobileAppBar')).toContainText('Alpha topic');
+  await expect(page.locator(MAIN)).not.toContainText('Changed Alpha title');
+});
+
+test('an edited copy replaces the kept article when the reader refreshes (#143)', async ({ page }) => {
   const { before } = await readSourceThenSearch(page, async () => {
     await withComments(page, 83);
     await page.evaluate(() => { window.__alpha.text[10] = 'Alpha line 09: rewritten by its author'; });
@@ -365,9 +362,12 @@ test('the next page PTT sends for an article kept over its edited copy rebuilds 
   await waitArticle(page, 'Alpha');
   await settled(page);
   expect(await shownArticle(page)).toEqual(before);
-  // A comment arrives and PTT redraws its last page, as after the reader's own.
+  // A new PTT page alone does not replace the retained article.
   await withComments(page, 84);
   await page.evaluate(() => window.__stubWSSent('\x1b[4~'));
+  await waitScreenSettled(page, {});
+  expect(await shownArticle(page)).toEqual(before);
+  await ptt.sendKey(page, 'F5');
   await expect.poll(() => shownArticle(page)).toEqual({ rows: before.rows + 4, last: expect.stringContaining(commentText(84)) });
   const texts = await page.evaluate(() => {
     const app = window.__app;
@@ -409,8 +409,8 @@ async function partlyReadSource(page, { lines, stop }) {
   return { row: await rowAtTop(page, MAIN), stopped: stop + 22 };
 }
 
-// Back from the author results of a partly read Alpha, with paging resumed;
-// `whileAway` changes what PTT will reopen. Returns what was sent from Back on.
+// Back from the author results of a partly read Alpha. The PTT simulator
+// resumes answering pages; `whileAway` changes what it will reopen.
 async function backToPartlyRead(page, whileAway = () => {}) {
   await tapShortcut(page, 'author');
   await waitList(page, AUTHOR_RESULTS);
@@ -419,12 +419,10 @@ async function backToPartlyRead(page, whileAway = () => {}) {
   await recordHints(page);
   await page.evaluate(() => {
     window.__pagingStops = false;
-    window.__sentFrom = window.__gestureSent.length;
   });
   await nativeBack(page);
   await waitArticle(page, 'Alpha');
   await settled(page);
-  return page.evaluate(() => window.__gestureSent.slice(window.__sentFrom));
 }
 
 // The numbers of Alpha's body lines the real article shows, in order.
@@ -436,34 +434,166 @@ const bodyLineNumbers = page => page.evaluate(() => {
 });
 const ALL_BODY_LINES = lines => Array.from({ length: lines - 4 }, (_, i) => i + 4);
 
-test('Back from the results to a partly read source keeps it and pages PTT on from where the reading stopped (#121)', async ({ page }) => {
-  const lines = 200;
-  const { row, stopped } = await partlyReadSource(page, { lines, stop: 70 });
-  const sent = await backToPartlyRead(page);
-  // PTT's pager was sought to the line the reading stopped at, not paged
-  // there from the top.
-  expect(sent).toContain(`:${stopped}\r`);
-  expect(sent.filter(bytes => bytes === '\x1b[6~').length).toBeLessThan(Math.ceil((lines - 23) / 23));
-  await expect.poll(() => bodyLineNumbers(page)).toEqual(ALL_BODY_LINES(lines));
+// Hold the first answer whose article page starts at or beyond `line`. The
+// command has reached PTT, but the browser cannot consume its answer until
+// released. Earlier answers, including the reopen, continue normally.
+async function holdArticleAnswerAt(page, line) {
+  await page.evaluate(line => {
+    const app = window.__app;
+    const onData = app.onData.bind(app);
+    const held = [];
+    window.__heldArticleAnswer = false;
+    app.onData = data => {
+      const state = window.__shortcutServer.state;
+      if (window.__heldArticleAnswer || (state.surface === 'article' && state.open === window.__alpha && state.line >= line)) {
+        window.__heldArticleAnswer = true;
+        held.push(data);
+        return;
+      }
+      onData(data);
+    };
+    window.__releaseArticleAnswer = () => {
+      app.onData = onData;
+      for (const data of held) onData(data);
+    };
+  }, line);
+  return () => page.evaluate(() => window.__releaseArticleAnswer());
+}
+
+test('a fully read long source hands off before the distant tail answers and Back goes next', async ({ page }) => {
+  await longSourceFromList(page, { lines: 300 });
+  await expect.poll(() => page.evaluate(() => window.__app.easyReading.easyReadingReachedPageEnd)).toBe(true);
+  // Put the reading position well before the tail after loading the whole copy.
+  await ptt.sendKey(page, 'Home');
+  await ptt.sendKey(page, 'PageDown');
+  await settled(page);
+  const row = await rowAtTop(page, MAIN);
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+  const release = await holdArticleAnswerAt(page, 160);
+  await sampleReadingArea(page);
+  await nativeBack(page);
+  await expect.poll(() => page.evaluate(() => !!window.__heldArticleAnswer)).toBe(true);
+  // The in-flight distant page remains unanswered; the page is already usable.
+  await expect(page.locator(ARTICLE_LAYER)).toHaveCount(0, { timeout: 1500 });
   expect(await rowAtTop(page, MAIN)).toEqual(row);
+  expect(await page.evaluate(() => window.__shortcutServer.state.line)).toBeLessThan(278);
+  const frames = await sampledFrames(page);
+  const shown = frames.findIndex(f => f.srow != null);
+  expect(shown).toBeGreaterThanOrEqual(0);
+  expect(frames.slice(shown).filter(f => f.native || f.srow !== frames[shown].srow)).toEqual([]);
+  await page.locator('#mobileToolbar [data-key="__more"]').tap();
+  await expect(page.locator('[data-sheet="more"]')).toBeVisible();
+  await nativeBack(page);
+  await expect(page.locator('[data-sheet="more"]')).toHaveCount(0);
+  const sent = await page.evaluate(() => window.__gestureSent.length);
+  await nativeBack(page);
+  await expect(page.locator(LIST_LAYER)).toBeVisible();
+  expect(await page.evaluate(() => window.__gestureSent.length)).toBe(sent);
+  await release();
+  await waitList(page, FULL_LIST);
+  expect(await page.evaluate(sent => window.__gestureSent[sent], sent)).toBe('\x1b[D');
+});
+
+test('a distant edit in a partly read source is noticed without replacing its shown rows', async ({ page }) => {
+  await partlyReadSource(page, { lines: 300, stop: 139 });
+  const before = await bodyLineNumbers(page);
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+  await page.evaluate(() => {
+    window.__alpha.text = { ...window.__alpha.text, 130: 'Alpha line 129: rewritten by its author' };
+    window.__pagingStops = false;
+  });
+  await recordHints(page);
+  const release = await holdArticleAnswerAt(page, 116);
+  await nativeBack(page);
+  await expect.poll(() => page.evaluate(() => !!window.__heldArticleAnswer)).toBe(true);
+  expect(await recordedHints(page)).not.toContain(UPDATED);
+  await release();
+  await expect.poll(() => recordedHints(page)).toContain(UPDATED);
+  expect(await bodyLineNumbers(page)).toEqual(before);
+  await expect(page.locator(MAIN)).not.toContainText('rewritten by its author');
+});
+
+test('a comment draft stays usable and its submit gets the wire after one background page', async ({ page }) => {
+  await longSourceFromList(page, { lines: 300 });
+  await expect.poll(() => page.evaluate(() => window.__app.easyReading.easyReadingReachedPageEnd)).toBe(true);
+  await withCommentBar(page);
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+  await page.evaluate(() => {
+    window.__preflights = [];
+    window.__app.longPush.startPreflight = () => {
+      window.__preflights.push(window.__gestureSent.length);
+      return false;
+    };
+  });
+  const release = await holdArticleAnswerAt(page, 185);
+  await nativeBack(page);
+  await expect.poll(() => page.evaluate(() => window.__heldArticleAnswer)).toBe(true);
+  await expect(page.locator(ARTICLE_LAYER)).toHaveCount(0);
+  const sent = await page.evaluate(() => window.__gestureSent.length);
+  await commentOnLayer(page, 'queued comment');
+  expect(await preflights(page)).toEqual([]);
+  expect(await page.evaluate(() => window.__gestureSent.length)).toBe(sent);
+  await release();
+  await expect.poll(() => preflights(page)).toEqual([sent]);
+  await expect.poll(() => page.evaluate(() => window.__app.articleComparison?.comparison.outcome)).toBe('match');
+});
+
+test('refresh waits for the in-flight comparison page and reloads the current article', async ({ page }) => {
+  await longSourceFromList(page, { lines: 300 });
+  await expect.poll(() => page.evaluate(() => window.__app.easyReading.easyReadingReachedPageEnd)).toBe(true);
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+  const release = await holdArticleAnswerAt(page, 185);
+  await nativeBack(page);
+  await expect.poll(() => page.evaluate(() => !!window.__heldArticleAnswer)).toBe(true);
+  await expect(page.locator(ARTICLE_LAYER)).toHaveCount(0);
+  const sent = await page.evaluate(() => {
+    window.__alpha.text = { ...window.__alpha.text, 10: 'Alpha line 09: refreshed' };
+    return window.__gestureSent.length;
+  });
+  await ptt.sendKey(page, 'F5');
+  expect(await page.evaluate(() => window.__gestureSent.length)).toBe(sent);
+  await release();
+  // Refresh can query the article code first or return straight to the list.
+  await expect.poll(() => page.evaluate(sent => window.__gestureSent[sent], sent)).toMatch(/^(?:Q|\x1b\[D)/);
+  await expect(page.locator(MAIN)).toContainText('Alpha line 09: refreshed');
+});
+
+test('a partly read source keeps its position and continues only when the reader reaches the end (#143)', async ({ page }) => {
+  const lines = 200;
+  const { row } = await partlyReadSource(page, { lines, stop: 70 });
+  const before = await bodyLineNumbers(page);
+  await backToPartlyRead(page);
+  await page.waitForFunction(() => window.__app.articleComparison?.comparison.outcome === 'match');
+  expect(await bodyLineNumbers(page)).toEqual(before);
+  expect(await rowAtTop(page, MAIN)).toEqual(row);
+  await ptt.sendKey(page, 'End');
+  await expect.poll(() => bodyLineNumbers(page)).toEqual(ALL_BODY_LINES(lines));
   expect(await recordedHints(page)).not.toContain(UPDATED);
 });
 
-test('a partly read source whose start was edited while the reader was away gives way to PTT\'s copy, with a notice (#121)', async ({ page }) => {
+test('a partly read source whose start was edited keeps its rows, with a notice (#143)', async ({ page }) => {
   const lines = 200;
   await partlyReadSource(page, { lines, stop: 70 });
-  const sent = await backToPartlyRead(page, () => page.evaluate(() => {
+  const before = await bodyLineNumbers(page);
+  await backToPartlyRead(page, () => page.evaluate(() => {
     window.__alpha.text = { ...window.__alpha.text, 10: 'Alpha line 09: rewritten by its author' };
   }));
   await expect.poll(async () => (await recordedHints(page)).at(-1)).toBe(UPDATED);
-  expect(sent.some(bytes => bytes.startsWith(':'))).toBe(false);
-  await expect.poll(() => bodyLineNumbers(page)).toEqual(ALL_BODY_LINES(lines));
+  expect(await bodyLineNumbers(page)).toEqual(before);
   const texts = await page.evaluate(() => {
     const app = window.__app;
     const lines = app.buf.pageLines;
     return lines.map((_, i) => app.buf.getRowText(i, 0, app.buf.cols, lines).trim());
   });
-  expect(texts).toContain('Alpha line 09: rewritten by its author');
+  expect(texts).not.toContain('Alpha line 09: rewritten by its author');
 });
 
 test('a source touched while it is revealed swipes again once it takes over', async ({ page }) => {
@@ -478,11 +608,7 @@ test('a source touched while it is revealed swipes again once it takes over', as
   const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   await page.waitForFunction(at => !!document.elementFromPoint(at.x, at.y)?.closest('[data-stack-layer]'), at);
   const contact = await beginArticleTouch(page, at);
-  await page.waitForFunction(() => {
-    const app = window.__app;
-    return app.buf.pageState === 3 && app.commandQueue.idle && !app.buf._settleTimer && app.easyReading.easyReadingReachedPageEnd;
-  });
-  await page.waitForTimeout(300); // sleep-ok: holds the finger past any settle after the last page; nothing to wait for
+  await page.waitForFunction(() => window.__app.articleComparison?.nearReady);
   await contact.release();
   await expect(page.locator(ARTICLE_LAYER)).toHaveCount(0);
   await expect(page.locator(MAIN)).toHaveClass(/articleHorizontalGestures/);
@@ -531,7 +657,7 @@ test('half a swipe back from the results shows a long source scrolled to its end
   await contact.release();
   await waitArticle(page, 'Alpha');
   await settled(page);
-  expect(await rowAtTop(page, MAIN)).toEqual(row);
+  await expect.poll(() => rowAtTop(page, MAIN)).toEqual(row);
 });
 
 // The comment bar, folded into the toolbar's push button.

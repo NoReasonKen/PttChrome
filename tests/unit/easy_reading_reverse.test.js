@@ -203,6 +203,10 @@ describe("反向讀取（End）", () => {
     expect(h.er._reverse).toBeNull();
     expect(h.view._reverse).toBeNull();
     expect(h.er.easyReadingReachedPageEnd).toBe(true);
+    const pages = h.view.accumulation().pageIndex.pages;
+    expect(pages[0]).toMatchObject({ start: 1, offset: 0 });
+    expect(pages.at(-1).end).toBe(300);
+    expect(pages.every(page => page.offset === page.start - 1)).toBe(true);
     // 真的是往上讀（不是 End 之後又從 head 一路 PageDown 下去）
     expect(h.sent.filter((k) => k === PGUP).length).toBeGreaterThan(5);
   });

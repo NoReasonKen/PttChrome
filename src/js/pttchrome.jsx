@@ -378,6 +378,7 @@ export const App = function() {
   this._screenContext = EMPTY_TOOLBAR_CONTEXT;
   this._screenContextListeners = new Set();
   this.buf.addEventListener('screenSettled', () => {
+    if (this.articleComparison?.hidesFrames) return;
     // Keep the reading page's controls through a resize's hidden frames.
     if (this.buf.easyReadingResizeInFlight || this.listResize?.active) return;
     if (shouldClearArticleContextOnSettle({
@@ -396,6 +397,7 @@ export const App = function() {
   // The page stack (navigation_stack.js). Features reach it here, as
   // `core.navigationStack`; the gestures that slide its pages use the same one.
   this.navigationStack = new NavigationStack(this);
+  this.buf.addEventListener('screenSettled', () => this.articleComparison?.settled());
   this.articleGestures = new ArticleGestures(this);
   installToolbarDiagnostics(this);
 
@@ -604,8 +606,9 @@ App.prototype._attachConn = function(conn) {
     self.boardNoteSkip.noteSent(bytes);
     self.backPause.noteSent(bytes);
     // 手機等待進度條：只有「我們的 UI 剛被按」之後的送出才算（mobile_busy.js）。
-    if (self.mobile) self._busyEvent({ type: 'sent' });
+    if (self.mobile && !self.articleComparison?.requesting) self._busyEvent({ type: 'sent' });
   };
+  conn.deferDataSend = send => self.conn === conn && self.articleComparison?.beforeSend(send);
   this.conn.addEventListener('open', this.onConnect.bind(this));
   this.conn.addEventListener('close', this.onClose.bind(this));
   this.conn.addEventListener('data', function(e) {
@@ -667,6 +670,7 @@ App.prototype.onData = function(data) {
 };
 
 App.prototype.onClose = function() {
+  this.articleComparison?.cancel();
   this.articleGestures?.disconnected();
   console.info("pttchrome onClose");
   this.imageViewer?.close();

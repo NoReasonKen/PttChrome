@@ -87,6 +87,7 @@ describe("狀態列沒有行號的頁也要接進累積頁", () => {
     readAll(view, [2]);
     expect(view.buf.easyReadingGapDetected).toBeFalsy();
     expect(texts(view)).toEqual(expected());
+    expect(view.accumulation().pageIndex).toBeNull();
   });
 
   test("連續兩頁都是警告：仍完整，且簽章逐頁不同", () => {

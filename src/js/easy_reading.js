@@ -565,7 +565,7 @@ EasyReading.prototype._isJumpParkedListNow = function() {
 // settled from a board list (2) into an article (3) with the pref on.
 EasyReading.prototype._onPageStateSettled = function() {
   if (this._core?.listResize?.active) return;
-  if (this._termBuf.easyReadingResizeInFlight) return;
+  if (this._termBuf.easyReadingResizeInFlight || this._core.articleComparison?.hidesFrames) return;
   // ARTICLE BOUNDARY — the only structural place the per-article paging transaction is
   // guaranteed to be reset. Do NOT rely on the key handlers for this: ← leaves an
   // article through stopEasyReading() (never leaveCurrentPost), and while easy reading
@@ -630,7 +630,7 @@ EasyReading.prototype._onChanged = function(e) {
   if (!this._enabled)
     return;
 
-  if (this._termBuf.easyReadingResizeInFlight) return;
+  if (this._termBuf.easyReadingResizeInFlight || this._core.articleComparison?.hidesFrames) return;
 
   // functionMode mirrors the native screen LIVE (term_view.redraw handles rendering);
   // the auto-paging row-state machine must NOT run here (no page-downs while a prompt
@@ -1403,6 +1403,7 @@ EasyReading.prototype._healFromTop = function() {
 // would skip a page). See docs/easy-reading.md.
 EasyReading.prototype._onScreenSettled = function() {
   if (this._core?.listResize?.active) return;
+  if (this._core.articleComparison?.hidesFrames) return;
   if (this._core.articleResize?.pump()) return;
   this._lastSettleParkedList = this._isJumpParkedListNow();
   // pmore 設定頁的偵測要在**停在設定頁的那一幀**做：離開之後那一幀，設定頁的字
@@ -1776,6 +1777,7 @@ EasyReading.prototype._evalFunctionModeExit = function() {
 
 EasyReading.prototype._onViewUpdated = function(e) {
   if (this._core?.listResize?.active) return;
+  if (this._core.articleComparison?.hidesFrames) return;
   if (this._core.articleResize?.pump()) return;
   if (TRACE) console.log('view update');
   // accumulatePageLines (which just ran inside view.update()) may have found a lost
@@ -1939,6 +1941,8 @@ EasyReading.prototype._send = function(data) {
 // 線路上有別人的交易嗎？（AID 跳文／deep link 導航，或 CommandQueue 的序列化指令）
 EasyReading.prototype._wireBusy = function() {
   const core = this._core;
+  if (core.articleComparison?.hidesFrames ||
+      core.navigationStack?.handoff?.layer?.comparisonPlanned) return true;
   if (core.aidNavigation && core.aidNavigation.active) return true;
   if (core.commandQueue && core.commandQueue.inFlightKind) return true;
   // 長推文有兩段「queue 空著、但畫面還是它的」的空窗：冷卻倒數（最長 240 秒）與
@@ -2008,6 +2012,8 @@ EasyReading.prototype.finishResize = function(outcome) {
 // 多評估一次是安全的：真正要不要送鍵由 nextPageDownDecision 決定（functionMode／
 // 非完整幀／已 100%／同一頁簽章未過 grace 全都不送），不可能違反 P4。
 EasyReading.prototype.onWireIdle = function(opts) {
+  this._core.articleComparison?.settled();
+  if (this._core.articleComparison?.hidesFrames) return;
   if (this._core.articleResize?.pump()) return;
   const keys =
     this._deferredPageDownKeys || (opts && opts.force ? '\x1b[6~' : null);
@@ -2593,8 +2599,9 @@ EasyReading.prototype._onKeyDownProcessUI = function(e) {
       // Can't scroll any further AND the article isn't fully loaded ⇒ the auto-paging
       // transaction is stuck, and PgDn would silently do nothing (the reported
       // symptom). Kick it. See _kickPageDown.
-      if (!this._scrollBy(this._turnPageLines))
-        this._kickPageDown();
+      if (!this._scrollBy(this._turnPageLines)) {
+        if (!this._core?.articleComparison?.requestContinuation()) this._kickPageDown();
+      } else this._core?.articleComparison?.noteScrollInput();
       stop = true;
       break;
     case 'scrollPageDown':
@@ -2629,7 +2636,7 @@ EasyReading.prototype._onKeyDownProcessUI = function(e) {
       stop = this._stickBottom();
       // 還在讀取中 ⇒ 反向讀取：直接跳到文末、往上讀（docs/easy-reading.md
       // 「反向讀取」）。已讀完就只是上面那一行的捲到底。
-      this._requestReverse();
+      if (!this._core?.articleComparison?.requestContinuation()) this._requestReverse();
       break;
     case 'swallow':
       stop = true;
