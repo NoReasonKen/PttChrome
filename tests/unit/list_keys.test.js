@@ -1079,6 +1079,70 @@ describe("i / I show the board information (#288)", () => {
   });
 });
 
+// b on an article list shows the board entry screen (#292): board_notes takes
+// it and sends it, the session itself sends nothing. Search results keep it
+// (PTT binds b there too); the mailbox refuses it.
+describe("b shows the board entry screen (#292)", () => {
+  function notesSession() {
+    const ctx = activeRefusalSession();
+    const start = vi.fn(() => true);
+    ctx.s._core.boardNotes = { start };
+    return { ...ctx, start };
+  }
+
+  test("b → prevented, handed to boardNotes.start, nothing enqueued or sent here", () => {
+    const ctx = notesSession();
+    const e = keyEvent("b");
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(ctx.start).toHaveBeenCalledTimes(1);
+    expect(ctx.sent).toEqual([]);
+    expect(ctx.enqueued).toEqual([]);
+    expect(ctx.s.state).toBe("active");
+    expect(ctx.hints).toEqual([]);
+  });
+
+  test("search results keep b, and the board is the list's", () => {
+    const ctx = notesSession();
+    ctx.s._selectMode = true;
+    ctx.s.onKeyDown(keyEvent("b"));
+    expect(ctx.start).toHaveBeenCalledTimes(1);
+    expect(ctx.s.boardNotesBoard()).toBe("C_Chat");
+  });
+
+  test("the help sheet's b row is offered on an article list (wouldRefuse)", () => {
+    expect(notesSession().s.wouldRefuse({ key: "b" })).toBe(false);
+  });
+
+  test("the mailbox refuses b with the hint and has no board entry screen", () => {
+    const ctx = notesSession();
+    ctx.s._boardName = MAIL_LIST_KEY;
+    const e = keyEvent("b");
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
+    expect(ctx.start).not.toHaveBeenCalled();
+    expect(ctx.s.boardNotesBoard()).toBe(null);
+  });
+
+  test("B (upper case) stays refused", () => {
+    const ctx = notesSession();
+    const e = keyEvent("B");
+    ctx.s.onKeyDown(e);
+    expectRefused(ctx, e);
+    expect(ctx.start).not.toHaveBeenCalled();
+  });
+
+  test("beginBoardNotes sends its steps with no cursor-sync leg and keeps the list to take back", () => {
+    const ctx = activeRefusalSession();
+    ctx.s.beginBoardNotes([{ keys: "b", kind: "board-notes", fullRepaint: false }]);
+    expect(ctx.s.state).toBe("functionMode");
+    expect(ctx.enqueued.map((c) => [c.keys, c.kind, c.fullRepaint])).toEqual([["b", "board-notes", false]]);
+    expect(ctx.s._helpBoard).toBe("C_Chat");
+    expect(ctx.s._helpSelection).toEqual({ num: 42, pinnedKey: null });
+  });
+});
+
 // The mailbox (#196): easy reading presents reading mail, not answering or
 // managing it (sending is #230). It keeps the list's navigation, leaving,
 // number jump and help, opens a mail with every key mail.c#mail_comms reads

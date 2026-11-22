@@ -104,6 +104,21 @@ export const en_US = {
   "postInfo_title": {
     "message": "Article information"
   },
+  "boardNotes_title": {
+    "message": "Board entry screen"
+  },
+  "boardNotes_busy": {
+    "message": "Working on the board entry screen, please wait…"
+  },
+  "boardNotes_unavailable": {
+    "message": "The board entry screen is shown only from a board's article list"
+  },
+  "boardNotes_failed": {
+    "message": "The board entry screen got no answer; try again"
+  },
+  "boardNotes_wait": {
+    "message": "The board entry screen is still being drawn; leave it in a moment"
+  },
   "postInfo_code": {
     "message": "Article code"
   },

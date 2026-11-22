@@ -594,6 +594,28 @@ span.listCard[data-user-gone] .listCardLine * {
   color: #888888;
 }
 
+/* The board entry screen page (#292, js/board_notes.js): PTT's own 80-column
+   screen, a copy drawn by the shared renderer, stacked over the article list
+   as the user query page is. The copy (.boardNotesScreen, a `.main` marked
+   data-stack-layer) gets its cell size and width inline; it scrolls when the
+   terminal's cell is taller than the page (a desktop window cut short). */
+.boardNotesPage {
+  position: fixed;
+  top: var(--term-top-inset, 0px);
+  bottom: var(--term-bottom-inset, 0px);
+  z-index: 3;
+  box-sizing: border-box;
+  background-color: black;
+  overflow: auto;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
+  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.6);
+}
+.boardNotesPage .boardNotesScreen {
+  margin: 0 auto;
+  padding: 0 5px;
+}
+
 /* 手機 Phase 5：主功能表大按鈕（render/menu_card.js，docs/mobile.md「Phase 5」）。
    ANSI 圖／標題／狀態列仍是縮小的 80 欄格線；選單項換成這個。高度與字級寫死 px
    （＝MENU_CARD_PX／MOBILE_ROW_FONT_PX，守護 tests/unit/menu_card.test.js），不跟 .main

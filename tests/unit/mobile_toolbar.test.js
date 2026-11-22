@@ -157,6 +157,13 @@ describe("toolbarContextFromFacts", () => {
     expect(toolbarContextFromFacts(frame(LIST), 2).boardInfo).toBeFalsy();
     expect(sameToolbarContext({ search: [], boardInfo: true }, { search: [], boardInfo: false })).toBe(false);
   });
+  // #292: the board entry screen comes from the controller
+  // (BoardNotes.available), not the screen; the empty context has none.
+  test("board entry screen (More): off in the empty context, and part of the comparison", () => {
+    expect(EMPTY_TOOLBAR_CONTEXT.boardNotes).toBe(false);
+    expect(toolbarContextFromFacts(frame(LIST), 2).boardNotes).toBeFalsy();
+    expect(sameToolbarContext({ search: [], boardNotes: true }, { search: [], boardNotes: false })).toBe(false);
+  });
   test("設為全部已讀（更多）：只有文章列表；prompt 開著、文章、主功能表不給", () => {
     expect(toolbarContextFromFacts(frame(LIST), 2).markAllRead).toBe(true);
     expect(toolbarContextFromFacts({ ...frame(LIST), inputField: true }, 2).markAllRead).toBe(false);

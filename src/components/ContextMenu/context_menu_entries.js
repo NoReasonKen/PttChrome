@@ -126,6 +126,13 @@ export function buildContextMenuEntries(p) {
     item("userQuery", i18n("userQuery_title"), (e) =>
       p.onMenuSelect("userQuery", e),
     );
+  // The board entry screen (#292, js/board_notes.js): the article list's `b`,
+  // for the whole list, not the row clicked. On mobile it sits in More.
+  const boardNotes = p.normalEnabled && p.boardNotesEnabled && !p.mobile;
+  if (boardNotes)
+    item("boardNotes", i18n("boardNotes_title"), (e) =>
+      p.onMenuSelect("boardNotes", e),
+    );
   if (
     p.normalEnabled &&
     (p.authorBlacklistId ||
@@ -138,7 +145,8 @@ export function buildContextMenuEntries(p) {
       boardInfo ||
       boardToggles ||
       userListToggle ||
-      userQuery)
+      userQuery ||
+      boardNotes)
   )
     divider("d-blacklist");
   // 回覆這則推文（推文列預填 → 與帳號）：放在推文那一段的最前面。出現條件在 index.jsx

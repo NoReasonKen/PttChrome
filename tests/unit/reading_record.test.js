@@ -87,6 +87,10 @@ describe("決策表", () => {
     ["user-query", "done", "none", "origin", "none"],
     ["user-query", "cancel", "none", "origin", "none"],
     ["user-query", "fail", "none", "origin", "none"],
+    // The board entry screen (#292): the list under its page is the same list.
+    ["board-notes", "done", "none", "origin", "none"],
+    ["board-notes", "cancel", "none", "origin", "none"],
+    ["board-notes", "fail", "none", "origin", "none"],
     // Article information (#261): the box over the list or the article closes
     // on the same list, and the article is opened again at its row.
     ["post-info", "done", "origin", "origin", "none"],

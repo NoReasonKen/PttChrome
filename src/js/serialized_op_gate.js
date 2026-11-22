@@ -44,6 +44,8 @@ export function serializedOpHint(core) {
   if (core.postInfo?.busy) return i18n('postInfo_busy');
   // Board information (board_info.js, #288): PTT's pages and the way back.
   if (core.boardInfo?.busy) return i18n('boardInfo_busy');
+  // The board entry screen (board_notes.js, #292): `b`, its page, the way back.
+  if (core.boardNotes?.busy) return i18n('boardNotes_busy');
   // 搜尋彈窗送出的兩步（搜尋鍵 → 等 prompt → 關鍵字），見 article_search.js。
   if (core.searchInFlight) return '搜尋中，請稍候…';
   // 列表的重新整理（s<板>⏎／看板列表 /⏎），見 screen_refresh.js。

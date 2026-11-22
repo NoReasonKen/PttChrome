@@ -607,10 +607,13 @@ EasyReading.prototype._onPageStateSettled = function() {
 //
 // 跳過進板畫面（board_note_skip）同理：arm／代按期間出現的 pmore 是進板公告，
 // 好讀若在 2→3 edge 上把它當文章開，會送 PageDown 跟我們搶那一鍵。
+// The board entry screen page (#292, board_notes.js) likewise: its long
+// screens are pmore pages of the entry screen, shown on the page.
 EasyReading.prototype._navActive = function() {
   const nav = this._core.aidNavigation;
   const skip = this._core.boardNoteSkip;
-  return !!((nav && nav.active) || (skip && skip.active));
+  const notes = this._core.boardNotes;
+  return !!((nav && nav.active) || (skip && skip.active) || (notes && notes.active));
 };
 
 EasyReading.prototype._onChanged = function(e) {

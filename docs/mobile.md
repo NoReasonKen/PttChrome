@@ -115,7 +115,9 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
     展開時以 `App.setMobileKeysPanelInset(offsetHeight)` 回報 ⇒ 終端機排到面板上方（暫態，不改列數、不重送 NAWS）。
     文章、列表卡片與其他捲動頁面只縮短可視高、內容不動，見下方「The key panel shortens the visible area」。
   - **黏滯 Ctrl**：`App.mobileCtrlArmed`（唯一寫入點 `setMobileCtrlArmed`，經 `onMobileChange` 第 4 參數亮燈）。
-    term_view `onKeyDown`（單按修飾鍵不算）與 `onTextInput`（軟鍵盤字走 input 事件）吃下一個字元 →
+    下一個鍵一律經 `mobile_layout.takeStickyCtrl`（單按修飾鍵、已帶修飾鍵的鍵、輸入法的 keydown 不算），在每個入口的分派之前：
+    term_view `onKeyDown`、`onTextInput`（軟鍵盤字走 input 事件）、`sendKeyAsUser`（列表上方的頁面之前），
+    以及列表上方頁面的 window keydown（`over_list_page.js`，實體鍵盤／送真 keydown 的軟鍵盤；查詢頁與進板畫面共用）→
     `mobile_layout.mobileCtrlKey`：字母走 **Alt remap**（`altKey`；byte 同 Ctrl，但繞過 Ctrl+A/C/V 的全選／複製／貼上），
     `@[\]^_?` 走 `ctrlKey`，其他字元解除不轉。用一次就解除。守護 `mobile_ctrl.test.js`。
 - `index.html` viewport **不鎖** `user-scalable`（原生雙指縮放是後援）。
