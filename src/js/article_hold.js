@@ -80,7 +80,10 @@ export class ArticleHold {
   // own (the article again, another article, a list), drawn once easy reading
   // has left its native mirror; a mirror that outlasts LANDING_MS is a screen
   // easy reading cannot present, and the article is held there.
-  done(source) {
+  // opts.uncover: the run's cover goes at once, the page shown next taking
+  // its place by itself (an article found by its code slides in over the
+  // stack's own copy of this one, #281).
+  done(source, opts) {
     if (!source || this.running !== source) return;
     this.running = null;
     const buf = this.core.buf;
@@ -90,7 +93,8 @@ export class ArticleHold {
     } else {
       this._released();
     }
-    if (this._runCover) this._liftRunCoverWhenRestored();
+    if (opts && opts.uncover) this._dropRunCover();
+    else if (this._runCover) this._liftRunCoverWhenRestored();
   }
 
   // The run's cover (run's opts.cover) lifts once easy reading presents the
@@ -163,10 +167,16 @@ export class ArticleHold {
 
   // `source`, `reason`: the bug event; `message`: the message key naming the
   // cause, or `text`: the message itself; `cover`: the copy of the article
-  // already on screen, or none to copy the article shown now; `parked`: the
-  // caller already parked the sessions and entered the native mirror.
+  // already on screen, or none to copy the article shown now (a covered run's
+  // cover, when one is up: an operation inside the run, such as the AID
+  // navigation of a jump by code, may hold the article itself); `parked`:
+  // the caller already parked the sessions and entered the native mirror.
   hold({ source, reason, message, text, cover, appBar, parked = false }) {
     const core = this.core;
+    if (this._runCover) {
+      if (cover) this._dropRunCover();
+      else cover = this._takeRunCover();
+    }
     reportBug(core, source, reason, {});
     this.running = null;
     this._clearLanding();

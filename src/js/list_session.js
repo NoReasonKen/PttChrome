@@ -63,7 +63,7 @@ import { LEFT_ARROW } from './function_key_plan';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { HINT_ERROR } from './status_hint';
 import { refuseUnsupported } from './list_refusal';
-import { parseAidJumpInput, requestAidJump, startAidJump } from './aid_jump';
+import { parseArticlePaste, requestAidJump, startAidJump } from './aid_jump';
 import { resolveDismiss } from './screen_dismiss';
 import { parseVmsgText } from './push_screen';
 import {
@@ -2768,9 +2768,11 @@ ListSession.prototype = {
 
   // Paste (Shift-Insert / context menu / middle click), routed here from
   // App.onPasteDone. true = taken over: the caller must not send the text.
-  // A pasted article code is a jump (#253, aid_jump.js); other text is refused.
+  // A pasted article code is a jump (#253, aid_jump.js), and so is a pasted
+  // ptt.cc article link, as over an easy-reading article (#281); other text is
+  // refused.
   onPaste: function(text) {
-    if (this._renderMode === 'buffer' && this.state === 'active' && parseAidJumpInput(text))
+    if (this._renderMode === 'buffer' && this.state === 'active' && parseArticlePaste(text))
       return startAidJump(this._core, text) || true;
     return this._refuseText('paste');
   },

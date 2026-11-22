@@ -409,6 +409,28 @@ describe('Operation that reopens the article', () => {
     expect(cover.destroy).not.toHaveBeenCalled();
   });
 
+  // A jump by code from the article (#281) fails inside the AID navigation,
+  // which holds the article itself: the copy already over it is the hold's.
+  test('a hold made while the run is covered keeps the run\'s cover', () => {
+    const { core, cover } = runWithCover();
+    core.articleHold.hold({ source: 'aidNavigation', reason: 'timeout', text: 'failed' });
+    expect(core.articleHold.held).toBe(true);
+    expect(core.articleHold.cover).toBe(cover);
+    expect(cover.destroy).not.toHaveBeenCalled();
+    core.articleHold.done('postInfo');
+    expect(core.articleHold.cover).toBe(cover);
+    expect(cover.destroy).not.toHaveBeenCalled();
+  });
+
+  // Another article slides in over the stack's copy of this one (#281): the
+  // cover goes at once, not once a restore is applied.
+  test('done with uncover lifts the cover at once', () => {
+    const { core, cover } = runWithCover();
+    core.articleHold.done('postInfo', { uncover: true });
+    expect(cover.destroy).toHaveBeenCalledTimes(1);
+    expect(frames).toEqual([]);
+  });
+
   test('disconnection drops the cover', () => {
     const { core, cover } = runWithCover();
     core.articleHold.reset();

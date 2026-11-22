@@ -41,6 +41,7 @@ import icon128 from '../icon/icon_128.png';
 import { MOUSE_CURSOR_URLS } from './mouse_cursors';
 import { isAndroidApp, androidNotify } from './android_bridge';
 import { toolbarDiag, handoffState } from './toolbar_diag';
+import { backToJumpOrigin } from './aid_jump';
 
 const DEFINE_INPUT_BUFFER_SIZE = 12;
 
@@ -1760,6 +1761,12 @@ TermView.prototype = {
     // is never read as a plain Back or search key. An unrelated list search
     // replaces the route.
     if (this.bbscore.articleShortcutSearch?.handleBack(e)) {
+      e.preventDefault();
+      return;
+    }
+    // Back from an article jumped to by its code reveals the article it was
+    // opened from, and goes back to it by its code (#281).
+    if (backToJumpOrigin(this.bbscore, e)) {
       e.preventDefault();
       return;
     }
