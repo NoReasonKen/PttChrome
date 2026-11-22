@@ -16,6 +16,7 @@ import LongPushProgressModal from "./LongPushProgressModal";
 import LongPushErrorModal from "./LongPushErrorModal";
 import AidBoardChoiceModal from "./AidBoardChoiceModal";
 import PostInfoModal from "./PostInfoModal";
+import BoardInfoModal from "./BoardInfoModal";
 import FavSortModal from "./FavSortModal";
 import PixivLookup from "../PixivLookup";
 
@@ -104,6 +105,7 @@ import { userListToggleTarget } from "../../js/user_list";
 import { rememberSearch } from "../../js/search_history";
 import { promptUserQuery, queryAuthor } from "../../js/user_query";
 import { showArticlePostInfo, showListPostInfo } from "../../js/post_info";
+import { showBoardInfo } from "../../js/board_info";
 import { BoardSearchBridge } from "../../js/board_search_bridge";
 import { readSelectionText } from "../../render/screen_chunk";
 import { commentCardCopyText } from "../../render/comment_card";
@@ -190,6 +192,8 @@ const menuHandlerByEventKey = {
   postInfo: (pttchrome, { postInfoTarget }) =>
     showListPostInfo(pttchrome, postInfoTarget),
   articlePostInfo: (pttchrome) => showArticlePostInfo(pttchrome),
+  // 看板資訊（#288）：整個看板的，不是那一列的（js/board_info.js）。
+  boardInfo: (pttchrome) => showBoardInfo(pttchrome),
   // 看板列表：把右鍵那一列的看板設為已讀（跳號 → v）。目標在開選單當下就算好了。
   boardMarkRead: (pttchrome, { boardMarkReadTarget }) =>
     pttchrome.boardMarkRead.start(boardMarkReadTarget),
@@ -280,6 +284,8 @@ const initialState = {
   markReadTarget: null,
   // 「設為全部已讀」出不出現（文章列表才有，markAllRead.available）。
   markAllReadEnabled: false,
+  // 「看板資訊」出不出現（好讀文章列表才有，boardInfo.available，#288）。
+  boardInfoEnabled: false,
   // The board list's view switches ({ counts } or null, boardListSession.listToggles).
   boardToggles: null,
   // 線上使用者列表上 `f` 會切到的視圖（'friends'／'all'），其他畫面 null（#199）。
@@ -360,6 +366,9 @@ const initialState = {
   // Article information (#261, js/post_info.js): the box PTT drew, read
   // ({ aid, board, url, urlNote, details }); null = closed.
   postInfo: null,
+  // Board information (#288, js/board_info.js): the rows PTT's `i` drew
+  // ({ board, moderators, items }); null = closed.
+  boardInfo: null,
   // Reordering the favorites (#221, board_list_session._askFavSort): the
   // confirmation sheet before PTT's `S` prompt.
   showsFavSort: false,
@@ -480,6 +489,7 @@ export const ContextMenu = ({ pttchrome }) => {
     state.showsPalette ||
     !!state.aidChoice ||
     !!state.postInfo ||
+    !!state.boardInfo ||
     state.showsFavSort ||
     state.showsAidJump ||
     !!state.longPushProgress ||
@@ -791,6 +801,8 @@ export const ContextMenu = ({ pttchrome }) => {
           !!normalEnabled &&
           !!pttchrome.markAllRead &&
           pttchrome.markAllRead.available(),
+        boardInfoEnabled:
+          onScreen && !!normalEnabled && !!pttchrome.boardInfo?.available?.(),
         boardToggles:
           (onScreen &&
             normalEnabled &&
@@ -879,6 +891,7 @@ export const ContextMenu = ({ pttchrome }) => {
         blacklistTitleTarget: null,
         markReadTarget: null,
         markAllReadEnabled: false,
+        boardInfoEnabled: false,
         boardToggles: null,
         userListToggle: null,
         userQueryEnabled: false,
@@ -1178,6 +1191,24 @@ export const ContextMenu = ({ pttchrome }) => {
   }, [pttchrome, openPostInfo]);
   const onPostInfoHide = useCallback(
     () => update({ postInfo: null }),
+    [update],
+  );
+  // Board information (js/board_info.js, #288): the rows PTT's `i` drew.
+  const openBoardInfo = useCallback(
+    (info) => {
+      update({ ...initialState, boardInfo: info });
+      return true;
+    },
+    [update],
+  );
+  useEffect(() => {
+    pttchrome.openBoardInfo = openBoardInfo;
+    return () => {
+      pttchrome.openBoardInfo = noop;
+    };
+  }, [pttchrome, openBoardInfo]);
+  const onBoardInfoHide = useCallback(
+    () => update({ boardInfo: null }),
     [update],
   );
   // `S` on the easy-reading favorites (board_list_session._askFavSort): true =
@@ -1776,6 +1807,7 @@ export const ContextMenu = ({ pttchrome }) => {
     blacklistTitleTarget,
     markReadTarget,
     markAllReadEnabled,
+    boardInfoEnabled,
     boardToggles,
     userListToggle,
     userQueryEnabled,
@@ -1809,6 +1841,7 @@ export const ContextMenu = ({ pttchrome }) => {
     searchKinds,
     aidChoice,
     postInfo,
+    boardInfo,
     searchAidTarget,
     searchSwitchBoard,
     showsFavSort,
@@ -1847,6 +1880,7 @@ export const ContextMenu = ({ pttchrome }) => {
         replyCommentTarget={replyCommentTarget}
         markReadTarget={markReadTarget}
         markAllReadEnabled={markAllReadEnabled}
+        boardInfoEnabled={boardInfoEnabled}
         boardToggles={boardToggles}
         userListToggle={userListToggle}
         userQueryEnabled={userQueryEnabled}
@@ -1955,6 +1989,12 @@ export const ContextMenu = ({ pttchrome }) => {
       <PostInfoModal
         info={postInfo}
         onHide={onPostInfoHide}
+        mobile={mobile}
+        pttchrome={pttchrome}
+      />
+      <BoardInfoModal
+        info={boardInfo}
+        onHide={onBoardInfoHide}
         mobile={mobile}
         pttchrome={pttchrome}
       />

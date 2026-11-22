@@ -78,6 +78,13 @@ export function buildContextMenuEntries(p) {
     item("markAllRead", i18n("cmenu_markAllRead"), (e) =>
       p.onMenuSelect("markAllRead", e),
     );
+  // 「看板資訊」（#288）：整個看板的資訊（js/board_info.js，判定在
+  // boardInfo.available），不是那一列的。手機不放這裡：在工具列「更多」。
+  const boardInfo = p.normalEnabled && p.boardInfoEnabled && !p.mobile;
+  if (boardInfo)
+    item("boardInfo", i18n("boardInfo_title"), (e) =>
+      p.onMenuSelect("boardInfo", e),
+    );
   // The board list's view switches (#221, PTT's `c` and `S`) act on the whole
   // list, not the row clicked. board_list_session.listToggles decides which the
   // current easy-reading list offers: `counts` is null where `c` is not offered
@@ -128,6 +135,7 @@ export function buildContextMenuEntries(p) {
       p.markReadTarget ||
       p.boardMarkReadTarget ||
       markAllRead ||
+      boardInfo ||
       boardToggles ||
       userListToggle ||
       userQuery)

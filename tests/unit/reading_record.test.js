@@ -92,6 +92,10 @@ describe("決策表", () => {
     ["post-info", "done", "origin", "origin", "none"],
     ["post-info", "cancel", "origin", "origin", "none"],
     ["post-info", "fail", "origin", "origin", "none"],
+    // Board information (#288): its screen over the list closes on the same list.
+    ["board-info", "done", "none", "origin", "none"],
+    ["board-info", "cancel", "none", "origin", "none"],
+    ["board-info", "fail", "none", "origin", "none"],
     // 使用者拍板：找不到第一篇未讀時停在翻到的那頁。
     ["unread-jump", "done", "none", "none", "none"],
     ["unread-jump", "fail", "none", "none", "none"],

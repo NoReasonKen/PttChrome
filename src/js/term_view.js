@@ -2203,7 +2203,8 @@ TermView.prototype = {
       (app.articleHold && app.articleHold.holding) ||
       (app.homeDashboard && app.homeDashboard.holding) ||
       (app.userQuery && app.userQuery.holding) ||
-      (app.postInfo && app.postInfo.holding)));
+      (app.postInfo && app.postInfo.holding) ||
+      (app.boardInfo && app.boardInfo.holding)));
   },
 
   // The list easy-reading branch of redraw owns this frame. Article frames

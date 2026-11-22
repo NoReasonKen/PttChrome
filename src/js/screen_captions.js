@@ -61,6 +61,12 @@ export function isSubListFooter(lastRowText) {
   return SUB_LIST_CAPTIONS.indexOf(footerCaption(lastRowText)) >= 0;
 }
 
+// A board's digest (MODE_DIGEST, #288): bbs.c#digest_comms has fewer
+// commands than the article list (no `i`). The old caption cannot tell it.
+export function isDigestListFooter(lastRowText) {
+  return footerCaption(lastRowText) === '文摘列表';
+}
+
 // 文章列表（非信箱）的底列。
 export function isArticleListFooter(lastRowText) {
   return ARTICLE_LIST_CAPTIONS.indexOf(footerCaption(lastRowText)) >= 0;
