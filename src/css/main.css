@@ -264,6 +264,26 @@ a:link,a:visited,a:active,a:hover {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* Drawing blocks (#295, js/drawing_block.js, docs/mobile.md "Drawing blocks"): a
+   row of an ANSI drawing is not wrapped; it is drawn on PTT's 80-column grid at the
+   drawing cell, 80 columns fitting the page width. term_view._setDrawingCell writes
+   the cell (--drawing-cell, px) and its text size (--drawing-text, undoing the
+   page's text scaling) on `.main`. A full-width character's box is one cell wide:
+   `!important` wins over the inline width term_view.fixedResize writes at the
+   reading cell. The row's ASCII advance is half a cell because the row keeps the
+   terminal's font face (inherited from `.main`). No user-select (css_user_select). */
+.main.mobileReflow #mainContainer span[type="bbsrow"].drawingRow {
+  white-space: pre;
+  overflow-wrap: normal;
+  font-size: var(--drawing-text);
+  line-height: var(--drawing-text);
+}
+.main.mobileReflow #mainContainer .drawingRow .wpadding {
+  width: var(--drawing-cell) !important;
+}
+.main.mobileReflow #mainContainer .drawingRow .hpadding {
+  width: calc(var(--drawing-cell) / 2) !important;
+}
 /* 手機「選取模式」關著時，長按開的是我們的選單（ContextMenu 的 contextmenu handler，
    docs/mobile.md「選取模式」）：擋掉系統的長按呼出（iOS callout）。**不用 user-select:
    none 擋選字**：終端機的祖先不可以有它（css_user_select.test.js），選字殘留改由

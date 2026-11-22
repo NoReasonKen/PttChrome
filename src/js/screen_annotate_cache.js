@@ -148,6 +148,10 @@ export function annotationsKey(input) {
     stable(e.listNewPushKey),
     // 手機主功能表大按鈕：同理（同一批列物件改畫成按鈕），整批重建。
     stable(e.menuCards),
+    // Drawing blocks in the phone's article (#295): the columns a row may have at the
+    // reading size. It decides which rows form a block; a new value (rotation, the
+    // font size setting) recomputes every row.
+    stable(e.drawingCols),
     stable(input.mergeCaption),
     stable(input.captionAi),
     stable(input.aiKeep),
