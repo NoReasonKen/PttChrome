@@ -47,6 +47,11 @@ import {
 import { parseFunctionKeys } from "./footer_keys";
 import { mergeRunKey } from "./screen_annotate_cache";
 import { detectHiddenRow } from "./hidden_text";
+import { drawingBlocks } from "./drawing_block";
+import {
+  ARTICLE_META_MAX_ROWS,
+  articleMetaKind,
+} from "../render/article_meta_card";
 
 // PttChrome pageState (see term_buf.js#setPageState): 2 = board list, 3 = reading.
 export const PAGE_LIST = 2;
@@ -255,6 +260,8 @@ export function detectRowExtras(chars, text, ann, opts) {
 //           ⇒ 那一串的第一列（groupSameAuthorRuns 的規則）。
 //   wrap  ：內文跨行網址鏈——最後一列寫滿 maxcol 時鏈還開著（body_wrap.bodyWrapFrontier）。
 //   blank ：手機文末補白——最後一個非空白列之後。
+//   drawing：手機文章的 ANSI 圖（drawing_block.js）——結尾還能再長的那一塊的第一列
+//           （drawingBlocks 的 open，由 markDrawingRows 算好傳進來）。
 // 圖文合併塊不在這裡：它由呼叫端的 captionSettled 把關（掃描停點在前沿之前才放行）。
 // 樓層（FloorCounter）、hidden text、steamgifts 是只往前推的累加，與前沿無關。
 // 反向讀取的接合點標記不適用（反向期間不算前沿）。
@@ -288,7 +295,63 @@ function annotationFrontier(lines, texts, result, opts) {
     while (r > 0 && !texts[r - 1].trim()) --r;
     f = Math.min(f, r);
   }
+  if (opts.drawing != null) f = Math.min(f, opts.drawing);
   return f;
+}
+
+// Drawing blocks in the phone's article (#295, js/drawing_block.js, docs/mobile.md
+// "Drawing blocks"): rows of a block get `drawing: true` and render/screen.js draws
+// them on the 80-column grid. Rows the article draws otherwise end a block:
+// comments (old and new format headers), blacklisted and merged rows, the trailing
+// blank rows and the header the App Bar shows. Only rows from `from` are marked
+// (the frontier fast path keeps the prefix); the reverse-reading junction J splits
+// the page (head and tail are not adjacent in the article).
+// A marked row keeps the same annotation object across frames while its own
+// annotation stays the same (`cache.rows`, weak: keyed by the row), so its node
+// is reused. `from` is 0 whenever J is set (the fast path is off while reading
+// backwards). Returns the frontier of the open block.
+function markDrawingRows(result, lines, fitCols, from, J, cache) {
+  const skip = (row) => {
+    const a = result[row];
+    if (
+      a &&
+      (a.pusher !== undefined ||
+        a.hidden ||
+        a.trailingBlank ||
+        a.mergeBlock ||
+        a.mergeCommentRun ||
+        a.mergedInto !== undefined ||
+        a.mergedIntoComment !== undefined)
+    )
+      return true;
+    return row < ARTICLE_META_MAX_ROWS && !!articleMetaKind(lines[row], row);
+  };
+  const n = lines.length;
+  const ranges = J != null ? [[from, J], [J, n]] : [[from, n]];
+  let open = n;
+  for (const [a, b] of ranges) {
+    const out = drawingBlocks(lines, fitCols, {
+      from: a,
+      to: b,
+      skip,
+      infos: cache.infos,
+    });
+    open = out.open;
+    for (const [start, end] of out.blocks) {
+      for (let row = start; row < end; ++row) {
+        const prev = result[row];
+        const hit = cache.rows.get(lines[row]);
+        if (hit && hit.from === prev) {
+          result[row] = hit.to;
+          continue;
+        }
+        const to = { ...(prev || {}), drawing: true };
+        cache.rows.set(lines[row], { from: prev, to });
+        result[row] = to;
+      }
+    }
+  }
+  return open;
 }
 
 // Per-row { floor } / { hidden } annotations for the Enhanced Add-on. Native grid
@@ -905,6 +968,25 @@ export function computeAnnotations(
         result[row] = { ...(result[row] || {}), trailingBlank: true };
       }
     }
+    // 手機文章的 ANSI 圖（#295）：enhance.drawingCols ＝閱讀字級下一列放得下的欄數，
+    // 只在換行版面畫累積長頁時有（term_view._renderScreenLines），進 annotationsKey。
+    // 跨列判斷 ⇒ 前沿另算（annotationFrontier 的 drawing）。
+    let drawingOpen = null;
+    let drawingCache = null;
+    if (enhance.drawingCols > 0) {
+      drawingCache =
+        reuse && reuse.drawingCache
+          ? reuse.drawingCache
+          : { rows: new WeakMap(), infos: new WeakMap() };
+      drawingOpen = markDrawingRows(
+        result,
+        lines,
+        enhance.drawingCols,
+        fastFrom,
+        J,
+        drawingCache,
+      );
+    }
     // 內容型簽章：好讀翻頁只是往後長，前面已判過的候選 key 不變 → effect 不重跑。
     result.domainCands = domainCands;
     result.domainCandsSig = domainCands.map(domainKey).join(",");
@@ -920,6 +1002,7 @@ export function computeAnnotations(
             runs: !!(easyReading && mergeSameAuthorComments),
             wrap: !!autoFixUrl,
             blank: !!enhance.commentCards,
+            drawing: drawingOpen,
           })
         : null;
     // 前沿只會往後走（推導見 annotationFrontier）。萬一沒有，下一幀走全量——寧可慢
@@ -972,6 +1055,7 @@ export function computeAnnotations(
         runCache,
         runByFirstBase,
         wrapCache,
+        drawingCache,
       },
     };
   } else if (pageState === PAGE_LIST || inListContext) {

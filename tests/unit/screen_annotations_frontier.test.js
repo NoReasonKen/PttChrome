@@ -54,7 +54,19 @@ function wrappedUrl(r, k) {
   return out;
 }
 
-function makeArticle(seed, total, fullPush = false) {
+// Rows of ANSI drawings (#295, drawing blocks on the phone): colour art, a frame's
+// inner row, a row of a table, a separator, blank rows; consecutive ones join.
+const ART_BG = color(7, 4);
+function artRow(r, i) {
+  const k = r();
+  if (k < 0.35) return row(seg("  "), seg("　".repeat(4 + (i % 9)), ART_BG), seg("▆▅▄▃", color(3, 0)), seg("　".repeat(12), color(0, 7)));
+  if (k < 0.5) return pad80("│ 框裡的字 " + i + "                                                    │");
+  if (k < 0.65) return pad80("2330      台積電        " + i + "      +15.00      35,120");
+  if (k < 0.8) return pad80("─".repeat(10 + Math.floor(r() * 30)));
+  return pad80("");
+}
+
+function makeArticle(seed, total, fullPush = false, art = false) {
   const r = rng(seed);
   const rows = [
     pad80("作者  poster (暱稱) 看板  Test"),
@@ -91,7 +103,7 @@ function makeArticle(seed, total, fullPush = false) {
     } else if (x < 0.62) {
       rows.push(push("推", "badguy", "黑名單 " + i, mm));
     } else if (x < 0.72) {
-      rows.push(pad80("edit reply line " + i));
+      rows.push(art ? artRow(r, i) : pad80("edit reply line " + i));
     } else if (x < 0.8) {
       rows.push(...wrappedUrl(r, r() < 0.5 ? 2 : 3));
     } else if (x < 0.86) {
@@ -123,6 +135,7 @@ const enhanceFor = (o) => ({
   enableXMention: true,
   mergeSameAuthorComments: o.merge,
   commentCards: o.cards,
+  drawingCols: o.drawing ? 51 : undefined,
   pageState: 3,
   easyReading: true,
   dropHidden: true,
@@ -150,19 +163,21 @@ const OPTION_SETS = [
   { merge: false, autoFixUrl: true, cards: true, mergeCaption: null },
   { merge: true, autoFixUrl: false, cards: false, mergeCaption: "captionFirst" },
   { merge: true, autoFixUrl: true, cards: false, mergeCaption: null, fullPush: true },
+  { merge: true, autoFixUrl: true, cards: true, mergeCaption: null, drawing: true },
 ];
 
 describe("前沿快路徑：逐頁 append 與全量重算逐列相同", () => {
   for (const [oi, o] of OPTION_SETS.entries()) {
     for (const seed of [1, 7, 42]) {
       test(`選項組 ${oi}／種子 ${seed}`, () => {
-        const full = makeArticle(seed * 31 + oi, 700, !!o.fullPush);
+        const full = makeArticle(seed * 31 + oi, 700, !!o.fullPush, !!o.drawing);
         const enhance = enhanceFor(o);
         const r = rng(seed);
         let prev = null; // { lines, cache, annotations }
         let fastFrames = 0;
         let frames = 0;
         let maxTail = 0;
+        let drawingRows = 0;
         for (let end = 20; ; ) {
           const lines = full.slice(0, end);
           let reuse = null;
@@ -180,6 +195,7 @@ describe("前沿快路徑：逐頁 append 與全量重算逐列相同", () => {
             if (a !== b) expect({ end, row, a }).toEqual({ end, row, a: b });
           }
           expect(extras(inc.annotations)).toEqual(extras(ref.annotations));
+          drawingRows = ref.annotations.filter((a) => a && a.drawing).length;
           if (inc.stablePrefix > 0) {
             ++fastFrames;
             maxTail = Math.max(maxTail, lines.length - inc.stablePrefix);
@@ -194,6 +210,8 @@ describe("前沿快路徑：逐頁 append 與全量重算逐列相同", () => {
         // 正向對照：快路徑真的有走到（推文區開始之後幾乎每一幀都該走）
         expect(fastFrames).toBeGreaterThan(frames * 0.5);
         expect(maxTail, "快路徑每幀重算的尾段應是常數級").toBeLessThan(120);
+        // The drawing option set really has drawing blocks to keep in step.
+        if (o.drawing) expect(drawingRows).toBeGreaterThan(0);
         // 對照組每幀都全量重算（刻意 O(n²)）：單跑 ~1–2s，整批 unit 吃滿 CPU 時量過 6.4s，
         // 預設 5000ms 會偶發紅。純計算、無等待，給明確預算。
       }, 30000);

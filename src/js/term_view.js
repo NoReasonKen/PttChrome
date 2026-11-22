@@ -33,6 +33,7 @@ import { isPushKey, pushGateFacts, shouldInterceptPushKey } from './long_push_ga
 import { tryOpenSearchModal } from './article_search';
 import { isRefreshKeyEvent } from './screen_refresh';
 import { MODIFIER_KEY_NAMES, takeStickyCtrl, mobileMenuLayout, mobileFillLayout, mobileListViewportPx, listViewportGeometry, listFillRows, listRowSpan } from './mobile_layout';
+import { drawingGeometry } from './drawing_block';
 import { keyEventPredatesModalClose } from './modal_key_gate';
 import icon128 from '../icon/icon_128.png';
 import { MOUSE_CURSOR_URLS } from './mouse_cursors';
@@ -320,6 +321,10 @@ export function TermView() {
   this.reflow = false;
   this.listCards = false;
   this.reflowWidth = null;
+  // Drawing blocks in the article (#295, js/drawing_block.js): the columns a row
+  // may have at the reading size, null off the article. setTermFontSize writes it
+  // with the drawing cell (`--drawing-cell` on `.main`, main.css `.drawingRow`).
+  this.drawingCols = null;
   // Mobile: height between the App Bar and the toolbar (mobile_layout.mobileRowsHeight).
   this.mobileRowsPx = 0;
   //new pref - end
@@ -1429,6 +1434,9 @@ TermView.prototype = {
           // （reflow）且畫的是好讀長頁（stableRows）才開。寫在這個 base 物件而**不是**
           // enhanceOverrides：好讀分支傳進來的是凍結的 STABLE_ROWS。進 annotationsKey。
           commentCards: !!(this.reflow && enhanceOverrides && enhanceOverrides.stableRows),
+          // Drawing blocks (#295, js/drawing_block.js): under the same condition as
+          // the comment cards. Into annotationsKey.
+          drawingCols: this.reflow && enhanceOverrides && enhanceOverrides.stableRows ? this.drawingCols : null,
           // 新推文標記（js/new_comments.js）：第一則新推文在累積頁的哪一列。只在畫好讀
           // 累積頁（stableRows＋pageLines）時問 —— functionMode 的原生鏡像餵的是 24 列活
           // buffer，拿去問會把掃描狀態洗掉。進 annotationsKey（一篇文章最多翻一次）。
@@ -2004,7 +2012,8 @@ TermView.prototype = {
       this._textScaleChh = this.chh;
       this._textScaleRounds = 0;
     }
-    var row = this.mainContainer && this.mainContainer.querySelector('[type="bbsrow"]');
+    // A drawing row (#295) is drawn at its own, smaller size.
+    var row = this.mainContainer && this.mainContainer.querySelector('[type="bbsrow"]:not(.drawingRow)');
     if (!row || typeof getComputedStyle !== 'function') return;
     var cs = getComputedStyle(row);
     var scale = textScaleAt(this.textFontPx(this.chh), parseFloat(cs.fontSize), parseFloat(cs.lineHeight));
@@ -2044,6 +2053,7 @@ TermView.prototype = {
     this.mainDisplay.style.textAlign = 'left';
     this.mainDisplay.style.width = mainWidth;
     this.mainDisplay.style.height = (this.chh * this.buf.rows + 10) + 'px';
+    this._setDrawingCell();
     if (this.reflow) {
       // Terminal rows can stay unchanged until an outstanding PageDown settles.
       // The local reading viewport must still fit the newly available area.
@@ -2117,6 +2127,26 @@ TermView.prototype = {
     this.updateCursorPos();
 
     if (widthChanged || previewHeightChanged) this.componentScreen.notifyLayoutChanged();
+  },
+
+  // Drawing blocks (#295): on the article, the columns a row may have before it
+  // wraps at the reading size, and the cell a block is drawn at, PTT's 80 columns
+  // fitting the page width (js/drawing_block.js#drawingGeometry). The cell is
+  // written as text undoing the page's text scaling, as the reading size is.
+  _setDrawingCell: function() {
+    var style = this.mainDisplay.style;
+    var g = this.reflow && this.reflowWidth > 0
+      ? drawingGeometry({ width: this.reflowWidth, readingPx: this.chh, dpr: window.devicePixelRatio || 1 })
+      : null;
+    if (!g || !(g.cellPx > 0)) {
+      this.drawingCols = null;
+      style.removeProperty('--drawing-cell');
+      style.removeProperty('--drawing-text');
+      return;
+    }
+    this.drawingCols = g.fitCols;
+    style.setProperty('--drawing-cell', g.cellPx + 'px');
+    style.setProperty('--drawing-text', this.textFontPx(g.cellPx) + 'px');
   },
 
   // 字級不變、只重排位置（手機軟鍵盤開關）。走 setTermFontSize 而不是只改

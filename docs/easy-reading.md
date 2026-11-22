@@ -255,7 +255,7 @@
     8. 逐列量 offsetTop 找視窗頂端那一列的掃描改用 `rowsFromScrollTop`（先以塊跳過視窗上方；逐列量會強迫每個閉塊排版）。新增「從上往下量列」的地方照辦。
     9. 推文行距的空隙事件目標是塊不是容器（`pttchrome.jsx#_pusherAt` 兩者都當空白）。
   - **B TermChar 共用化**（`src/js/term_char_intern.js`）：pageLines 的累積路徑用 `internRow`（取代 `cloneRow`），同字同屬性的格子共用一個物件；dev／測試下 `Object.freeze`（ES module strict ⇒ 誤寫當場 throw）。鍵＝`INTERN_FIELDS`，**TermChar 新增欄位必須同步**（守護 `tests/unit/term_char_intern.test.js` 以真 cassette 比 own key 集合）。列表的 `cloneRow` 不動（`blankRowLike` 會就地改寫）。
-  - **C 前沿快路徑**（`screen_annotations.js` 的 `fastFrom`／`annotationFrontier`）：每幀收尾算前沿 F＝之後只往後接新列時最早可能改變最終標註的列（結尾那串同作者推文的首列、還開著的內文跨行網址鏈、手機文末補白）；下一幀純 append ∧ 非反向 ∧ 圖文塊已定型（`captionScanEnd` < F）⇒ `result[0,F)` 沿用上一幀同一批物件，跨列掃描只從 F 起跑，回傳 `stablePrefix` 讓 `_buildNodes`／`ChunkLayer.patch` 只走尾段。**在 `computeAnnotations` 新增跨列邏輯必須同步 `annotationFrontier`**（同 `annotationsAreRowIndependent` 的規則）；只往前推的累加狀態（FloorCounter、新格式推文的 ModernCommentThread）跟著快取走、與前沿無關。`bodyWrapFrontier` 必須帶 skip 判準：真實推文列的時間戳最後一格落在 maxcol，不排除的話前沿一路退回第一則推文、快路徑在真實文章裡從不生效。
+  - **C 前沿快路徑**（`screen_annotations.js` 的 `fastFrom`／`annotationFrontier`）：每幀收尾算前沿 F＝之後只往後接新列時最早可能改變最終標註的列（結尾那串同作者推文的首列、還開著的內文跨行網址鏈、手機文末補白、手機還能長大的圖塊 drawing block: `drawingBlocks().open`, docs/mobile.md "Drawing blocks"）；下一幀純 append ∧ 非反向 ∧ 圖文塊已定型（`captionScanEnd` < F）⇒ `result[0,F)` 沿用上一幀同一批物件，跨列掃描只從 F 起跑，回傳 `stablePrefix` 讓 `_buildNodes`／`ChunkLayer.patch` 只走尾段。**在 `computeAnnotations` 新增跨列邏輯必須同步 `annotationFrontier`**（同 `annotationsAreRowIndependent` 的規則）；只往前推的累加狀態（FloorCounter、新格式推文的 ModernCommentThread）跟著快取走、與前沿無關。`bodyWrapFrontier` 必須帶 skip 判準：真實推文列的時間戳最後一格落在 maxcol，不排除的話前沿一路退回第一則推文、快路徑在真實文章裡從不生效。
   - 同機量測（合成推文長文，前向讀取，最後 10% 每頁）：
 
     | 指標 | 改前 22000 行 | 改後 2000／8000／22000 行 |

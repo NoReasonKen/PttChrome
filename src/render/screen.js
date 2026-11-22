@@ -1190,6 +1190,10 @@ export class ScreenController {
       onHyperLinkMouseOut: this.onHyperLinkMouseOut,
       sizeMode: "normal",
     });
+    // A row of a drawing block in the phone's article (#295, computeAnnotations'
+    // `drawing`): main.css draws it unwrapped on the 80-column grid at the drawing
+    // cell (term_view.setTermFontSize writes the cell on `.main`).
+    if (ann && ann.drawing) built.node.classList.add("drawingRow");
     for (let i = 0; i < built.slots.length; ++i) slots.push(built.slots[i]);
     return built.node;
   }
