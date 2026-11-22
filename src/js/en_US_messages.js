@@ -1581,7 +1581,8 @@ export const en_US = {
     "message": "Tap the mobile title bar to scroll to top"
   },
   "stack_articleGone": { "message": "That article is no longer in the list" },
-  "stack_articleUpdated": { "message": "The article has been updated" },
+  "stack_articleUpdated": { "message": "The article has been updated. Refresh to load the latest content." },
+  "stack_articleComparisonUnverified": { "message": "Could not compare the article. Refresh to load the latest content." },
   "stack_boardGone": { "message": "That board is no longer in the list" },
   "stack_handoffTimeout": { "message": "Returning to the list timed out; staying on the current PTT screen" },
   "stack_newArticles": { "message": "New articles" },

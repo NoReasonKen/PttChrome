@@ -6,6 +6,7 @@ import { ScreenCopyLayer, setUsable, STACK_NOTICE_MS } from './stack_layer';
 import { PAGE } from './page_stack';
 import { rowToText } from './comment_parse';
 import { i18n } from './i18n';
+import { ArticleComparisonSession } from './article_comparison_session';
 
 // The article row at the top of `scroller` and its offset from that top.
 function topRow(scroller) {
@@ -45,7 +46,14 @@ function articleContent(view) {
   const whole = !!reading.easyReadingReachedPageEnd;
   const accumulation = view.accumulation();
   if (!whole && (state.functionMode || accumulation.accEndRow == null)) return null;
-  return { whole, pageLines: buf.pageLines, ...accumulation, marks: core.newComments?.snapshot() || null };
+  return {
+    whole, pageLines: buf.pageLines, ...accumulation, pageKey: reading._articleKey,
+    context: {
+      author: view._articleAuthor, title: view._articleTitle, board: view._articleBoard,
+      byline: view._articleByline, time: view._articleTime
+    },
+    marks: core.newComments?.snapshot() || null
+  };
 }
 
 // PTT has reopened the article and easy reading paged it to its end, with
@@ -104,6 +112,7 @@ export class StackArticleLayer extends ScreenCopyLayer {
     // The real article's content from that row down.
     this.tail = main.scrollHeight - (this.anchor ? main.scrollTop + this.anchor.offset : 0);
     this.content = articleContent(view);
+    this.comparisonPlanned = !!this.content?.pageIndex?.pages.length;
   }
 
   _render(rect, forceWidth) {
@@ -172,9 +181,14 @@ export class StackArticleLayer extends ScreenCopyLayer {
   // the same offset from the top of the view. The real article shows this
   // layer's content, not PTT's reopened copy (#121).
   alignReal(core) {
-    this._adopt(core);
+    const anchor = topRow(this.el);
+    if (this.comparison?.nearReady) {
+      this.comparison.adopt();
+      if (anchor) core.view.pageRowTop(Number(anchor.srow));
+      this.comparison.followPosition(anchor);
+    } else this._adopt(core);
     if (this.edited) core.view.flashListHint?.(i18n('stack_articleUpdated'), STACK_NOTICE_MS);
-    return scrollToRow(core.view.mainDisplay, topRow(this.el));
+    return scrollToRow(core.view.mainDisplay, anchor);
   }
 
   // A source read only partly goes on from where that read stopped (#121).
@@ -250,11 +264,23 @@ export class StackArticleLayer extends ScreenCopyLayer {
     return !!this.content;
   }
 
+  beginComparison(core) {
+    if (!this.comparisonPlanned) return;
+    this.comparison = ArticleComparisonSession.start(core, this.content, Number(this.anchor?.srow || 0));
+    this.comparisonPlanned = !!this.comparison;
+  }
+
+  destroy() {
+    if (!this.comparison?.adopted) this.comparison?.cancel();
+    super.destroy();
+  }
+
   // The real article can take over: with content to adopt, once PTT has
   // reopened the article to its end, a partial read paged on from where it
   // stopped; otherwise once easy reading has paged as far as the reading
   // position.
   reaches(core) {
+    if (this.comparisonPlanned) return !!this.comparison?.nearReady;
     if (this.content && !this.content.whole) this._resume(core);
     if (this.content) return readIdle(core);
     const anchor = topRow(this.el);

@@ -284,6 +284,8 @@ ScreenRefresh.prototype = {
   // 冷卻中／線路忙碌也回 true：使用者是要重整這個畫面，不該變成整頁重新載入。
   refresh: function(source) {
     const core = this._core;
+    if (core.articleComparison?.adopted && core.articleComparison.afterPage(() => this.refresh(source)))
+      return true;
     const target = this.target();
     const diag = function(outcome) {
       toolbarDiag(core, 'refresh', { source: source || null, kind: target ? target.kind : null, outcome: outcome });
@@ -344,6 +346,7 @@ ScreenRefresh.prototype = {
     if (target.kind === 'list-retry') return failedList(core).retry();
     if (target.kind === 'article-retry') return core.articleHold.retry();
     if (target.kind === 'article') {
+      core.articleComparison?.abandon();
       if (core.aidNavigation && core.aidNavigation.refresh()) return true;
       this._hint('這篇文章無法重新整理');
       return false;

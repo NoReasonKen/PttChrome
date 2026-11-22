@@ -441,7 +441,14 @@ export class Handoff {
       if (kind === PAGE.ARTICLE_LIST || kind === PAGE.ARTICLE) return;
       return this.end('unexpected');
     }
-    if (kind === PAGE.ARTICLE && openArticleKey(core) !== this.id) return this.end('unexpected');
+    if (kind === PAGE.ARTICLE) {
+      // A title edit changes the header-derived identity. The verified AID
+      // used by search backtracking still names the same source.
+      const post = this.post && core.aidNavigation?.currentPostAid?.();
+      const verified = post?.aid && post.aid === this.post.aid && sameBoard(post.board, this.post.board);
+      if (!verified && openArticleKey(core) !== this.id) return this.end('unexpected');
+      this.layer?.beginComparison?.(core);
+    }
     if (kind === PAGE.ARTICLE_LIST && this.target) {
       if (core.buf.pageState !== 2 || core.listSession?.state !== 'active') return;
       // A list that has not read its board yet, as after rebuilt search
@@ -497,7 +504,10 @@ export class Handoff {
     const next = handoffStep({
       ...this, touches: this.touches + this.holds, reached: this.layer?.reaches?.(this.core) ?? true, now: performance.now()
     });
-    if (next.action === 'swap') return this.end('presented');
+    if (next.action === 'swap') {
+      if (this.layer?.comparisonPlanned && !this.layer.comparison?.nearReady) return this.end('timeout');
+      return this.end('presented');
+    }
     if (next.action === 'timeout') return this.end('timeout');
     this.timer = setTimeout(() => this.step(), next.ms);
   }

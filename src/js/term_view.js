@@ -495,6 +495,9 @@ export function TermView() {
   // landed in a cursor-only notify window, so redraw was never called for it) and
   // forces one redraw. Reset with the rest of the tracking in hideEasyReadingOverlays.
   this._lastAccumulatedSig = null;
+  // PTT's file-line numbers and their offsets in the accumulated article.
+  // A wrapped file line can occupy several displayed rows.
+  this._articlePageIndex = null;
   // 反向讀取（End）的累積事實；null＝沒有在反向讀取。見 beginReverse 與
   // docs/easy-reading.md「反向讀取」。
   //   junction      J＝開始反向時 pageLines 的長度（head 的列數）；新頁一律插在這裡
@@ -899,6 +902,7 @@ TermView.prototype = {
     //var start = new Date().getTime();
     var rows = this.buf.rows;
     var lineChangeds = this.buf.lineChangeds;
+    var comparing = !!this.bbscore?.articleComparison?.hidesFrames;
     // 這一幀要重畫哪幾列。2026-08 之前這個陣列算出來就丟掉（只取 length > 0 當
     // 布林），而且 ch.needUpdate 是 sticky 的 ⇒ 幾乎恆等於全部列。去 sticky 之後
     // 它是真的 dirty 集合，往下傳給 render 層做逐列 patch（見
@@ -909,7 +913,9 @@ TermView.prototype = {
     // Track the 原PO id for same-author comment highlighting. The "作者" header
     // only appears on the first page of an article, so keep the last parsed value
     // across page-downs; a new article's first page overwrites it.
-    if (this.buf.pageState === 3 && !this.buf.easyReadingResizeInFlight && !this.bbscore?.listResize?.active) {
+    if (comparing) {
+      // The raw pager frame belongs only to comparison.
+    } else if (this.buf.pageState === 3 && !this.buf.easyReadingResizeInFlight && !this.bbscore?.listResize?.active) {
       // Author AND board come from the SAME header line ("作者 x (y) 看板 Z"), so
       // they are adopted as one event: a 站內信 header has no 看板 field and must
       // therefore CLEAR the board, not inherit the previous post's (a boardless
@@ -947,7 +953,7 @@ TermView.prototype = {
       // growing accumulated article page (easy reading, pageState 3). The two
       // easy-reading overlay rows (footer / reply preview) are separate divs and
       // are still drawn imperatively below.
-      if (this.useEasyReadingMode && this.buf.easyReadingResizeInFlight) {
+      if (this.useEasyReadingMode && (this.buf.easyReadingResizeInFlight || comparing)) {
         // Keep the article through NAWS's stale screen and the goto prompt.
         // Only the resize owner may accept the new terminal-sized response.
         this._gridRender = false;
@@ -3420,7 +3426,9 @@ TermView.prototype = {
       // render time (Screen dropHidden). A forced redraw (pref/pusher toggle)
       // re-enters here with the same screen; kStatus then equals maxK so beginIndex ==
       // newRows.length and nothing is double-appended.
+      var pageOffset = this.buf.pageLines.length - beginIndex;
       this.buf.pageLines = this.buf.pageLines.concat(newRows.slice(beginIndex).map(internRow));
+      this._rememberArticlePage(result, pageOffset);
       // Advance the tracked article-line position to this screen's end.
       this._accEndRow = result.rowIndexEnd;
       this._lastAccumulatedSig = statusSignature(result);
@@ -3434,6 +3442,7 @@ TermView.prototype = {
       // classifyPageTransition 判 'restart' → append，resolvePageOverlap 走內容，
       // 再把 _accEndRow 接回它的 E。簽章仍要記，否則 settle 的補畫會一直重放這一幀。
       this.buf.pageLines = this.buf.pageLines.concat(newRows.slice(kContent).map(internRow));
+      this._articlePageIndex = null;
       this._accEndRow = null;
       this._lastAccumulatedSig = statusSignature(result);
       this.buf.easyReadingSeekBack = null;
@@ -3454,6 +3463,9 @@ TermView.prototype = {
       // Screen resets the enlarge-images toggle back to default small images.
       ++this._articleInstanceId;
       this.buf.pageLines = newRows.map(internRow);
+      this._articlePageIndex = result?.rowIndexStart === 1
+        ? { cols: this.buf.cols, rows: this.buf.rows, pages: [] } : null;
+      this._rememberArticlePage(result, 0);
       // Seed overlap tracking from this first screen's status row (null if it's a
       // transient non-article frame — resolvePageOverlap then falls back to content).
       this._accEndRow = result ? result.rowIndexEnd : null;
@@ -3477,7 +3489,9 @@ TermView.prototype = {
       headEndLine: this._accEndRow,
       tailStartLine: null,
       tailEndLine: null,
-      tailComplete: false
+      tailComplete: false,
+      tailOffset: 0,
+      pages: []
     };
     this._reverseResult = null;
   },
@@ -3542,16 +3556,39 @@ TermView.prototype = {
     return { stableRows: true, reverseJunction: rv.junction };
   },
 
-  // Where accumulating the article's pages stands: the row its last page ends
-  // on and that page's signature. A stacked article layer (#121) saves it and
-  // restores it with restoreAccumulation.
+  // Keep the first displayed offset for each accepted PTT page. It remains
+  // independent of the current pager position after a seek back.
+  _rememberArticlePage: function(status, offset) {
+    var index = this._articlePageIndex;
+    if (!index) return;
+    var last = index.pages.at(-1);
+    var start = status?.rowIndexStart, end = status?.rowIndexEnd;
+    if (index.cols !== this.buf.cols || index.rows !== this.buf.rows ||
+        !Number.isInteger(start) || !Number.isInteger(end) || end < start ||
+        (last && (start < last.start || end < last.end || offset < last.offset ||
+          start > last.end + 1 || (start === last.start && offset !== last.offset)))) {
+      this._articlePageIndex = null;
+      return;
+    }
+    var page = { start, end, offset };
+    if (last?.start === start) index.pages[index.pages.length - 1] = page;
+    else index.pages.push(page);
+  },
+
+  // A stacked article layer saves this state alongside the article rows.
   accumulation: function() {
-    return { accEndRow: this._accEndRow, lastSig: this._lastAccumulatedSig };
+    var index = this._articlePageIndex;
+    return {
+      accEndRow: this._accEndRow, lastSig: this._lastAccumulatedSig,
+      pageIndex: index ? { ...index, pages: index.pages.slice() } : null
+    };
   },
 
   restoreAccumulation: function(accumulation) {
     this._accEndRow = accumulation.accEndRow;
     this._lastAccumulatedSig = accumulation.lastSig;
+    var index = accumulation.pageIndex;
+    this._articlePageIndex = index ? { ...index, pages: index.pages.slice() } : null;
   },
 
   // Whether the article is being accumulated backwards from its end.
@@ -3606,12 +3643,14 @@ TermView.prototype = {
         upperTexts: pl.slice(-W).map(rowToText), lowerTexts: newTexts, window: W
       });
       this.buf.pageLines = pl.concat(newRows.slice(kj).map(internRow));
+      this._rememberArticlePage(result, J - kj);
       this._accEndRow = E;
       this.clearReverse('joined');
       return;
     }
     if (rb === 'seed') {
       this.buf.pageLines = pl.concat(newRows.map(internRow));
+      rv.pages.push({ start: S, end: E, offset: 0 });
       rv.tailStartLine = S;
       rv.tailEndLine = E;
       rv.tailComplete = full;
@@ -3625,6 +3664,7 @@ TermView.prototype = {
         lowerTexts: newTexts, window: W
       });
       this.buf.pageLines = pl.concat(newRows.slice(ke).map(internRow));
+      rv.pages.push({ start: S, end: E, offset: rv.tailOffset + pl.length - J - ke });
       rv.tailEndLine = E;
       rv.tailComplete = full;
       this._accEndRow = E;
@@ -3637,6 +3677,10 @@ TermView.prototype = {
       lowerTexts: pl.slice(J, J + W).map(rowToText), window: W
     });
     var mid = newRows.slice(0, newRows.length - kp).map(internRow);
+    // Offsets remain relative to the first tail frame until the join. A
+    // prepended screen only moves the tail origin, not all later offsets.
+    rv.tailOffset -= mid.length;
+    rv.pages.push({ start: S, end: E, offset: rv.tailOffset });
     if (rb === 'prepend') {
       this.buf.pageLines = pl.slice(0, J).concat(mid, pl.slice(J));
       rv.tailStartLine = S;
@@ -3650,6 +3694,18 @@ TermView.prototype = {
       lowerTexts: lower.slice(0, W).map(rowToText), window: W
     });
     this.buf.pageLines = pl.slice(0, J).concat(lower.slice(ks));
+    if (this._articlePageIndex) {
+      var pages = this._articlePageIndex.pages.concat(rv.pages.map(page => ({
+        ...page, offset: page.offset + J - ks - rv.tailOffset
+      })));
+      pages.sort((a, b) => a.start - b.start || b.end - a.end);
+      this._articlePageIndex.pages = [];
+      for (var page of pages) {
+        var last = this._articlePageIndex?.pages.at(-1);
+        if (page.offset >= 0 && (!last || page.end > last.end))
+          this._rememberArticlePage({ rowIndexStart: page.start, rowIndexEnd: page.end }, page.offset);
+      }
+    }
     this._accEndRow = rv.tailEndLine;
     this.clearReverse('stitched');
   },
@@ -4320,6 +4376,7 @@ TermView.prototype = {
     // article's first page-down (see accumulatePageLines / resolvePageOverlap).
     this._accEndRow = null;
     this._lastAccumulatedSig = null;
+    this._articlePageIndex = null;
     this._showsOverCopy = null;
     // 反向讀取的 head/tail 事實跟著累積頁一起丟（同 clearReverse('dropped')；這裡
     // 內聯是因為本函式也經 prototype 被當成獨立函式呼叫，見 hideEasyReadingOverlays）。

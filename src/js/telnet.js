@@ -250,6 +250,7 @@ TelnetConnection.prototype.convSendUserKey = function(unicode_str) {
 // 之前**：vtkbd 看到的是解 IAC 之後的資料流。理由見 vtkbd_send_state.js 檔頭。
 TelnetConnection.prototype._sendEscaped = function(str, opts) {
   if (!str) return;
+  if (this.deferDataSend?.(() => this._sendEscaped(str, opts))) return;
   // 資料 bytes 的唯一匯流點 ⇒ 「剛剛送了什麼鍵」的觀察者掛這裡（board_note_skip 的
   // arm 判定）。協商／keep-alive 走 _sendRaw，本來就不是按鍵，不經過這裡。
   if (this.onDataSent) this.onDataSent(str);
