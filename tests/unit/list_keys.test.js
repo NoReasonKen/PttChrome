@@ -9,6 +9,7 @@ import { ListSession, transitionListSession, userListKeyClass } from "../../src/
 import { FRIEND_LIST_KEY, MAIL_LIST_KEY, USER_LIST_KEY } from "../../src/js/screen_titles";
 import { queryUser, promptUserQuery, queryAuthor } from "../../src/js/user_query";
 import { showListPostInfo } from "../../src/js/post_info";
+import { showBoardInfo } from "../../src/js/board_info";
 
 vi.mock("../../src/js/user_query", () => ({
   queryUser: vi.fn(() => true),
@@ -17,6 +18,9 @@ vi.mock("../../src/js/user_query", () => ({
 }));
 vi.mock("../../src/js/post_info", () => ({
   showListPostInfo: vi.fn(() => true),
+}));
+vi.mock("../../src/js/board_info", () => ({
+  showBoardInfo: vi.fn(() => true),
 }));
 vi.mock("../../src/js/user_list", async (importOriginal) => ({
   ...(await importOriginal()),
@@ -1025,6 +1029,53 @@ describe("Q shows the selected article's information (#261)", () => {
     expect(e.defaultPrevented).toBe(true);
     expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
     expect(showListPostInfo).not.toHaveBeenCalled();
+  });
+});
+
+describe("i / I show the board information (#288)", () => {
+  beforeEach(() => showBoardInfo.mockClear());
+
+  test.each(["i", "I"])("%s → prevented, handed to showBoardInfo, nothing enqueued or sent here", (key) => {
+    const ctx = activeRefusalSession();
+    const e = keyEvent(key);
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(showBoardInfo).toHaveBeenCalledTimes(1);
+    expect(showBoardInfo).toHaveBeenCalledWith(ctx.s._core, key);
+    expect(ctx.sent).toEqual([]);
+    expect(ctx.enqueued).toEqual([]);
+    expect(ctx.s.state).toBe("active");
+    expect(ctx.hints).toEqual([]);
+  });
+
+  test("the help sheet's i row is offered on an article list (wouldRefuse)", () => {
+    expect(activeRefusalSession().s.wouldRefuse({ key: "i" })).toBe(false);
+  });
+
+  test("also over search results (read_comms serves MODE_SELECT)", () => {
+    const ctx = activeRefusalSession();
+    ctx.s._footerText = " 系列文章  (←)離開";
+    expect(ctx.s._classifyKey(keyEvent("i")).class).toBe("board-info");
+  });
+
+  // The mailbox has no board; the digest list's table (bbs.c#digest_comms)
+  // has no `i`.
+  test.each([
+    ["the mailbox", (s) => { s._boardName = MAIL_LIST_KEY; }],
+    ["the digest list", (s) => { s._footerText = " 文摘列表  (←)離開"; }],
+  ])("%s refuses i and I with the hint", (_, setUp) => {
+    for (const key of ["i", "I"]) {
+      const ctx = activeRefusalSession();
+      setUp(ctx.s);
+      const e = keyEvent(key);
+      ctx.s.onKeyDown(e);
+      expect(e.defaultPrevented).toBe(true);
+      expect(ctx.sent).toEqual([]);
+      expect(ctx.enqueued).toEqual([]);
+      expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
+      expect(ctx.s.wouldRefuse({ key })).toBe(true);
+    }
+    expect(showBoardInfo).not.toHaveBeenCalled();
   });
 });
 

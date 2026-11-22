@@ -68,6 +68,7 @@ do not count as reader input. See `src/js/scroll_restore_follow.js` and
 | `article-comparison` compare a revealed article with PTT's copy | No restore: the shown rows retain their reading position | No restore |
 | `user-query` 查詢網友（#199）、查詢作者（#254） | 使用者列表或文章列表：原處（查詢頁底下就是同一份列表） | 使用者列表或文章列表：原處 |
 | `post-info` 文章資訊（`Q`，#261） | 文章列表：原處；文章：重開後回原列 | 文章列表：原處；文章：原列 |
+| `board-info` 看板資訊（`i`，#288） | 文章列表：原處（看板資訊底下就是同一份列表） | 文章列表：原處 |
 | `help-menu` 說明選單（`h`） | 不還原（執行的指令就是目的地） | 離開：列表、看板列表原處 |
 | `unread-jump` 跳到第一篇未讀 | 不還原（目的就是移動） | 不還原：停在翻到的那頁（使用者拍板） |
 | `home-favorites` 首頁抓我的最愛（含重新整理／下拉） | 首頁：原處（清單換新後停在同一張卡片） | 首頁：原處（停在 PTT 給的畫面，回到首頁時） |

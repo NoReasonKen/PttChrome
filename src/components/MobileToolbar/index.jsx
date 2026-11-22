@@ -507,6 +507,19 @@ export const MobileToolbar = ({
     });
   }, [pttchrome, whenReady]);
 
+  // Board information (#288, js/board_info.js): PTT's `i` screen, as a sheet.
+  const onBoardInfo = useCallback(() => {
+    setPanel(null);
+    setConfirmLogout(false);
+    const b = pttchrome.boardInfo;
+    if (!b || typeof b.start !== "function") return;
+    whenReady(() => {
+      if (typeof pttchrome.noteUserAction === "function")
+        pttchrome.noteUserAction();
+      b.start();
+    });
+  }, [pttchrome, whenReady]);
+
   // 跳到第一篇未讀：與桌機快捷鍵（預設 F7）同一個入口（unread_jump.js）。
   const onUnreadJump = useCallback(() => {
     setPanel(null);
@@ -914,6 +927,16 @@ export const MobileToolbar = ({
             onClick={onMarkAllRead}
           >
             {i18n("cmenu_markAllRead")}
+          </button>
+        ) : null}
+        {context.boardInfo ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__boardInfo"
+            onClick={onBoardInfo}
+          >
+            {i18n("boardInfo_title")}
           </button>
         ) : null}
         {context.boardCountsSwitch ? (

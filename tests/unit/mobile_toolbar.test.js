@@ -150,6 +150,13 @@ describe("toolbarContextFromFacts", () => {
     expect(toolbarContextFromFacts(frame({ 0: "【主功能表】    批踢踢實業坊" }), 1).unreadJump).toBe(false);
     expect(EMPTY_TOOLBAR_CONTEXT.unreadJump).toBe(false);
   });
+  // #288: board information comes from the controller (BoardInfo.available),
+  // not the screen; the empty context has none, and a change is a new context.
+  test("board information (More): off in the empty context, and part of the comparison", () => {
+    expect(EMPTY_TOOLBAR_CONTEXT.boardInfo).toBe(false);
+    expect(toolbarContextFromFacts(frame(LIST), 2).boardInfo).toBeFalsy();
+    expect(sameToolbarContext({ search: [], boardInfo: true }, { search: [], boardInfo: false })).toBe(false);
+  });
   test("設為全部已讀（更多）：只有文章列表；prompt 開著、文章、主功能表不給", () => {
     expect(toolbarContextFromFacts(frame(LIST), 2).markAllRead).toBe(true);
     expect(toolbarContextFromFacts({ ...frame(LIST), inputField: true }, 2).markAllRead).toBe(false);

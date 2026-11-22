@@ -140,6 +140,27 @@ export const en_US = {
   "postInfo_failedArticle": {
     "message": "Could not read the article information: pull down to refresh and retry."
   },
+  "boardInfo_title": {
+    "message": "Board information"
+  },
+  "boardInfo_board": {
+    "message": "Board"
+  },
+  "boardInfo_moderators": {
+    "message": "Moderators"
+  },
+  "boardInfo_noModerators": {
+    "message": "(none)"
+  },
+  "boardInfo_busy": {
+    "message": "Reading the board information…"
+  },
+  "boardInfo_unavailable": {
+    "message": "Board information is not available here"
+  },
+  "boardInfo_failed": {
+    "message": "Could not read the board information"
+  },
   "cmenu_addTitleBlacklist": {
     "message": "Blacklist title keyword ..."
   },

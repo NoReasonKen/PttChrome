@@ -472,6 +472,25 @@ describe("更多（bottom sheet）", () => {
     expect(byKey("__help")).toBeNull();
   });
 
+  // #288: board information, in More over an article list it can be asked for.
+  test("board information (in More): only with context.boardInfo; calls boardInfo.start and closes the sheet", async () => {
+    const core = makeCore({ context: { push: false, search: [], boardInfo: true } });
+    core.boardInfo = { start: vi.fn(() => true) };
+    renderBar(core);
+    expect(byKey("__boardInfo")).toBeNull();
+    await openMore();
+    expect(byKey("__boardInfo").textContent).toBe(i18n("boardInfo_title"));
+    fireEvent.click(byKey("__boardInfo"));
+    await sheetClosed();
+    expect(core.boardInfo.start).toHaveBeenCalledTimes(1);
+  });
+
+  test("More: no board information without context.boardInfo", async () => {
+    renderBar(makeCore({ context: { push: false, search: [], boardInfo: false } }));
+    await openMore();
+    expect(byKey("__boardInfo")).toBeNull();
+  });
+
   test("設為全部已讀：不是文章列表就沒有", async () => {
     renderBar(makeCore());
     await openMore();

@@ -70,6 +70,11 @@
   - **沒有文章代碼**：框裡 AID 那列只有 `│`（`fn2aidu` 失敗）⇒ 提示「這篇文章沒有文章資訊」，不開 sheet，框照樣用空白關掉。
   - **失敗都留在原處並提示，不送猜的鍵**：列表上游標同步失敗 ⇒ `Q` 不送；`Q` 沒有回答 ⇒ 提示「讀不到文章資訊」，列表收回畫面，沒看到框就不送空白；文章裡任何一步失敗 ⇒ 文章被拿住並提示「讀不到文章資訊：下拉重新整理以重試」（`ArticleHold.fail`）。別的操作正在跑時只給提示，什麼都不送；從 `Q` 到列表回來的整段期間終端按鍵與點擊都擋下（`setModalOpen('postInfo')`），忙碌提示是「讀取文章資訊中，請稍候…」。
   - **依據**：框的各列照 pttbbs 原始碼（`bbs.c#view_postinfo`：右框線印在第 76 欄、AID 那列在 `fn2aidu<=0` 時只有 `│`、網址列的三種替代輸出、價格／匿名／投票限制三選一），解析是 `aid_parse.parsePostInfoBox`。e2e 用受控文章列表（`tests/e2e/helpers/article_shortcut_search.js`），`tests/e2e/offline/post_info.offline.spec.js`（桌機）與 `mobile_post_info.offline.spec.js`（手機）。
+- **看板資訊**（#288，`src/js/board_info.js`）：PTT 的 `i`（`bbs.c#bbs_cmd_config` → `board.c#b_config`）畫一份可翻頁的看板設定列表（PSB），`←`／`q` 才離開。好讀把每一頁讀出來，做成 app 自己的 sheet（手機）或對話框（桌機）：上面是看板名稱與板主，下面是 PTT 印的每一列，照 PTT 的順序、去掉顏色，連只寫 `[唯讀檢視]`／`(限管理人員)` 的列也照列。唯讀：沒有 `Ctrl-P` 編輯入口，管理紀錄那一列只是文字，不開閱讀器。PTT 的畫面一幀都不畫（`term_view._navigationHeld`）。
+  - **入口**：好讀文章列表（含搜尋結果；不含信箱、線上使用者列表與文摘列表）按 `i` 或 `I`；桌機右鍵選單的「看板資訊」（在「設為全部已讀」後面，整個看板的資訊，不是那一列的）；手機列表工具列的「更多」（`mobile_toolbar` 的 `boardInfo`）。文章裡、信箱、文摘列表不提供；文摘列表與信箱按 `i` 是「不支援這個按鍵」的提示。
+  - **送給 PTT 的鍵**（每一鍵都等前一鍵的回答才送）：`i`（不同步游標）⇒ 第一頁；那一頁滿了就送 PgDn，直到某一頁沒滿或沒有新的一列（最後一頁剛好滿時 PTT 會重畫同一頁）；全部讀完就開 sheet，同時送 `←` 回列表。列表回來時選取與視野都不變；關掉 sheet 什麼都不送。
+  - **失敗都留在列表並提示，不送猜的鍵**：PTT 直接重畫列表（`get_boardheader` 失敗）⇒ 提示「這裡無法查看看板資訊」，`i` 之後什麼都不送；畫面是看板資訊但讀不出來 ⇒ 送 `←`（它自己的離開鍵）回列表並提示；其他畫面一律不送鍵。別的操作正在跑時只給提示，什麼都不送；序列進行中按系統返回鍵只給「讀取看板資訊中」的提示。
+  - **依據**：畫面各列與翻頁照 pttbbs 原始碼（main 35cfcf5：`board.c#bconfig_header`／`bconfig_renderer`／`bconfig_items`、`psb.c#psb_cmd_pgdn`），專案擁有者 2026-11 在手機與桌機實機確認線上是可翻頁的列表；舊版固定區塊＋`pressanykey` 的形式不支援。e2e 用受控文章列表（`tests/e2e/helpers/article_shortcut_search.js` 的 `boardInfo` 畫面，`tests/e2e/offline/board_info.offline.spec.js`、`mobile_board_info.offline.spec.js`），沒有錄製的實機畫面。
 - **依據**：列表、表頭與底列的顏色、好友代號的亮青、空好友列表的底列、說明畫面、查詢畫面與 `Q` 提示都對照過實機畫面；數字跳號、列表兩端的方向鍵與翻頁、空視圖的游標位置、`< 離站中..>` 列的樣子沒有實機畫面。e2e 用 `tests/e2e/helpers/user_list.js` 的受控列表（虛構的使用者），`tests/e2e/offline/mobile_user_list.offline.spec.js`。
 
 給列表以外的呼叫端的介面（純函式在 `src/js/user_list.js`，除非另註）：
