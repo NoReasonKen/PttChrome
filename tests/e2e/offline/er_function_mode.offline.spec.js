@@ -240,7 +240,8 @@ test.describe('好讀 functionMode（scenario 重放）', () => {
     };
 
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-    await pasteText(page, '#1abCDeFG');
+    // An article code or link is a jump by code (#281); other text is refused.
+    await pasteText(page, 'hello from the clipboard');
     await refused('好讀模式目前不支援在文章貼上文字');
 
     await page.locator('#t').focus();

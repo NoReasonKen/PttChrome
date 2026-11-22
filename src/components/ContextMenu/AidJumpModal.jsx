@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { Modal, TextInput, Button, Group } from "@mantine/core";
 import { i18n } from "../../js/i18n";
 import MobileSheet from "../MobileSheet";
-import { parseAidJumpInput } from "../../js/aid_jump";
-import { AID_INPUT_MAX_LENGTH } from "../../js/aid_codec";
+import { parseArticlePaste } from "../../js/aid_jump";
+import { ARTICLE_INPUT_MAX_LENGTH } from "../../js/aid_codec";
 
 // Jump to an article by its code from the easy-reading article list (#253,
 // js/aid_jump.js), presented like the search sheet: a bottom sheet on the
-// phone, a modal on the desktop. onConfirm(text) gets the text of a code (any
-// form aid_jump.parseAidJumpInput takes); cancelling sends nothing.
+// phone, a modal on the desktop. onConfirm(text) gets the text of a code or a
+// PTT article link: what a paste takes, aid_jump.parseArticlePaste (#281), on
+// the list and over an article alike. Cancelling sends nothing.
 export const AidJumpModal = ({
   show,
   onHide,
@@ -21,7 +22,7 @@ export const AidJumpModal = ({
   useEffect(() => {
     if (show) setValue("");
   }, [show]);
-  const valid = !!parseAidJumpInput(value);
+  const valid = !!parseArticlePaste(value);
   const title = i18n("aidJump_title");
   const form = (
     <form
@@ -34,7 +35,7 @@ export const AidJumpModal = ({
       <TextInput
         data-autofocus
         name="aidCode"
-        maxLength={AID_INPUT_MAX_LENGTH}
+        maxLength={ARTICLE_INPUT_MAX_LENGTH}
         label={i18n("aidJump_label")}
         placeholder={i18n("aidJump_placeholder")}
         autoComplete="off"

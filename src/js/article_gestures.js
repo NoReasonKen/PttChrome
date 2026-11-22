@@ -432,6 +432,16 @@ export class ArticleGestures {
     return this.stack.captureArticle();
   }
 
+  // A jump by code from the article captured as `left` (#281) has ended:
+  // `landed`, the article found, which PTT has already answered, slides in
+  // from the right over `left`, as an opened entry does (#36), and stacks on
+  // it; otherwise `left` is no lower page.
+  landJump(left, landed) {
+    if (landed && left && this.stack.pending === left) this._beginEntry();
+    this.stack.jumpLanded(left, landed);
+    if (landed) this.entry?.answered();
+  }
+
   // The real screen, which PTT has already answered, slides in from the right
   // over `cover`, a copy of the page it was opened from shown over it, with
   // that page's `title` and `appBar` beside it. The cover goes with the

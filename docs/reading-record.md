@@ -48,7 +48,8 @@ do not count as reader input. See `src/js/scroll_restore_follow.js` and
 |---|---|---|
 | `long-push` 長推文 | 文章：文末 | 文章：原列 |
 | `aid-jump` AID 跳文 | 不還原（目的地就是結果） | 不還原 |
-| `aid-back` 返回 | 文章：原列（取自返回錨） | 不還原 |
+| `aid-back` 返回 | 文章：原列（取自返回錨）；手機從文章跳文代碼的返回（#281，原文已從活層顯示）不還原，真文章接手活層當下的位置 | 不還原 |
+| `article-aid-jump` 文章裡跳至文章代碼（`#`、貼上，#281） | 不還原（目的地就是結果） | 失敗（找不到，重開原文）：文章原列 |
 | `aid-board-pick` 無看板 AID 指定看板 | 不還原（跳文） | 取消：重開原文、文章原列（`reopenPicked` 落地時下）；失敗：不還原 |
 | `article-refresh` 文章重新整理 | 文章：`auto`（在文末就黏回文末，否則原列） | 不還原 |
 | `article-resize` mobile article rotation | Original article row and fraction, unless reader input canceled restoration | No restoration |

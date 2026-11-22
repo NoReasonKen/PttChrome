@@ -1,5 +1,6 @@
 // Jumping to an article by its code (AID) from the easy-reading article list
-// (#253). `#` and a pasted code open PttChrome's own input / run the jump; the
+// (#253). `#` and a pasted code (or a PTT article link, as over an article,
+// #281) open PttChrome's own input / run the jump; the
 // jump itself is the serialized AID navigation, so PTT's `#` prompt and its
 // result screens never reach the grid. The controlled PTT board is
 // helpers/article_shortcut_search.js (its `#<aid>⏎` selects the row, or shows
@@ -68,14 +69,18 @@ test.describe('jump to an article by its code from the easy-reading list (#253)'
     expect(await page.evaluate(() => window.__shortcutServer.state.surface)).toBe('list');
   });
 
-  test('the input stops at the longest article code', async ({ page }) => {
+  // It takes what a paste takes (#281), up to a whole article link.
+  test('the input takes a whole article link and stops not far past one', async ({ page }) => {
     await bootList(page);
     await ptt.sendKey(page, '#');
-    await page.locator(INPUT).fill('#1gIeu-3C (Test)');
-    await page.locator(INPUT).pressSequentially('x'.repeat(80));
+    // The longest board name PTT has room for (IDLEN, 12).
+    const link = 'https://www.ptt.cc/bbs/Abcdefghijkl/M.1783270974.A.0CC.html';
+    await page.locator(INPUT).pressSequentially(link);
+    expect(await page.locator(INPUT).inputValue()).toBe(link);
+    await page.locator(INPUT).pressSequentially('x'.repeat(200));
     const typed = await page.locator(INPUT).inputValue();
     expect(typed.length).toBe(await page.evaluate(() => Number(document.querySelector('input[name="aidCode"]').maxLength)));
-    expect(typed.length).toBeLessThanOrEqual(32);
+    expect(typed.length).toBeLessThanOrEqual(128);
   });
 
   test('cancelling the input leaves the list as it was and sends nothing', async ({ page }) => {
@@ -111,11 +116,36 @@ test.describe('jump to an article by its code from the easy-reading list (#253)'
     });
   }
 
+  // As over an easy-reading article (#281): both places take the same pastes.
+  test('pasting a PTT link to an article on the board selects it the same way', async ({ page }) => {
+    await bootList(page);
+    await page.evaluate(() => window.__app.onPasteDone('https://www.ptt.cc/bbs/Test/M.1783270974.A.0CD.html'));
+    await expect.poll(() => sent(page)).toContain('#1gIeu-3D\r');
+    await waitIdle(page);
+    await expect.poll(() => selected(page)).toBe(104);
+    expect(await page.evaluate(() => window.__shortcutServer.state.surface)).toBe('list');
+    expect(await hinted(page, '好讀模式目前不支援在列表貼上文字')).toBe(false);
+  });
+
+  test('pasting a PTT link to another board takes the deep-link navigation', async ({ page }) => {
+    await bootList(page);
+    await page.evaluate(() => {
+      window.__deepLinks = [];
+      window.__app.deepLinkController.request = (target) => (window.__deepLinks.push(target), 'navigating');
+    });
+    await page.evaluate(() => window.__app.onPasteDone('https://www.ptt.cc/bbs/Gossiping/M.1783270974.A.0CD.html'));
+    await expect.poll(() => page.evaluate(() => window.__deepLinks)).toEqual([{ board: 'Gossiping', aid: '1gIeu-3D' }]);
+    expect(await hinted(page, '好讀模式目前不支援在列表貼上文字')).toBe(false);
+  });
+
   test('other pasted text is still refused with the hint', async ({ page }) => {
     await bootList(page);
     const before = (await sent(page)).length;
     const from = await selected(page);
     await page.evaluate(() => window.__app.onPasteDone('hello world'));
+    await expect.poll(() => hinted(page, '好讀模式目前不支援在列表貼上文字')).toBe(true);
+    await recordHints(page);
+    await page.evaluate(() => window.__app.onPasteDone('https://www.ptt.cc/bbs/Test/index.html'));
     await expect.poll(() => hinted(page, '好讀模式目前不支援在列表貼上文字')).toBe(true);
     expect((await sent(page)).length).toBe(before);
     expect(await selected(page)).toBe(from);

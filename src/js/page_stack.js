@@ -19,8 +19,10 @@ export function createPageStack() {
   return { pages: [] };
 }
 
-// A verified entry. `fromBelow`: opened from the current page; anything else
-// (search, article code, link, resume, board jump) starts a new base.
+// A verified entry. `fromBelow`: opened from the current page (an article
+// opened by its code from an article on its board too, #281); anything else
+// (search, an article code elsewhere, link, resume, board jump) starts a new
+// base.
 export function pushPage(stack, page, { fromBelow = false } = {}) {
   if (!fromBelow) return { pages: [page] };
   return { pages: [...stack.pages, page] };

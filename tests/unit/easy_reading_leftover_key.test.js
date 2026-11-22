@@ -224,3 +224,83 @@ describe("Q over an article", () => {
     expect(hints).toHaveLength(1);
   });
 });
+
+// #281: `#` over an article opens the input of the jump by code, as it does on
+// the article list; a mail or the digest area (no board PTT's `#` could search)
+// refuses it with the hint and sends nothing.
+describe("jump by code over an article (#281)", () => {
+  const make = ({ mail = false, board = "Test" } = {}) => {
+    const hints = [];
+    const er = Object.create(EasyReading.prototype);
+    er._enabled = true;
+    er.startedEasyReading = true;
+    er._functionMode = false;
+    er._core = {
+      openAidJumpModal: vi.fn(() => true),
+      view: { flashListHint: (...a) => hints.push(a) },
+      aidNavigation: { active: false, readingBoard: () => board },
+      listSession: { state: mail ? "suspended" : "idle", isMailList: () => mail, aidJumpBoard: () => null }
+    };
+    er._core.easyReading = er;
+    er._view = { flashListHint: (...a) => hints.push(a) };
+    er._bottomStick = null;
+    return { er, hints };
+  };
+  const press = (er) => {
+    const e = { ...ev("#", { code: "Digit3", shiftKey: true }), preventDefault: vi.fn() };
+    er._onKeyDownProcessUI(e);
+    return e;
+  };
+
+  test("# is the article's jump by code, offered by the help sheet except over a mail", () => {
+    expect(articleReadingKey(ev("#"))).toBe("aidJump");
+    expect(articleWouldRefuse({ key: "#" }, {})).toBe(false);
+    expect(articleWouldRefuse({ key: "#" }, {}, { mail: true })).toBe(true);
+  });
+
+  test("opens the input on the article's board and swallows the key", () => {
+    const { er, hints } = make();
+    expect(er.aidJumpBoard()).toBe("Test");
+    const e = press(er);
+    expect(er._core.openAidJumpModal).toHaveBeenCalledTimes(1);
+    expect(e.preventDefault).toHaveBeenCalled();
+    expect(hints).toEqual([]);
+  });
+
+  test("over a mail it is refused with the hint and opens nothing", () => {
+    const { er, hints } = make({ mail: true });
+    expect(er.aidJumpBoard()).toBe(null);
+    const e = press(er);
+    expect(er._core.openAidJumpModal).not.toHaveBeenCalled();
+    expect(e.preventDefault).toHaveBeenCalled();
+    expect(hints).toHaveLength(1);
+  });
+
+  test("in the digest area (no board PTT's # could search) it is refused too", () => {
+    const { er, hints } = make({ board: null });
+    press(er);
+    expect(er._core.openAidJumpModal).not.toHaveBeenCalled();
+    expect(hints).toHaveLength(1);
+  });
+
+  test("a pasted code over the article runs the jump instead of the refusal", () => {
+    const { er, hints } = make();
+    er._core.aidNavigation.jumpFromArticle = vi.fn(() => true);
+    expect(er.refuseText("#1AbCdEfG", "paste")).toBe(true);
+    expect(er._core.aidNavigation.jumpFromArticle.mock.calls[0].slice(0, 2)).toEqual(["Test", "1AbCdEfG"]);
+    expect(hints).toEqual([]);
+  });
+
+  test("other pasted text, and a code pasted over a mail, keep the refusal", () => {
+    const plain = make();
+    plain.er._core.aidNavigation.jumpFromArticle = vi.fn(() => true);
+    expect(plain.er.refuseText("hello world", "paste")).toBe(true);
+    expect(plain.er._core.aidNavigation.jumpFromArticle).not.toHaveBeenCalled();
+    expect(plain.hints).toHaveLength(1);
+    const mail = make({ mail: true });
+    mail.er._core.aidNavigation.jumpFromArticle = vi.fn(() => true);
+    expect(mail.er.refuseText("#1AbCdEfG", "paste")).toBe(true);
+    expect(mail.er._core.aidNavigation.jumpFromArticle).not.toHaveBeenCalled();
+    expect(mail.hints).toHaveLength(1);
+  });
+});

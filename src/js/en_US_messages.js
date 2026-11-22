@@ -1713,6 +1713,12 @@ export const en_US = {
   "aidJump_failed": {
     "message": "Could not jump to {0}; the list stays where it was"
   },
+  "aidJump_notFoundArticle": {
+    "message": "No article {0} on this board; you stay on this article"
+  },
+  "aidJump_failedArticle": {
+    "message": "Could not jump to {0}"
+  },
   "mobileToolbar_aidJump": {
     "message": "Jump to article code"
   },

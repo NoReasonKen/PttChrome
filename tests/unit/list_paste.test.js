@@ -60,6 +60,50 @@ function makeSession() {
 const AID = "not an article code";
 const PASTE_HINT = "好讀模式目前不支援在列表貼上文字";
 
+// A pasted ptt.cc article link is a jump too, as over an easy-reading article
+// (#281): the list's board selects it there, another board takes the deep-link
+// navigation (aid_jump.startAidJump).
+describe("ListSession.onPaste — a pasted article link", () => {
+  function linked() {
+    const session = makeSession();
+    const { s } = session;
+    const hints = [];
+    s._view.flashListHint = (...a) => hints.push(a);
+    s.state = "active";
+    s._renderMode = "buffer";
+    Object.assign(s._core, {
+      view: s._view,
+      listSession: { aidJumpBoard: () => "Test", selectionOrigin() {}, restoreSelection() {} },
+      aidNavigation: { selectArticle: vi.fn(() => true), active: false },
+      deepLinkController: { request: vi.fn(() => "navigating") },
+    });
+    return { ...session, hints };
+  }
+
+  test("a link to an article on the list's board selects it there, with no refusal", () => {
+    const { s, hints, sent } = linked();
+    expect(s.onPaste("https://www.ptt.cc/bbs/Test/M.1783270974.A.0CA.html")).toBe(true);
+    expect(s._core.aidNavigation.selectArticle.mock.calls[0].slice(0, 2)).toEqual(["Test", "1gIeu-3A"]);
+    expect(hints).toEqual([]);
+    expect(sent).toEqual([]);
+  });
+
+  test("a link to another board takes the deep-link navigation", () => {
+    const { s, hints } = linked();
+    expect(s.onPaste("https://www.ptt.cc/bbs/Gossiping/M.1783270974.A.0CA.html")).toBe(true);
+    expect(s._core.deepLinkController.request).toHaveBeenCalledWith({ board: "Gossiping", aid: "1gIeu-3A" });
+    expect(s._core.aidNavigation.selectArticle).not.toHaveBeenCalled();
+    expect(hints).toEqual([]);
+  });
+
+  test("any other link is still refused", () => {
+    const { s, hints } = linked();
+    expect(s.onPaste("https://www.ptt.cc/bbs/Test/index.html")).toBe(true);
+    expect(s._core.aidNavigation.selectArticle).not.toHaveBeenCalled();
+    expect(hints).toEqual([[PASTE_HINT, 4000, "error"]]);
+  });
+});
+
 describe("ListSession.onPaste — refused in easy reading", () => {
   test("text longer than an article code can be is refused, never parsed as one", () => {
     const { s, enqueued, sent } = makeSession();

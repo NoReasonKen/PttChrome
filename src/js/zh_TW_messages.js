@@ -1728,6 +1728,12 @@
   "aidJump_failed": {
     "message": "跳至 {0} 失敗，列表維持原位"
   },
+  "aidJump_notFoundArticle": {
+    "message": "找不到文章 {0}，留在原本的文章"
+  },
+  "aidJump_failedArticle": {
+    "message": "跳至 {0} 失敗"
+  },
   "mobileToolbar_aidJump": {
     "message": "跳至文章代碼"
   },
