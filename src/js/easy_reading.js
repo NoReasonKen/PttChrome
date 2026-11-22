@@ -17,6 +17,7 @@ import { createBottomStick } from './bottom_stick';
 import { followScrollRestore } from './scroll_restore_follow';
 import { recordFor } from './reading_record';
 import { isPushKey } from './long_push_gate';
+import { parseArticlePaste, requestAidJump, startArticleAidJump } from './aid_jump';
 
 // Pure decision for auto-enabling easy reading, evaluated once per settle edge
 // (term_buf 'pageStateSettled'), not per redraw frame. Kept side-effect free so it
@@ -1607,14 +1608,18 @@ EasyReading.prototype._refuseUnsupported = function(what) {
 
 // Text that did not come from a key (a paste, an input method): true when the
 // article is on screen in easy reading and the text must not reach PTT. A
-// single help or reply character keeps its native route like the key does.
+// single help or reply character keeps its native route like the key does. A
+// pasted article code or PTT article link runs the jump by code (#281) where
+// `#` would.
 EasyReading.prototype.refuseText = function(text, what) {
   if (!this._enabled || !this.startedEasyReading || this._functionMode)
     return false;
   if (what !== 'paste' && typeof text === 'string' && text.length === 1 &&
       (this._readingMail() ? ARTICLE_HELP_KEYS : ARTICLE_NATIVE_KEYS).indexOf(text) >= 0)
     return false;
-  this._refuseUnsupported(what);
+  const board = what === 'paste' && parseArticlePaste(text) ? this.aidJumpBoard() : null;
+  if (board) startArticleAidJump(this._core, board, text);
+  else this._refuseUnsupported(what);
   return true;
 };
 
@@ -2494,6 +2499,7 @@ EasyReading.prototype._stickBottom = function() {
 //   threadJump              same-thread and author jumps (a b f = + - [ ] A B F)
 //   swallow                 taken and nothing done (Tab, Ctrl with @ ^ _ ?)
 //   switchBoard             s: the board switch sheet (#262)
+//   aidJump                 #: the input of the jump by code (#281)
 // Ctrl and Alt letters share one route (ctrlLetterOf).
 export function articleReadingKey(e) {
   if (!e.ctrlKey && !e.altKey) {
@@ -2525,6 +2531,8 @@ export function articleReadingKey(e) {
       case 'Tab': return 'swallow';
       // Switch board (#262): the board sheet, not PTT's own prompt.
       case 's': return 'switchBoard';
+      // Jump by code (#281): the list's input, not PTT's own prompt.
+      case '#': return 'aidJump';
     }
     if (!e.metaKey && "abf=+-[]ABF".indexOf(e.key) >= 0) return 'threadJump';
     return null;
@@ -2551,7 +2559,7 @@ export function articleWouldRefuse(k, prefs, opts) {
   if (!mail && !e.ctrlKey && isPushKey(e.key)) return false;
   if (easyReadingFindKeyAction(e, prefs)) return true;
   const reading = articleReadingKey(e);
-  if (mail && (reading === 'threadJump' || reading === 'switchBoard')) return true;
+  if (mail && (reading === 'threadJump' || reading === 'switchBoard' || reading === 'aidJump')) return true;
   // A swallowed key does nothing in the article: a row for it would do nothing.
   if (reading) return reading === 'swallow';
   const what = articleLeftoverKey(e, opts);
@@ -2638,6 +2646,10 @@ EasyReading.prototype._onKeyDownProcessUI = function(e) {
       this.switchBoard();
       stop = true;
       break;
+    case 'aidJump':
+      this.aidJump();
+      stop = true;
+      break;
     case 'threadJump':
       // A mail has no thread easy reading presents (#196).
       if (this._readingMail()) {
@@ -2667,6 +2679,25 @@ EasyReading.prototype.switchBoard = function() {
   if (!this._readingMail() && this._core?.openBoardSwitch?.()) return true;
   this._refuseUnsupported('key');
   return false;
+};
+
+// Jump to an article by its code from the article (#281): the input the
+// article list opens for `#` (#253), never PTT's own prompt; cancelling sends
+// nothing. Refused with the hint where PTT's `#` does not work: a mail, the
+// digest area, a pager footer that cannot prove reading (aidJumpBoard).
+// Returns whether the input opened.
+EasyReading.prototype.aidJump = function() {
+  if (!this.aidJumpBoard()) {
+    this._refuseUnsupported('key');
+    return false;
+  }
+  return requestAidJump(this._core);
+};
+
+// The board a jump by code from the article on screen searches, or null.
+EasyReading.prototype.aidJumpBoard = function() {
+  if (!this._enabled || !this.startedEasyReading || this._functionMode || this._readingMail()) return null;
+  return this._core?.aidNavigation?.readingBoard?.() || null;
 };
 
 // A help or reply character goes to PTT through the native mirror. For help,

@@ -163,6 +163,24 @@ export class NavigationStack {
     return this.pending;
   }
 
+  // A jump by code from the article on screen (#281) left it, captured by
+  // captureArticle with `jump` set: once the article found is open, it stacks
+  // on the one left, which Back reveals (aid_jump.backToJumpOrigin). `landed`
+  // false drops the capture: the run failed, or came back to the article.
+  jumpLanded(captured, landed) {
+    if (!captured || this.pending !== captured) return;
+    if (!landed) return this.dropPending();
+    captured.landed = true;
+    this.update();
+  }
+
+  // The article left by a jump by code, alive under the article shown, or null.
+  jumpOriginBelow() {
+    const n = this.stack.pages.length;
+    const lower = this.captured[n - 2];
+    return lower?.jump && this.stack.pages[n - 1]?.kind === PAGE.ARTICLE && lower.kind === PAGE.ARTICLE ? lower : null;
+  }
+
   // The post `captured` (a page captureArticle returned) shows, once known.
   notePost(captured, post) {
     if (captured && post?.aid && post.board) captured.post = { board: post.board, aid: post.aid };
@@ -340,6 +358,14 @@ export class NavigationStack {
     if (this.pending?.kind === PAGE.ARTICLE_LIST) return;
     const page = this._articlePage();
     if (this.core.buf.pageState !== 3 || !page.id) return;
+    // A jump by code from the article left (#281): the article found stacks on
+    // it once the jump has landed; until then the article shown is the one
+    // left, or a screen on the jump's way.
+    const jumped = this.pending?.jump ? this.pending : null;
+    if (jumped) {
+      if (!jumped.landed || page.id === jumped.id) return;
+      this._enter(page, pending => sameBoard(pending.board, page.board));
+    }
     this._shown(page);
     const view = this.core.view;
     if (view._articleAuthor) {

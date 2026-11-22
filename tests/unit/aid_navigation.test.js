@@ -931,6 +931,37 @@ describe("AidNavigation 返回", () => {
     h.backButton.cb();
     expect(h.sent[0]).toBe("sC_Chat\r\f");
   });
+
+  // #281: an article jumped to by its code from the article alive under it.
+  test("over a jump from an article kept alive under it, the pill is the system Back", () => {
+    const h = makeHarness({ listAnchor: LIST_ANCHOR });
+    jumpForward(h);
+    const keys = [];
+    h.core.navigationStack = { jumpOriginBelow: () => ({ jump: true }) };
+    h.core.sendNavKeyAsUser = key => (keys.push(key), true);
+    h.backButton.cb();
+    expect(keys).toEqual(["ArrowLeft"]);
+    expect(h.sent).toEqual([]);
+  });
+
+  test("a Back the pill cannot send as the system Back goes back by code as before", () => {
+    const h = makeHarness({ listAnchor: LIST_ANCHOR });
+    jumpForward(h);
+    h.core.navigationStack = { jumpOriginBelow: () => ({ jump: true }) };
+    h.core.sendNavKeyAsUser = () => false;
+    h.backButton.cb();
+    expect(h.sent[0]).toBe("sC_Chat\r\f");
+  });
+
+  test("a Back to an article revealed from its live layer restores no position from before the jump (#281)", () => {
+    const h = makeHarness({ listAnchor: LIST_ANCHOR, scrollTop: 600, chh: 20 });
+    jumpForward(h);
+    h.nav.back(null, { revealed: true });
+    landBack(h);
+    settle(h.queue, facts("article"));
+    expect(h.core.easyReading.restoreCalls).toEqual([]);
+    expect(h.nav.canGoBack()).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

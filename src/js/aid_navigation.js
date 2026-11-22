@@ -479,7 +479,7 @@ AidNavigation.prototype = {
     if (!view || !view.showBackButton || !view.hideBackButton) return;
     if (this.canGoBack()) {
       const entry = this._history.peek();
-      view.showBackButton(entry ? entry.label : '', this.back.bind(this));
+      view.showBackButton(entry ? entry.label : '', this._pillBack.bind(this));
     } else {
       view.hideBackButton();
     }
@@ -559,6 +559,8 @@ AidNavigation.prototype = {
   // never parsed — nothing to navigate to, tell the user instead of guessing.
   // opts.inPager：呼叫端已證明畫面是 pager（deep link 收到時人在原生 pmore 讀文），
   // 不必等好讀開著。
+  // opts.onEnd(result), opts.feature (the reading record's), opts.returnOnMiss:
+  // see jumpFromArticle (#281).
   start: function(aid, board, opts) {
     if (this.active) return;
     if (!board) {
@@ -573,7 +575,7 @@ AidNavigation.prototype = {
     // 閱讀紀錄：閱讀位置＋身後的列表（返回時一起帶回）。currentAnchor 仍要在
     // _begin() 之前讀（beginExternalNavigation 會清掉 _openedNum）。Nothing is
     // pushed until the run lands (commitJump).
-    const bm = recordFor(this._core).begin('aid-jump', this._ctx());
+    const bm = recordFor(this._core).begin((opts && opts.feature) || 'aid-jump', this._ctx());
     const lineIndex = bm.article ? bm.article.lineIndex : this._currentLineIndex();
     const ls = this._core.listSession;
     // 列表好讀自己開的這篇（currentAnchor 非 null）⇒ 是從看板文章列表進來的，
@@ -591,7 +593,47 @@ AidNavigation.prototype = {
     run.originLineIndex = lineIndex;
     run.originList = bm.list;
     run.listOpened = listOpened;
+    run.bookmark = bm;
+    if (opts && opts.returnOnMiss) {
+      run.returnOnMiss = true;
+      // The article left, when its URL line or an earlier jump names it; else
+      // the Q step learns it (_noteOrigin).
+      const post = this.currentPostAid();
+      run.originAid = post && sameBoard(post.board, board) ? post.aid : null;
+    }
+    this._onRunEnd = (opts && opts.onEnd) || null;
     this._begin(run);
+  },
+
+  // Jump by code from the easy-reading article on screen (#281): `#` on its
+  // own board, which the pager does not take (more.c), so the run is the AID
+  // link's (start): it leaves the article for its board's list (`s<board>`, as
+  // the board switch does, #262), then `#<aid>⏎` and `⏎`, and the article left
+  // goes onto the back stack. A code the board does not have brings the reader
+  // back to the article left, at its reading position (returnOnMiss).
+  // onEnd({ ok, missed, returned }). Returns whether the run started.
+  jumpFromArticle: function(board, aid, onEnd) {
+    if (this.active || !board || !isAidc(aid) || !sameBoard(this.readingBoard(), board)) return false;
+    this.start(aid, board, { onEnd: onEnd, feature: 'article-aid-jump', returnOnMiss: true });
+    return this.active;
+  },
+
+  // The board of the easy-reading article on screen when its pager footer
+  // proves PTT's READING state, where `s` and `#` work (more.c:102-112), or
+  // null: a mail (站內信), the digest area (精華區), a native prompt. A very
+  // long article's squeezed footer reads like theirs; one the article list
+  // opened is still READING (listOpened, see start()).
+  readingBoard: function() {
+    const buf = this._termBuf;
+    if (!buf || buf.pageState !== 3) return null;
+    const board = this._view && this._view._articleBoard;
+    if (!board) return null;
+    const status = parseStatusRow(buf.getRowText(buf.rows - 1, 0, buf.cols));
+    const ls = this._core.listSession;
+    const listOpened = !!(ls && ls.currentAnchor && ls.currentAnchor());
+    let context = this._pagerContext();
+    if (context === 'unknown' && listOpened && status) context = 'reading';
+    return context === 'reading' ? board : null;
   },
 
   // 指定看板的 AID 跳文，分兩段（無看板 #AID →「跳到其他看板…」，aid_board_choice.js）。
@@ -914,15 +956,35 @@ AidNavigation.prototype = {
   // Back to the article the last jump started from. Deliberately NOT gated on
   // startedEasyReading: the target article may be rendering natively (the user
   // toggled easy reading off), and the sequence drives the native screen anyway.
-  back: function() {
-    if (this.active) return;
+  // onEnd({ ok, missed }): the stacked Back from an article jumped to by its
+  // code (#281, aid_jump.backToJumpOrigin). opts.revealed: that article
+  // already shows, from its live layer, at the position the reader left it
+  // or has scrolled it to since; the real article takes that position over
+  // from the layer (stack_handoff), so the anchor's reading position is not
+  // restored ('aid-back' done) on top of it. Returns whether the run started.
+  back: function(onEnd, opts) {
+    if (this.active) return false;
     const anchor = this._history.beginBack();
     if (!anchor) {
       this._hint('沒有可返回的文章', 0, HINT_ERROR);
-      return;
+      return false;
     }
+    this._onRunEnd = onEnd || null;
     this._hint('返回 ' + anchor.label + '…', PROGRESS_HINT_MS);
-    this._begin(makeRun(anchor, 'back'));
+    const run = makeRun(anchor, 'back');
+    run.revealed = !!(opts && opts.revealed);
+    this._begin(run);
+    return true;
+  },
+
+  // The 返回 pill (AidBackButton). Over an article jumped to by its code from
+  // the article alive under it (#281) it is the system Back: that article
+  // shows at once, and PTT follows by its code (aid_jump.backToJumpOrigin).
+  // Anywhere else (desktop, deep links, palette jumps) it is back().
+  _pillBack: function() {
+    const core = this._core;
+    if (core.navigationStack?.jumpOriginBelow?.() && core.sendNavKeyAsUser?.('ArrowLeft')) return;
+    this.back();
   },
 
   // 重新整理本篇（screen_refresh.js 的文章分支；docs/screen-refresh.md）。
@@ -939,18 +1001,11 @@ AidNavigation.prototype = {
   // 跟歷史堆疊無關：dir 'refresh' 不 push、不 commit（返回鈕照舊指向跳文前那篇）。
   refresh: function() {
     if (this.active) return false;
-    const buf = this._termBuf;
-    if (!buf || buf.pageState !== 3) return false;
-    const board = this._view && this._view._articleBoard;
+    // 站內信／精華區：s 與 # 都不在（more.c 依 currstat 擋掉），沒有可驗證的重開路。
+    const board = this.readingBoard();
     if (!board) return false;
-    const last = buf.getRowText(buf.rows - 1, 0, buf.cols);
-    const status = parseStatusRow(last);
     const ls = this._core.listSession;
     const listOpened = !!(ls && ls.currentAnchor && ls.currentAnchor());
-    let context = this._pagerContext();
-    if (context === 'unknown' && listOpened && status) context = 'reading';
-    // 站內信／精華區：s 與 # 都不在（more.c 依 currstat 擋掉），沒有可驗證的重開路。
-    if (context !== 'reading') return false;
     // 閱讀位置與「在不在文末」都由閱讀紀錄量（好讀：已讀到文末且捲到底 2 列內；
     // 原生：狀態列 100%）。
     const bm = recordFor(this._core).begin('article-refresh', this._ctx());
@@ -1236,6 +1291,7 @@ AidNavigation.prototype = {
             run.originLineIndex,
             run.originList
           );
+          self._noteOrigin(run, info);
           self._updateBackButton();
         }
         // dismissFirst 只在真的按過 Q 時成立：那時框的 pressanykey 還在等，把關框
@@ -1250,6 +1306,11 @@ AidNavigation.prototype = {
         self._enqueueBoardJump(run, false, true);
       }
     });
+  },
+
+  // The article a returnOnMiss run left, once the Q step has named it.
+  _noteOrigin: function(run, info) {
+    if (run.returnOnMiss && info && info.aid && sameBoard(info.board, run.target.board)) run.originAid = info.aid;
   },
 
   // Step 0 when the footer cannot tell READING from 站內信／精華區 (the squeezed
@@ -1278,6 +1339,7 @@ AidNavigation.prototype = {
             run.originLineIndex,
             run.originList
           );
+          self._noteOrigin(run, info);
           self._updateBackButton();
         }
         if (meta.boxOpen) self._enqueueBoardJump(run, false, true);
@@ -1971,6 +2033,7 @@ AidNavigation.prototype = {
             6000,
             HINT_ERROR
           );
+          self._endRun({ ok: false, missed: true });
           return;
         }
         // 回到原處：原文不見了 ⇒ 停在該板列表，列表視野回到斷線前（決策表 fail）。
@@ -1984,6 +2047,8 @@ AidNavigation.prototype = {
           return;
         }
         if (reason === 'miss' && run.forList && self._dismissMissBox(run, facts)) return;
+        if (reason === 'miss' && run.returnOnMiss && run.dir !== 'return' && run.originAid &&
+            self._dismissMissBox(run, facts, function() { self._returnToOrigin(run); })) return;
         self._fail(
           reason === 'miss' ? '找不到文章 #' + aid : 'AID 搜尋逾時',
           { missed: reason === 'miss' }
@@ -1995,8 +2060,9 @@ AidNavigation.prototype = {
   // `#` found no such article and PTT waits on its message box (read.c#
   // search_aid: vmsg, then FULLUPDATE): the box's own dismissing key, then the
   // run ends as a miss once the board's list is back. false = no box on the
-  // screen to dismiss (the caller fails the run as it would).
-  _dismissMissBox: function(run, facts) {
+  // screen to dismiss (the caller fails the run as it would). `onList`: the
+  // run goes on from the board's list instead (returnOnMiss).
+  _dismissMissBox: function(run, facts, onList) {
     const buf = this._termBuf;
     const box = resolveDismiss({
       lastRowText: buf.getRowText(buf.rows - 1, 0, buf.cols),
@@ -2021,13 +2087,24 @@ AidNavigation.prototype = {
         return landedOnBoardList(landed, run.boardLower) ? true : false;
       },
       onDone: function() {
-        end(true);
+        if (onList) onList();
+        else end(true);
       },
       onFail: function() {
         end(false);
       }
     });
     return true;
+  },
+
+  // The jump from an article found no such code (#281): PTT is back on the
+  // board's list, so the article left is opened again by its own code, in the
+  // same run (nothing native shows, nothing is held), at its reading position.
+  _returnToOrigin: function(run) {
+    run.missedAid = run.target.aid;
+    run.target = Object.assign({}, run.target, { aid: run.originAid });
+    run.dir = 'return';
+    this._enqueueAidSearch(run);
   },
 
   // Step 3: ⏎ opens the article under the cursor. The article settle also
@@ -2098,7 +2175,7 @@ AidNavigation.prototype = {
           // 當初的那一份（使用者接著按 ← 回列表時還原）。
           const rr = recordFor(self._core);
           if (entry) {
-            rr.end({ feature: 'aid-back' }, 'done', { only: 'article', article: entry });
+            if (!run.revealed) rr.end({ feature: 'aid-back' }, 'done', { only: 'article', article: entry });
             rr.noteBehindList(entry.list || null);
           }
           self._hint('已返回 ' + (entry ? entry.label : ''), 1200);
@@ -2113,6 +2190,16 @@ AidNavigation.prototype = {
           recordFor(self._core).end(run.bookmark, 'done', { only: 'article' });
           self._updateBackButton();
           if (!run.quiet) self._hint('已回到斷線前的文章', 1500);
+        } else if (run.dir === 'return') {
+          self.opHint = null;
+          // Not a jump: the back stack stays as it was before it.
+          self._history.abort();
+          self._updateBackButton();
+          // 決策表 'article-aid-jump' fail：回原列（好讀的還原是請求，累積到位才套用）。
+          recordFor(self._core).end(run.bookmark, 'fail', { only: 'article' });
+          recordFor(self._core).releaseExternal();
+          self._endRun({ ok: false, missed: true, returned: true });
+          return;
         } else if (run.dir === 'reopen') {
           self.opHint = null;
           // 決策表 'aid-board-pick' cancel：回原列（好讀的還原是請求，累積到位才套用）。

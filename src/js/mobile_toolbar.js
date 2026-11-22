@@ -203,7 +203,11 @@ export function mobileToolbarContext(core) {
   });
   const withQuery = core && core.userQuery && core.userQuery.available() ? { ...ctx, userQuery: true } : ctx;
   const withInfo = core && core.postInfo && core.postInfo.articleAvailable() ? { ...withQuery, postInfo: true } : withQuery;
-  return ctx.post && ls && ls.aidJumpBoard && ls.aidJumpBoard() ? { ...withInfo, aidJump: true } : withInfo;
+  // The jump by code: the article list's (#253), or the article's (#281).
+  const er = core && core.easyReading;
+  const aidJump = (ctx.post && ls && ls.aidJumpBoard && ls.aidJumpBoard()) ||
+    (ctx.switchBoard && er && er.aidJumpBoard && er.aidJumpBoard());
+  return aidJump ? { ...withInfo, aidJump: true } : withInfo;
 }
 
 const FLAGS = [

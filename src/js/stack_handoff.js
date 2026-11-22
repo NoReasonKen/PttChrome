@@ -476,8 +476,9 @@ export class Handoff {
     }
     if (this.target === PAGE.ARTICLE) {
       // Search backtracking reopens the article by its code, through screens
-      // of its own, and presents it.
-      if (core.articleShortcutSearch?.active) return;
+      // of its own, and presents it; so does the way back from an article
+      // jumped to by its code (#281, aid_jump.backToJumpOrigin).
+      if (core.articleShortcutSearch?.active || core.aidNavigation?.active) return;
       if (pageState === 3 && openArticleKey(core) === this.id) return;
     } else if (this.target === PAGE.ARTICLE_LIST) {
       if (pageState === 3 && openArticleKey(core) === this.identity) return;

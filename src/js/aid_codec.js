@@ -134,9 +134,15 @@ export function parseArticleUrl(href) {
 // code + a board in parentheses. PTT's board names are at most IDLEN = 12
 // characters (pttbbs include/pttstruct.h), so the longest real form
 // "#1abcDEFG (Gossiping)" is about 24; the rest is room for the spaces PTT's
-// own spellings carry. Longer text is no article code: the input stops
-// there, and a paste over the list longer than this is not parsed at all.
+// own spellings carry. Longer text is no article code.
 export const AID_INPUT_MAX_LENGTH = 32;
+
+// The longest text the article-code input takes (#281): it takes what a paste
+// takes, a whole article link too. The longest real one,
+// https://www.ptt.cc/bbs/<12-character board>/M.<v1>.A.<v2>.html, is 59
+// characters; the rest is room for a query or a fragment a copied link may
+// carry (parseArticleUrl reads past them).
+export const ARTICLE_INPUT_MAX_LENGTH = 128;
 
 // PTT's own spellings of an article with its board: "#1abcDEFG (Gossiping)"
 // (the line of the article information box, Q) and "Gossiping #1abcDEFG".
