@@ -315,6 +315,84 @@ describe("submitSearch（原生：共用 CommandQueue）", () => {
     return frame;
   }
 
+  function atSearchResults(core, filters, footer = ' 系列文章 [←]離開 [→]閱讀') {
+    const frame = articleList({ listOwner: 'article-list', curY: 5, curX: 0 });
+    frame.rowTexts[23] = footer;
+    core.listSession = {
+      state: 'active',
+      readingPosition: () => ({ board: 'Test', mode: 'select' })
+    };
+    core.buf = {
+      rows: ROWS, cols: 80, pageState: 2,
+      listRenderMode: 'buffer', listRenderOwner: 'article-list',
+      getRowText: row => frame.rowTexts[row],
+      isCursorOnInputField: () => false,
+      get cur_y() { return frame.curY; }
+    };
+    const context = { board: 'Test', filters };
+    recordSearchResults(core, context);
+    return context;
+  }
+
+  const distinctTitleFilters = count =>
+    Array.from({ length: count }, (_, index) => ({ kind: 'title', value: `term${index}` }));
+
+  test('eight known distinct conditions refuse a new condition locally and preserve verified results', () => {
+    const { core, sent } = nativeCore();
+    const context = atSearchResults(core, distinctTitleFilters(8));
+    const onFail = vi.fn();
+
+    expect(submitSearch(core, 'author', 'reader', { onFail })).toBe(true);
+
+    expect(onFail).toHaveBeenCalledWith('search-limit');
+    expect(sent).toEqual([]);
+    expect(core.searchInFlight).toBeFalsy();
+    expect(readSearchResultsContext(core, 'Test')).toEqual(context);
+  });
+
+  test('eight displayed conditions with exact duplicates still open another search', () => {
+    const { core, queue, sent } = nativeCore();
+    const filters = [
+      ...distinctTitleFilters(4),
+      { kind: 'title', value: 'term0' },
+      { kind: 'title', value: 'term1' },
+      { kind: 'title', value: 'term0' },
+      { kind: 'title', value: 'term1' }
+    ];
+    atSearchResults(core, filters);
+
+    expect(submitSearch(core, 'author', 'reader')).toBe(true);
+
+    expect(sent).toEqual(['a\f']);
+    expect(core.searchInFlight).toBe(true);
+    queue.flush();
+  });
+
+  test('eight distinct conditions refuse even an already-used proposal before opening', () => {
+    const { core, sent } = nativeCore();
+    atSearchResults(core, distinctTitleFilters(8));
+    const onFail = vi.fn();
+
+    expect(submitSearch(core, 'title', 'term0', { onFail })).toBe(true);
+
+    expect(onFail).toHaveBeenCalledWith('search-limit');
+    expect(sent).toEqual([]);
+    expect(core.searchInFlight).toBeFalsy();
+  });
+
+  test.each(['文章列表', '文章選讀', '文摘列表'])(
+    'a stale same-board query does not refuse search on the %s footer',
+    caption => {
+      const { core, queue, sent } = nativeCore();
+      atSearchResults(core, distinctTitleFilters(8), ` ${caption} [←]離開 [→]閱讀`);
+
+      expect(submitSearch(core, 'author', 'reader')).toBe(true);
+
+      expect(sent).toEqual(['a\f']);
+      queue.flush();
+    }
+  );
+
   test('a known board on the main menu sends one batch and waits for its verified destination', () => {
     const { core, queue, sent } = nativeCore();
     atMain(core);

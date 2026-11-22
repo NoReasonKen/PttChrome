@@ -29,6 +29,18 @@ This prevents the visible new results from being paired with the preceding
 query in a close/reload snapshot. Legacy captions use the proven query context
 instead of assuming that their generic footer means an ordinary list.
 
+PTT counts the first condition toward a limit of eight distinct conditions.
+An exact duplicate does not take another slot. At the limit, PTT refuses the
+search key before reading the keyword (`read.c#select_read`).
+
+When the current frame proves that it is a search result and all eight
+conditions are known, the search sheet explains the limit immediately. When
+the count or result frame is uncertain, such as with a generic legacy caption,
+the search-open step waits for PTT. A verified same-board limit notice takes one
+space to dismiss. The search waits for the existing results before releasing the
+list, the reading record restores the position, and the hint points to the full
+article list for starting another search.
+
 Metadata travels inside the existing local resume snapshot, with its preferences
 and twelve-hour expiry. After the existing board-resume operation succeeds,
 `resume_search_results.js` uses the shared command queue to reconstruct each

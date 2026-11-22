@@ -28,6 +28,27 @@ test('successive conditions retain their order while plain-list searches replace
   expect(candidateSearchResults(core, 'Test', title('other'))).toEqual(context([title('other')]));
 });
 
+test.each([
+  ['title', ' topic ', 'topic'],
+  ['author', ' alice ', 'alice'],
+  ['push', '0002', '2']
+])('appending a normalized duplicate %s condition does not add another filter', (kind, first, duplicate) => {
+  const core = {};
+  const original = candidateSearchResults(core, 'Test', { kind, value: first });
+  recordSearchResults(core, original);
+
+  expect(candidateSearchResults(core, 'Test', { kind, value: duplicate }, true)).toEqual(original);
+});
+
+test('conditions that differ only by letter case remain distinct wire filters', () => {
+  const core = {};
+  recordSearchResults(core, candidateSearchResults(core, 'Test', { kind: 'author', value: 'Alice' }));
+
+  expect(candidateSearchResults(core, 'Test', { kind: 'author', value: 'alice' }, true)).toEqual(
+    context([{ kind: 'author', value: 'Alice' }, { kind: 'author', value: 'alice' }])
+  );
+});
+
 test('an added condition needs proven metadata for the same board', () => {
   const core = {};
   expect(candidateSearchResults(core, 'Test', title('topic'), true)).toBeNull();

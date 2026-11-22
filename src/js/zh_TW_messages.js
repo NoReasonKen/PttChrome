@@ -518,6 +518,9 @@
   "searchModal_failed": {
     "message": "PTT 沒有開出搜尋輸入列，關鍵字未送出"
   },
+  "searchModal_conditionLimit": {
+    "message": "已達搜尋條件上限。請先返回所有文章，再重新搜尋。"
+  },
   "searchModal_busy": {
     "message": "指令處理中，請稍候再試"
   },
