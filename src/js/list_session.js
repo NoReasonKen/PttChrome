@@ -1507,6 +1507,12 @@ ListSession.prototype = {
   // 不必等靜置；它自己會說做了什麼，這裡不閃通用提示。
   _tryResumeProbe: function(landed) {
     if (this._holdReason !== 'passthrough' || !this._autoResumeEnabled()) return;
+    // The board entry screen's page (#292) takes the list back itself, on the
+    // settled frame that shows it (BoardNotes._settled → resumeAfterHelp). Its
+    // keys go to PTT outside the queue, so a list PTT draws on its own (a key
+    // stopped a movie) can be read here before it settles and taken back
+    // without the held board: rebuilt and refilled, with a jump sent behind it.
+    if (!landed && this._core?.boardNotes?.holding) return;
     // 洞 3：畫面與使用者都要靜止。還沒靜置滿就補排剩下的時間（不是輪詢）。
     const quietSince = Math.max(this._lastServerActivityAt, this._lastUserByteAt);
     const waited = performance.now() - quietSince;

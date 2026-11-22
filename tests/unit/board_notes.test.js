@@ -11,6 +11,7 @@ import { AnsiParser } from "../../src/js/ansi_parser";
 import { u2b } from "../../src/js/string_util";
 import { loadBig5Tables } from "./helpers/load_big5_tables";
 import { BoardNotes, boardNotesKeyBytes, showBoardNotes } from "../../src/js/board_notes";
+import { ListSession } from "../../src/js/list_session";
 import { inputPage } from "../../src/js/input_page";
 import { renderScreen } from "../../src/js/term_ui";
 import { i18n, setupI18n } from "../../src/js/i18n";
@@ -516,5 +517,48 @@ describe("the board entry screen (#292)", () => {
     // Nothing more to drop.
     notes.reset();
     expect(core.readingRecord.end).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The list session's quiet probe reads the screen as it is, settled or not.
+// While the page holds the list, PTT can draw the list on its own (a key on the
+// page stopped a movie) and the probe can read it before it settles: taking it
+// back there loses the held board (rebuilt and refilled, a jump sent behind
+// it). The page takes the list back itself on the settled frame (CI race).
+describe("the list session's quiet probe while the page holds the list", () => {
+  function heldSession(holding) {
+    return {
+      state: "functionMode",
+      _holdReason: "passthrough",
+      _core: { boardNotes: { holding } },
+      _autoResumeEnabled: () => true,
+      _lastServerActivityAt: -Infinity,
+      _lastUserByteAt: -Infinity,
+      _queue: { inFlightKind: null },
+      _collectFacts: () => ({ kind: "clean-list" }),
+      _settleEvent: () => ({}),
+      _scheduleResumeProbe: vi.fn(),
+      _dispatch: vi.fn(function () {
+        this.state = "active";
+      }),
+      _view: { flashListHint: vi.fn() },
+    };
+  }
+
+  test("does not take the list back while the page holds it", () => {
+    const s = heldSession(true);
+    ListSession.prototype._tryResumeProbe.call(s);
+    expect(s._dispatch).not.toHaveBeenCalled();
+    expect(s._scheduleResumeProbe).not.toHaveBeenCalled();
+    expect(s.state).toBe("functionMode");
+  });
+
+  test("the page's own resume (landed) and a page no longer holding take it back", () => {
+    const landed = heldSession(true);
+    ListSession.prototype._tryResumeProbe.call(landed, true);
+    expect(landed.state).toBe("active");
+    const idle = heldSession(false);
+    ListSession.prototype._tryResumeProbe.call(idle);
+    expect(idle.state).toBe("active");
   });
 });
