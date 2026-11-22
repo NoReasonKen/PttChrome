@@ -1055,6 +1055,64 @@ const recordReceived = page => page.evaluate(() => {
 });
 const received = page => page.evaluate(() => window.__received.join(''));
 
+test('a rejected additional title search restores the original results after Back (#87)', async ({ page }) => {
+  await sourceFromList(page, { leadingArticles: 8 });
+  await tapShortcut(page, 'author');
+  await waitList(page, AUTHOR_RESULTS);
+  await tapCard(page, '[Talk] Beta topic');
+  await waitArticle(page, 'Beta');
+  await nativeBack(page);
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+
+  const view = page.locator(`${MAIN} .listBodyView`);
+  await view.evaluate(el => { el.scrollTop = 100; });
+  const position = await view.evaluate(el => el.scrollTop);
+  expect(position).toBeGreaterThan(0);
+  await recordHints(page);
+  await page.evaluate(() => {
+    const app = window.__app;
+    const server = window.__shortcutServer;
+    const send = window.__stubWSSent;
+    const encode = text => [...text].map(ch => {
+      const c = ch.charCodeAt(0);
+      return c < 128 ? ch : String.fromCharCode(window.lib.u2bArray[2 * c], window.lib.u2bArray[2 * c + 1]);
+    }).join('');
+    window.__limitBytes = [];
+    window.__limitNotice = false;
+    window.__limitIntercepted = false;
+    window.__stubWSSent = bytes => {
+      window.__limitBytes.push(bytes);
+      if (bytes.includes('/') && !window.__limitNotice) {
+        window.__limitIntercepted = true;
+        window.__limitNotice = true;
+        const notice = encode(' ◆ 抱歉，已達搜尋條件上限。 [按任意鍵繼續]');
+        app.onData(server.frame() + `\x1b[${app.buf.rows};1H\x1b[2K${notice}\x1b[${app.buf.rows};1H`);
+      } else if (window.__limitNotice) {
+        if (bytes.includes(' ')) {
+          window.__limitNotice = false;
+          app.onData(server.frame());
+        }
+      } else send(bytes);
+    };
+  });
+
+  await page.locator('#mobileToolbar [data-key="__search"]').tap();
+  const input = page.locator('input[name="searchKeyword"]');
+  await input.fill('never-send-this');
+  await input.press('Enter');
+  await expect.poll(() => page.evaluate(() => window.__limitIntercepted)).toBe(true);
+  await expect.poll(() => page.evaluate(() => !window.__app.searchInFlight)).toBe(true);
+  expect(await page.evaluate(() => window.__limitBytes.join(''))).not.toContain('never-send-this');
+  await expect.poll(() => page.evaluate(() => !window.__limitNotice)).toBe(true);
+  await expect.poll(() => hinted(page, 'The search condition limit has been reached')).toBe(true);
+  await waitList(page, AUTHOR_RESULTS);
+  await settled(page);
+  expect(Math.abs(await view.evaluate(el => el.scrollTop) - position)).toBeLessThanOrEqual(1);
+  await tapCard(page, '[Talk] Beta topic');
+  await waitArticle(page, 'Beta');
+});
+
 test('the search dialog opens at once on a revealed list, and its search goes out once, after the list takes over', async ({ page }) => {
   await sourceFromList(page);
   await recordReceived(page);

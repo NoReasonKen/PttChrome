@@ -43,6 +43,8 @@ import { functionModeExitDecision } from "../../src/js/easy_reading";
 import { parseStatusRow } from "../../src/js/string_util";
 import { parseHelpMenuScreen, HelpMenuController } from "../../src/js/help_menu";
 import { HELP_FAV_PAGE1 } from "./fixtures/help_menu_rows";
+import { submitSearch } from "../../src/js/article_search";
+import { CommandQueue } from "../../src/js/command_queue";
 
 const LISTS = {
   "C_Chat（24 列，有《板名》）": {
@@ -114,6 +116,38 @@ function mutated(src, mutate) {
   mutate(f);
   return f;
 }
+
+describe("search condition limit notice", () => {
+  const notice = " ◆ 抱歉，已達搜尋條件上限。 [按任意鍵繼續]";
+  test.each([
+    ["a different board", (frame) => { frame.rowTexts[0] = "【板主:none】系列《Other》"; }],
+    ["a missing dismissal caption", (frame) => { frame.rowTexts[23] = notice.split("[")[0]; }],
+    ["a cursor still on an article row", (frame) => { frame.curY = 5; }],
+  ])("sends neither keyword nor space for %s", (_label, mutate) => {
+    const sent = [];
+    const queue = new CommandQueue({
+      send: (bytes) => sent.push(bytes),
+      setTimeout: () => 1,
+      clearTimeout: () => {},
+    });
+    const rows = Array(24).fill("");
+    rows[0] = "【板主:none】系列《Test》";
+    rows[23] = " 系列文章 [←]離開 [→]閱讀";
+    const core = {
+      commandQueue: queue,
+      buf: { rows: 24, cols: 80, cur_y: 5, getRowText: (row) => rows[row] },
+    };
+    const frame = listFacts({ rows, curX: 79, curY: 23 });
+    frame.rowTexts[23] = notice;
+    mutate(frame);
+
+    expect(submitSearch(core, "title", "unsent")).toBe(true);
+    queue.onSettle(null, frame);
+
+    expect(sent).toEqual(["/\f"]);
+    queue.flush();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // LoL 回歸（純函式）

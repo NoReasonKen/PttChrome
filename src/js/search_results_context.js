@@ -33,6 +33,9 @@ function queryFilter(filter) {
   return { kind: filter.kind, value };
 }
 
+const sameOrdinaryFilter = (a, b) => a.kind !== 'thread' && b.kind !== 'thread' &&
+  a.kind === b.kind && a.value === b.value;
+
 // Return an independent, bounded JSON descriptor safe to put in a resume plan.
 // A matching board name is necessary; verified result-screen ownership remains
 // the caller's responsibility, because captions alone cannot prove the query.
@@ -45,7 +48,8 @@ export function validateSearchResultsContext(value, board) {
   if (filters.some(filter => !filter)) return null;
   // Native S starts a whole-board subject search; it cannot be an added filter.
   if (filters.some((filter, index) => filter.kind === 'thread' && index !== 0)) return null;
-  return { board: value.board, filters };
+  return { board: value.board, filters: filters.filter((filter, index) =>
+    !filters.slice(0, index).some(previous => sameOrdinaryFilter(previous, filter))) };
 }
 
 export function readSearchResultsContext(core, board) {
@@ -70,6 +74,10 @@ export function recordSearchResults(core, context) {
 export function candidateSearchResults(core, board, filter, append = false) {
   const previous = append ? readSearchResultsContext(core, board) : null;
   if (append && !previous) return null;
+  const next = queryFilter(filter);
+  if (previous && next && previous.filters.some(prior => sameOrdinaryFilter(prior, next))) {
+    return validateSearchResultsContext({ board, filters: previous.filters }, board);
+  }
   return validateSearchResultsContext({
     board,
     filters: [...(previous ? previous.filters : []), filter]

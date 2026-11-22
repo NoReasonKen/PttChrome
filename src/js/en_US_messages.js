@@ -502,6 +502,9 @@ export const en_US = {
   "searchModal_failed": {
     "message": "PTT did not open the search prompt; the keyword was not sent"
   },
+  "searchModal_conditionLimit": {
+    "message": "The search condition limit has been reached. Return to the full article list to start a new search."
+  },
   "searchModal_busy": {
     "message": "A command is in progress, please try again"
   },
