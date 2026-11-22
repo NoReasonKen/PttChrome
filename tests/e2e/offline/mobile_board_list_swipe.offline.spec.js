@@ -9,9 +9,9 @@ const { touchDrag, nextFrames } = require('../helpers/real_input');
 const { waitRectStable } = require('../helpers/layout');
 const ptt = require('../helpers/ptt');
 const { bootScenario, loadCassette, waitFed } = require('../helpers/replay');
-const { MAIN, boardListEngaged, holdLeaves, heldLeaves, releaseLeave, recordHints, recordedHints } = require('../helpers/stack_routes');
+const { MAIN, boardListEngaged, holdLeaves, heldLeaves, releaseLeave, recordHints, recordedHints, withoutFolderReturnPrefetch } = require('../helpers/stack_routes');
 
-const folder = loadCassette('scn-stack-boardlist-folder.json');
+const folder = withoutFolderReturnPrefetch(loadCassette('scn-stack-boardlist-folder.json'));
 const BOARD_LAYER = '[data-stack-layer="boardList"]:not([data-stack-parked])';
 const UNDERLAY = '[data-article-exit-underlay]';
 // The handoff's bound (page_stack.js#HANDOFF_TIMEOUT_MS).

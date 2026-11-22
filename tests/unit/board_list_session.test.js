@@ -9,6 +9,7 @@ import {
   transitionBoardListSession,
 } from "../../src/js/board_list_session";
 import { BRD_CMD_PREFIX } from "../../src/js/list_render_owner";
+import { PAGE } from "../../src/js/page_stack";
 import { LIST_CARD_ROWS } from "../../src/js/mobile_layout";
 
 const pad7 = (n) => String(n).padStart(7, " ");
@@ -319,6 +320,24 @@ describe("transitionBoardListSession（純 reducer）", () => {
 // ---------------------------------------------------------------------------
 
 describe("engage / 收攤", () => {
+  test("Back to a parent rebuilds when PTT shows a different board at a kept number", () => {
+    const { core, s, termBuf, view } = makeSession();
+    const saved = { variant: "fav", newflag: false, buffer: {
+      numMap: new Map([[1, rowChars(brdRow(1, "OldBoard"))]])
+    }};
+    core.navigationStack = {
+      handoff: { level: PAGE.BOARD_LIST },
+      showsLayerOf: () => true,
+      shownLayer: () => ({ listPage: { session: saved } })
+    };
+    view.restoreBoardListBuffer = vi.fn();
+    const landing = brdScreenRows({ bodyRows: [brdRow(1, "NewBoard")] });
+    termBuf.feed(landing);
+    expect(view.restoreBoardListBuffer).not.toHaveBeenCalled();
+    expect(s.state).toBe("active");
+    expect(s._selectedNum).toBe(1);
+  });
+
   test("initial presentation query recognizes a ready page without taking ownership or sending keys", () => {
     const { s, termBuf, enqueued } = makeSession();
     termBuf._rowTexts = brdScreenRows();

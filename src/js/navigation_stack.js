@@ -212,7 +212,8 @@ export class NavigationStack {
   // description, #229), so whichever board PTT opens from it stacks over it.
   captureBoardList(board, namesBoard = true) {
     if (!this._stacksBoard(board)) return this.dropPending();
-    this._capture(PAGE.BOARD_LIST, board, () => StackListLayer.capture(this.core.view, 'board'));
+    const page = this.core.boardListSession?.listPage?.();
+    this._capture(PAGE.BOARD_LIST, board, () => StackListLayer.capture(this.core.view, 'board', page));
     if (this.pending) {
       this.pending.boardListVariant = this.core.boardListSession?._variant;
       if (!namesBoard) this.pending.anyBoard = true;

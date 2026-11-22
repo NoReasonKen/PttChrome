@@ -19,9 +19,8 @@
 //   3. Keys that edit the list or change its number space (`a`/`D`/`m`/`y`/`/`…)
 //      are refused (#192). The view switches `c`/`C` and `S` (#221) are kept:
 //      a frozen transaction rebuilds the list from PTT's new page alone.
-//   4. Leaving the screen tears down (no buffer kept across screens): `y`, `/`
-//      and entering or leaving a class change the whole number space, so every
-//      entry re-seeds (handoff §6.5).
+//   4. A child list has its own number space. Each live layer keeps its own
+//      buffer when its session is reused by a child.
 //
 // 詳細設計與 PTT 端事實見 docs/board-list-smooth-scroll.md。
 
@@ -405,6 +404,9 @@ BoardListSession.prototype = {
       : null;
     if (consumed === 'done' && (this._renderMode === 'frozen' || this.state === 'opening'))
       this._armFrozenWatchdog();
+    // The Back command may complete on a partial response. A later complete
+    // landing can still restore the revealed parent before idle seeds it.
+    if (this.state === 'idle' && this._resumeParentFromLayer(facts, this._revealedParentPage())) return;
     this._dispatch(this._settleEvent(facts, consumed), facts);
     if (this.state === 'suspended') this._noteVisited(facts);
     this._scheduleResumeProbe();
@@ -438,6 +440,7 @@ BoardListSession.prototype = {
     if (facts.brd && facts.brd.newflag) {
       const placed = this._placeNewflag(facts, facts.brd);
       if (placed) {
+        facts.nativeRows = rowTexts;
         facts.rowTexts = placed.rowTexts;
         facts.brd = placed;
       }
@@ -547,11 +550,11 @@ BoardListSession.prototype = {
 
   // 這一頁有沒有任何一列跟緩衝裡同編號的列板名不同（＝畫面換了一份清單）。
   // 緩衝沒有的編號、解析不出板名的列（分隔線）不算證據。
-  _listContradicts: function(facts) {
+  _listContradicts: function(facts, keptRows) {
     const nums = (facts && facts.brd && facts.brd.nums) || [];
     for (let r = 0; r < nums.length; ++r) {
       if (nums[r] == null) continue;
-      const bufText = this._rowTextOf(nums[r]);
+      const bufText = keptRows ? rowToText(keptRows.get(nums[r])) : this._rowTextOf(nums[r]);
       if (!bufText) continue;
       const a = rowName(facts.rowTexts[r] || '', facts.brd.variant);
       const b = rowName(bufText, facts.brd.variant);
@@ -781,6 +784,18 @@ BoardListSession.prototype = {
     };
   },
 
+  // The layer keeps this page if PTT reuses the session for a child list.
+  listPage: function() {
+    const buffer = this._view.snapshotBoardListBuffer?.();
+    const position = this.readingPosition();
+    if (!buffer || !position) return null;
+    return {
+      ...position, buffer, newflag: this._newflag,
+      edgeUp: this._edgeUp, edgeDown: this._edgeDown,
+      fillTarget: this._fillTarget, fillPages: this._fillPages
+    };
+  },
+
   // 閱讀紀錄要求還原：等下一次 seed（靜置探針自動回平滑捲動）驗證後套用。
   // Already back on the same list (a closed help sheet, resumeAfterHelp): it
   // counts as verified and applies in this frame, as in
@@ -920,6 +935,9 @@ BoardListSession.prototype = {
       this._beginToggle(key.toggle);
       return;
     }
+    // The board list's Back aliases share the same live-layer route as ←.
+    if (key.class === 'leave' && e.key !== 'ArrowLeft' &&
+        this._core.articleGestures?.handleBack?.({ key: 'ArrowLeft' })) return;
     this._runKeyClass(key, { repeat: !!e.repeat });
   },
 
@@ -1742,7 +1760,7 @@ BoardListSession.prototype = {
     // 同步重繪：把落地那一頁併回緩衝（tag／未讀標記的逐列變化靠這一趟生效）。
     this._forceRedraw();
     const pos = this._cursorPos();
-    if (pos >= 0 && !this._isPosVisible(pos)) {
+    if (!opts?.keepSelection && pos >= 0 && !this._isPosVisible(pos)) {
       this._pendingReveal = { pos: pos, block: 'nearest', behavior: 'auto' };
       this._forceRedraw();
     }
@@ -1753,7 +1771,7 @@ BoardListSession.prototype = {
   // and selection stay, PTT's answer only tells where PTT's cursor is, and the
   // visited board's unread mark follows what was read there. Otherwise PTT's
   // page is merged in as before.
-  _resumeShown: function(facts) {
+  _resumeShown: function(facts, heldLanding = null) {
     const fromLayer = !!this._core.navigationStack?.showsLayerOf?.(PAGE.BOARD_LIST);
     const visited = this._visited;
     this._visited = null;
@@ -1763,7 +1781,7 @@ BoardListSession.prototype = {
     // Shown again from its live layer (#122): the rows the list holds stay as
     // the reader left them, and only rows it never held are taken from PTT,
     // until the layer is spent (NavigationStack.spend) or the list rebuilt.
-    if (fromLayer) this._view.holdListRows?.(null, 'board');
+    if (fromLayer) this._view.holdListRows?.(heldLanding, 'board');
     else this._view.releaseListRows?.('board');
     const num = this._selectedNum;
     if (fromLayer && visited && num != null && this._variant !== 'classroot' &&
@@ -1772,6 +1790,43 @@ BoardListSession.prototype = {
     const newer = fromLayer && this._landsOtherUnreadMarks(facts, num);
     this._resumeInPlace(facts, { keepSelection: fromLayer });
     noticeNewArticles(this, freshPage, newer);
+  },
+
+  // The stack identifies the parent route. Its old rows are also checked
+  // against PTT's numbered rows before they become actionable again.
+  _resumeParentFromLayer: function(facts, page) {
+    const brd = facts?.brd;
+    if (!page || !brd?.engageable || brd.variant !== page.variant ||
+        brd.newflag !== page.newflag || this._listContradicts(facts, page.buffer.numMap))
+      return false;
+    this._reset({ keepFrozen: true });
+    this._view.restoreBoardListBuffer(page.buffer);
+    this.state = 'active';
+    this._variant = page.variant;
+    this._newflag = page.newflag;
+    this._selectedNum = page.cursorNum;
+    this._topNum = page.topNum;
+    this._scrollFrac = page.scrollFrac;
+    this._edgeUp = page.edgeUp;
+    this._edgeDown = page.edgeDown;
+    this._fillTarget = page.fillTarget;
+    this._fillPages = page.fillPages;
+    this._landingLastNum = null;
+    this._visited = null;
+    this._anchorOverride = true;
+    this._resumeShown(facts, facts.nativeRows || facts.rowTexts);
+    this._presented();
+    // The ordinary cursor-sync guard still verifies the page before another
+    // operation can act on this selection.
+    if (this._selectedNum != null && !this._cursorOnSelection())
+      this._enqueueCursorSyncJump('return-sync-jump', () => this._maybeFill(), () => {});
+    return true;
+  },
+
+  _revealedParentPage: function() {
+    const stack = this._core.navigationStack;
+    return stack?.handoff?.level === PAGE.BOARD_LIST && stack.showsLayerOf(PAGE.BOARD_LIST)
+      ? stack.shownLayer()?.listPage?.session : null;
   },
 
   // Whether PTT's landing page marks a board the list holds unread or read
@@ -2277,13 +2332,15 @@ BoardListSession.prototype = {
           landedCtx === 'brdlist-other' ||
           landedCtx === 'menu';
         const back = opts && opts.leaving ? self._trail.pop() : null;
+        const parent = opts?.leaving ? self._revealedParentPage() : null;
         if (landedCtx === 'menu') self._trail = [];
         if (back && back.counts && self._countsListLanded(landed)) {
           // Back on a list PTT keeps in the article-count view (#221).
           self._reset({ keepFrozen: true });
-          self._beginCountsReturn(back.num, landed.brd.variant);
+          self._beginCountsReturn(back.num, landed.brd.variant, parent);
           return;
         }
+        if (self._resumeParentFromLayer(landed, parent)) return;
         if (opts && opts.enteringBoard && !otherSpace) self._suspend();
         else self._reset();
         // The next seed presents a board list as opened from this one. A class
@@ -2513,7 +2570,7 @@ BoardListSession.prototype = {
   // the sub-list was opened from (board.c#brdlist_loader). Such a page does
   // not say where it is, so PTT's cursor is sent back to that row, and the
   // list is seeded from the page that shows it, frozen until then.
-  _beginCountsReturn: function(num, variant) {
+  _beginCountsReturn: function(num, variant, parent) {
     const self = this;
     let landed = null;
     this.state = 'opening';
@@ -2541,6 +2598,7 @@ BoardListSession.prototype = {
       hardTimeoutMs: CMD_HARD_MS,
       onDone: function() {
         if (self.state !== 'opening' || self._renderMode !== 'frozen') return;
+        if (self._resumeParentFromLayer(landed, parent)) return;
         self.state = 'active';
         self._setLoading(false);
         self._seed(landed);
