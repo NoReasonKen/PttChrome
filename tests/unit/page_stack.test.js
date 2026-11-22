@@ -37,6 +37,38 @@ test('a lower page without a live layer is not revealed', () => {
   expect(revealTarget(stack)).toBeNull();
 });
 
+describe('verified jump-back anchors', () => {
+  const aidJumpBack = { kind: 'aid', board: 'C_Chat', aid: '1gIeu-3A' };
+  const boardJumpBack = { kind: 'board', board: 'C_Chat' };
+
+  test.each([['article', aidJumpBack], ['articleList', boardJumpBack]])(
+    'reveals the source %s underneath an article on another board', (kind, jumpBack) => {
+      const lower = { kind, board: 'C_Chat', layer: true, jumpBack };
+      const stack = pushPage(pushPage(createPageStack(), lower), article('Gossiping'), { fromBelow: true });
+      expect(revealTarget(stack)).toBe(lower);
+    }
+  );
+
+  test('spends the revealed page jump-back anchor on Back', () => {
+    const lower = { ...article('C_Chat'), layer: true, jumpBack: aidJumpBack };
+    const stack = pushPage(pushPage(createPageStack(), lower), article('Gossiping'), { fromBelow: true });
+    const popped = popPage(stack);
+    expect(popped.stack.pages[0]).not.toHaveProperty('jumpBack');
+  });
+
+  test('a rapid Back preserves the earlier lower page jump-back anchor', () => {
+    const earlierLower = { ...article('C_Chat'), layer: true, jumpBack: aidJumpBack };
+    const laterLower = { ...article('Gossiping'), layer: true, jumpBack: { ...aidJumpBack, board: 'Gossiping' } };
+    const stack = pushPage(
+      pushPage(pushPage(createPageStack(), earlierLower), laterLower, { fromBelow: true }),
+      article('Baseball'),
+      { fromBelow: true }
+    );
+    const queued = backPastRevealed(stack);
+    expect(queued.stack.pages[0]).toHaveProperty('jumpBack', aidJumpBack);
+  });
+});
+
 test('each Back reveals the next lower page, and a revealed page\'s layer is spent', () => {
   let stack = withLayer(pushPage(createPageStack(), { kind: 'home', board: 'C_Chat' }));
   stack = withLayer(pushPage(stack, { kind: 'articleList', board: 'C_Chat' }, { fromBelow: true }));

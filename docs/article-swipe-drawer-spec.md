@@ -22,8 +22,8 @@ Each easy-reading page takes part in the page stack and the gestures as follows.
 
 | Page | Right swipe | Left swipe | Back and right swipe reveal | Kept alive under | Slides in when opened from |
 | --- | --- | --- | --- | --- | --- |
-| Easy-reading article | Exits the article | Opens the drawer | The article list it was opened from ([#28](https://github.com/NoReasonKen/PttChrome/issues/28)), or the article it was opened from by its code ([#281](https://github.com/NoReasonKen/PttChrome/issues/281)), which PTT is brought back to by its code | Its shortcut search results ([#49](https://github.com/NoReasonKen/PttChrome/issues/49)), and the article opened from it by its code on the same board ([#281](https://github.com/NoReasonKen/PttChrome/issues/281)) | An article list ([#36](https://github.com/NoReasonKen/PttChrome/issues/36)), or an article on its board by its code, once it opens ([#281](https://github.com/NoReasonKen/PttChrome/issues/281)) |
-| Easy-reading article list, including search results | Goes back ([#32](https://github.com/NoReasonKen/PttChrome/issues/32)) | Nothing | The home dashboard or board list it was opened from ([#31](https://github.com/NoReasonKen/PttChrome/issues/31)), or the source article for shortcut search results | Its articles ([#28](https://github.com/NoReasonKen/PttChrome/issues/28), [#33](https://github.com/NoReasonKen/PttChrome/issues/33)), and the user query page of an author ([#254](https://github.com/NoReasonKen/PttChrome/issues/254)), opened over the list | The home dashboard or a board list ([#36](https://github.com/NoReasonKen/PttChrome/issues/36)), or, for shortcut search results, their source article once they present |
+| Easy-reading article | Exits the article | Opens the drawer | The article list or article it was opened from ([#28](https://github.com/NoReasonKen/PttChrome/issues/28), [#73](https://github.com/NoReasonKen/PttChrome/issues/73)) | Its shortcut search results ([#49](https://github.com/NoReasonKen/PttChrome/issues/49)) and articles opened from it by their code | The article list or article it was opened from, including when an article code leads to another board |
+| Easy-reading article list, including search results | Goes back ([#32](https://github.com/NoReasonKen/PttChrome/issues/32)) | Nothing | The home dashboard or board list it was opened from ([#31](https://github.com/NoReasonKen/PttChrome/issues/31)), or the source article for shortcut search results | Its articles ([#28](https://github.com/NoReasonKen/PttChrome/issues/28), [#33](https://github.com/NoReasonKen/PttChrome/issues/33)), a cross-board article opened by code from the full list, and the user query page of an author ([#254](https://github.com/NoReasonKen/PttChrome/issues/254)) | The home dashboard or a board list ([#36](https://github.com/NoReasonKen/PttChrome/issues/36)), or, for shortcut search results, their source article once they present |
 | Smooth-scrolling board list: 原生我的最愛, a class group or a 目錄 folder | Goes back ([#53](https://github.com/NoReasonKen/PttChrome/issues/53)) | Nothing | The board list it was opened from | Its boards' article lists ([#31](https://github.com/NoReasonKen/PttChrome/issues/31)) and the board lists opened from its rows | A board list's row |
 | Easy-reading mail list ([#196](https://github.com/NoReasonKen/PttChrome/issues/196)) | Goes back | Nothing | The home dashboard it was opened from | Its mails | The home dashboard's mail entrance, once PTT shows the list (an empty mailbox slides nothing) |
 | Easy-reading mail ([#196](https://github.com/NoReasonKen/PttChrome/issues/196)) | Exits the mail | Nothing: a mail has no drawer, since the article shortcuts (push, thread, author) do not apply to it | The mail list it was opened from, with the mail shown read | Nothing | The mail list |
@@ -32,6 +32,23 @@ Each easy-reading page takes part in the page stack and the gestures as follows.
 | Home dashboard | Nothing | Nothing | Nothing: it is the bottom page | Boards opened from it ([#31](https://github.com/NoReasonKen/PttChrome/issues/31)), the mail list and the online user list | Never |
 
 With nothing alive below, Back and the right swipe show the dark fallback until PTT shows its next page. Natively shown board lists and article lists with easy reading off are not stacked pages.
+
+### Article-code jumps
+
+Opening an article by its code from an easy-reading article keeps the source
+article alive at its current position, including when the jump crosses boards.
+Opening a cross-board article from a full easy-reading article list keeps that
+list. The jump keeps its source only after verifying the destination and
+establishing a route to the source. An article requires a verified board and
+article code. A full list requires its board.
+
+System Back, a right swipe, and the return button follow that same route. They
+reveal one page immediately, then PTT catches up by reopening the source article
+by code or by returning to the source list. The real page takes over at the
+position the reader has reached on the live layer. Further Backs reveal further
+pages and replay their own verified routes in order. If the source article
+was deleted, the revealed article stays readable over its verified board list.
+If no origin can be verified, no layer is added and the usual fallback applies.
 
 ## Direction and input ownership
 

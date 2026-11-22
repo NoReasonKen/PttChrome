@@ -179,10 +179,10 @@ const NESTED_ARTICLES = [
 // `ptList`: screens behave as PTT's do where the default server simplifies: a
 //   list's footer names its keys, (y)回應 among them, `s<board>` from a list
 //   lands on the board's full list, and the main menu has its title bar.
-async function bootNestedShortcutSearch(page, { loggedIn = false, startAtMain = false, boardEntry = null, legacyCaptions = false, extraArticles = 0, leadingArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false, images = false, ptList = false } = {}) {
+async function bootNestedShortcutSearch(page, { loggedIn = false, startAtMain = false, boardEntry = null, legacyCaptions = false, extraArticles = 0, leadingArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false, images = false, ptList = false, aidLinks = false } = {}) {
   if (startAtMain) await bootOffline(page, ptt);
   else await bootGestureArticle(page);
-  await installNestedServer(page, { surface: loggedIn || startAtMain ? 'main' : 'article', boardEntry, legacyCaptions, extraArticles, leadingArticles, homeMenu, dynamicRows, pinned, alphaLines, urls, images, ptList });
+  await installNestedServer(page, { surface: loggedIn || startAtMain ? 'main' : 'article', boardEntry, legacyCaptions, extraArticles, leadingArticles, homeMenu, dynamicRows, pinned, alphaLines, urls, images, ptList, aidLinks });
   if (startAtMain) {
     await waitScreenSettled(page, { 0: '主功能表' });
     return;
@@ -277,15 +277,18 @@ async function installNestedServer(page, session) {
     const articleRows = (article, termRows) => {
       if (article.lines) return longArticleRows(article, termRows);
       const rows = {
-        0: `作者  ${article.author} (${article.author}) 看板 Test`,
+        0: `作者  ${article.author} (${article.author}) 看板 ${state.board}`,
         1: '標題  ' + article.title,
         2: '時間  Mon Sep  1 12:00:00 2025',
         [termRows - 1]: `  瀏覽 第 1/1 頁 (100%)  目前顯示: 第 01~${termRows - 1} 行  ` +
           (state.squeezedFooter ? '(h)說明 (←/q)離開 ' : '(y)回應(X%)推文(h)說明(←)離開 ')
       };
       for (let row = 4; row < Math.min(22, termRows - 1); row++) rows[row] = bodyLine(article, row);
+      if (session.aidLinks && article.body === 'Alpha')
+        rows[5] = session.aidLinks === 'boardless' ? 'See #1gIeu-3B' : 'See #1gIeu-3B (Test)';
+      if (session.aidLinks && article.body === 'Beta') rows[5] = 'See #1gIeu-3C (Other)';
       if (session.images) rows[5] = `https://i.urusai.cc/viewer-${article.body.toLowerCase()}.png`;
-      if (session.urls && article.fn) rows[Math.min(21, termRows - 2)] = `※ 文章網址: https://www.ptt.cc/bbs/Test/${article.fn}.html`;
+      if (session.urls && article.fn) rows[Math.min(21, termRows - 2)] = `※ 文章網址: https://www.ptt.cc/bbs/${state.board}/${article.fn}.html`;
       return rows;
     };
     // `lines`: an article that long, its header on the first page, paged a
@@ -295,7 +298,7 @@ async function installNestedServer(page, session) {
       const page = termRows - 1;
       const end = Math.min(article.lines, state.line + page - 1);
       const line = n => article.text?.[n] != null ? article.text[n]
-        : n === 1 ? `作者  ${article.author} (${article.author}) 看板 Test`
+        : n === 1 ? `作者  ${article.author} (${article.author}) 看板 ${state.board}`
         : n === 2 ? '標題  ' + article.title : n === 3 ? '時間  Mon Sep  1 12:00:00 2025'
           : n === 4 ? '' : bodyLine(article, n - 1);
       const rows = {
@@ -337,12 +340,12 @@ async function installNestedServer(page, session) {
       let area = line + 1;
       if (area + 5 > bLines || line >= Math.floor(bLines * 2 / 3)) area -= 6;
       const content = text => padCells(text, 76) + '│';
-      const head = `│ 文章代碼(AID): #${article.aid} (Test) [ptt.cc] `;
+      const head = `│ 文章代碼(AID): #${article.aid} (${state.board}) [ptt.cc] `;
       return {
         [area > line ? line - 1 : line + 1]: '',
         [area]: '┌' + '─'.repeat(37) + '┐',
         [area + 1]: article.noAid ? content('│') : content(head + article.title.slice(0, 75 - cellWidth(head)) + ' '),
-        [area + 2]: content(article.fn ? `│ 文章網址: https://www.ptt.cc/bbs/Test/${article.fn}.html` : '│ 本看板目前不提供文章網址 '),
+        [area + 2]: content(article.fn ? `│ 文章網址: https://www.ptt.cc/bbs/${state.board}/${article.fn}.html` : '│ 本看板目前不提供文章網址 '),
         [area + 3]: content(`│ 這一篇文章值 ${article.push || 0} Ptt幣`),
         [area + 4]: '└' + '─'.repeat(24) + ' [再按 Q 切換價格列表]  ─┘'
       };

@@ -157,11 +157,15 @@ NavHistory.prototype = {
     if (p.origin) {
       this._stack.push(p.origin);
       if (this._stack.length > this._max) this._stack.shift();
+    } else {
+      // Without a route to this jump's source, older routes are unreachable.
+      this._stack.length = 0;
     }
     this._landed =
       p.target && p.target.board && p.target.aid
         ? { board: p.target.board, aid: p.target.aid }
         : null;
+    return p.origin;
   },
 
   // A non-jump run (reconnect or search backtracking) landed on this article by

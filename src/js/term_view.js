@@ -41,7 +41,6 @@ import icon128 from '../icon/icon_128.png';
 import { MOUSE_CURSOR_URLS } from './mouse_cursors';
 import { isAndroidApp, androidNotify } from './android_bridge';
 import { toolbarDiag, handoffState } from './toolbar_diag';
-import { backToJumpOrigin } from './aid_jump';
 
 const DEFINE_INPUT_BUFFER_SIZE = 12;
 
@@ -1764,12 +1763,6 @@ TermView.prototype = {
       e.preventDefault();
       return;
     }
-    // Back from an article jumped to by its code reveals the article it was
-    // opened from, and goes back to it by its code (#281).
-    if (backToJumpOrigin(this.bbscore, e)) {
-      e.preventDefault();
-      return;
-    }
     // Back from an article opened from a list reveals that list (#28).
     if (this.bbscore.articleGestures?.handleBack(e)) {
       e.preventDefault();
@@ -1784,7 +1777,7 @@ TermView.prototype = {
     if (this.bbscore.aidNavigation && !e.ctrlKey && !e.altKey && !e.metaKey &&
         e.key === readValuesWithDefault().aidNavBackKey) {
       e.preventDefault();
-      this.bbscore.aidNavigation.back();
+      this.bbscore.aidNavigation.backFromButton();
       return;
     }
     // 「複製本篇連結」hotkey (pref deepLinkCopyKey, default F2). Claimed here for

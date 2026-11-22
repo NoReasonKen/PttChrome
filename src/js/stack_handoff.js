@@ -56,11 +56,13 @@ export class Handoff {
     this.id = revealed?.page.id;
     this.results = !!revealed?.page.results;
     this.board = board;
+    this.jumpBack = revealed?.jumpBack || null;
     this.identity = openArticleKey(core);
     this.appBar = revealed?.appBar || null;
     this.toolbar = revealed?.toolbar || null;
     this.boardListVariant = revealed?.boardListVariant;
     this.post = revealed?.post || null;
+    this.targetPost = this.post;
     this.sentAt = performance.now();
     this.presentedAt = null;
     this.touches = 0;
@@ -335,8 +337,9 @@ export class Handoff {
   backTo(left, revealed) {
     const last = this.lastLeg();
     this.legs.push({
-      level: left.kind, target: revealed?.page.kind || null, id: revealed?.page.id, board: left.board,
-      identity: left.kind === PAGE.ARTICLE ? last.id : null
+      level: left.kind, target: revealed?.page.kind || null, id: revealed?.page.id,
+      board: revealed?.jumpBack?.board || left.board, jumpBack: revealed?.jumpBack || null,
+      targetPost: revealed?.post || null, identity: left.kind === PAGE.ARTICLE ? last.id : null
     });
     this.layer = revealed?.layer || null;
     this.appBar = revealed?.appBar || null;
@@ -411,7 +414,9 @@ export class Handoff {
   sendFollow() {
     if (this.ended) return;
     this.followTimer = null;
-    if (this.follow?.(this.level)) return this.mark('sent', { level: this.level, target: this.target });
+    if (this.follow?.(this.level, this.jumpBack, !!this.layer && !this.legs.length)) {
+      return this.mark('sent', { level: this.level, target: this.target });
+    }
     // Another operation owns the line for now: the Back waits for it, within
     // the handoff bound.
     if (performance.now() - this.sentAt >= HANDOFF_TIMEOUT_MS) return this.end('timeout');
@@ -432,7 +437,7 @@ export class Handoff {
   // article reopened by search backtracking.
   pagePresented(kind) {
     const core = this.core;
-    if (this.presentedAt != null) return;
+    if (this.followTimer != null || this.presentedAt != null) return;
     // Search backtracking stopped on the board list instead of the article.
     if (this.target === PAGE.ARTICLE && kind === PAGE.ARTICLE_LIST) return this.end('unexpected');
     if (this.target && kind !== this.target) {
@@ -444,10 +449,10 @@ export class Handoff {
     if (kind === PAGE.ARTICLE) {
       // A title edit changes the header-derived identity. The verified AID
       // used by search backtracking still names the same source.
-      const post = this.post && core.aidNavigation?.currentPostAid?.();
-      const verified = post?.aid && post.aid === this.post.aid && sameBoard(post.board, this.post.board);
+      const post = this.targetPost && core.aidNavigation?.currentPostAid?.();
+      const verified = post?.aid && post.aid === this.targetPost.aid && sameBoard(post.board, this.targetPost.board);
       if (!verified && openArticleKey(core) !== this.id) return this.end('unexpected');
-      this.layer?.beginComparison?.(core);
+      if (!this.legs.length) this.layer?.beginComparison?.(core);
     }
     if (kind === PAGE.ARTICLE_LIST && this.target) {
       if (core.buf.pageState !== 2 || core.listSession?.state !== 'active') return;
@@ -464,7 +469,8 @@ export class Handoff {
   // something other than the page this Back expects.
   screenAnswered() {
     const core = this.core;
-    if (this.ended || this.presentedAt != null) return;
+    // The preceding answer can still settle before the next Back is sent.
+    if (this.ended || this.followTimer != null || this.presentedAt != null) return;
     // A pause PTT answered Back with, or the answer to the key dismissing it
     // (#189, back_pause_hold.js): the revealed page stays while PTT goes on to
     // the list. PTT left the route the stack describes on the way.
@@ -473,6 +479,7 @@ export class Handoff {
       return;
     }
     const pageState = core.buf.pageState;
+    if (this.jumpBack && core.aidNavigation?.active) return;
     if (!this.target) {
       // The page being left until a session presents its page; any other
       // screen is PTT's answer.
@@ -483,8 +490,7 @@ export class Handoff {
     }
     if (this.target === PAGE.ARTICLE) {
       // Search backtracking reopens the article by its code, through screens
-      // of its own, and presents it; so does the way back from an article
-      // jumped to by its code (#281, aid_jump.backToJumpOrigin).
+      // of its own, and presents it.
       if (core.articleShortcutSearch?.active || core.aidNavigation?.active) return;
       if (pageState === 3 && openArticleKey(core) === this.id) return;
     } else if (this.target === PAGE.ARTICLE_LIST) {

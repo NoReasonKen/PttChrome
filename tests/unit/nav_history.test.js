@@ -91,6 +91,16 @@ describe("NavHistory 兩段式 commit", () => {
     expect(h.landed()).toEqual({ board: "Android", aid: "1gIeu-3A" });
   });
 
+  test("a jump without an origin removes earlier return routes", () => {
+    const h = new NavHistory();
+    h.beginJump(origin, target);
+    h.commitJump();
+    h.beginJump(null, { board: "Other", aid: "1gIeu-3C" });
+    expect(h.commitJump()).toBeNull();
+    expect(h.canGoBack()).toBe(false);
+    expect(h.landed()).toEqual({ board: "Other", aid: "1gIeu-3C" });
+  });
+
   test("beginBack 期間 canGoBack 為 false（防重入），commitBack 才 pop", () => {
     const h = new NavHistory();
     h.beginJump(origin, target);

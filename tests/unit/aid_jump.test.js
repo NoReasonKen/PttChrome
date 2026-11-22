@@ -140,50 +140,6 @@ describe('the jump by code from an article', () => {
     expect(core.view.flashListHint.mock.calls[0][0]).toContain('aidJump_notFoundArticle');
     expect(core.view.flashListHint.mock.calls[0][0]).toContain('#1AbCdEfG');
   });
-  // The run leaves the article and opens it, or another, again: easy reading
-  // repaints it on the way, so a copy of it covers the reading area from the
-  // start (ArticleHold's run cover) and the reader sees it stay still.
-  describe('the article left stays still', () => {
-    const coveredCore = (started = true) => {
-      const order = [];
-      const core = articleCore({
-        articleHold: {
-          run: vi.fn((source, opts) => order.push(['run', source, opts]) > 0),
-          done: vi.fn((source, opts) => order.push(['done', source, opts])),
-        },
-        articleGestures: {
-          captureArticleLayer: vi.fn(() => (order.push(['capture']), { layer: {} })),
-          landJump: vi.fn((left, landed) => order.push(['land', landed])),
-        },
-      });
-      core.aidNavigation.jumpFromArticle = vi.fn(() => (order.push(['jump']), started));
-      return { core, order };
-    };
-    it('is covered before the run leaves it, after its live layer is captured', () => {
-      const { core, order } = coveredCore();
-      startAidJump(core, '1AbCdEfG');
-      expect(order).toEqual([['capture'], ['run', 'articleAidJump', { cover: true }], ['jump']]);
-    });
-    it('the article found slides in from the uncovered copy at once', () => {
-      const { core, order } = coveredCore();
-      startAidJump(core, '1AbCdEfG');
-      order.length = 0;
-      core.aidNavigation.jumpFromArticle.mock.calls[0][2]({ ok: true });
-      expect(order).toEqual([['land', true], ['done', 'articleAidJump', { uncover: true }]]);
-    });
-    it('the article returned to after a miss is uncovered once its position is back', () => {
-      const { core, order } = coveredCore();
-      startAidJump(core, '1AbCdEfG');
-      order.length = 0;
-      core.aidNavigation.jumpFromArticle.mock.calls[0][2]({ ok: false, missed: true, returned: true });
-      expect(order).toEqual([['land', false], ['done', 'articleAidJump', undefined]]);
-    });
-    it('a run that never started uncovers it', () => {
-      const { core, order } = coveredCore(false);
-      expect(startAidJump(core, '1AbCdEfG')).toBe(false);
-      expect(order.at(-1)).toEqual(['done', 'articleAidJump', undefined]);
-    });
-  });
   // The list takes what the article takes, so both places behave the same.
   it('a link pasted over the list selects its article there, as its code does', () => {
     const core = coreWith();

@@ -145,6 +145,7 @@ export class NavigationStack {
     if (!session) return this.dropPending();
     this._capture(PAGE.ARTICLE_LIST, board, () => StackListLayer.capture(core.view, 'article', session));
     if (this.pending) this.pending.fullList = fullList;
+    return this.pending;
   }
 
   // An article shortcut search is about to start from the shown article
@@ -163,22 +164,20 @@ export class NavigationStack {
     return this.pending;
   }
 
-  // A jump by code from the article on screen (#281) left it, captured by
-  // captureArticle with `jump` set: once the article found is open, it stacks
-  // on the one left, which Back reveals (aid_jump.backToJumpOrigin). `landed`
-  // false drops the capture: the run failed, or came back to the article.
-  jumpLanded(captured, landed) {
+  // Once the target article opens, keep the source page with the verified
+  // route back to it. Without that route the capture is discarded.
+  jumpLanded(captured, origin, beforeEnter) {
     if (!captured || this.pending !== captured) return;
-    if (!landed) return this.dropPending();
-    captured.landed = true;
+    if (!origin || this._articlePage().id === captured.id) return this.dropPending();
+    captured.jumpBack = origin;
+    beforeEnter?.();
     this.update();
+    return true;
   }
 
-  // The article left by a jump by code, alive under the article shown, or null.
+  // The route back to the live page before the jump, or null.
   jumpOriginBelow() {
-    const n = this.stack.pages.length;
-    const lower = this.captured[n - 2];
-    return lower?.jump && this.stack.pages[n - 1]?.kind === PAGE.ARTICLE && lower.kind === PAGE.ARTICLE ? lower : null;
+    return revealTarget(this.stack)?.jumpBack || null;
   }
 
   // The post `captured` (a page captureArticle returned) shows, once known.
@@ -282,11 +281,14 @@ export class NavigationStack {
     }
     const depth = this.stack.pages.length - 1;
     this.stack = withLayer(this.stack);
+    if (pending.jumpBack) {
+      this.stack.pages[depth] = { ...this.stack.pages[depth], jumpBack: pending.jumpBack };
+    }
     this.captured[depth]?.layer?.destroy();
     // PTT's selection in an article list starts on the article opened from it.
     pending.follows = page.id;
     pending.time = null;
-    if (pending.kind === PAGE.ARTICLE_LIST && page.kind === PAGE.ARTICLE) pending.layer?.opened?.();
+    if (pending.kind === PAGE.ARTICLE_LIST && page.kind === PAGE.ARTICLE && !pending.jumpBack) pending.layer?.opened?.();
     this.captured[depth] = pending;
     this.stack = pushPage(this.stack, page, { fromBelow: true });
     const bounded = boundLayers(this.stack);
@@ -323,7 +325,7 @@ export class NavigationStack {
   // results of an article shortcut search keep their source article.
   _enterList(board) {
     // An article being opened from this list stays captured.
-    if (this.pending?.kind === PAGE.ARTICLE_LIST) return;
+    if (this.pending?.jump || this.pending?.kind === PAGE.ARTICLE_LIST) return;
     const shown = { kind: PAGE.ARTICLE_LIST, board, results: this._showsSearchResults() };
     // The search passes its board's list on the way to the results.
     if (this.pending?.kind === PAGE.ARTICLE) {
@@ -356,16 +358,15 @@ export class NavigationStack {
     if (!this.core.conn?.isConnected) return this._discard();
     if (this.core.articleResize?.active || this.core.listResize?.active) return;
     // An article being opened is entered once its open is bound.
-    if (this.pending?.kind === PAGE.ARTICLE_LIST) return;
+    if (this.pending?.kind === PAGE.ARTICLE_LIST && !this.pending.jump) return;
     const page = this._articlePage();
     if (this.core.buf.pageState !== 3 || !page.id) return;
-    // A jump by code from the article left (#281): the article found stacks on
-    // it once the jump has landed; until then the article shown is the one
-    // left, or a screen on the jump's way.
+    // The intermediate screens of a jump never enter the stack.
     const jumped = this.pending?.jump ? this.pending : null;
     if (jumped) {
-      if (!jumped.landed || page.id === jumped.id) return;
-      this._enter(page, pending => sameBoard(pending.board, page.board));
+      if (!jumped.jumpBack) return;
+      if (page.id === jumped.id) return this.dropPending();
+      this._enter(page, pending => pending === jumped);
     }
     this._shown(page);
     const view = this.core.view;
@@ -389,7 +390,7 @@ export class NavigationStack {
     this.firstInThread = false;
     const top = this._top();
     const lower = this.captured[this.stack.pages.length - 2];
-    if (!lower || lower.kind !== PAGE.ARTICLE_LIST || top?.kind !== PAGE.ARTICLE || this.article.id !== top.id) return;
+    if (!lower || lower.jumpBack || lower.kind !== PAGE.ARTICLE_LIST || top?.kind !== PAGE.ARTICLE || this.article.id !== top.id) return;
     const { time } = this.article;
     if (lower.follows !== top.id) {
       lower.shows = lower.shows !== false && lower.layer.follow(this.article, postedBefore(time, lower.time), first);
@@ -686,12 +687,12 @@ export class NavigationStack {
   begin({ level = PAGE.ARTICLE, send, follow, reveal, finish, cancel, hint }) {
     const revealed = this._revealed();
     const h = this.handoff = new Handoff(this.core, revealed, {
-      level, board: this._top()?.board || articleBoard(this.core),
+      level, board: revealed?.jumpBack?.board || this._top()?.board || articleBoard(this.core),
       end: how => this.handoff === h && this._end(how), follow, reveal, finish, hint
     });
     let sent = false;
     try {
-      sent = h.start(send);
+      sent = h.start(() => send(h.jumpBack, !!h.layer));
     } finally {
       if (!sent) {
         if (this.handoff === h) this.handoff = null;

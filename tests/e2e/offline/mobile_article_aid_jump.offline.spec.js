@@ -193,7 +193,123 @@ async function backShowsOrigin(page, { position, row, reading }, how) {
   expect([...new Set(frames.slice(shown).map(f => f.text))]).toEqual([reading]);
 }
 
+async function jumpAcrossBoards(page) {
+  await bootNestedShortcutSearch(page, { aidLinks: true, loggedIn: true, homeMenu: true });
+  await ptt.sendKey(page, 'ArrowLeft');
+  await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
+  await tapCard(page, '[Talk] Alpha topic');
+  await waitArticle(page, 'Alpha');
+  const first = page.locator(`${MAIN} a.aidLink`, { hasText: '#1gIeu-3B' });
+  await first.scrollIntoViewIfNeeded();
+  const alpha = await rowAtTop(page, MAIN);
+  await first.tap();
+  await waitArticle(page, 'Beta');
+  await settled(page);
+  expect(await opened(page)).toBe('Beta');
+  expect(await page.evaluate(() => window.__shortcutServer.state.board)).toBe('Test');
+
+  const second = page.locator(`${MAIN} a.aidLink`, { hasText: '#1gIeu-3C' });
+  await second.scrollIntoViewIfNeeded();
+  const beta = await rowAtTop(page, MAIN);
+  await second.tap();
+  await waitArticle(page, 'Charlie');
+  await settled(page);
+  expect(await opened(page)).toBe('Charlie');
+  expect(await page.evaluate(() => window.__shortcutServer.state.board)).toBe('Other');
+  return { alpha, beta };
+}
+
 test.describe('手機：在文章裡用文章代碼跳文 (#281)', () => {
+  test('tapping article codes across boards returns one article at a time, then the original list (#73)', async ({ page }) => {
+    const { alpha, beta } = await jumpAcrossBoards(page);
+    // PTT cannot answer until after the reader has seen the previous article.
+    await page.evaluate(() => { window.__shortcutServer.state.holdResponses = true; });
+    await page.locator(PILL).tap();
+    await expect(page.locator(REVEALED)).toBeVisible();
+    await expect(page.locator(REVEALED)).toContainText('Beta line');
+    expect(await rowAtTop(page, REVEALED)).toEqual(beta);
+    await expect(page.locator(REVEALED)).not.toContainText('看板《Other》');
+    await page.evaluate(() => window.__shortcutServer.releaseResponses());
+    await waitArticle(page, 'Beta');
+    await settled(page);
+    expect(await opened(page)).toBe('Beta');
+    expect(await page.evaluate(() => window.__shortcutServer.state.board)).toBe('Test');
+    expect(await rowAtTop(page, MAIN)).toEqual(beta);
+
+    await page.evaluate(() => { window.__shortcutServer.state.holdResponses = true; });
+    await nativeBack(page);
+    await expect(page.locator(REVEALED)).toBeVisible();
+    await expect(page.locator(REVEALED)).toContainText('Alpha line');
+    expect(await rowAtTop(page, REVEALED)).toEqual(alpha);
+    await expect(page.locator(REVEALED)).not.toContainText('看板《Test》');
+    await page.evaluate(() => window.__shortcutServer.releaseResponses());
+    await waitArticle(page, 'Alpha');
+    await settled(page);
+    expect(await opened(page)).toBe('Alpha');
+    expect(await rowAtTop(page, MAIN)).toEqual(alpha);
+    await nativeBack(page);
+    await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
+  });
+
+  test('two Backs while PTT is still answering reveal and reopen both jump origins in order (#73)', async ({ page }) => {
+    const { alpha } = await jumpAcrossBoards(page);
+    const before = (await sent(page)).length;
+    await page.evaluate(() => { window.__shortcutServer.state.holdResponses = true; });
+    await nativeBack(page);
+    await expect(page.locator(REVEALED)).toContainText('Beta line');
+    await nativeBack(page);
+    await expect(page.locator(REVEALED)).toContainText('Alpha line');
+    expect(await rowAtTop(page, REVEALED)).toEqual(alpha);
+    expect((await sent(page)).slice(before)).not.toContain('#1gIeu-3A\r');
+    await page.evaluate(() => window.__shortcutServer.releaseResponses());
+    await waitArticle(page, 'Alpha');
+    await settled(page);
+    expect((await sent(page)).slice(before)).toMatch(/#1gIeu-3B\r[^]*#1gIeu-3A\r/);
+    expect(await opened(page)).toBe('Alpha');
+    expect(await rowAtTop(page, MAIN)).toEqual(alpha);
+  });
+
+  test('jumping from a full list to another board reveals the original list on Back (#73)', async ({ page }) => {
+    await bootNestedShortcutSearch(page, { loggedIn: true, homeMenu: true });
+    await ptt.sendKey(page, 'ArrowLeft');
+    await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
+    await jump(page, '#1gIeu-3C (Other)');
+    await waitArticle(page, 'Charlie');
+    await settled(page);
+    expect(await page.evaluate(() => window.__shortcutServer.state.board)).toBe('Other');
+    await page.evaluate(() => { window.__shortcutServer.state.holdResponses = true; });
+    await nativeBack(page);
+    const list = page.locator('[data-stack-layer="articleList"]:not([data-stack-parked]):not([inert])');
+    await expect(list).toBeVisible();
+    await expect(list).toContainText('Alpha topic');
+    await page.evaluate(() => window.__shortcutServer.releaseResponses());
+    await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
+    await settled(page);
+    expect(await page.evaluate(() => window.__shortcutServer.state.board)).toBe('Test');
+  });
+
+  test('the board picker verifies the source code before leaving it and can still be cancelled (#73)', async ({ page }) => {
+    await bootNestedShortcutSearch(page, { aidLinks: 'boardless' });
+    await ptt.sendKey(page, 'ArrowLeft');
+    await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
+    await tapCard(page, '[Talk] Alpha topic');
+    await waitArticle(page, 'Alpha');
+    const code = page.locator(`${MAIN} a.aidLink[data-board=""]`);
+    await code.scrollIntoViewIfNeeded();
+    const row = await rowAtTop(page, MAIN);
+    const before = (await sent(page)).length;
+    await code.tap();
+    await page.locator('[data-aid-choice="pick"]').tap();
+    await expect(page.locator('[data-board-suggest="ready"]')).toHaveCount(1);
+    expect((await sent(page)).slice(before)).toMatch(/^Q[^]*\r[^]*s/);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('input[name="searchKeyword"]')).toHaveCount(0);
+    await waitArticle(page, 'Alpha');
+    await settled(page);
+    expect(await opened(page)).toBe('Alpha');
+    expect(await rowAtTop(page, MAIN)).toEqual(row);
+  });
+
   test('the More sheet opens the input; the article found slides in from the right over the article left', async ({ page }) => {
     const origin = await articleFromList(page);
     const width = page.viewportSize().width;
