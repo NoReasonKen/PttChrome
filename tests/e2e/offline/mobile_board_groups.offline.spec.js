@@ -218,9 +218,10 @@ test('board groups: home → class root → a class → a board, then Back one l
   expect(await cardsIn(page, BOARD_LAYER)).toContain('#2');
   await answerBack(page, drawClassList, 1);
   await drawClassRoot(page, 2);
-  await answerFill(page, drawClassRoot, CLASS_ROOT.length);
+  await boardListEngaged(page);
   await expect(page.locator(BOARD_LAYER)).toHaveCount(0, { timeout: 10000 });
   await expect.poll(() => cardsIn(page, MAIN)).toEqual(ROOT_CARDS);
+  expect(await peekCapture(page)).toBe('');
 
   // An edge swipe from the class root reveals the dashboard at once and goes home.
   await edgeSwipe(page);

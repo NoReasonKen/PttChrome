@@ -4193,6 +4193,26 @@ TermView.prototype = {
   // 什麼」的事實，clientToPos／applyCursorHighlight／複製選取都靠它，一次只有一個
   // 擁有者在畫，共用才不會有兩套座標。
 
+  // Keep the board list's rows and geometry with its live layer. As with
+  // article-list rows, edits replace the buffered row rather than mutating it.
+  snapshotBoardListBuffer: function() {
+    if (!this._brdNumMap || !this._brdHeaderRows || !this._brdFooterRow) return null;
+    return {
+      numMap: new Map(this._brdNumMap),
+      headerRows: this._brdHeaderRows,
+      footerRow: this._brdFooterRow,
+      classRoot: this._brdClassRoot
+    };
+  },
+
+  restoreBoardListBuffer: function(snap) {
+    this._brdNumMap = new Map(snap.numMap);
+    this._brdHeaderRows = snap.headerRows;
+    this._brdFooterRow = snap.footerRow;
+    this._brdClassRoot = snap.classRoot;
+    this._flattenList('board');
+  },
+
   // 把當前畫面上的看板列表頁累積進 buf.brdListLines（升冪＝原生的上到下）。
   // 看板編號是 1-based 絕對位置且分頁對齊（board.c:1710-1716）⇒ 跨頁零重疊，
   // 不需要文章列表那套 findPageOverlap／置底 map／last-read 還原。

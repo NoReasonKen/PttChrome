@@ -205,12 +205,13 @@ test('a class\'s boards in the count view → a group → Back: easy reading thr
   expect(await sent(page, '1\r')).toBe('1\r');
   await drawList(page, { kind: 'class', order: inner, cursor: 1 });
   expect(await sent(page, LEFT)).toBe(LEFT);
-  await drawList(page, { kind: 'class', counts: true, cursor: 3 });
+  const updated = BOARDS.map(([name, total]) => [name, total + 100]);
+  await drawList(page, { kind: 'class', order: updated, counts: true, cursor: 3 });
   expect(await sent(page, '\r')).toBe('2\r');
   expect((await session(page)).renderMode).toBe('frozen');
-  await drawList(page, { kind: 'class', counts: true, cursor: 2 });
+  await drawList(page, { kind: 'class', order: updated, counts: true, cursor: 2 });
   await boardListEngaged(page);
-  await answerProbe(page, { kind: 'class', counts: true });
+  expect(await peekCapture(page)).toBe('');
   await expect.poll(() => cardsIn(page)).toEqual(NAMES);
   expect(await session(page)).toMatchObject({ selected: 2, counts: true, renderMode: 'buffer', state: 'active' });
   await expect(page.locator(`${MAIN} .listCard[data-list-board="BravoTest"]`)).toContainText('4521');

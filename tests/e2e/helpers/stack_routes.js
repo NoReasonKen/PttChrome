@@ -240,8 +240,14 @@ const recordKeys = page => page.evaluate(() => {
   };
 });
 
+// The folder cassette recorded a rebuild on the first Back. A retained
+// parent already has both edges, so there are no return prefetch requests.
+const withoutFolderReturnPrefetch = cassette => ({
+  ...cassette, steps: cassette.steps.filter((_, index) => index !== 7 && index !== 8)
+});
+
 module.exports = {
   MAIN, ARTICLE_CARD, homeBoard, boardList, bootArticleList, bootArticleListAtCard, holdRepliesUntilEntryRests, dropReplies, recordHints, recordedHints, listActive, dashboardVisible, bootDashboard, boardOpened, boardListEngaged, bootBoardList,
   fedBefore, openNextArticle, holdBackReply, heldBack, holdLeaves, heldLeaves, releaseLeave, sentLeaves, articleRead, waitArticleOpened,
-  sampleFrames, framesBringingBackArticle, watchReveals, revealedSinceWatch, recordKeys
+  sampleFrames, framesBringingBackArticle, watchReveals, revealedSinceWatch, recordKeys, withoutFolderReturnPrefetch
 };
