@@ -1459,7 +1459,15 @@ export const ContextMenu = ({ pttchrome }) => {
         return;
       }
       const cb = {
-        onFail: () => hint(i18n("searchModal_failed"), HINT_ERROR),
+        onFail: (reason) =>
+          hint(
+            i18n(
+              reason === "search-limit"
+                ? "searchModal_conditionLimit"
+                : "searchModal_failed",
+            ),
+            HINT_ERROR,
+          ),
       };
       // 背景的看板 prompt 已經開著：直接在上面送出。開不出來／已丟失才走一般兩步。
       if (bridge && bridge.submit(value, cb)) return;

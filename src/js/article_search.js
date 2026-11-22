@@ -19,17 +19,23 @@ import {
   MAIN_MENU,
   parseBoardName,
   boardNameFromKey,
+  sameBoard,
   isMailListTitleRow,
   isUserListTitleRow
 } from './screen_titles';
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { recordFor } from './reading_record';
 import { SLOW_STEP_BUDGET } from './aid_navigation';
-import { candidateSearchResults, recordSearchResults, clearSearchResultsContext } from './search_results_context';
+import {
+  candidateSearchResults, recordSearchResults, clearSearchResultsContext,
+  readSearchResultsContext, MAX_SEARCH_RESULTS_FILTERS
+} from './search_results_context';
 import { isSearchResultsFrame, searchResultsLanded, SEARCH_RESULT_NOTICE } from './search_results_screen';
 import { knownBoardEntryKeys, boardNoteDecision } from './board_note_skip';
 import { classifyListScreen } from './list_session';
 import { serializedOpHint } from './serialized_op_gate';
+import { parseVmsgText } from './push_screen';
+import { KEY_DISMISS } from './screen_dismiss';
 
 // 種類 → PTT 端的按鍵。`?` 與 `/` 是同一個指令（read.c:1430-1431），送出一律用 `/`。
 // `Z` 是推文數（大寫；小寫 z 是精華區，bbs.c:4406）。
@@ -394,16 +400,31 @@ function trackInFlight(core, steps, flag) {
   return steps;
 }
 
-// 送出。三條路，選誰由「現在誰在畫列表」決定（App.activeListSession 的同一個真相源）：
-//   - 文章列表好讀／看板列表平滑捲動接管中 ⇒ 交給該 session 的多步 passthrough
-//     （cursor sync 腿、進原生鏡像、序列化都在裡面，與 `v` prompt 同一條路）。
-//   - 原生 ⇒ 直接排進共用 CommandQueue，第二步只在第一步 onDone 才排。
-// 回 false ＝ 沒送（沒有可送的內容或沒有佇列）。
-//
+function knownSearchConditionLimit(core, facts, board) {
+  if (!isSearchResultsFrame(facts, board, false)) return false;
+  const search = readSearchResultsContext(core, board);
+  if (search?.filters.length !== MAX_SEARCH_RESULTS_FILTERS) return false;
+  // Different characters can encode to the same bytes in Big5. Only refuse
+  // locally when all recorded conditions are also distinct on the wire.
+  return new Set(search.filters.map(filter =>
+    filter.kind === 'thread' ? 'thread' : filter.kind + ':' + u2b(filter.value)
+  )).size === MAX_SEARCH_RESULTS_FILTERS;
+}
+
+function searchConditionLimitNotice(facts, board) {
+  if (!facts || facts.inputField || facts.curY !== facts.rows - 1 ||
+      !sameBoard(parseBoardName(facts.rowTexts[0]), board)) return false;
+  const last = facts.rowTexts[facts.rows - 1] || '';
+  return last.trimEnd().endsWith('[按任意鍵繼續]') &&
+    parseVmsgText(last) === '抱歉，已達搜尋條件上限。';
+}
+
+// Let the visible list owner run the sequence when it holds the screen.
+// Otherwise use the shared queue. A true return means the request was handled,
+// including a locally verified search-limit refusal.
 // Capture the reading bookmark before handing over the list. Article searches
-// finish on verified results or a known rejection; board navigation retains
-// its existing prompt-exit contract. Restoration follows the reading-record
-// policies for 'article-search' and 'board-search'.
+// finish on verified results or a known refusal. Board navigation finishes at
+// its prompt exit. Restoration follows the article-search and board-search policies.
 export function submitSearch(core, kind, text, cb) {
   const c = cb || {};
   const facts = searchGateFacts(core);
@@ -411,14 +432,25 @@ export function submitSearch(core, kind, text, cb) {
   // The visible list owns its board while background fill rewrites the raw
   // terminal header. The latter can be blank when the search sheet submits.
   const board = boardNameFromKey(shown?.board) || parseBoardName(facts?.rowTexts[0]);
+  // PTT checks the cap before opening a prompt, even for a repeated condition.
+  if (kind !== 'board' && SEARCH_KINDS.includes(kind) && normalizeSearchText(kind, text) &&
+      knownSearchConditionLimit(core, facts, board)) {
+    c.onFail?.('search-limit');
+    return true;
+  }
   let candidate = null;
   let bm = null;
+  let openRejected = false;
   const end = function(outcome) {
     if (bm) recordFor(core).end(bm, outcome);
     bm = null;
   };
   const callbacks = {
     onDone: function(a, b) {
+      if (a?.searchLimit) {
+        callbacks.onFail('search-limit');
+        return;
+      }
       if (a?.searchResults || isSearchResultsFrame(searchGateFacts(core), board)) recordSearchResults(core, candidate);
       end('done');
       if (c.onDone) c.onDone(a, b);
@@ -469,17 +501,30 @@ export function submitSearch(core, kind, text, cb) {
       if (done) done(a, b);
     };
   }
-  if (!batch) built[0].onDone = () => {
+  if (!batch) built[0].onDone = result => {
+    if (result?.searchLimit) {
+      openRejected = true;
+      // The notice consumes one key, then PTT redraws the existing results.
+      // Replace the unsent keyword step while keeping the same list hold.
+      Object.assign(built[1], {
+        keys: KEY_DISMISS, kind: 'search-limit-dismiss', fullRepaint: false
+      });
+      return;
+    }
     if (hold) hold.opened();
     const prompt = searchGateFacts(core);
     const append = /^增加條件 /.test(prompt?.rowTexts[prompt.rows - 1] || '');
     candidate = candidateSearchResults(core, board, { kind, value: normalizeSearchText(kind, text) }, append);
   };
   if (kind !== 'board' && board) {
+    const expectPrompt = built[0].expect;
+    built[0].expect = (snapshot, landing) => searchConditionLimitNotice(landing, board)
+      ? { searchLimit: true } : expectPrompt(snapshot, landing);
     // Prompt disappearance can precede the results repaint. Keep ownership
     // until results or a known rejection are verified, so a close/reload cannot
     // persist the preceding query while the new results are already visible.
     built[1].expect = (snapshot, landing) => {
+      if (openRejected) return searchResultsLanded(landing, board) ? { searchLimit: true } : false;
       const last = landing.rowTexts[landing.rows - 1] || '';
       if (landing.curY === landing.rows - 1 && SEARCH_RESULT_NOTICE.test(last)) return { searchNotice: true };
       return searchResultsLanded(landing, board) ? { searchResults: true } : false;
