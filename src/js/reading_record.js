@@ -153,6 +153,13 @@ export const RESTORE_TABLE = {
     cancel: cell(null, 'origin'),
     fail: cell(null, 'origin')
   },
+  // The board entry screen (board_notes.js, #292): the list under its page is
+  // the same list, kept, whatever came of it.
+  'board-notes': {
+    done: cell(null, 'origin'),
+    cancel: cell(null, 'origin'),
+    fail: cell(null, 'origin')
+  },
   // Article information (post_info.js, #261): PTT's box over the list closes on
   // the same list; over an article the box leaves for the list and the article
   // is opened again (aid_navigation.reopenAfterPostInfo), at the same row.

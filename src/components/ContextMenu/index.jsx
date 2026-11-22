@@ -104,6 +104,7 @@ import { refreshOffered } from "../../js/screen_refresh";
 import { userListToggleTarget } from "../../js/user_list";
 import { rememberSearch } from "../../js/search_history";
 import { promptUserQuery, queryAuthor } from "../../js/user_query";
+import { showBoardNotes } from "../../js/board_notes";
 import { showArticlePostInfo, showListPostInfo } from "../../js/post_info";
 import { showBoardInfo } from "../../js/board_info";
 import { BoardSearchBridge } from "../../js/board_search_bridge";
@@ -185,6 +186,8 @@ const menuHandlerByEventKey = {
   userListToggle: (pttchrome) => pttchrome.view.sendKeyAsUser("f"),
   // 查詢網友（線上使用者列表，#199）：開輸入 sheet，送出才問 PTT（js/user_query.js）。
   userQuery: (pttchrome) => promptUserQuery(pttchrome),
+  // The board entry screen (#292): the same entrance as `b` (js/board_notes.js).
+  boardNotes: (pttchrome) => showBoardNotes(pttchrome),
   // 查詢作者（文章列表，#254）：選取那一列再送 Ctrl-Q（js/user_query.js）。
   queryAuthor: (pttchrome, { authorQueryTarget }) =>
     queryAuthor(pttchrome, authorQueryTarget),
@@ -292,6 +295,8 @@ const initialState = {
   userListToggle: null,
   // 「查詢網友」出不出現（線上使用者列表才有，userQuery.available）。
   userQueryEnabled: false,
+  // Whether 進板畫面 shows (a board's article list, boardNotes.available, #292).
+  boardNotesEnabled: false,
   // 「查詢作者」的對象（{ num, pinnedKey, author } / null，#254）：
   // listSession.authorQueryTargetAtRow。
   authorQueryTarget: null,
@@ -817,6 +822,8 @@ export const ContextMenu = ({ pttchrome }) => {
           !!normalEnabled &&
           !!pttchrome.userQuery &&
           pttchrome.userQuery.available(),
+        boardNotesEnabled:
+          onScreen && !!normalEnabled && !!pttchrome.boardNotes?.available?.(),
         authorQueryTarget:
           (onScreen &&
             normalEnabled &&
@@ -895,6 +902,7 @@ export const ContextMenu = ({ pttchrome }) => {
         boardToggles: null,
         userListToggle: null,
         userQueryEnabled: false,
+        boardNotesEnabled: false,
         authorQueryTarget: null,
         postInfoTarget: null,
         articlePostInfoEnabled: false,
@@ -1811,6 +1819,7 @@ export const ContextMenu = ({ pttchrome }) => {
     boardToggles,
     userListToggle,
     userQueryEnabled,
+    boardNotesEnabled,
     authorQueryTarget,
     postInfoTarget,
     articlePostInfoEnabled,
@@ -1884,6 +1893,7 @@ export const ContextMenu = ({ pttchrome }) => {
         boardToggles={boardToggles}
         userListToggle={userListToggle}
         userQueryEnabled={userQueryEnabled}
+        boardNotesEnabled={boardNotesEnabled}
         authorQueryTarget={authorQueryTarget}
         postInfoTarget={postInfoTarget}
         articlePostInfoEnabled={articlePostInfoEnabled}

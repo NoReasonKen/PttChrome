@@ -32,16 +32,14 @@ import { hintColors, shouldShowHint } from './status_hint';
 import { isPushKey, pushGateFacts, shouldInterceptPushKey } from './long_push_gate';
 import { tryOpenSearchModal } from './article_search';
 import { isRefreshKeyEvent } from './screen_refresh';
-import { mobileCtrlKey, mobileMenuLayout, mobileFillLayout, mobileListViewportPx, listViewportGeometry, listFillRows, listRowSpan } from './mobile_layout';
-
-// 單獨按下修飾鍵本身（實體鍵盤按 Shift 準備打大寫）不算「下一個按鍵」，黏滯 Ctrl 不解除。
-var MODIFIER_KEY_NAMES = ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'AltGraph'];
+import { MODIFIER_KEY_NAMES, takeStickyCtrl, mobileMenuLayout, mobileFillLayout, mobileListViewportPx, listViewportGeometry, listFillRows, listRowSpan } from './mobile_layout';
 import { keyEventPredatesModalClose } from './modal_key_gate';
 import icon128 from '../icon/icon_128.png';
 import { MOUSE_CURSOR_URLS } from './mouse_cursors';
 import { isAndroidApp, androidNotify } from './android_bridge';
 import { toolbarDiag, handoffState } from './toolbar_diag';
 import { backToJumpOrigin } from './aid_jump';
+import { inputPage } from './input_page';
 
 const DEFINE_INPUT_BUFFER_SIZE = 12;
 
@@ -128,6 +126,20 @@ const EMPTY_PINNED_MAP = new Map();
 // One printable ASCII character: text a keyboard key produces.
 export function isTypedKey(text) {
   return typeof text === 'string' && text.length === 1 && text >= ' ' && text <= '~';
+}
+
+// The keypad's sticky Ctrl on typed text (mobile_layout.takeStickyCtrl): an
+// Android soft keyboard types nearly every character as an input event (its
+// keydown is 229/Unidentified), which onKeyDown never sees. Only the first
+// character takes Ctrl; the rest goes on as typed. Returns whether the text
+// was taken here (onTextInput, ahead of a page over the list as well: #292).
+function stickyCtrlText(view, text, isPasting) {
+  if (isPasting || !text) return false;
+  var ctrlMods = takeStickyCtrl(view.bbscore, { key: text.charAt(0) });
+  if (!ctrlMods) return false;
+  view.sendKeyAsUser(ctrlMods.key, ctrlMods);
+  if (text.length > 1) view.onTextInput(text.slice(1), false);
+  return true;
 }
 
 // An easy-reading page (list buffer or article) answers keys itself; false
@@ -1513,8 +1525,9 @@ TermView.prototype = {
   },
 
   onInput: function(e) {
-    // The user query page (#199) is a modal that takes the soft keyboard's text.
-    if ((this.bbscore.modalShown && !this.bbscore.userQuery?.ownsInput()) || this.bbscore.contextMenuShown)
+    // A page over the list (the user query, #199; the board entry screen,
+    // #292) is a modal that takes the soft keyboard's text.
+    if ((this.bbscore.modalShown && !inputPage(this.bbscore)) || this.bbscore.contextMenuShown)
       return;
     // 第三道防線：組字若被某些瀏覽器搶在 keydown 之前開起來，它 commit 出來的重音
     // 字元（é/î/ñ/ü）絕不可以當成使用者打的字送進 PTT —— 那是 ⌥E/⌥I/⌥N/⌥U 這幾顆
@@ -1559,13 +1572,17 @@ TermView.prototype = {
   },
 
   onTextInput: function(text, isPasting) {
-    // Over the user query page (#199) a typed character is a key the page
-    // answers (q leaves, any other is refused); other text is refused. Ahead
-    // of the busy gate: the query holds the wire while the page shows.
-    var queryPage = this.bbscore.userQuery;
-    if (queryPage && queryPage.ownsInput()) {
+    // Over a page over the list (the user query, #199; the board entry
+    // screen, #292) a typed character is a key the page answers; other text
+    // is refused. Ahead of the busy gate: the page holds the wire while it shows.
+    var overPage = inputPage(this.bbscore);
+    if (overPage) {
+      // The keypad's sticky Ctrl applies first: Ctrl+letter is the page's to
+      // judge as the keyboard's Ctrl+letter is (the board entry screen sends it
+      // to PTT; the user query page refuses it).
+      if (stickyCtrlText(this, text, isPasting)) return;
       if (!isPasting && isTypedKey(text)) this.sendKeyAsUser(text);
-      else queryPage.refuseText(text, isPasting ? 'paste' : 'text');
+      else overPage.refuseText(text, isPasting ? 'paste' : 'text');
       return;
     }
     // A key the soft keyboard typed into #t while the list's number or keyword
@@ -1584,17 +1601,7 @@ TermView.prototype = {
       this.flashListHint(busyHint);
       return;
     }
-    // 手機黏滯 Ctrl 的軟鍵盤入口：Android 軟鍵盤的字幾乎都走 input 事件（keydown 是
-    // 229/Unidentified），所以 onKeyDown 那道接不到。只吃第一個字元，其餘照常送。
-    if (!isPasting && this.bbscore.mobileCtrlArmed && text) {
-      var ctrlMods = mobileCtrlKey(text.charAt(0));
-      this.bbscore.setMobileCtrlArmed(false);
-      if (ctrlMods) {
-        this.sendKeyAsUser(ctrlMods.key, ctrlMods);
-        if (text.length > 1) this.onTextInput(text.slice(1), false);
-        return;
-      }
-    }
+    if (stickyCtrlText(this, text, isPasting)) return;
     // One typed ASCII character over an easy-reading page is the key it names:
     // a soft keyboard, or an input method in its Latin mode, delivers keys as
     // text, and the page answers them as it answers the hardware key.
@@ -1678,11 +1685,17 @@ TermView.prototype = {
       return;
     }
     // A page over the terminal that takes its own keys (the user query page,
-    // #199): its window listener never sees a key that does not come from the
-    // keyboard.
-    if (this.bbscore?.userQuery?.takeKey({ key: keyName, ctrlKey: ctrl, altKey: alt, metaKey: false }, true)) {
+    // #199; the board entry screen page, #292): its window listener never sees
+    // a key that does not come from the keyboard.
+    var keyPage = inputPage(this.bbscore);
+    // The keypad's sticky Ctrl comes first here too: past the page, onKeyDown
+    // applies it.
+    var stickyMods = keyPage && takeStickyCtrl(this.bbscore, { key: keyName, ctrlKey: ctrl, altKey: alt });
+    if (stickyMods) return void this.sendKeyAsUser(stickyMods.key, stickyMods);
+    if (keyPage && keyPage.takeKey({ key: keyName, ctrlKey: ctrl, altKey: alt, metaKey: false }, true)) {
       toolbarDiag(this.bbscore, 'key', {
-        key: keyName.length > 1 ? keyName : 'char', ctrl: ctrl, alt: alt, outcome: 'userQueryPage'
+        key: keyName.length > 1 ? keyName : 'char', ctrl: ctrl, alt: alt,
+        outcome: keyPage === this.bbscore.userQuery ? 'userQueryPage' : 'boardNotesPage'
       });
       return;
     }
@@ -1746,15 +1759,11 @@ TermView.prototype = {
     }
     // 手機黏滯 Ctrl：下一個按鍵改送組合鍵（用一次就解除）。重新走 sendKeyAsUser ⇒
     // 整條分派（好讀／列表好讀／原生）照組合鍵的語意處理。
-    if (this.bbscore.mobileCtrlArmed && !e.ctrlKey && !e.altKey && !e.metaKey &&
-        MODIFIER_KEY_NAMES.indexOf(e.key) < 0) {
-      var ctrlMods = mobileCtrlKey(e.key);
-      this.bbscore.setMobileCtrlArmed(false);
-      if (ctrlMods) {
-        e.preventDefault();
-        this.sendKeyAsUser(ctrlMods.key, ctrlMods);
-        return;
-      }
+    var ctrlMods = takeStickyCtrl(this.bbscore, e);
+    if (ctrlMods) {
+      e.preventDefault();
+      this.sendKeyAsUser(ctrlMods.key, ctrlMods);
+      return;
     }
     // Search-result Back belongs to its route before normal article/list
     // navigation dispatch, but after sticky Ctrl conversion, so a combination
@@ -2204,7 +2213,8 @@ TermView.prototype = {
       (app.homeDashboard && app.homeDashboard.holding) ||
       (app.userQuery && app.userQuery.holding) ||
       (app.postInfo && app.postInfo.holding) ||
-      (app.boardInfo && app.boardInfo.holding)));
+      (app.boardInfo && app.boardInfo.holding) ||
+      (app.boardNotes && app.boardNotes.holding)));
   },
 
   // The list easy-reading branch of redraw owns this frame. Article frames

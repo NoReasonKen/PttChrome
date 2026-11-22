@@ -225,7 +225,8 @@ async function installNestedServer(page, session) {
       return c < 128 ? ch : String.fromCharCode(window.lib.u2bArray[2 * c], window.lib.u2bArray[2 * c + 1]);
     }).join('');
     const subject = title => title.replace(/^(?:(?:Re|Fw):\s*)+/i, '').toLowerCase();
-    // surface: article | list | info | prompt | empty | missing | main | query | boardInfo
+    // surface: article | list | info | prompt | empty | missing | main | query |
+    //   boardInfo | notes | notesMovie | notesPause
     // `promptless`: `a` shows no prompt, as on a screen where it is no command.
     // `squeezedFooter`: the pager footer has room only for its short hints,
     //   as a very long article's (more.c#common_pmore_footer_handler).
@@ -247,7 +248,15 @@ async function installNestedServer(page, session) {
       // board information, a PSB list `boardInfoAt` is the cursor item of.
       // `boardInfoFails`: get_boardheader fails and PTT draws the list again;
       // `boardInfoGarbled`: a row of the screen reads as nothing PTT prints.
-      boardInfoAt: 0, boardInfoFails: false, boardInfoGarbled: false
+      boardInfoAt: 0, boardInfoFails: false, boardInfoGarbled: false,
+      // `b` on the list (bbs.c#b_notes, #292): more(notes, NA), then
+      // pressanykey. `notes`: 'plain' (a coloured screen), 'none' (「本看板尚無
+      // 進板畫面。」 at (4,20)), 'movie' (`notesFrames` frames `notesFrameMs`
+      // apart; any key stops it) or 'interactive' (keys other than q and
+      // Ctrl-C are its choices, kept in `notesChoices`). A movie that ends or
+      // is stopped waits in pressanykey over its last frame; `notesStop:
+      // 'list'` draws the list at once instead, as pmore's READ_NEXT would.
+      notes: 'plain', notesStop: 'pause', notesFrame: 0, notesFrames: 4, notesFrameMs: 300, notesChoices: []
     };
     const listed = () => {
       const all = articles.filter(article => !state.deleted.has(article.aid) && (!state.filter || !article.pinned));
@@ -396,6 +405,40 @@ async function installNestedServer(page, session) {
       else if (key === '\x1b[D' || key === 'q' || key === 'Q') state.surface = 'list';
       return rest.slice(key.length);
     };
+    // b_notes's screens: the entry screen's own rows over a cleared screen,
+    // with pmore's movie footer or pressanykey's bar on the last row.
+    const NOTES_BAR = '\x1b[1;34;44m' + '▄'.repeat(15) + ' \x1b[37m請按任意鍵繼續\x1b[34m ' + '▄'.repeat(15) + '\x1b[m';
+    const notesRows = termRows => {
+      if (state.surface === 'notes' && state.notes === 'none')
+        return { 4: ' '.repeat(20) + '本看板尚無進板畫面。', [termRows - 1]: NOTES_BAR };
+      if (state.surface === 'notes')
+        return {
+          2: '\x1b[1;33m  Welcome to the Test board\x1b[m',
+          4: '\x1b[32m  Please read the board rules first\x1b[m',
+          6: '\x1b[1;31m  A red notice line\x1b[m',
+          [termRows - 1]: NOTES_BAR
+        };
+      const rows = { 3: `\x1b[1;36m  Movie frame ${state.notesFrame}\x1b[m` };
+      if (state.notesChoices.length) rows[5] = '  Choices made: ' + state.notesChoices.length;
+      rows[termRows - 1] = state.surface === 'notesPause' ? NOTES_BAR
+        : state.notes === 'interactive' ? ' >> 請輸入選項:  (互動式動畫播放中，可按 q 或 Ctrl-C 中斷)'
+          : ' >>> 動畫播放中... 可按 q, Ctrl-C 或其它任意鍵停止';
+      return rows;
+    };
+    // A playing movie draws its next frame by itself; after the last one PTT
+    // waits in pressanykey.
+    let notesTimer = null;
+    const playNotes = () => {
+      clearTimeout(notesTimer);
+      notesTimer = setTimeout(() => {
+        notesTimer = null;
+        if (state.surface !== 'notesMovie') return;
+        if (state.notesFrame >= state.notesFrames) state.surface = 'notesPause';
+        else state.notesFrame++;
+        app.onData(frame());
+        if (state.surface === 'notesMovie') playNotes();
+      }, state.notesFrameMs);
+    };
     const frame = (fullRepaint = false) => {
       const termRows = session.dynamicRows ? state.applicationRows : 24;
       const bodyRows = termRows - 4;
@@ -442,6 +485,9 @@ async function installNestedServer(page, session) {
         rows = boardInfoRows(termRows);
         inverse = [0];
         cursor = [3 + state.boardInfoAt % (termRows - 3), 1];
+      } else if (['notes', 'notesMovie', 'notesPause'].includes(state.surface)) {
+        rows = notesRows(termRows);
+        cursor = [termRows, 1];
       } else {
         const entries = listed();
         rows = {
@@ -525,6 +571,21 @@ async function installNestedServer(page, session) {
         state.sleepPending = state.querySleepMs;
         const sequence = /^\x1b\[[0-9;]*[~A-Za-z]/.exec(rest);
         return rest.slice(sequence ? sequence[0].length : 1);
+      }
+      // pressanykey after the entry screen: any one key draws the list.
+      if (state.surface === 'notes' || state.surface === 'notesPause') {
+        state.surface = 'list';
+        const sequence = /^\x1b\[[0-9;]*[~A-Za-z]/.exec(rest);
+        return rest.slice(sequence ? sequence[0].length : 1);
+      }
+      // A playing movie: q and Ctrl-C always stop it; any other key stops a
+      // plain one and is an interactive one's choice.
+      if (state.surface === 'notesMovie') {
+        const sequence = /^\x1b\[[0-9;]*[~A-Za-z]/.exec(rest);
+        const key = sequence ? sequence[0] : rest[0];
+        if (state.notes === 'interactive' && key !== 'q' && key !== '\x03') state.notesChoices.push(key);
+        else state.surface = state.notesStop === 'list' ? 'list' : 'notesPause';
+        return rest.slice(key.length);
       }
       if (state.surface === 'boardPause' || state.surface === 'backPause') {
         state.surface = 'list';
@@ -636,6 +697,14 @@ async function installNestedServer(page, session) {
           state.surface = 'boardInfo';
           state.boardInfoAt = 0;
         }
+      }
+      else if (head === 'b' && state.surface === 'list') {
+        if (state.notes === 'movie' || state.notes === 'interactive') {
+          state.surface = 'notesMovie';
+          state.notesFrame = 1;
+          state.notesChoices = [];
+          playNotes();
+        } else state.surface = 'notes';
       }
       else if (head === '\x11' && state.surface === 'list') {
         const author = selected()?.author;

@@ -120,6 +120,21 @@
   "postInfo_title": {
     "message": "文章資訊"
   },
+  "boardNotes_title": {
+    "message": "進板畫面"
+  },
+  "boardNotes_busy": {
+    "message": "進板畫面處理中，請稍候…"
+  },
+  "boardNotes_unavailable": {
+    "message": "只能在看板的文章列表看進板畫面"
+  },
+  "boardNotes_failed": {
+    "message": "進板畫面沒有回應，請再試一次"
+  },
+  "boardNotes_wait": {
+    "message": "進板畫面還沒畫完，請稍候再離開"
+  },
   "postInfo_code": {
     "message": "文章代碼"
   },

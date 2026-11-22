@@ -2116,6 +2116,11 @@ ListSession.prototype = {
       return;
     }
 
+    if (key.class === 'board-notes') {
+      this._core.boardNotes?.start();
+      return;
+    }
+
     if (key.class === 'native-inplace') {
       // A 類鍵：凍結交易（畫面凍住 → 送真鍵 → 採用真落點 → 直接回 buffer）。
       this._beginInplaceTransaction(key.bytes);
@@ -2208,10 +2213,33 @@ ListSession.prototype = {
   // the list is let go of for the native excursion while the query holds it on
   // screen; resumeAfterHelp gives it the frame back with its rows and selection.
   beginUserQuery: function(steps) {
+    this._beginHeldSteps(steps, 'user-query');
+  },
+
+  // The board entry screen (#292, board_notes.js): `b` shows the board's
+  // entry screen whatever PTT's cursor row, so it goes out as the user
+  // query's `Q` does.
+  beginBoardNotes: function(steps) {
+    this._beginHeldSteps(steps, 'board-notes');
+  },
+
+  // Steps of a page held over this list that need no cursor (the user query,
+  // the board entry screen): the list is let go of for the native excursion
+  // and given the frame back with its rows and selection (resumeAfterHelp).
+  _beginHeldSteps: function(steps, kind) {
     this._spendLayer('nativePassthrough');
     this._helpBoard = this._boardName;
     this._helpSelection = { num: this._selectedNum, pinnedKey: this._selectedPinnedKey };
-    this._beginPassthroughBytes(steps, { kind: 'user-query', hint: null, noSync: true });
+    this._beginPassthroughBytes(steps, { kind: kind, hint: null, noSync: true });
+  },
+
+  // The board whose entry screen `b` shows (#292, board_notes.js), or null:
+  // an article list's board, its search results and digest included (PTT
+  // binds `b` in both of read.c's tables); never the mailbox or the user list.
+  boardNotesBoard: function() {
+    if (this.state !== 'active' || this._renderMode !== 'buffer') return null;
+    if (this._boardName == null || this.isMailList() || this.isUserList()) return null;
+    return this._boardName;
   },
 
   // The board information (#288, board_info.js): `i` names the board, not a
@@ -2375,8 +2403,9 @@ ListSession.prototype = {
     return true;
   },
 
-  // One more step of that query (the space over PTT's alert or its
-  // 請按任意鍵繼續), while the list is still let go of. Returns whether it went out.
+  // One more step of a held page's sequence (the user query's space over PTT's
+  // alert or its 請按任意鍵繼續, the board entry screen's way back, #292),
+  // while the list is still let go of. Returns whether it went out.
   continueUserQuery: function(step) {
     if (this.state !== 'functionMode' || this._helpBoard == null) return false;
     this._enqueuePassthroughStep([step], 0);
@@ -3520,6 +3549,9 @@ ListSession.prototype = {
         // lists. `?` is not one here: on the article list it searches titles
         // (the search sheet takes it), and `Q` is PTT's article information.
         if (e.key === 'h' || e.key === 'H') return { class: 'help' };
+        // `b` shows the board's entry screen as a page over the list (#292,
+        // board_notes.js); the mailbox binds no `b`.
+        if (e.key === 'b' && !mail) return { class: 'board-notes' };
         // `#` (jump to an article by its code) is presented as PttChrome's own
         // input (#253), where the list can take the jump.
         if (e.key === '#' && (page ? !mail && !page.selectMode && page.boardName : this.aidJumpBoard()))

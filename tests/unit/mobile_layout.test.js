@@ -9,6 +9,7 @@ import {
   MOBILE_FONT_PX_MAX,
   normalizeMobileFontPx,
   mobileTermGeometry,
+  gridCellPx,
   keyboardInset,
   overlayKeyboardInset,
   mobileChromeInsets,
@@ -90,6 +91,25 @@ describe("MOBILE_KEYPAD_ROWS", () => {
   test("鍵不重複", () => {
     const names = keys.map((k) => k.key);
     expect(new Set(names).size).toBe(names.length);
+  });
+});
+
+// #292: the board entry screen page scales PTT's 80 columns and rows to its box.
+describe("gridCellPx", () => {
+  test("the cell fits 80 columns and the rows in the box, floored to device pixels", () => {
+    const chh = gridCellPx({ width: 390, height: 700, rows: 24, dpr: 2.625 });
+    expect((chh / 2) * 80 + 10).toBeLessThanOrEqual(390);
+    expect(chh * 24 + 10).toBeLessThanOrEqual(700);
+    expect(Math.abs(chh * 2.625 - Math.round(chh * 2.625))).toBeLessThan(1e-9);
+    // The width is the limit here: one device pixel more no longer fits.
+    expect(((chh + 1 / 2.625) / 2) * 80 + 10).toBeGreaterThan(390);
+  });
+
+  test("a short box: the rows are the limit; a null width and maxPx", () => {
+    expect(gridCellPx({ width: 1000, height: 250, rows: 24, dpr: 1 })).toBe(10);
+    expect(gridCellPx({ width: null, height: 490, rows: 24, dpr: 1 })).toBe(20);
+    expect(gridCellPx({ width: null, height: 490, rows: 24, dpr: 1, maxPx: 16 })).toBe(16);
+    expect(gridCellPx({ width: 0, height: 0, rows: 24, dpr: 1 })).toBe(0);
   });
 });
 

@@ -67,6 +67,7 @@ do not count as reader input. See `src/js/scroll_restore_follow.js` and
 | `article-shortcut-return` return from shortcut results | Article origin | Failure: matching list origin; cancellation: no restore |
 | `article-comparison` compare a revealed article with PTT's copy | No restore: the shown rows retain their reading position | No restore |
 | `user-query` 查詢網友（#199）、查詢作者（#254） | 使用者列表或文章列表：原處（查詢頁底下就是同一份列表） | 使用者列表或文章列表：原處 |
+| `board-notes` 進板畫面（`b`，#292） | 文章列表：原處（進板畫面頁底下就是同一份列表） | 文章列表：原處 |
 | `post-info` 文章資訊（`Q`，#261） | 文章列表：原處；文章：重開後回原列 | 文章列表：原處；文章：原列 |
 | `board-info` 看板資訊（`i`，#288） | 文章列表：原處（看板資訊底下就是同一份列表） | 文章列表：原處 |
 | `help-menu` 說明選單（`h`） | 不還原（執行的指令就是目的地） | 離開：列表、看板列表原處 |

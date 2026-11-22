@@ -20,6 +20,7 @@ import { i18n } from "../../js/i18n";
 import { readValuesWithDefault } from "../../js/pref_storage";
 import { promptUserQuery } from "../../js/user_query";
 import { showArticlePostInfo } from "../../js/post_info";
+import { showBoardNotes } from "../../js/board_notes";
 import { requestAidJump } from "../../js/aid_jump";
 import {
   normalizeExternalSearchQuery,
@@ -520,6 +521,17 @@ export const MobileToolbar = ({
     });
   }, [pttchrome, whenReady]);
 
+  // The board entry screen (#292, js/board_notes.js): the same entrance as `b`.
+  const onBoardNotes = useCallback(() => {
+    setPanel(null);
+    setConfirmLogout(false);
+    whenReady(() => {
+      if (typeof pttchrome.noteUserAction === "function")
+        pttchrome.noteUserAction();
+      showBoardNotes(pttchrome);
+    });
+  }, [pttchrome, whenReady]);
+
   // 跳到第一篇未讀：與桌機快捷鍵（預設 F7）同一個入口（unread_jump.js）。
   const onUnreadJump = useCallback(() => {
     setPanel(null);
@@ -907,6 +919,16 @@ export const MobileToolbar = ({
             onClick={onUserQuery}
           >
             {i18n("userQuery_title")}
+          </button>
+        ) : null}
+        {context.boardNotes ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__boardNotes"
+            onClick={onBoardNotes}
+          >
+            {i18n("boardNotes_title")}
           </button>
         ) : null}
         {context.aidJump ? (

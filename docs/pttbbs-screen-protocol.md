@@ -479,6 +479,33 @@ client 端自動收掉見 `docs/board-note-skip.md`。
 
 `(b)進板畫面` 走 `read_comms[]` 的 `{ 0, b_notes }`（`bbs.c:4601`），`b_notes` 是同一段
 （`bbs.c:4061-4081`，`mr==-1` 時另印「本看板尚無進板畫面。」）。
+
+The board entry screen asked for with `b` (#292, `src/js/board_notes.js`). `b_notes` runs
+`mr = more(notes, NA)`. With `mr == -1` (no entry screen) it clears the screen, moves to (4,20)
+and prints 「本看板尚無進板畫面。」. When `mr != READ_NEXT` it calls `pressanykey()`; then the
+list is drawn again (FULLUPDATE). `b` is bound in both of read.c's tables, the normal one (search
+results, MODE_SELECT, use it too) and the digest one, and acts on no cursor row. Under
+`PMORE_AUTO_EXIT` (NA):
+- a plain screen draws its first page and leaves: pressanykey 「請按任意鍵繼續」;
+- a longer one waits in pmore with no footer prompt (the last row blank, the cursor on it),
+  leaves at its end or on ←, then pressanykey;
+- a movie plays at once, its footer 「動畫播放中… 可按 q, Ctrl-C 或其它任意鍵停止」,
+  「互動式動畫播放中…」, or, paused, 「暫停播放動畫，請按任意鍵繼續或 q 中斷」 (in the paused
+  footer a key resumes the movie); a key stops a plain movie; an interactive movie takes keys as
+  its choices, but `q` and Ctrl-C always stop it; a movie that ends goes to pressanykey.
+
+**Open question, the stopped movie**: the owner's facts for #292 say a key stopping a movie also
+leads to pressanykey, while the reading of `pmore.c:3196-3202` above says it returns `READ_NEXT`,
+so `b_notes` skips pressanykey and the list is drawn at once. No live recording settles it. The
+client handles both: its way back judges every answer by the screen (`boardNoteDecision`), and a
+list PTT draws by itself while the page shows is taken back under the page.
+
+Two client rules that follow: `b` goes out with no `\f` behind it (a playing movie waits for
+input to stop, and whether a Ctrl-L that igetch swallows (§6) still ends that wait is not read
+from the code; without it the movie surely keeps playing), and every key of the way back waits
+for PTT's answer to the one before (a `q` typed ahead after a movie ended would land on
+pressanykey, and the next key on the list).
+
 `[i]看板資訊`（`read_comms[]` 的 `i`／`I` → `bbs_cmd_config` → `b_config`）在 main 是可翻頁的 PSB 列表，
 不再 pressanykey：必須 `←`／`q` 才回列表，畫面與交易見 §11.10「`[i]` 看板資訊」。舊版（03cdf5eb `board.c:326`）
 的固定區塊＋`pressanykey()` 已不在線上（2026-11 實機確認是可翻頁列表），本專案不支援。
