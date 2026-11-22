@@ -156,6 +156,27 @@
   "postInfo_failedArticle": {
     "message": "讀不到文章資訊：下拉重新整理以重試。"
   },
+  "boardInfo_title": {
+    "message": "看板資訊"
+  },
+  "boardInfo_board": {
+    "message": "看板"
+  },
+  "boardInfo_moderators": {
+    "message": "板主"
+  },
+  "boardInfo_noModerators": {
+    "message": "(無)"
+  },
+  "boardInfo_busy": {
+    "message": "讀取看板資訊中，請稍候…"
+  },
+  "boardInfo_unavailable": {
+    "message": "這裡無法查看看板資訊"
+  },
+  "boardInfo_failed": {
+    "message": "讀不到看板資訊"
+  },
   "cmenu_addTitleBlacklist": {
     "message": "加入標題黑名單 ..."
   },

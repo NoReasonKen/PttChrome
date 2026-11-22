@@ -10,6 +10,7 @@ import {
   isArticleListFooter,
   isBoardListFooter,
   isMailListFooter,
+  isDigestListFooter,
 } from "../../src/js/screen_captions";
 
 // read.c:1237-1238（CONFIRMED）
@@ -99,5 +100,17 @@ describe("isMailListFooter — 信箱（mbbsd/read.c#i_read_caption RMAIL）", (
     expect(isMailListFooter(newFooter("文章列表"))).toBe(false);
     expect(isMailListFooter(OLD_BOARD)).toBe(false);
     expect(isMailListFooter(null)).toBe(false);
+  });
+});
+
+// #288: the digest list's table (bbs.c#digest_comms) has no `i`.
+describe("isDigestListFooter — 文摘（read.c#i_read_caption MODE_DIGEST）", () => {
+  test("only the new digest caption", () => {
+    expect(isDigestListFooter(newFooter("文摘列表"))).toBe(true);
+    expect(isDigestListFooter(newFooter("系列文章"))).toBe(false);
+    expect(isDigestListFooter(newFooter("文章列表"))).toBe(false);
+    // The old caption cannot tell the digest from the article list.
+    expect(isDigestListFooter(OLD_ARTICLE)).toBe(false);
+    expect(isDigestListFooter(null)).toBe(false);
   });
 });

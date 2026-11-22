@@ -82,7 +82,7 @@ import {
   rowHasTitle,
   userListKeyOfRow
 } from './screen_titles';
-import { isArticleListFooter, isMailListFooter, isSubListFooter, userListFooterRow } from './screen_captions';
+import { isArticleListFooter, isDigestListFooter, isMailListFooter, isSubListFooter, userListFooterRow } from './screen_captions';
 import { recordFor, listRecordMatches, landingCursorNum } from './reading_record';
 import { parseUserListRow } from './user_list';
 import { markReadPromptShown } from './mark_read_prompt';
@@ -102,6 +102,7 @@ import { searchKeyOpensSheet } from './article_search';
 import { selectedUserId } from './user_list';
 import { queryUser, promptUserQuery, queryAuthor } from './user_query';
 import { showListPostInfo } from './post_info';
+import { showBoardInfo } from './board_info';
 
 // A plain `←`, for a key that leaves as it does (article_gestures.handleBack).
 const PLAIN_BACK_EVENT = Object.freeze({
@@ -1772,6 +1773,12 @@ ListSession.prototype = {
     return (this._boardName ?? this._helpBoard) === MAIL_LIST_KEY;
   },
 
+  // The list held is a board's digest (文摘列表, MODE_DIGEST): its table
+  // (bbs.c#digest_comms) has fewer commands than the article list's.
+  isDigestList: function() {
+    return isDigestListFooter(this._footerText);
+  },
+
   // The list held is PTT's online user list (#199), either view: its rows have
   // talk.c's user columns, numbered from 1, and the blacklist does not apply.
   isUserList: function() {
@@ -2104,6 +2111,11 @@ ListSession.prototype = {
       return;
     }
 
+    if (key.class === 'board-info') {
+      showBoardInfo(this._core, e.key);
+      return;
+    }
+
     if (key.class === 'native-inplace') {
       // A 類鍵：凍結交易（畫面凍住 → 送真鍵 → 採用真落點 → 直接回 buffer）。
       this._beginInplaceTransaction(key.bytes);
@@ -2200,6 +2212,16 @@ ListSession.prototype = {
     this._helpBoard = this._boardName;
     this._helpSelection = { num: this._selectedNum, pinnedKey: this._selectedPinnedKey };
     this._beginPassthroughBytes(steps, { kind: 'user-query', hint: null, noSync: true });
+  },
+
+  // The board information (#288, board_info.js): `i` names the board, not a
+  // row, so it goes out as the user query's keys do, without moving PTT's
+  // cursor.
+  beginBoardInfo: function(steps) {
+    this._spendLayer('nativePassthrough');
+    this._helpBoard = this._boardName;
+    this._helpSelection = { num: this._selectedNum, pinnedKey: this._selectedPinnedKey };
+    this._beginPassthroughBytes(steps, { kind: 'board-info', hint: null, noSync: true });
   },
 
   // A query of the selected article's author (#254, user_query.queryAuthor):
@@ -3440,6 +3462,10 @@ ListSession.prototype = {
     // delete, marks…) and the article list's in-place keys are refused below.
     // Q shows the selected article's information (#261, post_info.js).
     if (!mail && e.key === 'Q') return { class: 'post-info' };
+    // i / I show the board information (#288, board_info.js); the mailbox has
+    // no board and the digest list's table no `i`.
+    if (!mail && (e.key === 'i' || e.key === 'I'))
+      return { class: page || !this.isDigestList() ? 'board-info' : 'unsupported' };
     if (mail && (e.key === 'r' || e.key === 'l' || e.key === 'L')) return { class: 'open' };
     // Navigation synonyms follow pttbbs read.c:858-902 (' ' / 'N' / KEY_PGDN /
     // Ctrl-F = next page, 'P' / KEY_PGUP / Ctrl-B = prev page, 'p'/'k'/KEY_UP,

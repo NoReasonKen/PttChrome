@@ -249,3 +249,25 @@ test("文章：文章資訊在複製本篇文章連結之後，桌機右鍵與�
   }
   expect(keys({ ...BASE, articlePostInfoEnabled: false })).not.toContain("articlePostInfo");
 });
+
+// #288: board information acts on the whole list, as 設為全部已讀 does; on the
+// phone it is in the toolbar's More instead.
+test("desktop: an article list has board information, after 設為全部已讀; it calls onMenuSelect('boardInfo')", () => {
+  const calls = [];
+  const entries = buildContextMenuEntries({
+    ...BASE,
+    boardInfoEnabled: true,
+    onMenuSelect: (k) => calls.push(k),
+  });
+  const at = entries.findIndex((e) => e.key === "boardInfo");
+  expect(at).toBe(entries.findIndex((e) => e.key === "markAllRead") + 1);
+  expect(entries[at].label).toBe(i18n("boardInfo_title"));
+  entries[at].onClick({});
+  expect(calls).toEqual(["boardInfo"]);
+  expect(keys({ ...BASE, boardInfoEnabled: false })).not.toContain("boardInfo");
+  expect(keys({ ...BASE, normalEnabled: false, boardInfoEnabled: true })).not.toContain("boardInfo");
+  expect(keys({ ...BASE, mobile: true, boardInfoEnabled: true })).not.toContain("boardInfo");
+  const only = buildContextMenuEntries({ ...BASE, markAllReadEnabled: false, boardInfoEnabled: true });
+  const own = only.findIndex((e) => e.key === "boardInfo");
+  expect(only[own + 1]).toMatchObject({ type: "divider", key: "d-blacklist" });
+});

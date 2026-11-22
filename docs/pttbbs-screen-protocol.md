@@ -479,8 +479,10 @@ client 端自動收掉見 `docs/board-note-skip.md`。
 
 `(b)進板畫面` 走 `read_comms[]` 的 `{ 0, b_notes }`（`bbs.c:4601`），`b_notes` 是同一段
 （`bbs.c:4061-4081`，`mr==-1` 時另印「本看板尚無進板畫面。」）。
-`[i]看板資訊`（`b_config`，`board.c:326`）對非板主也是 `pressanykey(); return FULLUPDATE;`
-（`board.c:598`）；`[h]說明` → `b_help`（`bbs.c:4223`）→ `show_help_table` → `PRESSANYKEY()`。
+`[i]看板資訊`（`read_comms[]` 的 `i`／`I` → `bbs_cmd_config` → `b_config`）在 main 是可翻頁的 PSB 列表，
+不再 pressanykey：必須 `←`／`q` 才回列表，畫面與交易見 §11.10「`[i]` 看板資訊」。舊版（03cdf5eb `board.c:326`）
+的固定區塊＋`pressanykey()` 已不在線上（2026-11 實機確認是可翻頁列表），本專案不支援。
+`[h]說明` → `b_help`（`bbs.c:4223`）→ `show_help_table` → `PRESSANYKEY()`。
 
 ## 7. `v` 已讀設定交易（`b_mark_read_unread`，CONFIRMED）
 
@@ -1352,9 +1354,39 @@ server 的頁指標被移走而長頁不知道（症狀：翻頁跳格／重複�
   `vs_cmd_bar(VS_FOOTER, NULL)` 的 inline 形：READING 的 `(y)回應(X)推文`（HIGH，排最前）…`(←)離開(h)說明`；RMAIL 是
   `(y)回信`；`pager_common_cmds` 的 `(r)回信回文` 三種模式都有 ⇒ 「回信」不證明是信箱。`parseStatusRow` 不比對 part3；
   `parsePagerFooterContext` 單向推論（含「回應」⇒ READING）照舊成立，寬度不夠擠掉時退 unknown。
-- **`[i]` 看板資訊**：改成全螢幕可捲動列表（`board.c` 的 bconfig PSB），**必須 `q` 或 `←` 才離開**（Space／PgDn 變翻頁），
-  板主熱鍵要先 `Ctrl-P` 切編輯模式。本專案沒有自動送 `i`；`aid_navigation` 逃生鍵是 ←；`screen_dismiss` 只在
-  「請按任意鍵」／vmsg／輸入欄才動作 ⇒ 無需改。**日後若要自動化 `[i]`，離開一律送 ←。**
+- **`[i]` 看板資訊**：改成全螢幕可翻頁列表（`board.c#b_config`，PSB），**必須 `q` 或 `←` 才離開**（Space／PgDn 變翻頁），
+  板主熱鍵要先 `Ctrl-P` 切編輯模式。`aid_navigation` 逃生鍵是 ←；`screen_dismiss` 只在「請按任意鍵」／vmsg／輸入欄才動作。
+  列表好讀的看板資訊（#288，`board_info.js`）自動化了它，見下一節。
+
+### `[i]` 看板資訊（`board.c#b_config`，CONFIRMED @ main 35cfcf5）
+
+入口：文章列表 `read_comms[]` 的 `i`／`I` → `bbs_cmd_config`（`bbs.c:4889`、`4924-4925`），搜尋結果（MODE_SELECT）也吃；
+文摘 `digest_comms[]`（`bbs.c:4966`）沒有 `i`。`get_boardheader` 失敗時 `return FULLUPDATE`，什麼都不畫 ⇒ 列表重畫。
+
+畫面（`header_lines=2`、`footer_lines=1` ⇒ 一頁 `t_lines-3` 項，24 列時 21 項）：
+
+| 列 | 來源 | 內容 |
+|---|---|---|
+| 0 | `vs_draw_hdr2("看板設定與管理", mode)` | ` 看板設定與管理  [唯讀檢視]`；能編輯的人（`PERM_BM\|PERM_POLICEOP`）是 `[唯讀模式 (按 Ctrl-P 編輯)]` |
+| 1 | `bconfig_header` | `名稱: <板名>  板主: <板主> <板主附註>`，都沒有時 `板主: (無)` |
+| 2… | `bconfig_renderer` | `"  " + "%2d" + ". " + 熱鍵欄（唯讀時 3 格空白）+ 說明 + 補齊 + "  " + 值`；值依欄寬截斷；游標列第 0 欄是 `>`（`STR_CURSOR`，`UF_CURSOR_LEGACY` 時 `●`） |
+| 最後一列 | `vs_cmd_bar` | caption ` 看板資訊 `（能編輯的人 ` 看板設定 `）＋指令 |
+
+項目是 `bconfig_items[]`（`board.c:1316-1355`）依權限過濾後的約 30 項，含「看板管理紀錄」「[名單] …」「[管理] …」這些
+對一般讀者只顯示 `[唯讀檢視]`／`(限管理人員)` 的列。
+
+按鍵（`psb.c`）：`PgDn`／`Space`／`N`／`^F` 下一頁（`psb_cmd_pgdn`：`curr += rows`，會超過結尾時停在最後一項 ⇒
+最後一頁**原樣重畫**）；`PgUp`／`P`／`^B` 上一頁；`←`／`q`／`Q` 離開（`b_config` 回 FULLUPDATE ⇒ 列表重畫）；
+數字開跳號；`l`／Enter 開管理紀錄。`\f`（Ctrl-L）在 PSB 裡只重畫。
+
+client 交易（`board_info.js`，每一鍵都等前一鍵的回答）：
+
+1. `i`（使用者按的是 `I` 就送 `I`），不同步游標（`i` 只認看板，不認列）。expect：第 0 列標題、第 1 列板名、
+   最後一列 caption、中間每一列都讀得出編號連續的項目（`board_info_parse.parseBoardInfoPage`）；
+   列表重畫（`showsHeldList`）＝這個看板沒有資訊。
+2. 該頁滿（項目數＝`t_lines-3`）就送 `PgDn`，直到某頁沒滿或沒有新項目（最後一頁剛好滿時 PTT 重畫同一頁）。
+3. 全部讀完才開 app 自己的 sheet／dialog，同時送 `←`，expect 回到原本那份列表。
+4. 失敗：畫面標題是看板資訊但讀不出來 ⇒ 送 `←` 離開；其他畫面一律不猜、不送任何鍵，交給列表的原生旅行規則。
 - **滑鼠**：新版伺服器端有 locator 反白、指令列／標題列（新信）hotspot、滾輪捲列表（§1.1），只在 client 送 xterm 滑鼠回報時才有作用。
   滾輪把 `base` 移 ±1 會打破看板列表的分頁對齊；本 client 只在原生畫面（`listRenderMode === 'native'`）且使用者開了
   `mouseServerReport` 才回報，正確性不受影響，細節見 `docs/board-list-smooth-scroll.md` §2.2。

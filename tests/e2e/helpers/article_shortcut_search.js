@@ -225,7 +225,7 @@ async function installNestedServer(page, session) {
       return c < 128 ? ch : String.fromCharCode(window.lib.u2bArray[2 * c], window.lib.u2bArray[2 * c + 1]);
     }).join('');
     const subject = title => title.replace(/^(?:(?:Re|Fw):\s*)+/i, '').toLowerCase();
-    // surface: article | list | info | prompt | empty | missing | main | query
+    // surface: article | list | info | prompt | empty | missing | main | query | boardInfo
     // `promptless`: `a` shows no prompt, as on a screen where it is no command.
     // `squeezedFooter`: the pager footer has room only for its short hints,
     //   as a very long article's (more.c#common_pmore_footer_handler).
@@ -242,7 +242,12 @@ async function installNestedServer(page, session) {
       // author's query screen, or nothing at all for an author in
       // `goneAuthors` (getuser fails). `querySleepMs`: PTT's sleep after the
       // key on the query screen, before the list (#254).
-      goneAuthors: new Set(), querySleepMs: 0, queryUser: null, sleepPending: 0
+      goneAuthors: new Set(), querySleepMs: 0, queryUser: null, sleepPending: 0,
+      // `i` on the list (bbs.c#bbs_cmd_config → board.c#b_config, #288): the
+      // board information, a PSB list `boardInfoAt` is the cursor item of.
+      // `boardInfoFails`: get_boardheader fails and PTT draws the list again;
+      // `boardInfoGarbled`: a row of the screen reads as nothing PTT prints.
+      boardInfoAt: 0, boardInfoFails: false, boardInfoGarbled: false
     };
     const listed = () => {
       const all = articles.filter(article => !state.deleted.has(article.aid) && (!state.filter || !article.pinned));
@@ -342,6 +347,55 @@ async function installNestedServer(page, session) {
         [area + 4]: '└' + '─'.repeat(24) + ' [再按 Q 切換價格列表]  ─┘'
       };
     };
+    // board.c#bconfig_items as a reader without board permissions sees them
+    // (bcfg_getter's read-only values).
+    const boardInfoItems = [
+      ['看板管理紀錄(自動公告)', '(尚無記錄)'], ['中文敘述', '測試 ◎Test board'],
+      ['公開狀態 (是否隱形)', '公開'], ['隱板時進入十大排行榜', '不可'], ['非看板會員發文', '開放'],
+      ['回應文章', '開放'], ['自刪文章', '開放'], ['推薦文章 (推文)', '開放'], ['修改或刪除自己的推文', '開放'],
+      ['噓文', '開放'], ['快速連推文章', '限制 (間隔 5 秒)'], ['推文時記錄來源 IP', '不會記錄'],
+      ['推文開頭自動對齊', '對齊'], ['板主刪除部份違規文字', '無法'], ['轉錄文章自動記錄', '會 (需發文權限)'],
+      ['冷靜模式', '未設定'], ['未滿十八歲進入', '允許'], ['[發文條件] 登入次數', '300 次以上 (您: 1234 次)'],
+      ['[發文條件] 退文篇數', '無限制'], ['個人發文推文權限', '具有發文與推文權限'],
+      ['預設連署限制 (登入/退文)', '無特別限制'], ['[名單] 設定禁言名單(水桶)', '[唯讀檢視]'],
+      ['[名單] 可見會員名單', '[唯讀檢視]'], ['[名單] 投票限制名單', '[唯讀檢視]'],
+      ['[管理] 舉辦與管理投票', '[唯讀檢視]'], ['[管理] 處理檢舉', '[無未處理]'],
+      ['[管理] 文章類別設定', '[唯讀檢視]'], ['[管理] 發文注意事項', '[唯讀檢視]'],
+      ['[管理] 編輯進板畫面', '[唯讀檢視]'], ['[紀錄] 看板管理稽核紀錄', '(限管理人員)']
+    ];
+    // b_config's screen (psb.c): vs_draw_hdr2's title, bconfig_header's board
+    // row, a page of bconfig_renderer rows (the page the cursor item is on,
+    // its row marked with STR_CURSOR) and the PSB footer.
+    const boardInfoRows = termRows => {
+      const page = termRows - 3;
+      const start = Math.floor(state.boardInfoAt / page) * page;
+      const width = Math.max(...boardInfoItems.map(([label]) => cellWidth(label)));
+      const rows = {
+        0: ' 看板設定與管理  [唯讀檢視]',
+        1: `名稱: ${state.board}  板主: test`,
+        [termRows - 1]: ' 看板資訊  (l)管理紀錄 (PgUp)上頁 (PgDn)下頁 (1)跳號 (←)離開 (h)說明'
+      };
+      boardInfoItems.slice(start, start + page).forEach(([label, value], offset) => {
+        const num = start + offset;
+        rows[2 + offset] = (num === state.boardInfoAt ? '>' : ' ') + ' ' + String(num + 1).padStart(2) + '. ' +
+          '   ' + padCells(label, width) + '  ' + value;
+      });
+      if (state.boardInfoGarbled) rows[4] = '  ??????';
+      return rows;
+    };
+    // b_config's keys (psb.c): the page keys, and ← q Q to leave.
+    const boardInfoKey = (rest, termRows) => {
+      const page = termRows - 3;
+      const total = boardInfoItems.length;
+      const sequence = /^\x1b\[[0-9;]*[~A-Za-z]/.exec(rest);
+      const key = sequence ? sequence[0] : rest[0];
+      if (key === '\x1b[6~' || key === ' ' || key === 'N')
+        state.boardInfoAt = state.boardInfoAt + page < total ? state.boardInfoAt + page : total - 1;
+      else if (key === '\x1b[5~' || key === 'P')
+        state.boardInfoAt = Math.floor(state.boardInfoAt / page) > 0 ? state.boardInfoAt - page : 0;
+      else if (key === '\x1b[D' || key === 'q' || key === 'Q') state.surface = 'list';
+      return rest.slice(key.length);
+    };
     const frame = (fullRepaint = false) => {
       const termRows = session.dynamicRows ? state.applicationRows : 24;
       const bodyRows = termRows - 4;
@@ -384,6 +438,10 @@ async function installNestedServer(page, session) {
       } else if (state.surface === 'query') {
         rows = queryRows(state.queryUser, termRows);
         inverse = [0];
+      } else if (state.surface === 'boardInfo') {
+        rows = boardInfoRows(termRows);
+        inverse = [0];
+        cursor = [3 + state.boardInfoAt % (termRows - 3), 1];
       } else {
         const entries = listed();
         rows = {
@@ -458,6 +516,7 @@ async function installNestedServer(page, session) {
           : session.boardEntry === 'movie' ? 'boardMovie' : 'list';
     };
     const step = rest => {
+      if (state.surface === 'boardInfo') return boardInfoKey(rest, session.dynamicRows ? state.applicationRows : 24);
       // Any key leaves the query screen (one escape sequence is one key); PTT
       // sleeps before it draws the list again.
       if (state.surface === 'query') {
@@ -571,6 +630,12 @@ async function installNestedServer(page, session) {
         state.surface = 'info';
         state.infoFrom = 'list';
         state.infoOf = selected();
+      }
+      else if ((head === 'i' || head === 'I') && state.surface === 'list') {
+        if (!state.boardInfoFails) {
+          state.surface = 'boardInfo';
+          state.boardInfoAt = 0;
+        }
       }
       else if (head === '\x11' && state.surface === 'list') {
         const author = selected()?.author;
