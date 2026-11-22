@@ -68,8 +68,8 @@ export function identityRows(lines, bodyStart, article) {
 
 export class KeptListPage {
   // `frame`: the list's last presented frame. `session`: the list session's
-  // own page (list_session.js#listPage: its rows and what it knows of them),
-  // or null for a list whose session keeps none, such as the board list.
+  // own page (its rows, selection and reading position), or null when it
+  // has no complete session page to keep.
   constructor(frame, session = null) {
     this.frame = frame;
     this.session = session;

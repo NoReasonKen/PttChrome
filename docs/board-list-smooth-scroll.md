@@ -281,10 +281,12 @@ the `inFlightKind` that `_settleEvent` reads is already null, so a board list is
 and an article list is taken over by ListSession (whose handler already ran in the same round). For opening a board,
 the "teardown" is `_suspend()` (buffer kept) rather than `_reset()`; nothing else changes.
 
-**Known gap (not done)**: `suspended` only covers "enter board → leave board". **Entering a folder or group board and then backing up to
-the list above** still re-runs `seed`, so the upper list's view is pinned again by the server's page. Fixing it would mean storing a stack of
-upper-list buffers and anchors (parent and child share a variant and the same number-space shape, so ownership and the alias guards would all need rewriting);
-deliberately left out of this round.
+**Back from a child board list** ([#132](https://github.com/NoReasonKen/PttChrome/issues/132)). Each mobile live layer keeps its own board-list
+buffer, including the order, unread marks, selected entry and reading position. A child can reuse the session without replacing its parent's
+rows. On the return leg named by the page stack, verify the list variant, number or count view, and identities of overlapping numbered entries.
+The verified parent restores its buffer before rendering and catches PTT's cursor up to its selection. Differences in descriptions, popularity
+or unread marks do not replace the saved entries. A confirmed identity mismatch uses the ordinary rebuild. Count view uses its existing
+positioning response before making the same check. Pull-to-refresh explicitly replaces the kept data.
 
 ### 4.5 Keyboard whitelist (the enumeration is the contract)
 
