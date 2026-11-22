@@ -393,12 +393,22 @@ describe('Operation that reopens the article', () => {
 
   test('lifts the cover past LANDING_MS even if the restore never applies', () => {
     const { core, cover } = runWithCover();
-    const now = Date.now();
-    core.articleHold.done('postInfo');
-    vi.spyOn(Date, 'now').mockReturnValue(now + LANDING_MS);
-    nextFrame();
-    vi.restoreAllMocks();
-    expect(cover.destroy).toHaveBeenCalledTimes(1);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const start = Date.now();
+      core.articleHold.done('postInfo');
+
+      vi.setSystemTime(start + LANDING_MS - 1);
+      nextFrame();
+      expect(cover.destroy).not.toHaveBeenCalled();
+
+      vi.setSystemTime(start + LANDING_MS);
+      nextFrame();
+      expect(cover.destroy).toHaveBeenCalledTimes(1);
+      expect(frames).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('a failure hands the cover to the hold', () => {

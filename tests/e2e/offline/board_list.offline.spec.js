@@ -75,31 +75,28 @@ test.describe('看板列表平滑捲動（scenario 重放）', () => {
     expect(st.selected).not.toBeNull();
     expect(st.scrollHeight).toBeGreaterThan(st.clientHeight + 1); // 素材挑的是超過兩個視口的清單
 
-    // 捲動只移動 body，header 原地不動（直接驅動視口；真滾輪另有列表好讀的 smoke）。
-    const geo = () =>
-      page.evaluate(() => {
-        const c = document.querySelector('#mainContainer');
-        const v = c.querySelector('.listBodyView');
-        return {
-          scrollTop: v.scrollTop,
-          headerTop: c.children[0].getBoundingClientRect().top,
-          firstBodyTop: v.children[0].getBoundingClientRect().top,
-        };
+    // Take both geometry samples in one task so a queued scroll cannot move the baseline.
+    const { top, bottom } = await page.evaluate(() => {
+      const c = document.querySelector('#mainContainer');
+      const v = c.querySelector('.listBodyView');
+      const sample = () => ({
+        scrollTop: v.scrollTop,
+        maxScrollTop: v.scrollHeight - v.clientHeight,
+        headerTop: c.children[0].getBoundingClientRect().top,
+        firstBodyTop: v.children[0].getBoundingClientRect().top,
       });
-    // engage 時視口會捲到游標（可能已在底）⇒ 先捲到頂當基準，再捲到底。
-    const scrollTo = (y) =>
-      page.evaluate((v) => {
-        document.querySelector('#mainContainer .listBodyView').scrollTop = v;
-      }, y);
-    await scrollTo(0);
-    await expect.poll(async () => (await geo()).scrollTop).toBe(0);
-    const g0 = await geo();
-    await scrollTo(1e6);
-    await expect.poll(async () => (await geo()).scrollTop).toBeGreaterThan(0);
-    const g1 = await geo();
-    expect(Math.abs(g1.headerTop - g0.headerTop)).toBeLessThan(1);
+      v.scrollTop = 0;
+      const top = sample();
+      v.scrollTop = v.scrollHeight;
+      const bottom = sample();
+      return { top, bottom };
+    });
+    expect(top.scrollTop).toBe(0);
+    expect(Math.abs(bottom.scrollTop - bottom.maxScrollTop)).toBeLessThan(1);
+    const delta = bottom.scrollTop - top.scrollTop;
+    expect(Math.abs(bottom.headerTop - top.headerTop)).toBeLessThan(1);
     // body 恰好位移捲動量（整段序列都在視口裡，header 不在）。
-    expect(Math.abs(g0.firstBodyTop - g1.firstBodyTop - g1.scrollTop)).toBeLessThan(1);
+    expect(Math.abs(top.firstBodyTop - bottom.firstBodyTop - delta)).toBeLessThan(1);
 
     // End／Home：抓到板尾與板頭，畫面不卡在 frozen。
     await ptt.sendKey(page, 'End');
