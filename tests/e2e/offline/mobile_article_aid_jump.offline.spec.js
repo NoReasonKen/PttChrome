@@ -11,7 +11,7 @@
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const {
-  bootNestedShortcutSearch, nativeBack, waitArticle, waitList, waitIdle, readToMiddle, topLine, tapCard, visibleText
+  bootNestedShortcutSearch, nativeBack, waitArticle, waitList, waitIdle, readToMiddle, topLine, tapCard, tapShortcut, visibleText
 } = require('../helpers/article_shortcut_search');
 const { MAIN, recordHints, recordedHints } = require('../helpers/stack_routes');
 const { bootMailbox, mailListActive, mailSurface } = require('../helpers/mail_box');
@@ -220,6 +220,34 @@ async function jumpAcrossBoards(page) {
 }
 
 test.describe('手機：在文章裡用文章代碼跳文 (#281)', () => {
+  for (const [key, match] of [['author', 'Alpha topic'], ['thread', 'Re: [Talk] Beta topic']]) {
+    test(`returning after a same-${key} search in the jumped-to article reveals the jump origin (#73)`, async ({ page }) => {
+      const origin = await articleFromList(page);
+      await jump(page, '1gIeu-3B');
+      await waitArticle(page, 'Beta');
+      await settled(page);
+      await tapShortcut(page, key);
+      await waitList(page, { has: [match], lacks: ['Delta topic'] });
+      await settled(page);
+      await nativeBack(page);
+      await waitArticle(page, 'Beta');
+      await settled(page);
+      await expect(page.locator(PILL)).toBeVisible();
+      const release = await holdSends(page, /#1gIeu-3A\r/);
+      if (key === 'author') await nativeBack(page);
+      else await page.locator(PILL).tap();
+      await expect(page.locator(REVEALED)).toContainText('Alpha line');
+      await expect.poll(() => page.evaluate(() => window.__heldSends.length)).toBeGreaterThan(0);
+      await release();
+      await waitArticle(page, 'Alpha');
+      await settled(page);
+      expect(await opened(page)).toBe('Alpha');
+      expect(await rowAtTop(page, MAIN)).toEqual(origin.row);
+      await nativeBack(page);
+      await waitList(page, { has: ['Alpha topic', 'Delta topic'] });
+    });
+  }
+
   test('tapping article codes across boards returns one article at a time, then the original list (#73)', async ({ page }) => {
     const { alpha, beta } = await jumpAcrossBoards(page);
     // PTT cannot answer until after the reader has seen the previous article.

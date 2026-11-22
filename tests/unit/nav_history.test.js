@@ -101,6 +101,18 @@ describe("NavHistory 兩段式 commit", () => {
     expect(h.landed()).toEqual({ board: "Other", aid: "1gIeu-3C" });
   });
 
+  test("a live jump origin can be reopened after standalone history is invalidated", () => {
+    const h = new NavHistory();
+    const article = { kind: "aid", board: "C_Chat", aid: "1gIeu-3B" };
+    h.beginJump(article, target);
+    const liveOrigin = h.commitJump();
+    h.invalidate();
+    expect(h.beginBack(liveOrigin)).toBe(article);
+    expect(h.commitBack()).toBe(article);
+    expect(h.landed()).toEqual({ board: article.board, aid: article.aid });
+    expect(h.canGoBack()).toBe(false);
+  });
+
   test("beginBack 期間 canGoBack 為 false（防重入），commitBack 才 pop", () => {
     const h = new NavHistory();
     h.beginJump(origin, target);

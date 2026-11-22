@@ -482,11 +482,17 @@ AidNavigation.prototype = {
     const view = this._view;
     if (!view || !view.showBackButton || !view.hideBackButton) return;
     if (this.canGoBack()) {
-      const entry = this._history.peek();
+      const entry = this._core.navigationStack?.jumpOriginBelow?.() || this._history.peek();
       view.showBackButton(entry ? entry.label : '', this.backFromButton.bind(this));
     } else {
       view.hideBackButton();
     }
+  },
+
+  // A Back from search results can expose a jump route that was hidden
+  // while the reader was browsing the results.
+  noteStackPresented: function() {
+    this._updateBackButton();
   },
 
   // --- stack lifecycle notifications (pure: they must not touch the callers'
@@ -1061,15 +1067,14 @@ AidNavigation.prototype = {
   // Back to the article the last jump started from. Deliberately NOT gated on
   // startedEasyReading: the target article may be rendering natively (the user
   // toggled easy reading off), and the sequence drives the native screen anyway.
-  // onEnd({ ok, missed }): the stacked Back from an article jumped to by its
-  // code (#281, aid_jump.backToJumpOrigin). opts.revealed: that article
-  // already shows, from its live layer, at the position the reader left it
+  // opts.origin supplies the verified route from a live layer. opts.revealed:
+  // that page already shows at the position the reader left it
   // or has scrolled it to since; the real article takes that position over
   // from the layer (stack_handoff), so the anchor's reading position is not
   // restored ('aid-back' done) on top of it. Returns whether the run started.
   back: function(onEnd, opts) {
     if (this.active) return false;
-    const anchor = this._history.beginBack();
+    const anchor = this._history.beginBack(opts?.origin);
     if (!anchor) {
       this._hint('沒有可返回的文章', 0, HINT_ERROR);
       return false;
@@ -1085,19 +1090,18 @@ AidNavigation.prototype = {
   // An animated Back already revealed the source; synchronize PTT to the
   // exact anchor carried by that Back, including when several are queued.
   backToLayer: function(origin, revealed) {
-    if (!this.canGoBack() || this._history.peek() !== origin) return false;
     const core = this._core;
     return this.back(result => {
       if (result.ok && origin.kind === 'aid') core.articleGestures.pagePresented(PAGE.ARTICLE);
       else if (result.missed) core.navigationStack.sourceGone();
-    }, { revealed: revealed });
+    }, { origin, revealed });
   },
 
   // The return button and its shortcut use the same Back as the system when
   // the source is a live layer. Without a layer, replay the saved origin.
   backFromButton: function() {
     const core = this._core;
-    if (core.navigationStack?.jumpOriginBelow?.() === this._history.peek() && this.canGoBack())
+    if (core.navigationStack?.jumpOriginBelow?.())
       return core.sendNavKeyAsUser?.('ArrowLeft');
     return this.back();
   },
@@ -1263,7 +1267,7 @@ AidNavigation.prototype = {
 
   // Is a back run available right now (drives the button / the shortcut)?
   canGoBack: function() {
-    return !this.active && this._history.canGoBack();
+    return !this.active && (!!this._core.navigationStack?.jumpOriginBelow?.() || this._history.canGoBack());
   },
 
   // The anchor for the article we are leaving, by priority (nav_history

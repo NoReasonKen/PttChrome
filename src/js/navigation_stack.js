@@ -177,6 +177,9 @@ export class NavigationStack {
 
   // The route back to the live page before the jump, or null.
   jumpOriginBelow() {
+    if (this.handoff || this.core.buf.pageState !== 3) return null;
+    const top = this._top();
+    if (!top?.id || top.id !== this._articlePage().id) return null;
     return revealTarget(this.stack)?.jumpBack || null;
   }
 
@@ -734,6 +737,7 @@ export class NavigationStack {
     // below is known to be the way back. A pause on the way (#189) is such a
     // detour too.
     if (how === 'unexpected' || how === 'timeout' || gone || h.detoured) this._discard();
+    core.aidNavigation?.noteStackPresented?.();
     h.finish();
     if (gone) this.gone = new KeptSource(h);
     core._refreshScreenContext?.();

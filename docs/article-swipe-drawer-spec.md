@@ -50,6 +50,11 @@ pages and replay their own verified routes in order. If the source article
 was deleted, the revealed article stays readable over its verified board list.
 If no origin can be verified, no layer is added and the usual fallback applies.
 
+A shortcut search opened from a jump target keeps that article over its jump
+origin. Back first returns to the article that ran the search. Its next Back
+uses the verified jump route stored with the lower layer, including after the
+search has cleared the standalone jump history.
+
 ## Direction and input ownership
 
 | Starting state | Up/down | Left | Right |
