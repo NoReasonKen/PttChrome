@@ -717,6 +717,7 @@ module.exports = {
   attachConsole,
   waitEasyReadingComplete,
   applyPrefs,
+  holdFavoritesFetch,
   resetSession,
   gotoBoard,
   pressAndSettle,

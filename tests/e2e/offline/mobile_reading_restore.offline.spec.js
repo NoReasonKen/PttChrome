@@ -12,7 +12,7 @@ const path = require('path');
 const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { bootOffline } = require('../helpers/replay');
-const { waitPreviewsSettled } = require('../helpers/layout');
+const { waitPreviewsSettled, waitScrollStable } = require('../helpers/layout');
 const { touchDrag, nextFrames } = require('../helpers/real_input');
 
 const SIM_SRC = fs.readFileSync(path.join(__dirname, '..', 'helpers', 'pmore_sim.js'), 'utf8');
@@ -143,6 +143,8 @@ for (const input of ['wheel', 'touch', 'key', 'pointer']) {
       await page.mouse.down();
     }
     await nextFrames(page);
+    // Let the real touch gesture's momentum finish before positioning the fixture.
+    if (input === 'touch') await waitScrollStable(page, '#BBSWindow > .main');
     // Move the fixture away from the restored row without another input event.
     // A surviving follower would pull it back when that row's real layout grows.
     await page.evaluate(() => {

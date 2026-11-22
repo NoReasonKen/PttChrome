@@ -41,6 +41,8 @@ const MAILS = [
 // mail list under the legacy caption 鴻雁往返.
 async function bootMailbox(page, { mails = MAILS, count = 0, delay = 40, legacy = false, prefs = {} } = {}) {
   await bootOffline(page, ptt);
+  // Keep the dashboard's automatic favorites request out of this mailbox fixture.
+  await ptt.holdFavoritesFetch(page);
   await ptt.applyPrefs(page, { enableEasyReading: true, ...prefs });
   await page.evaluate(({ mails, count, delay, legacy, ART, MAIN_MENU, FIRST_ITEM_ROW }) => {
     const app = window.__app;
