@@ -944,7 +944,9 @@ server 送的是編碼後的 ANSI，client 看不到 flag，只看得到結果�
 
 看板列表右鍵選單「前已讀後未讀」（`src/js/list_session.js#markReadUnreadBefore`）的依據。
 消費端守護：`tests/unit/list_mark_read.test.js`、`tests/e2e/offline/list_mark_read.offline.spec.js`。
-「設為全部已讀」（`src/js/mark_all_read.js`，右鍵選單／手機「更多」）走同一個 prompt 的 `v` 分支：
+列表好讀的 `v` 鍵與手機「更多」的「已讀／未讀設定…」（#299）開選擇 sheet，三個答案（`u` 全部未讀＝`brc_toggle_all_read(currbid, 0)`、`v` 全部已讀、`w` 前已讀後未讀）共用同一條兩步序列；
+`u`、`v` 兩個分支都不看游標，由 `mark_all_read.js` 的 `MARK_READ_ANSWERS` 一張表送出，`w` 要先把游標對到選取的那篇（`markReadUnreadBefore`）。
+「設為全部已讀」（`src/js/mark_all_read.js`，桌機右鍵選單、指令面板，不開 sheet）走同一個 prompt 的 `v` 分支：
 `v` → 等 prompt → `v⏎` ⇒ `brc_toggle_all_read(currbid, 1)`。該分支**不看** `fhdr`，游標在哪一篇都一樣
 （仍需有一篇可當 needitem），所以不送游標同步以外的跳號；沒有拒絕路徑（不像 `w` 的 `vmsg`）。
 兩者在列表好讀時都是凍結交易、step 3 的 FULLUPDATE 落地即回好讀（`docs/easy-reading-list.md`「Resume on landing」）：

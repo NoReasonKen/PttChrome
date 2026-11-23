@@ -1,4 +1,8 @@
-// 設為全部已讀（桌機右鍵選單；手機工具列「更多」）。
+// 設為全部已讀／未讀（#299）：`v` 的三個答案共用這一條序列（MARK_READ_ANSWERS）。
+// 入口：桌機右鍵選單與指令面板「設為全部已讀」＝直接 start('V')；列表好讀的 `v` 鍵與手機
+// 「更多」的「已讀／未讀設定…」＝ask()，開選擇 sheet，挑了才 startAnswer（U／V 走這裡，
+// W 交給 ListSession.markReadUnreadBefore，它要先把 PTT 游標對到選取的那篇）。
+// 以下以 V 為例說明協定。
 //
 // pttbbs `mbbsd/bbs.c#b_mark_read_unread`（列表的 `v`，docs/pttbbs-screen-protocol.md §11.5）：
 //   `v` → getdata「設定所有文章 (U)未讀 (V)已讀 (W)前已讀後未讀 (Q)取消？[Q] 」→ `v⏎`
@@ -27,6 +31,28 @@ export { markReadPromptShown };
 
 export const MARK_ALL_READ_FLAG = 'markAllReadInFlight';
 
+// PTT's three answers to the `v` prompt, as one table: what the answer line
+// types, and the hints. U and V ignore the cursor and run here (startAnswer);
+// W marks "up to the cursor article", so it needs PTT's cursor on that article
+// first and runs through ListSession.markReadUnreadBefore (its own sync leg
+// and PTT-refusal path), reached from the same entrance (startAnswer).
+export const MARK_READ_ANSWERS = {
+  U: {
+    letter: 'u',
+    done: '已將本板所有文章設為未讀',
+    noPrompt: '設為全部未讀失敗：沒有出現 PTT 的設定提示',
+    noReply: '設為全部未讀：PTT 沒有回應'
+  },
+  V: {
+    letter: 'v',
+    done: '已將本板所有文章設為已讀',
+    noPrompt: '設為全部已讀失敗：沒有出現 PTT 的設定提示',
+    noReply: '設為全部已讀：PTT 沒有回應'
+  },
+  // The wording is ListSession.markReadUnreadBefore's.
+  W: { letter: 'w' }
+};
+
 export function MarkAllRead(core) {
   this._core = core;
 }
@@ -46,16 +72,71 @@ MarkAllRead.prototype = {
     return !!t && t.kind === 'article-list';
   },
 
-  // 回 true ＝已送出（或已提示為何不送）。
-  start: function() {
+  // `v` over the easy-reading article list and the phone More sheet's entry:
+  // open the choice sheet (components/ContextMenu/MarkReadChoiceModal). Same
+  // gates as an answer, so a screen that could not take any answer opens
+  // nothing. true = the sheet is open (or a hint says why not).
+  ask: function() {
     const core = this._core;
+    if (refreshTargetOf(core)?.kind === 'mail') {
+      this._hint(UNSUPPORTED_KEY_HINT, 4000, HINT_ERROR);
+      return false;
+    }
+    if (!this.available()) {
+      this._hint('只有在文章列表才能設定已讀未讀');
+      return false;
+    }
+    const busy = serializedOpHint(core);
+    if (busy) {
+      this._hint(busy);
+      return false;
+    }
+    if (typeof core.openMarkReadChoice === 'function' && core.openMarkReadChoice()) return true;
+    this._hint(UNSUPPORTED_KEY_HINT, 4000, HINT_ERROR);
+    return false;
+  },
+
+  // One of the sheet's answers ('U' / 'V' / 'W'). true = sent or hinted.
+  startAnswer: function(answer) {
+    const key = String(answer || '').toUpperCase();
+    if (key === 'W') return this._startBefore();
+    return this.start(key);
+  },
+
+  // W: everything up to the article under the cursor read, the rest unread.
+  _startBefore: function() {
+    const ls = this._core.listSession;
+    const num = ls && ls.markReadCursorNum ? ls.markReadCursorNum() : null;
+    if (num == null) {
+      this._hint('請先把游標移到一篇有編號的文章（置底文不能當參考點）', 4000, HINT_ERROR);
+      return false;
+    }
+    if (!this.available()) {
+      this._hint('只有在文章列表才能設定已讀未讀');
+      return false;
+    }
+    const busy = serializedOpHint(this._core);
+    if (busy) {
+      this._hint(busy);
+      return false;
+    }
+    if (ls.markReadUnreadBefore(num)) return true;
+    this._hint('設定已讀未讀失敗：目前的畫面不是好讀列表', 4000, HINT_ERROR);
+    return false;
+  },
+
+  // 回 true ＝已送出（或已提示為何不送）。answer：'V'（預設，「設為全部已讀」）或 'U'。
+  start: function(answer = 'V') {
+    const core = this._core;
+    const spec = MARK_READ_ANSWERS[answer];
+    if (!spec || !spec.noPrompt) return false;
     // The mailbox has no such function (#252): refused, nothing sent.
     if (refreshTargetOf(core)?.kind === 'mail') {
       this._hint(UNSUPPORTED_KEY_HINT, 4000, HINT_ERROR);
       return false;
     }
     if (!this.available()) {
-      this._hint('只有在文章列表才能設為全部已讀');
+      this._hint(answer === 'V' ? '只有在文章列表才能設為全部已讀' : '只有在文章列表才能設定已讀未讀');
       return false;
     }
     const busy = serializedOpHint(core);
@@ -70,7 +151,7 @@ MarkAllRead.prototype = {
     const bm = rr.begin('mark-all-read');
     const fail = function() {
       rr.end(bm, 'fail');
-      self._hint('設為全部已讀失敗：沒有出現 PTT 的設定提示', 0, HINT_ERROR);
+      self._hint(spec.noPrompt, 0, HINT_ERROR);
     };
     const steps = [
       {
@@ -84,7 +165,7 @@ MarkAllRead.prototype = {
       },
       {
         // getdata 是整行輸入（vgets）⇒ 必須補 Enter，單送 `v` 不會動。
-        keys: 'v\r',
+        keys: spec.letter + '\r',
         kind: 'mark-all-read-apply',
         fullRepaint: true,
         // 打字回顯的那一幀 prompt 還在 ⇒ 等到 prompt 消失（FULLUPDATE 的列表）才算落地。
@@ -93,11 +174,11 @@ MarkAllRead.prototype = {
         },
         onDone: function() {
           rr.end(bm, 'done');
-          self._hint('已將本板所有文章設為已讀', 3000);
+          self._hint(spec.done, 3000);
         },
         onFail: function() {
           rr.end(bm, 'fail');
-          self._hint('設為全部已讀：PTT 沒有回應', 0, HINT_ERROR);
+          self._hint(spec.noReply, 0, HINT_ERROR);
         }
       }
     ];

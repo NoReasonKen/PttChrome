@@ -1872,6 +1872,27 @@
   "aidJump_failedArticle": {
     "message": "跳至 {0} 失敗"
   },
+  "mobileToolbar_markReadChoice": {
+    "message": "已讀／未讀設定…"
+  },
+  "markReadChoice_title": {
+    "message": "已讀／未讀設定"
+  },
+  "markReadChoice_hint": {
+    "message": "設定本板文章的已讀記號，等同 PTT 的 v 鍵。"
+  },
+  "markReadChoice_allUnread": {
+    "message": "全部設為未讀"
+  },
+  "markReadChoice_allRead": {
+    "message": "全部設為已讀"
+  },
+  "markReadChoice_readBefore": {
+    "message": "選取的文章（含）以前已讀、以後未讀"
+  },
+  "markReadChoice_cancel": {
+    "message": "取消"
+  },
   "mobileToolbar_aidJump": {
     "message": "跳至文章代碼"
   },

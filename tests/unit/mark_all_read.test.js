@@ -2,7 +2,7 @@
 //
 // 承重點：`v` 沒進 getdata prompt 時第二步絕不可送（同「前已讀後未讀」，
 // tests/unit/list_mark_read.test.js）；prompt 畫在 row 22 不是底列 ⇒ 判定要掃整個畫面。
-import { MarkAllRead, markReadPromptShown } from "../../src/js/mark_all_read";
+import { MarkAllRead, MARK_READ_ANSWERS, markReadPromptShown } from "../../src/js/mark_all_read";
 import { serializedOpHint } from "../../src/js/serialized_op_gate";
 import { HINT_ERROR } from "../../src/js/status_hint";
 import { UNSUPPORTED_KEY_HINT } from "../../src/js/unsupported_hint";
@@ -175,5 +175,132 @@ describe("不適用／忙碌時不送鍵但不靜默", () => {
     expect(new MarkAllRead(core).start()).toBe(false);
     expect(enqueued).toEqual([]);
     expect(hints.at(-1).m).toBe("正在找第一篇未讀，請稍候…");
+  });
+});
+
+// #299: the three answers of PTT's `v` prompt are one operation.
+describe("三個答案共用一條序列（#299）", () => {
+  test("答案表：U／V 有提示字，W 交給列表 session", () => {
+    expect(Object.keys(MARK_READ_ANSWERS)).toEqual(["U", "V", "W"]);
+    expect(MARK_READ_ANSWERS.U.letter).toBe("u");
+    expect(MARK_READ_ANSWERS.V.letter).toBe("v");
+    expect(MARK_READ_ANSWERS.W.letter).toBe("w");
+  });
+
+  test("start('U')：同樣先 v 等 prompt，第二步是 u⏎，完成提示說未讀", () => {
+    const { core, enqueued, hints } = makeCore();
+    expect(new MarkAllRead(core).start("U")).toBe(true);
+    expect(enqueued.map((c) => c.keys)).toEqual(["v"]);
+    expect(enqueued[0].expect(null, listFrame())).toBe(false);
+    expect(enqueued[0].expect(null, promptFrame())).toBe(true);
+    enqueued[0].onDone(true);
+    expect(enqueued.map((c) => c.keys)).toEqual(["v", "u\r"]);
+    expect(enqueued[1].expect(null, promptFrame("u"))).toBe(false);
+    expect(enqueued[1].expect(null, listFrame())).toBe(true);
+    enqueued[1].onDone(true);
+    expect(core.markAllReadInFlight).toBe(false);
+    expect(hints.at(-1).m).toBe("已將本板所有文章設為未讀");
+  });
+
+  test("U 沒開出 prompt → 不送第二步，提示說設為全部未讀失敗", () => {
+    const { core, enqueued, hints } = makeCore();
+    new MarkAllRead(core).start("U");
+    enqueued[0].onFail();
+    expect(enqueued.map((c) => c.keys)).toEqual(["v"]);
+    expect(hints.at(-1)).toEqual({ m: "設為全部未讀失敗：沒有出現 PTT 的設定提示", level: HINT_ERROR });
+  });
+
+  test("未知的答案、W 不走 start：不送鍵", () => {
+    const { core, enqueued } = makeCore();
+    const m = new MarkAllRead(core);
+    expect(m.start("Q")).toBe(false);
+    expect(m.start("W")).toBe(false);
+    expect(enqueued).toEqual([]);
+  });
+
+  test("startAnswer 大小寫都收，U／V 走 start", () => {
+    for (const [a, want] of [["u", "u\r"], ["V", "v\r"]]) {
+      const { core, enqueued } = makeCore();
+      expect(new MarkAllRead(core).startAnswer(a)).toBe(true);
+      enqueued[0].onDone(true);
+      expect(enqueued.at(-1).keys).toBe(want);
+    }
+  });
+
+  test("startAnswer('W')：交給列表 session 的「前已讀後未讀」，帶游標那篇的編號", () => {
+    const { core, enqueued } = makeCore();
+    const before = vi.fn(() => true);
+    core.listSession = { markReadCursorNum: () => 42, markReadUnreadBefore: before };
+    expect(new MarkAllRead(core).startAnswer("w")).toBe(true);
+    expect(before).toHaveBeenCalledWith(42);
+    expect(enqueued).toEqual([]);
+  });
+
+  test("W 沒有可當參考點的文章（置底文／沒選取）→ 提示、不送", () => {
+    const { core, enqueued, hints } = makeCore();
+    const before = vi.fn(() => true);
+    core.listSession = { markReadCursorNum: () => null, markReadUnreadBefore: before };
+    expect(new MarkAllRead(core).startAnswer("W")).toBe(false);
+    expect(before).not.toHaveBeenCalled();
+    expect(enqueued).toEqual([]);
+    expect(hints.at(-1).level).toBe(HINT_ERROR);
+  });
+
+  test("W 時別的操作在途 → 提示、不呼叫 session", () => {
+    const { core, hints } = makeCore();
+    core.unreadJumpInFlight = true;
+    const before = vi.fn(() => true);
+    core.listSession = { markReadCursorNum: () => 42, markReadUnreadBefore: before };
+    expect(new MarkAllRead(core).startAnswer("W")).toBe(false);
+    expect(before).not.toHaveBeenCalled();
+    expect(hints.at(-1).m).toBe("正在找第一篇未讀，請稍候…");
+  });
+
+  test("W 時 session 沒接管（原生）→ 說明，不猜著送", () => {
+    const { core, enqueued, hints } = makeCore();
+    core.listSession = { markReadCursorNum: () => 42, markReadUnreadBefore: () => false };
+    expect(new MarkAllRead(core).startAnswer("W")).toBe(false);
+    expect(enqueued).toEqual([]);
+    expect(hints.at(-1).level).toBe(HINT_ERROR);
+  });
+});
+
+describe("ask()：開選擇 sheet，什麼都不送", () => {
+  test("文章列表 → 開 sheet", () => {
+    const { core, enqueued } = makeCore();
+    core.openMarkReadChoice = vi.fn(() => true);
+    expect(new MarkAllRead(core).ask()).toBe(true);
+    expect(core.openMarkReadChoice).toHaveBeenCalledTimes(1);
+    expect(enqueued).toEqual([]);
+  });
+
+  test("忙碌 → 提示、不開", () => {
+    const { core, hints } = makeCore();
+    core.openMarkReadChoice = vi.fn(() => true);
+    core.unreadJumpInFlight = true;
+    expect(new MarkAllRead(core).ask()).toBe(false);
+    expect(core.openMarkReadChoice).not.toHaveBeenCalled();
+    expect(hints.at(-1).m).toBe("正在找第一篇未讀，請稍候…");
+  });
+
+  test("不在文章列表／信箱 → 提示、不開", () => {
+    const main = makeCore(listFrame({ 0: "【主功能表】    批踢踢實業坊", 23: "" }));
+    main.core.openMarkReadChoice = vi.fn(() => true);
+    expect(new MarkAllRead(main.core).ask()).toBe(false);
+    expect(main.hints.at(-1).m).toContain("只有在文章列表");
+    const mail = makeCore(
+      listFrame({ 0: "【郵件選單】     批踢踢實業坊      看板《Test》", 23: " 信件列表  (y)回信 (d)刪信 (←)離開 " }),
+    );
+    mail.core.openMarkReadChoice = vi.fn(() => true);
+    expect(new MarkAllRead(mail.core).ask()).toBe(false);
+    expect(mail.hints.at(-1)).toEqual({ m: UNSUPPORTED_KEY_HINT, level: HINT_ERROR });
+    expect(main.core.openMarkReadChoice).not.toHaveBeenCalled();
+    expect(mail.core.openMarkReadChoice).not.toHaveBeenCalled();
+  });
+
+  test("sheet 沒掛上 → 說明，不靜默", () => {
+    const { core, hints } = makeCore();
+    expect(new MarkAllRead(core).ask()).toBe(false);
+    expect(hints.at(-1).level).toBe(HINT_ERROR);
   });
 });
