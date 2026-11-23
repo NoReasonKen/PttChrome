@@ -436,10 +436,8 @@ export class ArticleGestures {
   // `landed`, the article found, which PTT has already answered, slides in
   // from the right over `left`, as an opened entry does (#36), and stacks on
   // it; otherwise `left` is no lower page.
-  landJump(left, landed) {
-    if (landed && left && this.stack.pending === left) this._beginEntry();
-    this.stack.jumpLanded(left, landed);
-    if (landed) this.entry?.answered();
+  landJump(left, origin) {
+    if (this.stack.jumpLanded(left, origin, () => this._beginEntry())) this.entry?.answered();
   }
 
   // The real screen, which PTT has already answered, slides in from the right
@@ -588,7 +586,7 @@ export class ArticleGestures {
   _handoff(backsDuringSlide) {
     const core = this.core;
     // PTT's Back from a page of kind `level`, sent past the exit's modal gate.
-    const sendBack = level => {
+    const sendBack = (level, jumpBack, revealed) => {
       const record = recordFor(core);
       const bookmark = record.begin(level === PAGE.ARTICLE ? 'article-swipe-exit' : 'list-back-reveal');
       core.noteUserAction();
@@ -597,7 +595,9 @@ export class ArticleGestures {
       this.sendingBack = true;
       let sent = false;
       try {
-        sent = core.sendNavKeyAsUser('ArrowLeft');
+        sent = jumpBack
+          ? !!core.aidNavigation?.backToLayer(jumpBack, revealed)
+          : core.sendNavKeyAsUser('ArrowLeft');
       } finally {
         this.sendingBack = false;
         record.end(bookmark, sent ? 'done' : 'cancel');
@@ -608,7 +608,7 @@ export class ArticleGestures {
     };
     const sent = this.stack.begin({
       level: this.exitLevel,
-      send: () => sendBack(this.exitLevel),
+      send: (jumpBack, revealed) => sendBack(this.exitLevel, jumpBack, revealed),
       follow: sendBack,
       reveal: (layer, title, appBar) => this._revealUnder(layer, title, appBar),
       finish: () => this._removeExit(),

@@ -932,25 +932,86 @@ describe("AidNavigation 返回", () => {
     expect(h.sent[0]).toBe("sC_Chat\r\f");
   });
 
+  function presentArticle(h, postAid = ORIGIN) {
+    const order = [];
+    const left = { kind: "article", board: "C_Chat", post: { aid: postAid }, layer: {} };
+    h.core.view = h.view;
+    h.core.buf = h.termBuf;
+    h.view.useEasyReadingMode = true;
+    h.termBuf.pageState = 3;
+    h.core.articleGestures = {
+      captureArticleLayer: vi.fn(() => (order.push("capture"), left)),
+      landJump: vi.fn((layer, origin) => order.push(["land", layer, origin]))
+    };
+    h.core.articleHold = {
+      run: vi.fn(() => (order.push("cover"), true)),
+      done: vi.fn((source, options) => order.push(["done", source, options])),
+      hold: vi.fn()
+    };
+    h.core.navigationStack = { notePost: vi.fn() };
+    const enter = h.core.easyReading._enterFunctionMode;
+    h.core.easyReading._enterFunctionMode = function() {
+      order.push("leave");
+      enter.call(this);
+    };
+    return { left, order };
+  }
+
+  test("captures and covers the article before leaving, then lands with this jump's origin", () => {
+    const h = makeHarness({ listAnchor: LIST_ANCHOR });
+    const { left, order } = presentArticle(h);
+    h.nav.start("1gIeu-3A", "Android");
+    expect(order.slice(0, 3)).toEqual(["capture", "cover", "leave"]);
+    expect(left.jump).toBe(true);
+    expect(h.core.articleHold.run).toHaveBeenCalledWith("articleAidJump", { cover: true });
+    answerOriginInfo(h.queue, ORIGIN);
+    settle(h.queue, facts("clean-list", { boardName: "Android" }));
+    settle(h.queue, facts("clean-list", { boardName: "Android", cursorRowNum: 5, curY: 10 }));
+    settle(h.queue, facts("article"));
+    const origin = h.nav._history.peek();
+    expect(origin).toMatchObject({ kind: "aid", board: "C_Chat", aid: ORIGIN });
+    expect(h.core.navigationStack.notePost).toHaveBeenCalledWith(left, origin);
+    expect(h.core.articleGestures.landJump).toHaveBeenCalledWith(left, origin);
+    expect(order.slice(-2)).toEqual([["land", left, origin], ["done", "articleAidJump", { uncover: true }]]);
+  });
+
+  test("a failed jump drops the captured layer and releases its cover", () => {
+    const h = makeHarness({ listAnchor: LIST_ANCHOR });
+    const { left, order } = presentArticle(h);
+    h.nav.start("1gIeu-3A", "Android");
+    h.queue.flush();
+    expect(h.core.articleGestures.landJump).toHaveBeenCalledWith(left, null);
+    expect(order.slice(-2)).toEqual([["land", left, null], ["done", "articleAidJump", undefined]]);
+  });
+
+  test("a capture for a different article is dropped even when the jump succeeds", () => {
+    const h = makeHarness({ listAnchor: LIST_ANCHOR });
+    const { left } = presentArticle(h, "1gOtherA");
+    jumpForward(h);
+    expect(h.core.articleGestures.landJump).toHaveBeenCalledWith(left, null);
+    expect(h.core.navigationStack.notePost).not.toHaveBeenCalled();
+  });
+
   // #281: an article jumped to by its code from the article alive under it.
   test("over a jump from an article kept alive under it, the pill is the system Back", () => {
     const h = makeHarness({ listAnchor: LIST_ANCHOR });
     jumpForward(h);
     const keys = [];
-    h.core.navigationStack = { jumpOriginBelow: () => ({ jump: true }) };
+    h.core.navigationStack = { jumpOriginBelow: () => h.nav._history.peek() };
     h.core.sendNavKeyAsUser = key => (keys.push(key), true);
     h.backButton.cb();
     expect(keys).toEqual(["ArrowLeft"]);
     expect(h.sent).toEqual([]);
   });
 
-  test("a Back the pill cannot send as the system Back goes back by code as before", () => {
+  test("a guarded system Back does not bypass the guard by replaying the code", () => {
     const h = makeHarness({ listAnchor: LIST_ANCHOR });
     jumpForward(h);
-    h.core.navigationStack = { jumpOriginBelow: () => ({ jump: true }) };
+    h.core.navigationStack = { jumpOriginBelow: () => h.nav._history.peek() };
     h.core.sendNavKeyAsUser = () => false;
     h.backButton.cb();
-    expect(h.sent[0]).toBe("sC_Chat\r\f");
+    expect(h.sent).toEqual([]);
+    expect(h.nav.canGoBack()).toBe(true);
   });
 
   test("a Back to an article revealed from its live layer restores no position from before the jump (#281)", () => {
@@ -2757,7 +2818,7 @@ describe("failure over an easy-reading article", () => {
     h.core.buf = h.termBuf;
     h.view.useEasyReadingMode = presented;
     h.termBuf.easyReadingFunctionMode = false;
-    h.core.articleHold = { hold: vi.fn() };
+    h.core.articleHold = { run: vi.fn(() => false), hold: vi.fn() };
     return h.core.articleHold;
   };
 

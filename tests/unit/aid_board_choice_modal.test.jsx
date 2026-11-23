@@ -45,7 +45,11 @@ const makePttchrome = () => ({
   aidNavigation: {
     active: false,
     start: vi.fn(),
-    preparePicked: vi.fn((aid) => ({ aid, prepared: true })),
+    preparePicked: vi.fn((aid, onReady) => {
+      const token = { aid, prepared: true };
+      onReady(token);
+      return token;
+    }),
     continuePicked: vi.fn(() => true),
     reopenPicked: vi.fn(() => true),
     endPicked: vi.fn(),
@@ -139,7 +143,7 @@ test("其他看板 ⇒ 先記返回錨，再開原生 `s` 補全（同一般看�
   const pttchrome = makePttchrome();
   mount(pttchrome);
   await openPicker(pttchrome);
-  expect(pttchrome.aidNavigation.preparePicked).toHaveBeenCalledWith(AID);
+  expect(pttchrome.aidNavigation.preparePicked).toHaveBeenCalledWith(AID, expect.any(Function));
   const openCmd = queued(pttchrome, "search-board-open");
   expect(openCmd).toHaveLength(1);
   expect(openCmd[0].keys).toBe("s");

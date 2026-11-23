@@ -483,6 +483,7 @@ export const ContextMenu = ({ pttchrome }) => {
   );
   // 底部推文列交給探路的那一則（{ text, type }）；onPreflight 一回來就取走清空。
   const quickPushRef = useRef(null);
+  const backWhenPaletteCloses = useRef(false);
   // Shallow-merge a partial into state; undefined → no-op.
   const update = useCallback((partial) => {
     if (partial !== undefined) setState((s) => ({ ...s, ...partial }));
@@ -534,6 +535,10 @@ export const ContextMenu = ({ pttchrome }) => {
     !!state.longPushError;
   useEffect(() => {
     pttchrome.setModalOpen("contextMenu", modalOpen);
+    if (!modalOpen && backWhenPaletteCloses.current) {
+      backWhenPaletteCloses.current = false;
+      pttchrome.aidNavigation?.backFromButton();
+    }
   }, [pttchrome, modalOpen]);
 
   // 送出進度由 LongPushSession 推上來（它是純 JS，不認得 React）。
@@ -1386,23 +1391,26 @@ export const ContextMenu = ({ pttchrome }) => {
   // 開 `s` 補全的那一刻就離開文章 ⇒ 返回錨要先記（preparePicked），記不了就不開。
   const onAidChoicePick = useCallback(
     (choice) => {
-      const token = pttchrome.aidNavigation.preparePicked(choice.aid);
-      if (!token) {
-        update({ aidChoice: null });
+      const failed = () =>
         pttchrome.view?.flashListHint?.(
           i18n("aidBoardChoice_failed"),
           3000,
           HINT_ERROR,
         );
-        return;
-      }
-      update({
-        aidChoice: null,
-        showsSearch: true,
-        searchKind: "board",
-        searchKinds: ["board"],
-        searchAidTarget: { aid: choice.aid, token },
-      });
+      update({ aidChoice: null });
+      const started = pttchrome.aidNavigation.preparePicked(
+        choice.aid,
+        (token) => {
+          if (!token) return failed();
+          update({
+            showsSearch: true,
+            searchKind: "board",
+            searchKinds: ["board"],
+            searchAidTarget: { aid: choice.aid, token },
+          });
+        },
+      );
+      if (!started) failed();
     },
     [pttchrome, update],
   );
@@ -1637,7 +1645,7 @@ export const ContextMenu = ({ pttchrome }) => {
           pttchrome.deepLinkController?.copyCurrentPostLink();
           return;
         case "back":
-          pttchrome.aidNavigation?.back();
+          backWhenPaletteCloses.current = true;
           return;
         case "easyReadingOn":
         case "easyReadingOff":

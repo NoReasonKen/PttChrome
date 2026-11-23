@@ -476,6 +476,11 @@ scaleX / scaleY / dpr / fontsReady`，另有 `cursor.geom` 取樣（游標真的
 
 ### 返回原文（`nav_history.js`，CONFIRMED unit＋offline e2e）
 
+In the mobile page stack, system Back, a right swipe and the return button
+reveal the same source live layer for a verified article-code jump, on either
+board. Each further Back reveals the next page in the stack. See
+[Article-code jumps](article-swipe-drawer-spec.md#article-code-jumps).
+
 PTT 端**沒有**跳轉來源的概念（`read.c#select_by_aid` 只在 currboard 內搜尋，跨板就是真的換板），所以返回＝**用離開前擷取的錨點再導航一次**（同 BePTT 的「每個位置存一段按鍵序列、返回時重放」，差別是這裡每步都有 expect 而非盲送）。正向與返回共用同一組 enqueue 函式，只有中段那一步不同（`_enqueueMiddle`）。
 
 **正向跳轉的第 0 步 `Q`（`_enqueueOriginAid`）**：離開前先叫出文章資訊框，讀出**本篇自己的 AID**（協定 §8.2）當返回錨點，讓 aid 級在所有情境都拿得到。

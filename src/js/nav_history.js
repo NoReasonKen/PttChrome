@@ -157,11 +157,15 @@ NavHistory.prototype = {
     if (p.origin) {
       this._stack.push(p.origin);
       if (this._stack.length > this._max) this._stack.shift();
+    } else {
+      // Without a route to this jump's source, older routes are unreachable.
+      this._stack.length = 0;
     }
     this._landed =
       p.target && p.target.board && p.target.aid
         ? { board: p.target.board, aid: p.target.aid }
         : null;
+    return p.origin;
   },
 
   // A non-jump run (reconnect or search backtracking) landed on this article by
@@ -173,9 +177,8 @@ NavHistory.prototype = {
   // Returns the anchor to navigate to, or null when there is nothing to go
   // back to. The entry stays on the stack until commitBack(): a failed back
   // must not consume it (it is cleared by abort() instead — see the header).
-  beginBack: function() {
-    if (!this.canGoBack()) return null;
-    const entry = this.peek();
+  beginBack: function(entry = this.peek()) {
+    if (this._pending || !entry) return null;
     this._pending = { type: 'back', entry: entry };
     return entry;
   },
@@ -184,7 +187,10 @@ NavHistory.prototype = {
     const p = this._pending;
     this._pending = null;
     if (!p || p.type !== 'back') return null;
-    const entry = this._stack.pop() || null;
+    // A live page can still own its verified route after a search has
+    // invalidated the standalone history. Keep only older related entries.
+    const entry = p.entry;
+    this._stack.length = Math.max(0, this._stack.lastIndexOf(entry));
     // Only an aid anchor tells us the identity of the article we landed on;
     // after a board return the next jump falls back to a lower level.
     this._landed =

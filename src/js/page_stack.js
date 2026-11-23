@@ -71,7 +71,10 @@ export function withLayer(stack) {
 export function popPage(stack) {
   const pages = stack.pages.slice(0, -1);
   const n = pages.length;
-  if (n) pages[n - 1] = { ...pages[n - 1], layer: false };
+  if (n) {
+    const { jumpBack, ...current } = pages[n - 1];
+    pages[n - 1] = { ...current, layer: false };
+  }
   return { stack: { ...stack, pages }, revealed: revealTarget(stack) };
 }
 
@@ -144,7 +147,7 @@ export function revealTarget(stack) {
   if (current.results && below.kind !== PAGE.ARTICLE) return null;
   // A board list opened from a board list names the row it was opened from.
   const opened = current.kind === PAGE.BOARD_LIST ? current.folder : current.board;
-  return below.layer && sameBoard(below.board, opened) ? below : null;
+  return below.layer && (sameBoard(below.board, opened) || (current.kind === PAGE.ARTICLE && below.jumpBack)) ? below : null;
 }
 
 // The reader is idle when no finger is down and nothing has scrolled

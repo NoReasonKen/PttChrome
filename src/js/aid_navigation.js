@@ -75,6 +75,9 @@ import { resolveDismiss } from './screen_dismiss';
 import { recordFor } from './reading_record';
 import { articlePresented } from './article_hold';
 import { clearSearchResultsContext } from './search_results_context';
+import { PAGE } from './page_stack';
+
+const ARTICLE_JUMP_SOURCE = 'articleAidJump';
 
 // AID search rejected: pttbbs answers with a press-any-key message instead of
 // a clean list. Belt-and-braces text guard for the (unlikely) case the message
@@ -416,6 +419,7 @@ export function AidNavigation(core, view, termBuf, queue, history) {
   this._urlScanForwarded = false; // 掃到轉錄標頭了：之後的網址都不是本篇
   // 這一輪的結束回呼（只有 agent 工具會給，見 startBoard）。
   this._onRunEnd = null;
+  this._jumpPresentation = null;
   // The run in flight reports its end to its caller alone (selectArticle's quiet).
   this._quietEnd = false;
 }
@@ -478,11 +482,17 @@ AidNavigation.prototype = {
     const view = this._view;
     if (!view || !view.showBackButton || !view.hideBackButton) return;
     if (this.canGoBack()) {
-      const entry = this._history.peek();
-      view.showBackButton(entry ? entry.label : '', this._pillBack.bind(this));
+      const entry = this._core.navigationStack?.jumpOriginBelow?.() || this._history.peek();
+      view.showBackButton(entry ? entry.label : '', this.backFromButton.bind(this));
     } else {
       view.hideBackButton();
     }
+  },
+
+  // A Back from search results can expose a jump route that was hidden
+  // while the reader was browsing the results.
+  noteStackPresented: function() {
+    this._updateBackButton();
   },
 
   // --- stack lifecycle notifications (pure: they must not touch the callers'
@@ -526,6 +536,10 @@ AidNavigation.prototype = {
 
   // Disconnect: the session (and pttbbs's per-board getkeep cursors) is gone.
   reset: function() {
+    this._finishJumpPresentation(this._picking?.presentation, { ok: false });
+    this._picking = null;
+    this._finishJumpPresentation(this._jumpPresentation, { ok: false });
+    this._jumpPresentation = null;
     this._history.abort();
     this._updateBackButton();
   },
@@ -602,6 +616,7 @@ AidNavigation.prototype = {
       run.originAid = post && sameBoard(post.board, board) ? post.aid : null;
     }
     this._onRunEnd = (opts && opts.onEnd) || null;
+    this._jumpPresentation = this._prepareArticleJump();
     this._begin(run);
   },
 
@@ -642,7 +657,7 @@ AidNavigation.prototype = {
   // **之前**量（preparePicked）。橋接送出板名、落地目標板列表後，continuePicked 從那個
   // 列表接手 #AID ⏎ ⏎ —— 板跳那一步就是橋接送出的那個 Enter。
   // 回 null ＝ 現在不能跳（另一趟在跑／不在好讀文章裡）。
-  preparePicked: function(aid) {
+  preparePicked: function(aid, onReady) {
     if (this.active || !aid || !this._termBuf.startedEasyReading) return null;
     // 決策表 'aid-board-pick'：送出＝跳文（不還原）；取消＝重開原文回原列（reopenPicked）。
     const bm = recordFor(this._core).begin('aid-board-pick', this._ctx());
@@ -652,11 +667,66 @@ AidNavigation.prototype = {
       lineIndex: bm.article ? bm.article.lineIndex : this._currentLineIndex(),
       landed: this._history.landed(),
       articleBoard: this._view._articleBoard,
+      presentation: this._prepareArticleJump(),
       // 文末網址列的免費路徑（零指令）；Q 不能用：人一離開文章就問不到本篇了。
       localAid: this.findLocalPostAid()
     };
     this._picking = token;
+    // The native picker leaves the pager. Name its source first if the live
+    // article has not shown its own article code yet.
+    if (onReady && token.presentation?.left && !token.localAid && !token.landed) {
+      this._resolvePickerOrigin(token, onReady);
+    } else {
+      onReady?.(token);
+    }
     return token;
+  },
+
+  _resolvePickerOrigin: function(token, onReady) {
+    const core = this._core;
+    if (!this.readingBoard()) {
+      this.endPicked(token, true);
+      onReady(null);
+      return;
+    }
+    this.active = true;
+    this._ownedLeave = true;
+    this._overArticle = true;
+    core.easyReading._enterFunctionMode();
+    core.listSession?.beginExternalNavigation();
+    const failed = reason => {
+      if (this._picking !== token) return;
+      this._fail(reason);
+      this.endPicked(token, false);
+      onReady(null);
+    };
+    this.queryPostAid({
+      kind: 'aid-origin-info',
+      onFlushed: () => failed('畫面已變更'),
+      onFail: () => failed('讀不到原文的文章代碼'),
+      onDone: info => {
+        this.reopenAfterPostInfo(token.lineIndex, {
+          onDone: () => {
+            if (this._picking !== token) return;
+            this.active = false;
+            this._overArticle = false;
+            core.easyReading.ensureEnabledOnArticle(true);
+            recordFor(core).releaseExternal();
+            // The info box may name no board, in which case only the
+            // already verified pager board can supply it.
+            if (!info?.aid || (info.board && !sameBoard(info.board, token.articleBoard))) {
+              this.endPicked(token, true);
+              onReady(null);
+              return;
+            }
+            token.localAid = { board: token.articleBoard, aid: info.aid };
+            onReady(token);
+          },
+          onFail: () => failed('回不到原文'),
+          onFlushed: () => failed('畫面已變更')
+        });
+      }
+    });
   },
 
   // 挑板收尾但不再導航：stillInArticle ＝ prompt 根本沒開出來（人還在原文）⇒ 返回堆疊
@@ -664,6 +734,7 @@ AidNavigation.prototype = {
   endPicked: function(token, stillInArticle) {
     if (!token || this._picking !== token) return;
     this._picking = null;
+    this._finishJumpPresentation(token.presentation, { ok: false });
     if (stillInArticle) return;
     this._history.invalidate();
     this._updateBackButton();
@@ -678,6 +749,7 @@ AidNavigation.prototype = {
     if (!token || this._picking !== token) return false;
     this._picking = null;
     if (this.active || !token.articleBoard) {
+      this._finishJumpPresentation(token.presentation, { ok: false });
       this._history.invalidate();
       this._updateBackButton();
       return false;
@@ -685,14 +757,19 @@ AidNavigation.prototype = {
     const run = makeRun({ board: token.articleBoard, kind: 'aid', aid: null }, 'reopen');
     run.bookmark = token.bm;
     run.picked = true;
+    this._jumpPresentation = token.presentation;
     this.opHint = '回到原文中';
     this._begin(run);
     return true;
   },
 
   continuePicked: function(token, board) {
-    if (this._picking === token) this._picking = null;
-    if (this.active || !token || !board) return false;
+    if (!token || this._picking !== token) return false;
+    this._picking = null;
+    if (this.active || !board) {
+      this._finishJumpPresentation(token.presentation, { ok: false });
+      return false;
+    }
     const anchor = chooseAnchor({
       landed: token.landed,
       articleBoard: token.articleBoard,
@@ -712,6 +789,7 @@ AidNavigation.prototype = {
     run.originLineIndex = token.lineIndex;
     run.originList = token.bm.list;
     run.picked = true;
+    this._jumpPresentation = token.presentation;
     this._begin(run);
     return true;
   },
@@ -745,7 +823,13 @@ AidNavigation.prototype = {
     if (!aid || !board) return false;
     this._onRunEnd = onEnd || null;
     const bm = recordFor(this._core).begin('deep-link-jump', this._ctx());
-    this._history.beginJump(externalOriginAnchor(bm, board), { board: board, aid: aid });
+    const origin = externalOriginAnchor(bm, board);
+    this._history.beginJump(origin, { board: board, aid: aid });
+    const left = origin && this._core.navigationStack?.captureList();
+    if (left) {
+      left.jump = true;
+      this._jumpPresentation = { left };
+    }
     this._hint('跳至 #' + aid + ' (' + board + ')…', PROGRESS_HINT_MS);
     const run = makeRun({ board: board, kind: 'aid', aid: aid }, 'forward');
     run.originLineIndex = null;
@@ -946,25 +1030,51 @@ AidNavigation.prototype = {
     this._endRun({ ok: outcome === 'done' });
   },
 
-  _endRun: function(result) {
+  _prepareArticleJump: function() {
+    const core = this._core;
+    if (!articlePresented(core)) return null;
+    const left = core.articleGestures?.captureArticleLayer();
+    if (left) left.jump = true;
+    const covered = core.articleHold?.run(ARTICLE_JUMP_SOURCE, { cover: true });
+    return { left, covered };
+  },
+
+  _finishJumpPresentation: function(presentation, result, origin) {
+    if (!presentation) return;
+    const { left, covered } = presentation;
+    const core = this._core;
+    if (left) {
+      // Keep a layer only when this jump committed its own verified origin.
+      const kind = left.kind === PAGE.ARTICLE ? 'aid' : 'board';
+      const matches = result.ok && origin?.kind === kind && sameBoard(left.board, origin.board) &&
+        (!left.post || left.post.aid === origin.aid);
+      if (matches && kind === 'aid') core.navigationStack.notePost(left, origin);
+      core.articleGestures.landJump(left, matches ? origin : null);
+    }
+    if (covered) core.articleHold.done(ARTICLE_JUMP_SOURCE, result.ok && origin ? { uncover: true } : undefined);
+  },
+
+  _endRun: function(result, origin) {
     const cb = this._onRunEnd;
+    const presentation = this._jumpPresentation;
     this._onRunEnd = null;
+    this._jumpPresentation = null;
     this._quietEnd = false;
+    this._finishJumpPresentation(presentation, result, origin);
     if (cb) cb(result);
   },
 
   // Back to the article the last jump started from. Deliberately NOT gated on
   // startedEasyReading: the target article may be rendering natively (the user
   // toggled easy reading off), and the sequence drives the native screen anyway.
-  // onEnd({ ok, missed }): the stacked Back from an article jumped to by its
-  // code (#281, aid_jump.backToJumpOrigin). opts.revealed: that article
-  // already shows, from its live layer, at the position the reader left it
+  // opts.origin supplies the verified route from a live layer. opts.revealed:
+  // that page already shows at the position the reader left it
   // or has scrolled it to since; the real article takes that position over
   // from the layer (stack_handoff), so the anchor's reading position is not
   // restored ('aid-back' done) on top of it. Returns whether the run started.
   back: function(onEnd, opts) {
     if (this.active) return false;
-    const anchor = this._history.beginBack();
+    const anchor = this._history.beginBack(opts?.origin);
     if (!anchor) {
       this._hint('沒有可返回的文章', 0, HINT_ERROR);
       return false;
@@ -977,14 +1087,23 @@ AidNavigation.prototype = {
     return true;
   },
 
-  // The 返回 pill (AidBackButton). Over an article jumped to by its code from
-  // the article alive under it (#281) it is the system Back: that article
-  // shows at once, and PTT follows by its code (aid_jump.backToJumpOrigin).
-  // Anywhere else (desktop, deep links, palette jumps) it is back().
-  _pillBack: function() {
+  // An animated Back already revealed the source; synchronize PTT to the
+  // exact anchor carried by that Back, including when several are queued.
+  backToLayer: function(origin, revealed) {
     const core = this._core;
-    if (core.navigationStack?.jumpOriginBelow?.() && core.sendNavKeyAsUser?.('ArrowLeft')) return;
-    this.back();
+    return this.back(result => {
+      if (result.ok && origin.kind === 'aid') core.articleGestures.pagePresented(PAGE.ARTICLE);
+      else if (result.missed) core.navigationStack.sourceGone();
+    }, { origin, revealed });
+  },
+
+  // The return button and its shortcut use the same Back as the system when
+  // the source is a live layer. Without a layer, replay the saved origin.
+  backFromButton: function() {
+    const core = this._core;
+    if (core.navigationStack?.jumpOriginBelow?.())
+      return core.sendNavKeyAsUser?.('ArrowLeft');
+    return this.back();
   },
 
   // 重新整理本篇（screen_refresh.js 的文章分支；docs/screen-refresh.md）。
@@ -1139,16 +1258,16 @@ AidNavigation.prototype = {
   // 返回落在列表上（看板錨 `s<板>`、或找不到原文停在列表）：把錨帶著的列表視野
   // 交給閱讀紀錄（只比板與編號空間：server 游標是 getkeep 的，不等於本地選取），
   // 再放開外部 hold 讓列表好讀接手。
-  _restoreListOf: function(entry) {
+  _restoreListOf: function(entry, revealed) {
     const rr = recordFor(this._core);
-    if (entry && entry.list)
+    if (!revealed && entry && entry.list)
       rr.restoreList(Object.assign({}, entry.list, { matchBoardOnly: true }));
-    rr.releaseExternal();
+    rr.releaseExternal(revealed ? { landed: true } : undefined);
   },
 
   // Is a back run available right now (drives the button / the shortcut)?
   canGoBack: function() {
-    return !this.active && this._history.canGoBack();
+    return !this.active && (!!this._core.navigationStack?.jumpOriginBelow?.() || this._history.canGoBack());
   },
 
   // The anchor for the article we are leaving, by priority (nav_history
@@ -1829,12 +1948,11 @@ AidNavigation.prototype = {
   _finishAtList: function(run) {
     this.active = false;
     const entry = this._history.commitBack();
-    this._restoreListOf(entry);
+    this._restoreListOf(entry, run.revealed);
     this._updateBackButton();
-    this._hint(
-      '已回到 ' + run.target.board + ' 看板，游標停在原文章（按 Enter 開啟）',
-      6000
-    );
+    const board = '已回到 ' + run.target.board + ' 看板';
+    this._hint(run.revealed ? board : board + '，游標停在原文章（按 Enter 開啟）', 6000);
+    this._endRun({ ok: true });
   },
 
   // Step 1: s <board> ⏎ — the board-search jump. Lands on the target board's
@@ -2165,6 +2283,7 @@ AidNavigation.prototype = {
         if (self._core.easyReading && self._core.easyReading.ensureEnabledOnArticle)
           self._core.easyReading.ensureEnabledOnArticle(true);
         // Only here — with the article really open — does the stack move.
+        let origin;
         if (run.dir === 'back') {
           const entry = self._history.commitBack();
           self._updateBackButton();
@@ -2212,7 +2331,7 @@ AidNavigation.prototype = {
           self._updateBackButton();
           self._hint('已開啟第 ' + run.target.num + ' 篇', 1200);
         } else {
-          self._history.commitJump();
+          origin = self._history.commitJump();
           self._updateBackButton();
           // Replace the long-lived "跳至…" progress banner (15s) with a short
           // confirmation so it fades right away instead of lingering into the
@@ -2220,7 +2339,7 @@ AidNavigation.prototype = {
           self._hint('已跳至 #' + run.target.aid, 1200);
         }
         recordFor(self._core).releaseExternal();
-        self._endRun({ ok: true });
+        self._endRun({ ok: true }, origin);
       },
       onFail: function(reason) {
         self._fail('開啟文章失敗（' + reason + '）');

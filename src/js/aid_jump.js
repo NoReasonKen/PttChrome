@@ -9,8 +9,6 @@ import { AID_INPUT_MAX_LENGTH, isAidc, parseAidWithBoard, parseArticleUrl } from
 import { sameBoard } from './screen_titles';
 import { serializedOpHint } from './serialized_op_gate';
 import { HINT_ERROR } from './status_hint';
-import { PAGE } from './page_stack';
-import { isPlainBack } from './term_keyboard';
 import { i18n } from './i18n';
 
 // What a reader typed or pasted: `#AID`, `AID`, `#AID (Board)`, `Board #AID`.
@@ -96,15 +94,10 @@ export function startAidJump(core, text) {
   return started;
 }
 
-// The jump by code from an article, as ArticleHold's operation.
-const ARTICLE_JUMP_SOURCE = 'articleAidJump';
-
 // The jump from the easy-reading article on screen, of `board` (#281), for a
-// code confirmed in the input or pasted over the article (a link too). It
-// stays on the board, as PTT's `#` does, and opens the article found in easy
-// reading (AidNavigation.jumpFromArticle). On the phone the article left
-// stays alive under the one found, so Back reveals it at once
-// (backToJumpOrigin). A code of another board takes the list's route there.
+// code confirmed in the input or pasted over the article (a link too).
+// Same-board misses can reopen the source; cross-board requests share the
+// deep-link entry point. AidNavigation keeps the source for both routes.
 // Returns false when nothing was started (the reader was told why).
 export function startArticleAidJump(core, board, text) {
   const target = parseArticlePaste(text);
@@ -117,54 +110,10 @@ export function startArticleAidJump(core, board, text) {
   if (target.board && !sameBoard(target.board, board))
     return !!core.deepLinkController?.request({ board: target.board, aid: target.aid });
   const code = '#' + target.aid;
-  // Captured before the run leaves the article: the page shown now.
-  const left = core.articleGestures?.captureArticleLayer?.() || null;
-  if (left) left.jump = true;
-  // Leaving the article for its list (Q, `s<board>`) repaints it on the way,
-  // and a miss opens it again from its top: a copy of it as it is now covers
-  // the reading area from here on (ArticleHold's run cover), so the reader
-  // sees it stay still. The article found slides in over the stack's copy,
-  // which the cover is lifted onto; the article returned to after a miss is
-  // uncovered once its reading position is back; a failure keeps the cover
-  // as the hold's.
-  const hold = core.articleHold;
-  const covered = !!hold?.run(ARTICLE_JUMP_SOURCE, { cover: true });
   const started = core.aidNavigation.jumpFromArticle(board, target.aid, (result) => {
-    if (core.articleGestures) core.articleGestures.landJump(left, result.ok);
-    else core.navigationStack?.jumpLanded?.(left, result.ok);
-    if (covered) hold.done(ARTICLE_JUMP_SOURCE, result.ok ? { uncover: true } : undefined);
     // A run that failed otherwise has held the article with its own message.
     if (!result.ok && result.returned) flash(core, i18n('aidJump_notFoundArticle').replace('{0}', code));
   });
-  if (!started) {
-    core.navigationStack?.jumpLanded?.(left, false);
-    if (covered) hold.done(ARTICLE_JUMP_SOURCE);
-    flash(core, i18n('aidJump_failedArticle').replace('{0}', code));
-  }
+  if (!started) flash(core, i18n('aidJump_failedArticle').replace('{0}', code));
   return started;
-}
-
-// Back from an article opened by its code over the article it was opened
-// from (#281). The first Back reveals that article's live layer at once
-// (ArticleGestures.handleBack); the Back the stack then sends is taken here
-// instead of reaching PTT as `←`, which would show the board's list: the
-// jump's own way back (AidNavigation.back) opens the article again by its
-// code, and the real article takes over from the layer at its reading
-// position. Returns true when the key was taken.
-export function backToJumpOrigin(core, event) {
-  const stack = core.navigationStack;
-  const gestures = core.articleGestures;
-  if (!stack?.jumpOriginBelow?.() || !gestures || !isPlainBack(event)) return false;
-  if (!gestures.sendingBack) return gestures.handleBack(event);
-  const nav = core.aidNavigation;
-  if (!nav?.canGoBack()) return false;
-  // The revealed article carries its own reading position, the one the
-  // reader may have scrolled it to meanwhile: the real one takes it over
-  // (StackArticleLayer.alignReal), and no position from before the jump is
-  // restored afterwards.
-  return nav.back((result) => {
-    if (result.ok) gestures.pagePresented(PAGE.ARTICLE);
-    // The article left is gone from the board: it stays shown over the list.
-    else if (result.missed) stack.sourceGone();
-  }, { revealed: true });
 }

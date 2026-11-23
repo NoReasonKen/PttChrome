@@ -27,7 +27,7 @@ const AID = "1gU3xHKD";
 const makePttchrome = () => ({
   buf: { pageState: 3, rows: 24, cols: 80, getRowText: () => "" },
   view: { flashListHint: vi.fn(), useEasyReadingMode: false },
-  aidNavigation: { active: false, canGoBack: () => true, back: vi.fn() },
+  aidNavigation: { active: false, canGoBack: () => true, backFromButton: vi.fn() },
   deepLinkController: {
     request: vi.fn(() => "navigating"),
     copyCurrentPostLink: vi.fn(),
@@ -155,7 +155,7 @@ test("↓ 移到下一項再 Enter；點一下也能執行", async () => {
   expect(document.querySelector(`[data-palette-item="${second}"]`)).toHaveAttribute("aria-selected", "true");
   expect(document.querySelector(`[data-palette-item="${first}"]`)).toHaveAttribute("aria-selected", "false");
   fireEvent.click(document.querySelector('[data-palette-item="action:back"]'));
-  expect(pttchrome.aidNavigation.back).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(pttchrome.aidNavigation.backFromButton).toHaveBeenCalledTimes(1));
 });
 
 // 主功能表（能選看板）＋首頁儀表板的現成資料 ⇒ 空白時先列最近／最愛的看板。
