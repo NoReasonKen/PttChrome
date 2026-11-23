@@ -164,6 +164,12 @@ describe("toolbarContextFromFacts", () => {
     expect(toolbarContextFromFacts(frame(LIST), 2).boardNotes).toBeFalsy();
     expect(sameToolbarContext({ search: [], boardNotes: true }, { search: [], boardNotes: false })).toBe(false);
   });
+  // #293: where the board is, from the controller as board information is.
+  test("where the board is (More): off in the empty context, and part of the comparison", () => {
+    expect(EMPTY_TOOLBAR_CONTEXT.whereAmI).toBe(false);
+    expect(toolbarContextFromFacts(frame(LIST), 2).whereAmI).toBeFalsy();
+    expect(sameToolbarContext({ search: [], whereAmI: true }, { search: [], whereAmI: false })).toBe(false);
+  });
   test("設為全部已讀（更多）：只有文章列表；prompt 開著、文章、主功能表不給", () => {
     expect(toolbarContextFromFacts(frame(LIST), 2).markAllRead).toBe(true);
     expect(toolbarContextFromFacts({ ...frame(LIST), inputField: true }, 2).markAllRead).toBe(false);

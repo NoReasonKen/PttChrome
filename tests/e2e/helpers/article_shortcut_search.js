@@ -226,7 +226,7 @@ async function installNestedServer(page, session) {
     }).join('');
     const subject = title => title.replace(/^(?:(?:Re|Fw):\s*)+/i, '').toLowerCase();
     // surface: article | list | info | prompt | empty | missing | main | query |
-    //   boardInfo | notes | notesMovie | notesPause
+    //   boardInfo | notes | notesMovie | notesPause | whereAmI
     // `promptless`: `a` shows no prompt, as on a screen where it is no command.
     // `squeezedFooter`: the pager footer has room only for its short hints,
     //   as a very long article's (more.c#common_pmore_footer_handler).
@@ -256,7 +256,11 @@ async function installNestedServer(page, session) {
       // Ctrl-C are its choices, kept in `notesChoices`). A movie that ends or
       // is stopped waits in pressanykey over its last frame; `notesStop:
       // 'list'` draws the list at once instead, as pmore's READ_NEXT would.
-      notes: 'plain', notesStop: 'pause', notesFrame: 0, notesFrames: 4, notesFrameMs: 300, notesChoices: []
+      notes: 'plain', notesStop: 'pause', notesFrame: 0, notesFrames: 4, notesFrameMs: 300, notesChoices: [],
+      // Ctrl-W / Ctrl-Y on the list (bbs.c#whereami, #293): the board's place in
+      // the class tree. `whereAmIFails`: the board has no bid and PTT does
+      // nothing; `whereAmIGarbled`: a level's row reads as nothing PTT prints.
+      whereAmIFails: false, whereAmIGarbled: false
     };
     const listed = () => {
       const all = articles.filter(article => !state.deleted.has(article.aid) && (!state.filter || !article.pinned));
@@ -439,6 +443,32 @@ async function installNestedServer(page, session) {
         if (state.surface === 'notesMovie') playNotes();
       }, state.notesFrameMs);
     };
+    // bbs.c#whereami over the list: from row 1 (move(1, 0); clrtobot()), the
+    // list's title kept on row 0. The class tree is p[2] (root) > p[1] > p[0]
+    // (the board); the root prints "%-40.40s %.13s", each level under it
+    // "%*s %-13.13s %-37.37s %.13s" (two columns per level), 「位置: 」 at
+    // b_lines-2 and pressanykey's bar on the last row.
+    const whereAmIRows = termRows => {
+      const tree = [
+        ['', '測試 ◎測試分類', ''],
+        ['Test_Class', '◎測試子分類', 'classadm'],
+        [state.board, '測試 ◎Test board', 'test']
+      ];
+      const category = tree[0][1].split(' ')[0];
+      const rows = {
+        0: `【板主：test】看板《${state.board}》`,
+        1: '我在哪?',
+        2: padCells(tree[0][1], 40) + ' ' + tree[0][2]
+      };
+      tree.slice(1).forEach(([name, desc, mods], index) => {
+        rows[3 + index] = ' '.repeat((index + 1) * 2) + ' ' + padCells(name, 13) + ' ' + padCells(desc, 37) + ' ' + mods;
+      });
+      if (state.whereAmIGarbled) rows[3] = '  ??????';
+      rows[termRows - 3] = '位置: ' + [category, ...tree.slice(1).map(([name]) => name)]
+        .map((name, index, all) => name + (index < all.length - 1 ? ' >' : '') + ' ').join('');
+      rows[termRows - 1] = '▄'.repeat(15) + ' 請按任意鍵繼續 ' + '▄'.repeat(15);
+      return rows;
+    };
     const frame = (fullRepaint = false) => {
       const termRows = session.dynamicRows ? state.applicationRows : 24;
       const bodyRows = termRows - 4;
@@ -481,6 +511,8 @@ async function installNestedServer(page, session) {
       } else if (state.surface === 'query') {
         rows = queryRows(state.queryUser, termRows);
         inverse = [0];
+      } else if (state.surface === 'whereAmI') {
+        rows = whereAmIRows(termRows);
       } else if (state.surface === 'boardInfo') {
         rows = boardInfoRows(termRows);
         inverse = [0];
@@ -572,8 +604,9 @@ async function installNestedServer(page, session) {
         const sequence = /^\x1b\[[0-9;]*[~A-Za-z]/.exec(rest);
         return rest.slice(sequence ? sequence[0].length : 1);
       }
-      // pressanykey after the entry screen: any one key draws the list.
-      if (state.surface === 'notes' || state.surface === 'notesPause') {
+      // pressanykey after the entry screen, or whereami's: any one key draws
+      // the list.
+      if (state.surface === 'notes' || state.surface === 'notesPause' || state.surface === 'whereAmI') {
         state.surface = 'list';
         const sequence = /^\x1b\[[0-9;]*[~A-Za-z]/.exec(rest);
         return rest.slice(sequence ? sequence[0].length : 1);
@@ -705,6 +738,9 @@ async function installNestedServer(page, session) {
           state.notesChoices = [];
           playNotes();
         } else state.surface = 'notes';
+      }
+      else if ((head === '\x17' || head === '\x19') && state.surface === 'list') {
+        if (!state.whereAmIFails) state.surface = 'whereAmI';
       }
       else if (head === '\x11' && state.surface === 'list') {
         const author = selected()?.author;

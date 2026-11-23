@@ -149,6 +149,23 @@ export function altRemapCharCode(e) {
   return null;
 }
 
+// The Ctrl+letter key an Alt-remap event stands for (Alt＝PTT 的 Ctrl; the phone's
+// sticky Ctrl arrives as Alt+letter too, mobile_layout.mobileCtrlKey), as an
+// event-like { key: <lowercase letter>, ctrlKey: true, altKey: false,
+// shiftKey: false, metaKey: false }, or null when `e` is no Alt-remap event.
+// Consumers classify and dispatch it like the real Ctrl key, so a Ctrl shortcut
+// needs nothing per key for its Alt alias.
+export function ctrlAliasKey(e) {
+  if (!isAltRemapEvent(e)) return null;
+  return {
+    key: String.fromCharCode(altRemapCharCode(e) + 96),
+    ctrlKey: true,
+    altKey: false,
+    shiftKey: false,
+    metaKey: false
+  };
+}
+
 // A plain ← is a Back, from the keyboard, the toolbar or system Back.
 export const isPlainBack = e => e.key === 'ArrowLeft' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey;
 

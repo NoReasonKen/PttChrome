@@ -38,6 +38,8 @@
 //   boardNotes: easy reading presents a board's article list and is idle
 //            (board_notes.BoardNotes.available, the predicate of `b` and the
 //            context menu): 進板畫面 in More (#292).
+//   whereAmI：列表好讀呈現看板的文章列表（或文摘）且閒置（whereami.WhereAmI.available，與右鍵選單、
+//            Ctrl-W 同一個判準），「更多」裡的「我在哪」（#293）。
 //   queryPage：使用者查詢頁（user_query）顯示中：按鍵與「更多」可用（頁面接手按鍵），
 //            其餘動作都針對頁面底下被拿著的列表，一律關掉；「更多」裡的登出（PTT 被查詢佔線，送不出去）反灰。
 //            The board entry screen page (board_notes, #292) shows the same way.
@@ -66,7 +68,7 @@ import { userListToggleTarget } from './user_list';
 export const EMPTY_TOOLBAR_CONTEXT = Object.freeze({
   push: false, reply: false, mail: false, share: false, threadNav: false, post: false,
   unreadJump: false, aidJump: false, markAllRead: false, boardCountsSwitch: false, boardCounts: false, boardSort: false, boardSortFavorites: false, help: false, contentTools: false, refresh: false, end: false,
-  userListToggle: null, userQuery: false, postInfo: false, boardInfo: false, boardNotes: false, queryPage: false, search: [], appBar: EMPTY_APP_BAR, locked: false
+  userListToggle: null, userQuery: false, postInfo: false, boardInfo: false, boardNotes: false, whereAmI: false, queryPage: false, search: [], appBar: EMPTY_APP_BAR, locked: false
 });
 
 // 送鍵表：key 是 term_view.sendKeyAsUser 的 keyName（單字元或 KeyMap 裡的具名鍵），
@@ -211,7 +213,8 @@ export function mobileToolbarContext(core) {
   const withQuery = core && core.userQuery && core.userQuery.available() ? { ...ctx, userQuery: true } : ctx;
   const withPostInfo = core && core.postInfo && core.postInfo.articleAvailable() ? { ...withQuery, postInfo: true } : withQuery;
   const withInfo = core && core.boardInfo && core.boardInfo.available() ? { ...withPostInfo, boardInfo: true } : withPostInfo;
-  const withNotes = core && core.boardNotes && core.boardNotes.available() ? { ...withInfo, boardNotes: true } : withInfo;
+  const withWhere = core && core.whereAmI && core.whereAmI.available() ? { ...withInfo, whereAmI: true } : withInfo;
+  const withNotes = core && core.boardNotes && core.boardNotes.available() ? { ...withWhere, boardNotes: true } : withWhere;
   // The jump by code: the article list's (#253), or the article's (#281).
   const er = core && core.easyReading;
   const aidJump = (ctx.post && ls && ls.aidJumpBoard && ls.aidJumpBoard()) ||
@@ -221,7 +224,7 @@ export function mobileToolbarContext(core) {
 
 const FLAGS = [
   'push', 'reply', 'mail', 'share', 'switchBoard', 'threadNav', 'post', 'unreadJump', 'aidJump', 'markAllRead', 'boardCountsSwitch', 'boardCounts', 'boardSort', 'boardSortFavorites', 'help', 'contentTools', 'refresh', 'end',
-  'userQuery', 'postInfo', 'boardInfo', 'boardNotes', 'queryPage', 'locked'
+  'userQuery', 'postInfo', 'boardInfo', 'boardNotes', 'whereAmI', 'queryPage', 'locked'
 ];
 
 export function sameToolbarContext(a, b) {

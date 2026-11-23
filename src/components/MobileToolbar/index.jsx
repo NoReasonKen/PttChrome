@@ -532,6 +532,19 @@ export const MobileToolbar = ({
     });
   }, [pttchrome, whenReady]);
 
+  // Where the board is (#293, js/whereami.js): PTT's Ctrl-W screen, as a sheet.
+  const onWhereAmI = useCallback(() => {
+    setPanel(null);
+    setConfirmLogout(false);
+    const w = pttchrome.whereAmI;
+    if (!w || typeof w.start !== "function") return;
+    whenReady(() => {
+      if (typeof pttchrome.noteUserAction === "function")
+        pttchrome.noteUserAction();
+      w.start();
+    });
+  }, [pttchrome, whenReady]);
+
   // 跳到第一篇未讀：與桌機快捷鍵（預設 F7）同一個入口（unread_jump.js）。
   const onUnreadJump = useCallback(() => {
     setPanel(null);
@@ -959,6 +972,16 @@ export const MobileToolbar = ({
             onClick={onBoardInfo}
           >
             {i18n("boardInfo_title")}
+          </button>
+        ) : null}
+        {context.whereAmI ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__whereAmI"
+            onClick={onWhereAmI}
+          >
+            {i18n("whereAmI_title")}
           </button>
         ) : null}
         {context.boardCountsSwitch ? (
