@@ -44,10 +44,11 @@ describe("toolbarContextFromFacts", () => {
     const f = { ...frame({ 22: "[搜尋]關鍵字:", 23: READ_ROW }), inputField: true };
     expect(toolbarContextFromFacts(f, 3)).toMatchObject({ push: false, reply: false, end: false, threadNav: false });
   });
-  test("文章列表 ⇒ 四種搜尋，沒有推", () => {
+  test("文章列表 ⇒ 搜尋種類（四種加 #298 的四種），沒有推", () => {
     expect(toolbarContextFromFacts(frame(LIST), 2)).toMatchObject({
       push: false,
-      search: ["title", "author", "push", "board"],
+      search: ["title", "author", "push", "price", "mark", "sameTitle", "newPost"],
+      boardJump: true,
     });
   });
   // #252: the mailbox is a list but not an article list; the title row names
@@ -163,6 +164,15 @@ describe("toolbarContextFromFacts", () => {
     expect(EMPTY_TOOLBAR_CONTEXT.boardNotes).toBe(false);
     expect(toolbarContextFromFacts(frame(LIST), 2).boardNotes).toBeFalsy();
     expect(sameToolbarContext({ search: [], boardNotes: true }, { search: [], boardNotes: false })).toBe(false);
+  });
+  // #298: the digest is a mode with one More entry, on the article list only.
+  test("digest entry (More): enter or leave by the caption; none on the mailbox or an article", () => {
+    expect(EMPTY_TOOLBAR_CONTEXT.digest).toBeNull();
+    expect(toolbarContextFromFacts(frame(LIST), 2).digest).toBe("digest");
+    expect(toolbarContextFromFacts(frame({ ...LIST, 23: " 文摘列表  [←]離開 [→]閱讀" }), 2).digest).toBe("digestLeave");
+    expect(toolbarContextFromFacts(frame(MAIL_LIST), 2).digest).toBeNull();
+    expect(toolbarContextFromFacts(frame({ 23: READ_ROW }), 3).digest).toBeNull();
+    expect(sameToolbarContext({ search: [], digest: "digest" }, { search: [], digest: "digestLeave" })).toBe(false);
   });
   test("設為全部已讀（更多）：只有文章列表；prompt 開著、文章、主功能表不給", () => {
     expect(toolbarContextFromFacts(frame(LIST), 2).markAllRead).toBe(true);

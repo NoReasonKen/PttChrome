@@ -11,3 +11,29 @@
   white-space: normal;
   line-height: 1.25;
 }
+
+/* 超過一排放得下的種類：續到下一排，每排都是 segmented，整體不超出彈窗。 */
+.searchKindRows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Four equal segments per row must fit a phone's width even with the longer
+   English labels: the segments may shrink and break inside a word. */
+.searchKindRows .mantine-SegmentedControl-root {
+  width: 100%;
+  min-width: 0;
+}
+
+.searchKindRows .searchKindItem {
+  min-width: 0;
+}
+
+.searchKindRows .searchKindLabel {
+  min-width: 0;
+  padding-inline: 4px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}

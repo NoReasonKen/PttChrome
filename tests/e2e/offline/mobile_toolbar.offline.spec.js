@@ -6,7 +6,6 @@ const { test, expect } = require('@playwright/test');
 const ptt = require('../helpers/ptt');
 const { findCassettes, bootOffline, replayCassette, waitScreenSettled } = require('../helpers/replay');
 const { waitRectStable, waitPreviewsSettled } = require('../helpers/layout');
-const { expectKindLabelsFit } = require('../helpers/search_kinds');
 
 const articles = findCassettes('article');
 
@@ -72,7 +71,7 @@ test.describe('手機底部工具列（離線重放）', () => {
     await expect(byKey(page, 'PageDown')).toHaveCount(0);
   });
 
-  test('文章列表：出現搜尋，沒有推；點搜尋直接開彈窗（不經子選單），四種都能切', async ({ page }) => {
+  test('文章列表：出現搜尋，沒有推；點搜尋直接開彈窗（不經子選單），七種篩選都能切（4＋3 兩排 segmented，看板跳轉不在其中）', async ({ page }) => {
     await bootOffline(page, ptt);
     await ptt.applyPrefs(page, { enableEasyReading: false });
     await drawArticleList(page);
@@ -80,9 +79,18 @@ test.describe('手機底部工具列（離線重放）', () => {
     await expect(byKey(page, 'X')).toHaveCount(0);
     await byKey(page, '__search').tap();
     await expect(page.locator('input[name="searchKeyword"]')).toBeVisible();
-    const kinds = page.locator('[data-search-modal] .mantine-SegmentedControl-label');
-    await expect(kinds).toHaveCount(4);
-    await expectKindLabelsFit(page.locator('[data-search-modal] .mantine-SegmentedControl-root'));
+    // Past four kinds the row continues on a second segmented row (#298); each
+    // segment is whole and inside the sheet.
+    const kinds = page.locator('[data-search-modal] [data-search-kinds="wrap"] .searchKindItem');
+    await expect(kinds).toHaveCount(7);
+    const outside = await kinds.evaluateAll((els) => {
+      const room = els[0].closest('[data-search-modal]').getBoundingClientRect();
+      return els.filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width <= 0 || r.left < room.left - 1 || r.right > room.right + 1;
+      }).map((el) => el.textContent);
+    });
+    expect(outside).toEqual([]);
     // 彈窗開著時工具列收起（同其他 modal）
     await expect(byKey(page, '__keys')).toHaveCount(0);
   });
