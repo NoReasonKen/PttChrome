@@ -165,6 +165,12 @@ describe("toolbarContextFromFacts", () => {
     expect(toolbarContextFromFacts(frame(LIST), 2).boardNotes).toBeFalsy();
     expect(sameToolbarContext({ search: [], boardNotes: true }, { search: [], boardNotes: false })).toBe(false);
   });
+  // #293: where the board is, from the controller as board information is.
+  test("where the board is (More): off in the empty context, and part of the comparison", () => {
+    expect(EMPTY_TOOLBAR_CONTEXT.whereAmI).toBe(false);
+    expect(toolbarContextFromFacts(frame(LIST), 2).whereAmI).toBeFalsy();
+    expect(sameToolbarContext({ search: [], whereAmI: true }, { search: [], whereAmI: false })).toBe(false);
+  });
   // #298: the digest is a mode with one More entry, on the article list only.
   test("digest entry (More): enter or leave by the caption; none on the mailbox or an article", () => {
     expect(EMPTY_TOOLBAR_CONTEXT.digest).toBeNull();

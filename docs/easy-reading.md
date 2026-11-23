@@ -82,6 +82,11 @@
   - **PTT 自己畫回列表**：一鍵停掉一般動畫時 pmore 回 `READ_NEXT`，`b_notes` 不再 `pressanykey`，直接畫列表（見 `docs/pttbbs-screen-protocol.md`「進板畫面」）。頁面顯示時 PTT 畫回列表 ⇒ 頁面停在最後一幀，列表立刻在底下收回畫面，離開只把頁面收掉（`ended`）；這時頁面上其他的鍵提示不支援。收回只由頁面在那一幀靜止後做（`BoardNotes._settled` → `resumeAfterHelp`）：頁面拿著列表時，列表自己的靜置探針（`ListSession._tryResumeProbe`）不收，否則它可能讀到還沒靜止的列表，丟掉拿著的看板而重建、補頁（多送一個跳號）。
   - **失敗都提示，不送猜的鍵**：`b` 沒有回答 ⇒ PTT 畫的是列表就收回列表並提示「進板畫面沒有回應」，否則把 PTT 畫的畫面放在頁面上並提示；離開時認不出 PTT 在等什麼（畫到一半、PTT 自己的訊息）⇒ 頁面留著、提示「進板畫面還沒畫完」；離開途中沒等到列表 ⇒ 頁面帶著 PTT 現在的畫面回來並提示，讀者可以再離開一次。別的操作正在跑時只給提示，什麼都不送；從 `b` 到列表回來的整段期間終端按鍵與點擊都擋下（`setModalOpen('boardNotes')`），忙碌提示是「進板畫面處理中，請稍候…」。閱讀紀錄 `board-notes`：列表回原處。
   - **依據**：流程照 pttbbs 原始碼（`bbs.c#b_notes`、`pmore.c` 的 `PMORE_AUTO_EXIT` 與動畫），沒有實機的進板畫面錄影。e2e 用受控文章列表（`tests/e2e/helpers/article_shortcut_search.js` 的 `notes`：彩色的一頁、沒有進板畫面、會播幾幀的動畫、互動式動畫），`tests/e2e/offline/board_notes.offline.spec.js`（桌機）與 `mobile_board_notes.offline.spec.js`（手機）。
+- **我在哪**（#293，`src/js/whereami.js`）：PTT 的 `Ctrl-W`／`Ctrl-Y`（`bbs.c#whereami`）畫出這個看板在分類樹的位置：根分類的描述與板主，往下每一層的板名、描述、板主，最後一列「位置: 分類 > 子分類 > 看板」，等任意鍵。好讀把它讀出來，做成 app 自己的 sheet（手機）或對話框（桌機），一樣從 PTT 問一次，PTT 的畫面一幀都不畫（`term_view._navigationHeld`）。
+  - **入口**：好讀文章列表（含搜尋結果與文摘列表；不含信箱與線上使用者列表）按 `Ctrl-W`、`Ctrl-Y` 或它們的 Alt 別名 `Alt+W`、`Alt+Y`；桌機右鍵選單的「我在哪」（在「看板資訊」後面，整個看板的，不是那一列的）；手機列表工具列的「更多」（`mobile_toolbar` 的 `whereAmI`）。文章裡、信箱不提供，信箱按這幾顆是「不支援這個按鍵」的提示。各入口共用 `WhereAmI.available`。
+  - **送給 PTT 的鍵**：`\x17`（`Ctrl-Y`／`Alt+Y` 送 `\x19`；不同步游標、不帶 `\f`）⇒ 讀到畫面就開 sheet，同時送一個空白回答「請按任意鍵繼續」，等 PTT 畫回同一個看板的列表，列和選取都不變（`resumeAfterHelp`）；關掉 sheet 什麼都不送（離開鍵 ←、Esc、返回、關閉鈕都只關 sheet）。
+  - **失敗都留在列表並提示**：PTT 什麼都沒做（沒有看板）⇒ 提示「這裡無法查看看板位置」，之後什麼都不送；畫面是「我在哪?」但讀不出來 ⇒ 送空白並提示；其他畫面不送鍵。別的操作正在跑時只給提示；序列進行中按系統返回鍵給「詢問看板位置中」的提示。
+  - **依據**：畫面各列照 pttbbs 原始碼（`bbs.c#whereami`），沒有錄製的實機畫面；e2e 用受控文章列表（`tests/e2e/helpers/article_shortcut_search.js` 的 `whereAmI` 畫面，`tests/e2e/offline/whereami.offline.spec.js`、`mobile_whereami.offline.spec.js`）。
 - **依據**：列表、表頭與底列的顏色、好友代號的亮青、空好友列表的底列、說明畫面、查詢畫面與 `Q` 提示都對照過實機畫面；數字跳號、列表兩端的方向鍵與翻頁、空視圖的游標位置、`< 離站中..>` 列的樣子沒有實機畫面。e2e 用 `tests/e2e/helpers/user_list.js` 的受控列表（虛構的使用者），`tests/e2e/offline/mobile_user_list.offline.spec.js`。
 
 給列表以外的呼叫端的介面（純函式在 `src/js/user_list.js`，除非另註）：

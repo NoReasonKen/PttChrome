@@ -10,6 +10,7 @@ import { FRIEND_LIST_KEY, MAIL_LIST_KEY, USER_LIST_KEY } from "../../src/js/scre
 import { queryUser, promptUserQuery, queryAuthor } from "../../src/js/user_query";
 import { showListPostInfo } from "../../src/js/post_info";
 import { showBoardInfo } from "../../src/js/board_info";
+import { showWhereAmI } from "../../src/js/whereami";
 
 vi.mock("../../src/js/user_query", () => ({
   queryUser: vi.fn(() => true),
@@ -21,6 +22,10 @@ vi.mock("../../src/js/post_info", () => ({
 }));
 vi.mock("../../src/js/board_info", () => ({
   showBoardInfo: vi.fn(() => true),
+}));
+vi.mock("../../src/js/whereami", async (importOriginal) => ({
+  ...(await importOriginal()),
+  showWhereAmI: vi.fn(() => true),
 }));
 vi.mock("../../src/js/user_list", async (importOriginal) => ({
   ...(await importOriginal()),
@@ -960,8 +965,9 @@ describe("Alt remap, all 26 letters (list easy reading)", () => {
   const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
   // Alt+Q is Ctrl-Q, the author query (#254): see the Ctrl-Q tests below.
-  test("every letter but Q is refused: prevented, nothing enqueued or sent, mirror not entered", () => {
-    LETTERS.filter((L) => L !== "Q").forEach((L) => {
+  // Alt+W and Alt+Y are Ctrl-W and Ctrl-Y, where the board is (#293).
+  test("every letter but Q, W and Y is refused: prevented, nothing enqueued or sent, mirror not entered", () => {
+    LETTERS.filter((L) => !"QWY".includes(L)).forEach((L) => {
       const ctx = activeRefusalSession();
       const e = keyEvent(L.toLowerCase(), { altKey: true, code: "Key" + L });
       ctx.s.onKeyDown(e);
@@ -1197,6 +1203,76 @@ describe("b shows the board entry screen (#292)", () => {
     expect(ctx.enqueued.map((c) => [c.keys, c.kind, c.fullRepaint])).toEqual([["b", "board-notes", false]]);
     expect(ctx.s._helpBoard).toBe("C_Chat");
     expect(ctx.s._helpSelection).toEqual({ num: 42, pinnedKey: null });
+  });
+});
+
+// Ctrl-W and Ctrl-Y, with their Alt aliases, show where the board is (#293);
+// the digest list's table has them as well, the mailbox has no board.
+describe("Ctrl-W / Ctrl-Y show where the board is (#293)", () => {
+  beforeEach(() => showWhereAmI.mockClear());
+
+  test.each([
+    ["w", 23],
+    ["y", 25],
+  ])("Ctrl-%s → prevented, handed to showWhereAmI with its code, nothing enqueued or sent here", (key, code) => {
+    const ctx = activeRefusalSession();
+    const e = keyEvent(key, { ctrlKey: true });
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(showWhereAmI).toHaveBeenCalledTimes(1);
+    expect(showWhereAmI).toHaveBeenCalledWith(ctx.s._core, code);
+    expect(ctx.sent).toEqual([]);
+    expect(ctx.enqueued).toEqual([]);
+    expect(ctx.hints).toEqual([]);
+  });
+
+  test.each([
+    ["w", 23],
+    ["y", 25],
+  ])("Alt+%s is the same key", (key, code) => {
+    const ctx = activeRefusalSession();
+    const e = keyEvent(key, { altKey: true, code: "Key" + key.toUpperCase() });
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(showWhereAmI).toHaveBeenCalledWith(ctx.s._core, code);
+    expect(ctx.hints).toEqual([]);
+  });
+
+  // The phone's sticky Ctrl + w (mobile_layout.takeStickyCtrl) arrives as the
+  // synthetic Alt+w of term_view.sendKeyAsUser, with no physical key code.
+  test("the phone's sticky Ctrl + w (Alt+w with no key code) is Ctrl-W", () => {
+    const ctx = activeRefusalSession();
+    const e = keyEvent("w", { altKey: true });
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(showWhereAmI).toHaveBeenCalledWith(ctx.s._core, 23);
+    expect(ctx.hints).toEqual([]);
+  });
+
+  test("also over search results and the digest list", () => {
+    const ctx = activeRefusalSession();
+    ctx.s._footerText = " 系列文章  (←)離開";
+    expect(ctx.s._classifyKey(keyEvent("w", { ctrlKey: true })).class).toBe("whereami");
+    ctx.s._footerText = " 文摘列表  (←)離開";
+    expect(ctx.s._classifyKey(keyEvent("y", { ctrlKey: true })).class).toBe("whereami");
+  });
+
+  test("the help sheet's Ctrl-W row is offered on an article list (wouldRefuse)", () => {
+    expect(activeRefusalSession().s.wouldRefuse({ key: "w", ctrlKey: true })).toBe(false);
+  });
+
+  test("the mailbox refuses both, and their Alt aliases, with the hint", () => {
+    for (const mods of [{ ctrlKey: true }, { altKey: true }]) {
+      for (const key of ["w", "y"]) {
+        const ctx = activeRefusalSession();
+        ctx.s._boardName = MAIL_LIST_KEY;
+        const e = keyEvent(key, { ...mods, code: "Key" + key.toUpperCase() });
+        ctx.s.onKeyDown(e);
+        expect(e.defaultPrevented).toBe(true);
+        expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
+      }
+    }
+    expect(showWhereAmI).not.toHaveBeenCalled();
   });
 });
 

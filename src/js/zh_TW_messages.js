@@ -192,6 +192,21 @@
   "boardInfo_failed": {
     "message": "讀不到看板資訊"
   },
+  "whereAmI_title": {
+    "message": "我在哪"
+  },
+  "whereAmI_path": {
+    "message": "位置"
+  },
+  "whereAmI_busy": {
+    "message": "詢問看板位置中，請稍候…"
+  },
+  "whereAmI_unavailable": {
+    "message": "這裡無法查看看板位置"
+  },
+  "whereAmI_failed": {
+    "message": "讀不到看板位置"
+  },
   "cmenu_addTitleBlacklist": {
     "message": "加入標題黑名單 ..."
   },

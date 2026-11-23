@@ -176,6 +176,21 @@ export const en_US = {
   "boardInfo_failed": {
     "message": "Could not read the board information"
   },
+  "whereAmI_title": {
+    "message": "Where am I"
+  },
+  "whereAmI_path": {
+    "message": "Location"
+  },
+  "whereAmI_busy": {
+    "message": "Asking where the board is…"
+  },
+  "whereAmI_unavailable": {
+    "message": "Cannot show where the board is here"
+  },
+  "whereAmI_failed": {
+    "message": "Could not read where the board is"
+  },
   "cmenu_addTitleBlacklist": {
     "message": "Blacklist title keyword ..."
   },

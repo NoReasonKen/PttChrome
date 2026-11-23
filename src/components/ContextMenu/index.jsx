@@ -17,6 +17,7 @@ import LongPushErrorModal from "./LongPushErrorModal";
 import AidBoardChoiceModal from "./AidBoardChoiceModal";
 import PostInfoModal from "./PostInfoModal";
 import BoardInfoModal from "./BoardInfoModal";
+import WhereAmIModal from "./WhereAmIModal";
 import FavSortModal from "./FavSortModal";
 import MarkReadChoiceModal from "./MarkReadChoiceModal";
 import PixivLookup from "../PixivLookup";
@@ -114,6 +115,7 @@ import { promptUserQuery, queryAuthor } from "../../js/user_query";
 import { showBoardNotes } from "../../js/board_notes";
 import { showArticlePostInfo, showListPostInfo } from "../../js/post_info";
 import { showBoardInfo } from "../../js/board_info";
+import { showWhereAmI } from "../../js/whereami";
 import { BoardSearchBridge } from "../../js/board_search_bridge";
 import { readSelectionText } from "../../render/screen_chunk";
 import { commentCardCopyText } from "../../render/comment_card";
@@ -204,6 +206,8 @@ const menuHandlerByEventKey = {
   articlePostInfo: (pttchrome) => showArticlePostInfo(pttchrome),
   // 看板資訊（#288）：整個看板的，不是那一列的（js/board_info.js）。
   boardInfo: (pttchrome) => showBoardInfo(pttchrome),
+  // 我在哪（#293）：Ctrl-W（js/whereami.js）。
+  whereAmI: (pttchrome) => showWhereAmI(pttchrome, 23),
   // 看板列表：把右鍵那一列的看板設為已讀（跳號 → v）。目標在開選單當下就算好了。
   boardMarkRead: (pttchrome, { boardMarkReadTarget }) =>
     pttchrome.boardMarkRead.start(boardMarkReadTarget),
@@ -296,6 +300,8 @@ const initialState = {
   markAllReadEnabled: false,
   // 「看板資訊」出不出現（好讀文章列表才有，boardInfo.available，#288）。
   boardInfoEnabled: false,
+  // 「我在哪」出不出現（好讀文章列表才有，whereAmI.available，#293）。
+  whereAmIEnabled: false,
   // The board list's view switches ({ counts } or null, boardListSession.listToggles).
   boardToggles: null,
   // 線上使用者列表上 `f` 會切到的視圖（'friends'／'all'），其他畫面 null（#199）。
@@ -384,6 +390,9 @@ const initialState = {
   // Board information (#288, js/board_info.js): the rows PTT's `i` drew
   // ({ board, moderators, items }); null = closed.
   boardInfo: null,
+  // Where the board is (#293, js/whereami.js): the screen PTT's Ctrl-W drew
+  // ({ levels, path }); null = closed.
+  whereAmI: null,
   // Reordering the favorites (#221, board_list_session._askFavSort): the
   // confirmation sheet before PTT's `S` prompt.
   showsFavSort: false,
@@ -508,6 +517,7 @@ export const ContextMenu = ({ pttchrome }) => {
     !!state.aidChoice ||
     !!state.postInfo ||
     !!state.boardInfo ||
+    !!state.whereAmI ||
     state.showsFavSort ||
     state.showsMarkReadChoice ||
     state.showsAidJump ||
@@ -822,6 +832,8 @@ export const ContextMenu = ({ pttchrome }) => {
           pttchrome.markAllRead.available(),
         boardInfoEnabled:
           onScreen && !!normalEnabled && !!pttchrome.boardInfo?.available?.(),
+        whereAmIEnabled:
+          onScreen && !!normalEnabled && !!pttchrome.whereAmI?.available?.(),
         boardToggles:
           (onScreen &&
             normalEnabled &&
@@ -913,6 +925,7 @@ export const ContextMenu = ({ pttchrome }) => {
         markReadTarget: null,
         markAllReadEnabled: false,
         boardInfoEnabled: false,
+        whereAmIEnabled: false,
         boardToggles: null,
         userListToggle: null,
         userQueryEnabled: false,
@@ -1242,6 +1255,24 @@ export const ContextMenu = ({ pttchrome }) => {
   }, [pttchrome, openBoardInfo]);
   const onBoardInfoHide = useCallback(
     () => update({ boardInfo: null }),
+    [update],
+  );
+  // Where the board is (js/whereami.js, #293): the screen PTT's Ctrl-W drew.
+  const openWhereAmI = useCallback(
+    (where) => {
+      update({ ...initialState, whereAmI: where });
+      return true;
+    },
+    [update],
+  );
+  useEffect(() => {
+    pttchrome.openWhereAmI = openWhereAmI;
+    return () => {
+      pttchrome.openWhereAmI = noop;
+    };
+  }, [pttchrome, openWhereAmI]);
+  const onWhereAmIHide = useCallback(
+    () => update({ whereAmI: null }),
     [update],
   );
   // `S` on the easy-reading favorites (board_list_session._askFavSort): true =
@@ -1877,6 +1908,7 @@ export const ContextMenu = ({ pttchrome }) => {
     markReadTarget,
     markAllReadEnabled,
     boardInfoEnabled,
+    whereAmIEnabled,
     boardToggles,
     userListToggle,
     userQueryEnabled,
@@ -1915,6 +1947,7 @@ export const ContextMenu = ({ pttchrome }) => {
     aidChoice,
     postInfo,
     boardInfo,
+    whereAmI,
     searchAidTarget,
     searchSwitchBoard,
     showsFavSort,
@@ -1955,6 +1988,7 @@ export const ContextMenu = ({ pttchrome }) => {
         markReadTarget={markReadTarget}
         markAllReadEnabled={markAllReadEnabled}
         boardInfoEnabled={boardInfoEnabled}
+        whereAmIEnabled={whereAmIEnabled}
         boardToggles={boardToggles}
         userListToggle={userListToggle}
         userQueryEnabled={userQueryEnabled}
@@ -2073,6 +2107,12 @@ export const ContextMenu = ({ pttchrome }) => {
       <BoardInfoModal
         info={boardInfo}
         onHide={onBoardInfoHide}
+        mobile={mobile}
+        pttchrome={pttchrome}
+      />
+      <WhereAmIModal
+        where={whereAmI}
+        onHide={onWhereAmIHide}
         mobile={mobile}
         pttchrome={pttchrome}
       />

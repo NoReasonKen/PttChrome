@@ -10,6 +10,7 @@
 import {
   TermKeyboard,
   altRemapCharCode,
+  ctrlAliasKey,
   isAltRemapEvent,
   keyEventToBytes,
   ALT_REMAP_EXCLUDE,
@@ -292,5 +293,24 @@ describe("排除表", () => {
       .join("");
     expect(filtered).toBe("ABCEGHIJKLMNOPQRSTUVWXYZ");
     expect(filtered.length).toBe(24);
+  });
+});
+
+describe("ctrlAliasKey: the Ctrl key an Alt remap stands for", () => {
+  test("Alt+letter becomes the lowercase Ctrl+letter, whatever e.key says (macOS Option dead keys)", () => {
+    expect(ctrlAliasKey(keyEvent("w", { altKey: true, code: "KeyW" }))).toEqual({
+      key: "w", ctrlKey: true, altKey: false, shiftKey: false, metaKey: false,
+    });
+    expect(ctrlAliasKey(keyEvent("∑", { altKey: true, code: "KeyW" })).key).toBe("w");
+    expect(ctrlAliasKey(keyEvent("Q", { altKey: true })).key).toBe("q");
+  });
+
+  test("null for anything that is no Alt remap: plain, Ctrl, AltGr, Shift, Meta, non-letter", () => {
+    expect(ctrlAliasKey(keyEvent("w"))).toBeNull();
+    expect(ctrlAliasKey(keyEvent("w", { ctrlKey: true }))).toBeNull();
+    expect(ctrlAliasKey(keyEvent("w", { ctrlKey: true, altKey: true }))).toBeNull();
+    expect(ctrlAliasKey(keyEvent("w", { altKey: true, shiftKey: true }))).toBeNull();
+    expect(ctrlAliasKey(keyEvent("w", { altKey: true, metaKey: true }))).toBeNull();
+    expect(ctrlAliasKey(keyEvent("ArrowLeft", { altKey: true }))).toBeNull();
   });
 });
