@@ -1,6 +1,6 @@
 import {
   createPageStack, pushPage, popPage, revealTarget, withLayer, handoffStep, HANDOFF_IDLE_MS, HANDOFF_TIMEOUT_MS, HANDOFF_REACH_POLL_MS,
-  backPastRevealed, spendsLayer, boundLayers, LIVE_LAYER_BOUND, pageShown
+  backPastRevealed, spendsLayer, boundLayers, LIVE_LAYER_BOUND, pageShown, popToList
 } from '../../src/js/page_stack';
 
 const list = (board, extra) => ({ kind: 'articleList', board, layer: true, ...extra });
@@ -246,4 +246,35 @@ describe('handoff readiness', () => {
     expect(at({ presentedAt: 200, reached: false, now: 200 + HANDOFF_TIMEOUT_MS })).toEqual({ action: 'swap' });
     expect(at({ presentedAt: 200, reached: true, now: 300 })).toEqual({ action: 'swap' });
   });
+});
+
+// #298: entering or leaving the digest pops the searches' pages only.
+const home = () => ({ kind: 'home', board: 'C_Chat', layer: true });
+
+test('popToList keeps the board list and what is below it, and drops the search pages above', () => {
+  let stack = pushPage(createPageStack(), home());
+  stack = pushPage(stack, list('C_Chat'), { fromBelow: true });
+  stack = pushPage(stack, article('C_Chat'), { fromBelow: true });
+  stack = pushPage(stack, list('C_Chat', { results: true }), { fromBelow: true });
+  stack = pushPage(stack, article('C_Chat'), { fromBelow: true });
+  const popped = popToList(stack, 'c_chat');
+  expect(popped.kept).toBe(1);
+  expect(popped.stack.pages.map(p => p.kind)).toEqual(['home', 'articleList']);
+  // The list is the real page again; the home layer is still what Back reveals.
+  expect(popped.stack.pages[1].layer).toBe(false);
+  expect(revealTarget(popped.stack)).toMatchObject({ kind: 'home' });
+});
+
+test('popToList: a list with nothing above it is kept as it is; results pages are not the base', () => {
+  const stack = pushPage(pushPage(createPageStack(), home()), list('C_Chat'), { fromBelow: true });
+  expect(popToList(stack, 'C_Chat').stack.pages).toHaveLength(2);
+  const onlyResults = pushPage(createPageStack(), list('C_Chat', { results: true }));
+  expect(popToList(onlyResults, 'C_Chat')).toBeNull();
+});
+
+test('popToList: no list of this board in the stack (an article base with its results) is null', () => {
+  let stack = pushPage(createPageStack(), article('C_Chat'));
+  stack = pushPage(stack, list('C_Chat', { results: true }), { fromBelow: true });
+  expect(popToList(stack, 'C_Chat')).toBeNull();
+  expect(popToList(stack, 'Other')).toBeNull();
 });

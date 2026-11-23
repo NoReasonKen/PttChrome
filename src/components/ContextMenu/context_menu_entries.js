@@ -85,6 +85,13 @@ export function buildContextMenuEntries(p) {
     item("boardInfo", i18n("boardInfo_title"), (e) =>
       p.onMenuSelect("boardInfo", e),
     );
+  // 「我在哪」（#293）：同上，整個看板的（js/whereami.js，判定在
+  // whereAmI.available）；手機在工具列「更多」。
+  const whereAmI = p.normalEnabled && p.whereAmIEnabled && !p.mobile;
+  if (whereAmI)
+    item("whereAmI", i18n("whereAmI_title"), (e) =>
+      p.onMenuSelect("whereAmI", e),
+    );
   // The board list's view switches (#221, PTT's `c` and `S`) act on the whole
   // list, not the row clicked. board_list_session.listToggles decides which the
   // current easy-reading list offers: `counts` is null where `c` is not offered
@@ -143,6 +150,7 @@ export function buildContextMenuEntries(p) {
       p.boardMarkReadTarget ||
       markAllRead ||
       boardInfo ||
+      whereAmI ||
       boardToggles ||
       userListToggle ||
       userQuery ||

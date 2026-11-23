@@ -107,6 +107,7 @@ export const MobileToolbar = ({
   pttchrome,
   hidden,
   onOpenSearch,
+  onOpenFilter,
   onOpenSettings,
 }) => {
   const [mobile, setMobile] = useState(() => !!pttchrome.mobile);
@@ -544,6 +545,19 @@ export const MobileToolbar = ({
     });
   }, [pttchrome, whenReady]);
 
+  // Where the board is (#293, js/whereami.js): PTT's Ctrl-W screen, as a sheet.
+  const onWhereAmI = useCallback(() => {
+    setPanel(null);
+    setConfirmLogout(false);
+    const w = pttchrome.whereAmI;
+    if (!w || typeof w.start !== "function") return;
+    whenReady(() => {
+      if (typeof pttchrome.noteUserAction === "function")
+        pttchrome.noteUserAction();
+      w.start();
+    });
+  }, [pttchrome, whenReady]);
+
   // 跳到第一篇未讀：與桌機快捷鍵（預設 F7）同一個入口（unread_jump.js）。
   const onUnreadJump = useCallback(() => {
     setPanel(null);
@@ -556,6 +570,20 @@ export const MobileToolbar = ({
       u.start();
     });
   }, [pttchrome, whenReady]);
+
+  // The digest (#298): the same entrance as Tab.
+  const onFilter = useCallback(
+    (kind) => {
+      setPanel(null);
+      setConfirmLogout(false);
+      whenReady(() => {
+        if (typeof pttchrome.noteUserAction === "function")
+          pttchrome.noteUserAction();
+        if (onOpenFilter) onOpenFilter(kind);
+      });
+    },
+    [pttchrome, whenReady, onOpenFilter],
+  );
 
   // Jump to an article by its code (#253): the same input as `#` on a keyboard.
   const onAidJump = useCallback(() => {
@@ -971,6 +999,40 @@ export const MobileToolbar = ({
             onClick={onBoardInfo}
           >
             {i18n("boardInfo_title")}
+          </button>
+        ) : null}
+        {context.whereAmI ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__whereAmI"
+            onClick={onWhereAmI}
+          >
+            {i18n("whereAmI_title")}
+          </button>
+        ) : null}
+        {context.boardJump ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__boardJump"
+            onClick={() => {
+              setPanel(null);
+              setConfirmLogout(false);
+              if (onOpenSearch) onOpenSearch("board");
+            }}
+          >
+            {i18n("mobileToolbar_boardJump")}
+          </button>
+        ) : null}
+        {context.digest ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__digest"
+            onClick={() => onFilter(context.digest)}
+          >
+            {i18n("mobileToolbar_" + context.digest)}
           </button>
         ) : null}
         {context.boardCountsSwitch ? (

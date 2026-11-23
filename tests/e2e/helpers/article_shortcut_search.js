@@ -159,11 +159,13 @@ async function openSearchResult(page, { thread = false } = {}) {
 // native S is case-insensitive equality of the reply-stripped subject, and a
 // new result list selects its newest entry.
 // `fn`: the file name in each article's URL line (aid_codec.aidToFn).
+// `money`: the price field (A); `mark`: the m or s mark (G); `digest`: a copy
+// of it is in the board's digest (Tab).
 const NESTED_ARTICLES = [
-  { aid: '1gIeu-3A', fn: 'M.1783270974.A.0CA', author: 'alice', title: '[Talk] Alpha topic', body: 'Alpha', push: 10 },
-  { aid: '1gIeu-3B', fn: 'M.1783270974.A.0CB', author: 'alice', title: '[Talk] Beta topic', body: 'Beta', push: 20 },
-  { aid: '1gIeu-3C', fn: 'M.1783270974.A.0CC', author: 'bob', title: 'Re: [Talk] Beta topic', body: 'Charlie', push: 30 },
-  { aid: '1gIeu-3D', fn: 'M.1783270974.A.0CD', author: 'bob', title: '[Talk] Delta topic', body: 'Delta', push: 40 }
+  { aid: '1gIeu-3A', fn: 'M.1783270974.A.0CA', author: 'alice', title: '[Talk] Alpha topic', body: 'Alpha', push: 10, money: 50, mark: 'm' },
+  { aid: '1gIeu-3B', fn: 'M.1783270974.A.0CB', author: 'alice', title: '[Talk] Beta topic', body: 'Beta', push: 20, money: 200, digest: true },
+  { aid: '1gIeu-3C', fn: 'M.1783270974.A.0CC', author: 'bob', title: 'Re: [Talk] Beta topic', body: 'Charlie', push: 30, money: 0 },
+  { aid: '1gIeu-3D', fn: 'M.1783270974.A.0CD', author: 'bob', title: '[Talk] Delta topic', body: 'Delta', push: 40, money: 500, mark: 's', digest: true }
 ];
 
 // options.loggedIn: this connection first passes the main menu, as a real
@@ -226,12 +228,12 @@ async function installNestedServer(page, session) {
     }).join('');
     const subject = title => title.replace(/^(?:(?:Re|Fw):\s*)+/i, '').toLowerCase();
     // surface: article | list | info | prompt | empty | missing | main | query |
-    //   boardInfo | notes | notesMovie | notesPause | articleMovie | articleQuestion
+    //   boardInfo | notes | notesMovie | notesPause | articleMovie | articleQuestion | whereAmI
     // `promptless`: `a` shows no prompt, as on a screen where it is no command.
     // `squeezedFooter`: the pager footer has room only for its short hints,
     //   as a very long article's (more.c#common_pmore_footer_handler).
     const state = {
-      surface: session.surface, board: 'Test', filter: null, cursor: 0, open: articles.find(article => article.body === 'Alpha'), line: 1,
+      surface: session.surface, board: 'Test', filter: null, digest: false, keepPlain: null, modes: new Set(), notice: null, cursor: 0, open: articles.find(article => article.body === 'Alpha'), line: 1,
       deleted: new Set(session.deleted || []), prompt: null, promptless: false, squeezedFooter: false,
       // backPause: { kind: 'pause' | 'vmsg', message }: the next Back from an
       // article answers with that pause first (#189).
@@ -266,10 +268,15 @@ async function installNestedServer(page, session) {
       // A movie that ends or is stopped shows the article again, a long one
       // at `movieStopLine` (where its last frame was) or its top.
       articleMovie: 'movie', movieFrame: 0, movieFrames: 4, movieFrameMs: 300, movieChoices: [],
-      movieStopLine: null, movieAnswer: ''
+      movieStopLine: null, movieAnswer: '',
+      // Ctrl-W / Ctrl-Y on the list (bbs.c#whereami, #293): the board's place in
+      // the class tree. `whereAmIFails`: the board has no bid and PTT does
+      // nothing; `whereAmIGarbled`: a level's row reads as nothing PTT prints.
+      whereAmIFails: false, whereAmIGarbled: false
     };
     const listed = () => {
-      const all = articles.filter(article => !state.deleted.has(article.aid) && (!state.filter || !article.pinned));
+      const all = articles.filter(article => !state.deleted.has(article.aid) && (!state.filter || !article.pinned) &&
+        (!state.digest || article.digest));
       return state.filter ? all.filter(state.filter.match) : all;
     };
     const selected = () => listed()[state.cursor];
@@ -483,6 +490,32 @@ async function installNestedServer(page, session) {
       state.movieChoices = [];
       playMovie();
     };
+    // bbs.c#whereami over the list: from row 1 (move(1, 0); clrtobot()), the
+    // list's title kept on row 0. The class tree is p[2] (root) > p[1] > p[0]
+    // (the board); the root prints "%-40.40s %.13s", each level under it
+    // "%*s %-13.13s %-37.37s %.13s" (two columns per level), 「位置: 」 at
+    // b_lines-2 and pressanykey's bar on the last row.
+    const whereAmIRows = termRows => {
+      const tree = [
+        ['', '測試 ◎測試分類', ''],
+        ['Test_Class', '◎測試子分類', 'classadm'],
+        [state.board, '測試 ◎Test board', 'test']
+      ];
+      const category = tree[0][1].split(' ')[0];
+      const rows = {
+        0: `【板主：test】看板《${state.board}》`,
+        1: '我在哪?',
+        2: padCells(tree[0][1], 40) + ' ' + tree[0][2]
+      };
+      tree.slice(1).forEach(([name, desc, mods], index) => {
+        rows[3 + index] = ' '.repeat((index + 1) * 2) + ' ' + padCells(name, 13) + ' ' + padCells(desc, 37) + ' ' + mods;
+      });
+      if (state.whereAmIGarbled) rows[3] = '  ??????';
+      rows[termRows - 3] = '位置: ' + [category, ...tree.slice(1).map(([name]) => name)]
+        .map((name, index, all) => name + (index < all.length - 1 ? ' >' : '') + ' ').join('');
+      rows[termRows - 1] = '▄'.repeat(15) + ' 請按任意鍵繼續 ' + '▄'.repeat(15);
+      return rows;
+    };
     const frame = (fullRepaint = false) => {
       const termRows = session.dynamicRows ? state.applicationRows : 24;
       const bodyRows = termRows - 4;
@@ -525,6 +558,8 @@ async function installNestedServer(page, session) {
       } else if (state.surface === 'query') {
         rows = queryRows(state.queryUser, termRows);
         inverse = [0];
+      } else if (state.surface === 'whereAmI') {
+        rows = whereAmIRows(termRows);
       } else if (state.surface === 'boardInfo') {
         rows = boardInfoRows(termRows);
         inverse = [0];
@@ -547,14 +582,14 @@ async function installNestedServer(page, session) {
           1: '[←]離開 [→]閱讀 [^P]發表文章 [b]備忘錄',
           2: '  編號    日 期 作  者       文  章  標  題',
           [termRows - 1]: session.legacyCaptions ? ' 文章選讀 [←]離開 [→]閱讀'
-            : (state.filter ? ' 系列文章 ' : ' 文章列表 ') +
+            : (state.digest ? ' 文摘列表 ' : state.filter ? ' 系列文章 ' : ' 文章列表 ') +
               (session.ptList ? ' (^P)發表 (y)回應 (X)推文 (→)閱讀 (←)離開' : ' [←]離開 [→]閱讀')
         };
         inverse = [0, 2];
         const start = Math.max(0, Math.min(state.cursor - Math.floor(bodyRows / 2), entries.length - bodyRows));
         entries.slice(start, start + bodyRows).forEach((article, offset) => {
           const index = start + offset;
-          const num = article.pinned ? '      ★' : String(state.filter ? index + 1 : 101 + index).padStart(7);
+          const num = article.pinned ? '      ★' : String(state.filter || state.digest ? index + 1 : 101 + index).padStart(7);
           // The current-generation cursor marker replaces the first column.
           const mark = index === state.cursor ? '>' : ' ';
           rows[3 + offset] = `${mark}${num.slice(1)}     9/01 ${article.author.padEnd(12)} □ ${article.title}`;
@@ -572,7 +607,7 @@ async function installNestedServer(page, session) {
           rows[termRows - 1] = state.prompt.label;
           cursor = [termRows, state.prompt.label.length + 1];
         } else if (state.surface === 'empty') {
-          rows[termRows - 1] = ' ◆ 找不到符合條件的文章。 [按任意鍵繼續]';
+          rows[termRows - 1] = ` ◆ ${state.notice || '找不到符合條件的文章。'} [按任意鍵繼續]`;
           cursor = [termRows, 1];
         } else if (state.surface === 'missing') {
           rows[termRows - 2] = '找不到這個文章代碼(AID)，可能是文章已消失，或是你找錯看板了';
@@ -594,18 +629,38 @@ async function installNestedServer(page, session) {
       return data + `\x1b[${cursor[0]};${cursor[1]}H`;
     };
     const newest = () => { state.cursor = Math.max(0, listed().length - 1); };
-    const search = match => {
+    // `mode`: read.c's sr_mode; a once-only one (select_read: RS_TITLE, RS_NEWPOST,
+    // RS_MARK, RS_SOLVED) asked a second time does nothing at all.
+    const search = (match, mode) => {
+      const once = ['sameTitle', 'newPost', 'mark', 'solved'];
+      if (mode && once.includes(mode) && state.filter && state.modes.has(mode)) return;
       const all = listed();
       const hits = all.filter(match);
+      state.notice = null;
       if (!hits.length) return void (state.surface = 'empty');
+      if (!state.filter) state.modes = new Set();
+      if (mode) state.modes.add(mode);
       const previous = state.filter;
       state.filter = { match: previous ? article => previous.match(article) && match(article) : match };
       state.surface = 'list';
       newest();
     };
+    // read_cmd_quit in a search (MODE_SELECT) leaves the search only, even inside
+    // the digest; board_digest (Tab, or Left in the digest) leaves the digest and
+    // any search with it, and the full list keeps its place (getkeep).
+    const leaveDigest = () => {
+      const keep = state.keepPlain || selected();
+      state.filter = null;
+      state.digest = false;
+      state.modes = new Set();
+      state.keepPlain = null;
+      state.cursor = Math.max(0, listed().indexOf(keep));
+    };
     const leaveFilter = () => {
+      if (!state.filter) return leaveDigest();
       const current = selected();
       state.filter = null;
+      state.modes = new Set();
       state.cursor = Math.max(0, listed().indexOf(current));
     };
     const enterBoard = () => {
@@ -624,8 +679,9 @@ async function installNestedServer(page, session) {
         const sequence = /^\x1b\[[0-9;]*[~A-Za-z]/.exec(rest);
         return rest.slice(sequence ? sequence[0].length : 1);
       }
-      // pressanykey after the entry screen: any one key draws the list.
-      if (state.surface === 'notes' || state.surface === 'notesPause') {
+      // pressanykey after the entry screen, or whereami's: any one key draws
+      // the list.
+      if (state.surface === 'notes' || state.surface === 'notesPause' || state.surface === 'whereAmI') {
         state.surface = 'list';
         const sequence = /^\x1b\[[0-9;]*[~A-Za-z]/.exec(rest);
         return rest.slice(sequence ? sequence[0].length : 1);
@@ -698,11 +754,23 @@ async function installNestedServer(page, session) {
           state.surface = 'list';
           return rest.slice(end + 1);
         }
+        const word = text.trim().toLowerCase();
+        if (prompt.kind === 'mark' && !['m', 's'].includes(word)) {
+          state.surface = 'list';
+          return rest.slice(end + 1);
+        }
         search(prompt.kind === 'author'
           ? article => article.author.toLowerCase().includes(text.toLowerCase())
           : prompt.kind === 'push'
             ? article => Number(text) > 0 ? article.push >= Number(text) : article.push <= Number(text)
-            : article => article.title.toLowerCase().includes(text.toLowerCase()));
+            : prompt.kind === 'price'
+              ? article => (article.money || 0) >= Number(text)
+              : prompt.kind === 'mark'
+                ? article => article.mark === word
+                : prompt.kind === 'exclude'
+                  ? article => !article.title.toLowerCase().includes(text.toLowerCase())
+                  : article => article.title.toLowerCase().includes(text.toLowerCase()),
+        prompt.kind === 'mark' ? (word === 's' ? 'solved' : 'mark') : null);
         return rest.slice(end + 1);
       }
       if (rest.startsWith('\x1b[D')) {
@@ -712,7 +780,7 @@ async function installNestedServer(page, session) {
           state.backPause = null;
           state.surface = 'backPause';
         } else if (state.surface === 'article') state.surface = 'list';
-        else if (state.filter) leaveFilter();
+        else if (state.filter || state.digest) leaveFilter();
         else state.surface = 'main';
         return rest.slice(3);
       }
@@ -721,7 +789,7 @@ async function installNestedServer(page, session) {
       const jump = /^(\d+)\r/.exec(rest);
       if (jump && state.surface === 'list') {
         const num = Number(jump[1]);
-        const index = state.filter ? num - 1 : num - 101;
+        const index = state.filter || state.digest ? num - 1 : num - 101;
         state.cursor = Math.min(Math.max(0, index), listed().length - 1);
         return rest.slice(jump[0].length);
       }
@@ -783,6 +851,9 @@ async function installNestedServer(page, session) {
           playNotes();
         } else state.surface = 'notes';
       }
+      else if ((head === '\x17' || head === '\x19') && state.surface === 'list') {
+        if (!state.whereAmIFails) state.surface = 'whereAmI';
+      }
       else if (head === '\x11' && state.surface === 'list') {
         const author = selected()?.author;
         if (author && !state.goneAuthors.has(author)) {
@@ -803,9 +874,37 @@ async function installNestedServer(page, session) {
       } else if (head === 'Z' && state.surface === 'list') {
         state.surface = 'prompt';
         state.prompt = { kind: 'push', label: state.filter ? '增加條件 推文數: ' : '搜尋推文數高於多少: ' };
+      } else if (head === 'A' && state.surface === 'list') {
+        state.surface = 'prompt';
+        state.prompt = { kind: 'price', label: state.filter ? '增加條件 文章價格: ' : '搜尋價格高於多少的文章: ' };
+      } else if (head === 'G' && state.surface === 'list') {
+        state.surface = 'prompt';
+        state.prompt = { kind: 'mark', label: state.filter ? '增加條件 標記(m/s)(未輸入則取消): ' : '搜尋標記(m/s)(未輸入則取消): ' };
+      } else if (head === '!' && state.surface === 'list') {
+        if (state.filter) {
+          state.surface = 'prompt';
+          state.prompt = { kind: 'exclude', label: '增加條件 排除標題: ' };
+        } else {
+          state.surface = 'empty';
+          state.notice = '反向搜尋(!)只能在已進入搜尋時使用(例: 先用 / 搜尋)';
+        }
+      } else if (head === '\x08' && state.surface === 'list') {
+        search(article => !/^Re:/.test(article.title), 'newPost');
+      } else if (head === '\t' && state.surface === 'list') {
+        if (state.digest) leaveDigest();
+        else {
+          // board_digest leaves a search first; the full list keeps its place.
+          const current = selected();
+          state.filter = null;
+          state.modes = new Set();
+          state.keepPlain = current;
+          state.digest = true;
+          state.surface = 'list';
+          newest();
+        }
       } else if (head === 'S' && state.surface === 'list') {
         const wanted = subject(selected().title);
-        search(article => subject(article.title) === wanted);
+        search(article => subject(article.title) === wanted, 'sameTitle');
       } else if (head === 's' && !rest.includes('\r')) {
         // The name comes once the prompt is shown (the dashboard, the search sheet).
         state.surface = 'boardPrompt';

@@ -10,10 +10,10 @@ import { MAIL_LIST_KEY, USER_LIST_KEY, isUserListKey, sameBoard } from './screen
 import { handoffStep, PAGE, HANDOFF_TIMEOUT_MS, HANDOFF_REACH_POLL_MS } from './page_stack';
 import { i18n } from './i18n';
 import { STACK_NOTICE_MS, LOCAL_INPUT, stopLocal } from './stack_layer';
-import { searchKindOfKey } from './article_search';
+import { searchKindOfKey, withBoardJump } from './article_search';
 import { homeKeyAction } from './home_dashboard';
 import { articleLeftoverKey, articleReadingKey, handleArticleFindKey } from './easy_reading';
-import { altRemapCharCode, isAltRemapEvent, isBrowserClipboardEvent, keyEventToBytes } from './term_keyboard';
+import { ctrlAliasKey, isAltRemapEvent, isBrowserClipboardEvent, keyEventToBytes } from './term_keyboard';
 import { isPushKey } from './long_push_gate';
 import { HINT_ERROR } from './status_hint';
 import { UNSUPPORTED_KEY_HINT } from './unsupported_hint';
@@ -188,7 +188,7 @@ export class Handoff {
     const core = this.core;
     const prefs = readValuesWithDefault();
     const kind = this.shownTarget();
-    const searchKinds = this.toolbar?.search || [];
+    const searchKinds = withBoardJump(this.toolbar?.search || []);
     const plain = !event.ctrlKey && !event.altKey;
     const search = plain && searchKindOfKey(kind === PAGE.HOME && event.key === 'S' ? 's' : event.key);
     if (search && searchKinds.includes(search) && core.openSearchModal?.(search))
@@ -197,11 +197,10 @@ export class Handoff {
     let accepted;
     if (kind === PAGE.ARTICLE_LIST) {
       const page = this.layer.listPage.session;
-      // The normal list handler reserves Alt+Q for author lookup; every
-      // other Alt remap is refused, including aliases of the user list.
-      const key = altRemap ? { key: 'q', ctrlKey: true } : event;
-      const action = core.listSession._classifyKey(key, page);
-      if (altRemap) accepted = altRemapCharCode(event) === 17 && action.class === 'author-query';
+      // An Alt remap is judged as the Ctrl key it stands for, as the list's own
+      // handler does (ctrlAliasKey).
+      const action = core.listSession._classifyKey(ctrlAliasKey(event) || event, page);
+      if (altRemap) accepted = action.class !== 'unsupported' && action.class !== 'ignore';
       else if (action.class !== 'ignore') accepted = action.class !== 'unsupported';
       if (action.class === 'aid-jump' && core.openAidJumpModal?.()) return 'openedAidJump';
       if (action.class === 'jump-digit' && core.view.promptListInput) {

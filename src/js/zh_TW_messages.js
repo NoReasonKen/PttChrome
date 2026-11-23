@@ -213,6 +213,21 @@
   "boardInfo_failed": {
     "message": "讀不到看板資訊"
   },
+  "whereAmI_title": {
+    "message": "我在哪"
+  },
+  "whereAmI_path": {
+    "message": "位置"
+  },
+  "whereAmI_busy": {
+    "message": "詢問看板位置中，請稍候…"
+  },
+  "whereAmI_unavailable": {
+    "message": "這裡無法查看看板位置"
+  },
+  "whereAmI_failed": {
+    "message": "讀不到看板位置"
+  },
   "cmenu_addTitleBlacklist": {
     "message": "加入標題黑名單 ..."
   },
@@ -556,6 +571,54 @@
   },
   "searchModal_conditionLimit": {
     "message": "已達搜尋條件上限。請先返回所有文章，再重新搜尋。"
+  },
+  "searchModal_kindPrice": {
+    "message": "價格 (A)"
+  },
+  "mobileToolbar_boardJump": {
+    "message": "跳至看板…"
+  },
+  "searchModal_sameTitlePlaceholder": {
+    "message": "游標所在文章的標題"
+  },
+  "mobileToolbar_digest": {
+    "message": "文摘"
+  },
+  "mobileToolbar_digestLeave": {
+    "message": "離開文摘"
+  },
+  "searchModal_kindMark": {
+    "message": "標記 (G)"
+  },
+  "searchModal_kindSameTitle": {
+    "message": "同標題 (S)"
+  },
+  "searchModal_kindNewPost": {
+    "message": "主題首篇 (⌫)"
+  },
+  "searchModal_markM": {
+    "message": "m 標記"
+  },
+  "searchModal_markS": {
+    "message": "s 標記"
+  },
+  "searchModal_markHint": {
+    "message": "搜尋有這個標記的文章"
+  },
+  "searchModal_excludeLabel": {
+    "message": "排除"
+  },
+  "searchModal_newPostHint": {
+    "message": "只列出主題首篇（不含回文）"
+  },
+  "searchModal_placeholderPrice": {
+    "message": "價格高於多少"
+  },
+  "searchFilter_applied": {
+    "message": "這一輪搜尋已經用過這個條件了"
+  },
+  "searchFilter_needsResults": {
+    "message": "排除標題只能在搜尋結果裡使用，請先搜尋"
   },
   "searchModal_busy": {
     "message": "指令處理中，請稍候再試"

@@ -2245,7 +2245,8 @@ TermView.prototype = {
       (app.userQuery && app.userQuery.holding) ||
       (app.postInfo && app.postInfo.holding) ||
       (app.boardInfo && app.boardInfo.holding) ||
-      screenPageHolding(app)));
+      screenPageHolding(app) ||
+      (app.whereAmI && app.whereAmI.holding)));
   },
 
   // The list easy-reading branch of redraw owns this frame. Article frames
