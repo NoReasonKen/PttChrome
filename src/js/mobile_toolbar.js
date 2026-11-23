@@ -16,7 +16,7 @@
 //   post   ：文章列表（列表好讀 session 持有，或 《看板》＋文章列表 footer），送 Ctrl+P
 //            （mbbsd/bbs.c 的 bbs_cmd_new_post）。游標在輸入欄（prompt 開著）時不給。
 //   unreadJump：文章列表（同 post 的判準），「更多」裡的「跳到第一篇未讀」（unread_jump.js）。
-//   markAllRead：文章列表（同 post 的判準），「更多」裡的「設為全部已讀」（mark_all_read.js）。
+//   markAllRead：文章列表（同 post 的判準），「更多」裡的「已讀／未讀設定…」，開 `v` 的選擇 sheet（mark_all_read.ask，#299）。
 //   boardCountsSwitch / boardCounts / boardSort: the easy-reading board list puts
 //            PTT's view switches in More (#221). boardCountsSwitch: favorites and a
 //            class's boards can show article counts / board numbers (PTT's `c`);

@@ -364,7 +364,7 @@ test.describe('文章列表好读模式（离线）', () => {
       await page.locator('#t').focus();
       // Tab and Backspace are not here: they are the digest and thread-starter
       // filters (#298, list_search_filters.offline.spec.js).
-      for (const key of ['z', 'v', 'Control+p', 'Alt+t', 'c']) {
+      for (const key of ['z', 'Control+p', 'Alt+t', 'c']) {
         await page.evaluate(() => {
           const el = document.querySelector('.ListHint');
           if (el) el.textContent = '';
