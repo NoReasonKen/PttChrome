@@ -10,6 +10,103 @@ list search key or a search-sheet submission, clears that trail
 article do not. Rules and implementation notes are in
 [the article shortcut specification](article-swipe-drawer-spec.md).
 
+## Other article-list filters (#298)
+
+`A` (price), `G` (marked), `!` (exclude title), `S` (same title), Backspace
+(thread starters) and Tab (digest) are the rest of the article list's keys
+(`read.c#read_common_cmds`, which the digest list shares with the article list,
+and `bbs.c#bbs_cmd_board_digest`). They share the search model instead of adding
+a second one: `FILTER_DEFS` in `article_search.js` is one row per kind (the key,
+what PTT is sent, its prompt fingerprints, its input), and `buildSearchSteps`,
+the prompt check, the results context, the in-flight gate, resume and repeat read
+that table.
+
+| kind | key | PTT | in the sheet |
+|---|---|---|---|
+| `price` | `A` | `搜尋價格高於多少的文章: ` / `增加條件 文章價格: `, NUMECHO width 7 (6 digits), `atoi <= 0` cancels | its own kind, a number field |
+| `mark`, `solved` | `G` | `vans` line prompt `搜尋標記(m/s)(未輸入則取消): ` / `增加條件 標記(m/s)(未輸入則取消): `; it reads a line (3 bytes), so the answer is `m⏎` or `s⏎` | one kind 「標記」 with an m / s choice inside it, no text |
+| `exclude` | `!` | `增加條件 排除標題: ` (TTLEN-4, 59 bytes). Outside a search PTT only shows a vmsg 「反向搜尋(!)只能在已進入搜尋時使用」 and no prompt | the title kind's 「排除」 box: checked, the keyword is sent with `!` instead of `/`; the box is just disabled outside a search, with no explanatory text |
+| `sameTitle` | `S` | no prompt; the cursor row's full subject (`subject_ex`: `Re:`/`Fw:` stripped) is the condition (`RS_TITLE`), once per search | its own kind: a disabled input that only shows that title, no text to type, runs on submit |
+| `newPost` | Backspace (`^H`) | no prompt | its own kind, no text, runs on submit |
+
+- The sheet's kinds on an article list are PTT's search filters: title, author,
+  push (unchanged, with their history), then price, marked, same title, thread
+  starters. Going to a board (`s`) is navigation, not a filter, so it is **not** a
+  kind there: `s` and the toolbar's More entry 「跳至看板…」 open the board-only
+  sheet (the same single-kind sheet as on the board list and main menu, with the
+  native completion bridge and its history; `searchSheetKinds`, `withBoardJump`).
+  The desktop reaches the board only by `s` and the command palette, neither of
+  which went through the sheet's kind row, so it needed no new entry. The history
+  manager keeps its board kind (it manages saved board names). Seven kinds do not
+  fit one segmented row, so `SearchKindControl` continues on a second row of
+  equal-width segments (4+3, same look, selected segment highlighted on whichever
+  row it is); the four-kind rows (the history manager, a one-kind sheet) are one
+  row exactly as before. Price has keyword history like title, author and push
+  (recorded on submit, recalled with ↑ and the history area, a pick runs the same
+  `A` + digits; the settings' history manager has a price kind, five kinds on two
+  rows). The marks, thread starters and the exclude box have none.
+- Same title (S) is PTT's own `S` (`RS_TITLE`). The sheet's disabled input only
+  **shows** the cursor article's title (`cursorSubject`): the list row's title cell
+  without its type mark (□ ■, or `R:` for a reply) and without `Re:`/`Fw:` prefixes
+  as `common/bbs/string.c#subject_ex` strips them (repeated, any case, each followed
+  by at most one space); with no selected article it is empty with the placeholder
+  「游標所在文章的標題」. PTT matches the cursor row's full subject itself, which a
+  truncated list cell may show only in part, and works on the cursor row, so Search
+  is not held back when no title shows. It is not a title search: not in the title
+  history, one use per search.
+- Keys: `A`, `G` and `!` open the sheet on their kind (`!`: the title kind, box
+  checked when enabled); `S`, Backspace and Tab send at once (`startFilter` →
+  `submitSearch`, one step with no prompt). `tryOpenSearchModal` takes them; the
+  help menu's key rows ask `searchKeyOpensSheet`. The desktop has no context-menu
+  entry: `/ a Z` have none either.
+- Refused before anything is sent (`filterRefusal`, hints `searchFilter_*`): a
+  once-only filter (`S`, Backspace, `G m`, `G s`; `select_read`: `prev_modes &
+  sr_mode` returns `DONOTHING`, the screen does not change, so there would be
+  nothing to wait for) in a search that already has it; `!` outside a search when it
+  is submitted anyway. PTT's own refusals (no match, the eight-condition limit)
+  arrive through the existing vmsg handling.
+- Search results context: price, `G m`, `G s`, exclude and Backspace are recorded
+  with the other conditions and replay through the same `buildSearchSteps` (resume
+  after reconnect, repeat after Back). `S` reads the cursor row, so it counts as a
+  condition in the live context (the limit, the repeat refusal) but cannot be
+  replayed: any plan or stored search containing it is rejected whole, and the
+  list then falls back as for any unreconstructable search.
+
+### The digest (Tab) is a mode
+
+The digest is not a search kind. Its one entrance besides Tab is the toolbar's More
+sheet (「文摘」, 「離開文摘」 inside it). It follows PTT's own logic, which does
+**not** intersect with the current conditions: `board_digest` calls
+`board_select()` first, so Tab inside a search leaves the search and enters the
+digest, and Tab inside the digest leaves it and any search made there. The app
+sends the bare Tab and replays nothing; on landing (the 文摘列表 caption, or the
+full list's 文章列表) it also drops its own record of the searches:
+`clearSearchResultsContext`, `ArticleShortcutSearch.noteOtherSearch` (the search
+trail) and `NavigationStack.leaveSearchPages` (the stacked pages and live layers
+above this board's article list, such as the source articles under shortcut-search
+results; `page_stack.popToList`). The pages below the list (the home dashboard or
+a board list) keep their live layers. The digest, or the full list, is then the
+list page again; Back from the digest is PTT's own Left (which leaves the digest
+for the full list), and Back from the full list reveals the layer below it as
+before the reader searched.
+
+- PTT's keys work inside the digest (`read_common_cmds` sits under
+  `digest_comms`), so a search made there is an ordinary search. It keeps the
+  文摘列表 caption (`read.c#i_read_caption` tests `MODE_DIGEST` before
+  `MODE_SELECT`), so the caption cannot tell the digest from a search inside it:
+  the live results context leads with a `digest` filter for those, `searchModeOf`
+  reads it, and `isSearchResultsFrame(…, allowDigest)` accepts the caption for them.
+  A recovery replays the digest first, then the conditions.
+- Left (`read_cmd_quit`) inside a search made in the digest leaves only the search
+  (back to the digest); Left again leaves the digest.
+- No real-screen evidence: every prompt, vmsg and caption above is from the pttbbs
+  source. There is no recording of `A`, `G`, `!`, `S`, Backspace or Tab on real
+  PTT, so the footer of an empty digest, the exact cursor PTT leaves after leaving
+  the digest, and whether the search service accepts a digest directory are
+  assumptions (the controlled server puts the cursor back on the article it was
+  on). Inside the digest a search's landing cannot be told from the digest by
+  caption, so it is judged by the prompt having gone and the list being parked.
+
 ### Recovering search results
 
 Resume-last-place and reconnect recovery reconstruct searches submitted through

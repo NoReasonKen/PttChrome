@@ -535,6 +535,54 @@ export const en_US = {
   "searchModal_conditionLimit": {
     "message": "The search condition limit has been reached. Return to the full article list to start a new search."
   },
+  "searchModal_kindPrice": {
+    "message": "Price (A)"
+  },
+  "mobileToolbar_boardJump": {
+    "message": "Go to board…"
+  },
+  "searchModal_sameTitlePlaceholder": {
+    "message": "Title of the article under the cursor"
+  },
+  "mobileToolbar_digest": {
+    "message": "Digest"
+  },
+  "mobileToolbar_digestLeave": {
+    "message": "Leave digest"
+  },
+  "searchModal_kindMark": {
+    "message": "Marked (G)"
+  },
+  "searchModal_kindSameTitle": {
+    "message": "Same title (S)"
+  },
+  "searchModal_kindNewPost": {
+    "message": "First posts (⌫)"
+  },
+  "searchModal_markM": {
+    "message": "m mark"
+  },
+  "searchModal_markS": {
+    "message": "s mark"
+  },
+  "searchModal_markHint": {
+    "message": "Search articles with this mark"
+  },
+  "searchModal_excludeLabel": {
+    "message": "Exclude"
+  },
+  "searchModal_newPostHint": {
+    "message": "List thread starters only (no replies)"
+  },
+  "searchModal_placeholderPrice": {
+    "message": "Price above N"
+  },
+  "searchFilter_applied": {
+    "message": "This condition is already part of these results"
+  },
+  "searchFilter_needsResults": {
+    "message": "Excluding a title only works inside search results; search first"
+  },
   "searchModal_busy": {
     "message": "A command is in progress, please try again"
   },

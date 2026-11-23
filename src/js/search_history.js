@@ -29,13 +29,19 @@ const HISTORY_KEY = 'pttchrome.searchHistory.v2';
 export const MAX_SEARCH_HISTORY = HISTORY_RECENT_LIMIT;
 export const MAX_PINNED_SEARCH_HISTORY = HISTORY_PINNED_LIMIT;
 export const AUTO_PIN_USES = HISTORY_AUTO_PIN_USES;
-export const SEARCH_KINDS = ['title', 'author', 'push', 'board'];
+// price (#298) is recorded like the others; the other filters have nothing worth recalling.
+export const SEARCH_KINDS = ['title', 'author', 'push', 'price', 'board'];
 // 種類的名稱（i18n key）：搜尋視窗與管理視窗共用。
 export const SEARCH_KIND_LABEL_KEY = {
   title: 'searchModal_kindTitle',
   author: 'searchModal_kindAuthor',
   push: 'searchModal_kindPush',
   board: 'searchModal_kindBoard',
+  // The other filters (article_search.FILTER_KINDS): sheet labels only, no history.
+  price: 'searchModal_kindPrice',
+  mark: 'searchModal_kindMark',
+  sameTitle: 'searchModal_kindSameTitle',
+  newPost: 'searchModal_kindNewPost',
 };
 
 // 複製一份、補齊四類、丟掉形狀不對與重複的項目：讀進來的 JSON 與呼叫端傳的物件同一套。

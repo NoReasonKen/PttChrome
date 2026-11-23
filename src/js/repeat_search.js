@@ -15,6 +15,8 @@ import { validateSearchResultsContext } from './search_results_context';
 export function repeatSearch(core, context, done) {
   const search = validateSearchResultsContext(context);
   if (!search || !core.commandQueue) return false;
+  // A search made inside the digest keeps the 文摘列表 caption (context digest first).
+  const inDigest = search.filters[0].kind === 'digest';
   let finished = false;
   const finish = ok => {
     if (finished) return;
@@ -40,12 +42,12 @@ export function repeatSearch(core, context, done) {
     const steps = filter.kind === 'thread' ? null : buildSearchSteps(filter.kind, filter.value);
     if (filter.kind !== 'thread' && !steps) return finish(false);
     const submit = () => enqueue({
-      ...(steps ? steps[1] : { keys: 'S' }),
+      ...(steps ? steps[steps.length - 1] : { keys: 'S' }),
       kind: 'repeat-search-submit',
       expect: (snapshot, facts) => {
         const last = facts.rowTexts[facts.rows - 1] || '';
         if (facts.curY === facts.rows - 1 && SEARCH_RESULT_NOTICE.test(last)) return { notice: true };
-        return searchResultsLanded(facts, search.board) ? { results: true } : false;
+        return searchResultsLanded(facts, search.board, inDigest) ? { results: true } : false;
       },
       onDone: result => {
         if (result.notice) dismiss();
@@ -53,7 +55,8 @@ export function repeatSearch(core, context, done) {
         else finish(true);
       }
     });
-    if (steps) enqueue({ ...steps[0], kind: 'repeat-search-open', fullRepaint: true, onDone: submit });
+    // A prompt-less filter (Backspace) is one step, with no prompt to open.
+    if (steps && steps.length > 1) enqueue({ ...steps[0], kind: 'repeat-search-open', fullRepaint: true, onDone: submit });
     else submit();
   };
   const first = search.filters[0];

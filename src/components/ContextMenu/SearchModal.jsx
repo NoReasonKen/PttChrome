@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Modal,
   TextInput,
+  Checkbox,
+  SegmentedControl,
   Button,
   Group,
   Text,
@@ -40,10 +42,18 @@ const KIND_PLACEHOLDER_KEY = {
   author: "searchModal_placeholderAuthor",
   push: "searchModal_placeholderPush",
   board: "searchModal_placeholderBoard",
+  price: "searchModal_placeholderPrice",
+  exclude: "searchModal_placeholderExclude",
 };
 // 種類 user＝查詢網友（user_query.js，#199）：同一個輸入外殼，標題、欄位名、
 // 送出鈕換成查詢網友的字，只收 PTT 的帳號格式，沒有搜尋紀錄。
 const USER_KIND = "user";
+// 文章列表其餘的篩選（#298）：這些種類不打字，在彈窗裡選好就送。
+const NO_TEXT_KINDS = ["mark", "newPost"];
+const NO_TEXT_HINT_KEY = {
+  mark: "searchModal_markHint",
+  newPost: "searchModal_newPostHint",
+};
 function normalizeSearchText(kind, text) {
   if (kind !== USER_KIND) return normalizeArticleSearch(kind, text);
   const t = String(text == null ? "" : text).trim();
@@ -65,6 +75,9 @@ export const SearchModal = ({
   createBoardSearch,
   aidTarget,
   switchBoard,
+  exclude,
+  excludeAllowed,
+  sameTitle,
 }) => {
   // aidTarget＝{ aid, token }：沒寫看板的 #AID 要跳到哪個看板（aid_board_choice.js）。
   // 輸入與原生補全跟一般的看板搜尋完全相同，只有標題／送出鈕的字不同，送出後
@@ -81,18 +94,30 @@ export const SearchModal = ({
   const bridgeRef = useRef(null);
   const [board, setBoard] = useState(null);
   const [boardRejected, setBoardRejected] = useState("");
+  // 標題種類的「排除」（!）與標記種類的 m／s（G）。
+  const [excludeChecked, setExcludeChecked] = useState(false);
+  const [markChoice, setMarkChoice] = useState("mark");
 
   // 每次打開都重新讀（元件常駐，初值會過期），種類跟著觸發的按鍵。
   useEffect(() => {
     if (!show) return;
     setCurrentKind(kind || "title");
+    setExcludeChecked(!!exclude && !!excludeAllowed);
+    setMarkChoice("mark");
     setValue("");
     setHistory(readSearchHistory());
     indexRef.current = -1;
     draftRef.current = "";
-  }, [show, kind]);
+  }, [show, kind, exclude, excludeAllowed]);
 
   const isBoard = currentKind === "board";
+  // Same title (S) sends PTT's own S, which works on the cursor row: the input
+  // only shows that row's title, and Search needs nothing else.
+  const isSameTitle = currentKind === "sameTitle";
+  const noText = NO_TEXT_KINDS.includes(currentKind) || isSameTitle;
+  // 排除（!）只有搜尋結果裡 PTT 才收；關掉時要打勾也勾不了。
+  const excluding =
+    currentKind === "title" && excludeChecked && !!excludeAllowed;
   const valueRef = useRef(value);
   valueRef.current = value;
   useEffect(() => {
@@ -154,7 +179,8 @@ export const SearchModal = ({
 
   const list = searchHistoryOrder(history, currentKind);
   const pinnedCount = searchHistoryKind(history, currentKind).pinned.length;
-  const valid = !!normalizeSearchText(currentKind, value) && !boardBlocks;
+  const valid =
+    (noText || !!normalizeSearchText(currentKind, value)) && !boardBlocks;
 
   const onKindChange = useCallback((k) => {
     setCurrentKind(k);
@@ -205,6 +231,11 @@ export const SearchModal = ({
 
   const submit = useCallback(
     (text) => {
+      if (noText)
+        return onConfirm({
+          kind: currentKind === "mark" ? markChoice : currentKind,
+          text: "",
+        });
       if (!normalizeSearchText(currentKind, text)) return;
       if (currentKind === USER_KIND)
         return onConfirm({
@@ -212,7 +243,7 @@ export const SearchModal = ({
           text: normalizeSearchText(currentKind, text),
         });
       if (currentKind !== "board")
-        return onConfirm({ kind: currentKind, text });
+        return onConfirm({ kind: excluding ? "exclude" : currentKind, text });
       // 唯一符合時 PTT 會進那個板：記憶裡存完整板名，不存打到一半的字。
       const bridge = bridgeRef.current;
       const resolved = resolvedBoardName(
@@ -225,7 +256,15 @@ export const SearchModal = ({
       if (switchBoard) payload.switchBoard = true;
       onConfirm(payload);
     },
-    [currentKind, onConfirm, aidTarget, switchBoard],
+    [
+      currentKind,
+      onConfirm,
+      aidTarget,
+      switchBoard,
+      noText,
+      markChoice,
+      excluding,
+    ],
   );
 
   const onSubmit = useCallback(
@@ -255,29 +294,82 @@ export const SearchModal = ({
           onChange={onKindChange}
         />
       )}
-      <TextInput
-        data-autofocus
-        ref={inputRef}
-        name="searchKeyword"
-        label={
-          shownKinds.length > 1
-            ? undefined
-            : i18n(
-                isUser ? "userQuery_label" : SEARCH_KIND_LABEL_KEY[currentKind],
-              )
-        }
-        placeholder={i18n(
-          isUser ? "userQuery_placeholder" : KIND_PLACEHOLDER_KEY[currentKind],
-        )}
-        inputMode={currentKind === "push" ? "numeric" : undefined}
-        autoCapitalize={isUser ? "none" : undefined}
-        autoCorrect={isUser ? "off" : undefined}
-        spellCheck={isUser ? false : undefined}
-        autoComplete="off"
-        value={value}
-        onChange={onChange}
-        onKeyDown={onKeyDown}
-      />
+      {noText && (
+        <div data-search-notext={currentKind}>
+          {currentKind === "mark" && (
+            <SegmentedControl
+              fullWidth
+              mb="xs"
+              value={markChoice}
+              onChange={setMarkChoice}
+              data={[
+                { value: "mark", label: i18n("searchModal_markM") },
+                { value: "solved", label: i18n("searchModal_markS") },
+              ]}
+            />
+          )}
+          {currentKind === "sameTitle" ? (
+            <TextInput
+              name="sameTitle"
+              data-search-same-title
+              disabled
+              readOnly
+              aria-label={i18n("searchModal_kindSameTitle")}
+              placeholder={i18n("searchModal_sameTitlePlaceholder")}
+              value={sameTitle || ""}
+            />
+          ) : (
+            <Text size="sm" c="dimmed">
+              {i18n(NO_TEXT_HINT_KEY[currentKind])}
+            </Text>
+          )}
+        </div>
+      )}
+      {!noText && (
+        <TextInput
+          data-autofocus
+          ref={inputRef}
+          name="searchKeyword"
+          label={
+            shownKinds.length > 1
+              ? undefined
+              : i18n(
+                  isUser
+                    ? "userQuery_label"
+                    : SEARCH_KIND_LABEL_KEY[currentKind],
+                )
+          }
+          placeholder={i18n(
+            isUser
+              ? "userQuery_placeholder"
+              : KIND_PLACEHOLDER_KEY[currentKind],
+          )}
+          inputMode={
+            currentKind === "push" || currentKind === "price"
+              ? "numeric"
+              : undefined
+          }
+          autoCapitalize={isUser ? "none" : undefined}
+          autoCorrect={isUser ? "off" : undefined}
+          spellCheck={isUser ? false : undefined}
+          autoComplete="off"
+          value={value}
+          onChange={onChange}
+          onKeyDown={onKeyDown}
+        />
+      )}
+      {currentKind === "title" && (
+        <div data-search-exclude>
+          <Checkbox
+            mt="xs"
+            size="sm"
+            label={i18n("searchModal_excludeLabel")}
+            checked={excluding}
+            disabled={!excludeAllowed}
+            onChange={(event) => setExcludeChecked(event.currentTarget.checked)}
+          />
+        </div>
+      )}
       {isBoard && board && (
         <BoardSuggestions
           board={board}

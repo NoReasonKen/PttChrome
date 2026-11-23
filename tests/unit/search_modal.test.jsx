@@ -34,6 +34,9 @@ const renderModal = (props = {}) => {
         onConfirm={onConfirm}
         createBoardSearch={props.createBoardSearch}
         mobile={props.mobile}
+        exclude={props.exclude}
+        excludeAllowed={props.excludeAllowed}
+        sameTitle={props.sameTitle}
       />
     </MantineProvider>,
   );
@@ -364,4 +367,108 @@ test("看板：查詢在飛時先顯示上一份清單篩過的結果（不先�
   });
   expect(shown()).toEqual(["Golf", "Golfer", "Golfing"]);
   expect(document.querySelector("[data-board-interim]")).toBeNull();
+});
+
+// #298: the article list's other filters share the sheet.
+const WRAP_KINDS = ["title", "author", "push", "price", "mark", "sameTitle", "newPost"];
+
+test("more than four kinds continue on a second segmented row; the original four keep the single row", () => {
+  renderModal({ kinds: WRAP_KINDS });
+  expect(document.querySelector("[data-search-kinds=wrap]")).not.toBeNull();
+  expect(document.querySelectorAll(".searchKindItem")).toHaveLength(WRAP_KINDS.length);
+  const rows = [...document.querySelectorAll("[data-search-kinds=wrap] > *")];
+  expect(rows.map((row) => row.querySelectorAll(".searchKindItem").length)).toEqual([4, 3]);
+  const four = renderModal({ kinds: WRAP_KINDS.slice(0, 4) });
+  expect(four).toBeTruthy();
+});
+
+test("price: numeric input, Search needs a positive number", () => {
+  const { input, onConfirm } = renderModal({ kind: "price", kinds: WRAP_KINDS });
+  expect(input.getAttribute("inputmode")).toBe("numeric");
+  fireEvent.change(input, { target: { value: "0" } });
+  expect(screen.getByRole("button", { name: i18n("searchModal_confirm") }).disabled).toBe(true);
+  fireEvent.change(input, { target: { value: "150" } });
+  fireEvent.submit(input.closest("form"));
+  expect(onConfirm).toHaveBeenCalledWith({ kind: "price", text: "150" });
+});
+
+test("G: no text field; m or s is chosen inside the kind", () => {
+  const { input, onConfirm } = renderModal({ kind: "mark", kinds: WRAP_KINDS });
+  expect(input).toBeNull();
+  fireEvent.click(screen.getByLabelText(i18n("searchModal_markS")));
+  expect(screen.getByRole("button", { name: i18n("searchModal_confirm") }).disabled).toBe(false);
+  fireEvent.submit(document.querySelector("form[data-search-modal]"));
+  expect(onConfirm).toHaveBeenCalledWith({ kind: "solved", text: "" });
+});
+
+test("m is the default mark", () => {
+  const { onConfirm } = renderModal({ kind: "mark", kinds: WRAP_KINDS });
+  fireEvent.submit(document.querySelector("form[data-search-modal]"));
+  expect(onConfirm).toHaveBeenCalledWith({ kind: "mark", text: "" });
+});
+
+test("S: a disabled input shows the title PTT's S will match; Search sends S itself", () => {
+  const { input, onConfirm } = renderModal({ kind: "sameTitle", kinds: WRAP_KINDS, sameTitle: "[Talk] Beta topic" });
+  expect(input).toBeNull();
+  const shown = document.querySelector("[data-search-same-title]");
+  expect(shown.disabled).toBe(true);
+  expect(shown.value).toBe("[Talk] Beta topic");
+  expect(screen.getByRole("button", { name: i18n("searchModal_confirm") }).disabled).toBe(false);
+  fireEvent.submit(document.querySelector("form[data-search-modal]"));
+  expect(onConfirm).toHaveBeenCalledWith({ kind: "sameTitle", text: "" });
+});
+
+test("S without a known title: empty disabled input with its placeholder; PTT's S works on the cursor row, so Search stays enabled", () => {
+  const { onConfirm } = renderModal({ kind: "sameTitle", kinds: WRAP_KINDS });
+  const shown = document.querySelector("[data-search-same-title]");
+  expect(shown.disabled).toBe(true);
+  expect(shown.value).toBe("");
+  expect(shown.getAttribute("placeholder")).toBe(i18n("searchModal_sameTitlePlaceholder"));
+  expect(screen.getByRole("button", { name: i18n("searchModal_confirm") }).disabled).toBe(false);
+  fireEvent.submit(document.querySelector("form[data-search-modal]"));
+  expect(onConfirm).toHaveBeenCalledWith({ kind: "sameTitle", text: "" });
+});
+
+test("Backspace kind: nothing to type, runs on submit", () => {
+  const { input, onConfirm } = renderModal({ kind: "newPost", kinds: WRAP_KINDS });
+  expect(input).toBeNull();
+  fireEvent.submit(document.querySelector("form[data-search-modal]"));
+  expect(onConfirm).toHaveBeenCalledWith({ kind: "newPost", text: "" });
+});
+
+test("the exclude box of the title kind: disabled with its reason outside results, sends the exclude kind inside", () => {
+  const off = renderModal({ kinds: WRAP_KINDS, excludeAllowed: false });
+  const box = screen.getByRole("checkbox");
+  expect(box.disabled).toBe(true);
+  // No explanatory text: the box is just disabled outside a search.
+  expect(document.querySelector("[data-search-exclude]").textContent).toBe(i18n("searchModal_excludeLabel"));
+  fireEvent.change(off.input, { target: { value: "foo" } });
+  fireEvent.submit(off.input.closest("form"));
+  expect(off.onConfirm).toHaveBeenCalledWith({ kind: "title", text: "foo" });
+});
+
+test("exclude checked (the ! key) inside results", () => {
+  const { input, onConfirm } = renderModal({ kinds: WRAP_KINDS, exclude: true, excludeAllowed: true });
+  expect(screen.getByRole("checkbox").checked).toBe(true);
+  fireEvent.change(input, { target: { value: "foo" } });
+  fireEvent.submit(input.closest("form"));
+  expect(onConfirm).toHaveBeenCalledWith({ kind: "exclude", text: "foo" });
+});
+
+test("the exclude box can be switched off again", () => {
+  const { input, onConfirm } = renderModal({ kinds: WRAP_KINDS, exclude: true, excludeAllowed: true });
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.change(input, { target: { value: "foo" } });
+  fireEvent.submit(input.closest("form"));
+  expect(onConfirm).toHaveBeenCalledWith({ kind: "title", text: "foo" });
+});
+
+test("price is a history kind: recorded, recalled with the arrow keys, and re-run from the history area", () => {
+  rememberSearch("price", "100");
+  rememberSearch("price", "250");
+  const { input, onConfirm } = renderModal({ kind: "price", kinds: WRAP_KINDS });
+  fireEvent.keyDown(input, { key: "ArrowUp" });
+  expect(input.value).toBe("250");
+  fireEvent.click(document.querySelector('[data-search-history-item="100"]'));
+  expect(onConfirm).toHaveBeenCalledWith({ kind: "price", text: "100" });
 });

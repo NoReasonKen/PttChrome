@@ -17,6 +17,8 @@ export function resumeSearchResults(core, context, done, position) {
     return;
   }
   const bookmark = recordFor(core).begin('article-search');
+  // A search made inside the digest keeps the 文摘列表 caption (context digest first).
+  const inDigest = search.filters[0].kind === 'digest';
   let finished = false;
   const finish = (ok, restored = {}) => {
     if (finished) return;
@@ -64,12 +66,12 @@ export function resumeSearchResults(core, context, done, position) {
     const steps = filter.kind === 'thread' ? null : buildSearchSteps(filter.kind, filter.value);
     if (filter.kind !== 'thread' && !steps) return finish(false);
     const submit = () => enqueue({
-      ...(steps ? steps[1] : { keys: 'S' }),
+      ...(steps ? steps[steps.length - 1] : { keys: 'S' }),
       kind: 'search-resume-submit',
       expect: (snapshot, facts) => {
         const last = facts.rowTexts[facts.rows - 1] || '';
         if (facts.curY === facts.rows - 1 && SEARCH_RESULT_NOTICE.test(last)) return { notice: true };
-        return searchResultsLanded(facts, search.board) ? { results: true } : false;
+        return searchResultsLanded(facts, search.board, inDigest) ? { results: true } : false;
       },
       onDone: result => {
         if (result.notice) return dismissFailure();
@@ -77,7 +79,8 @@ export function resumeSearchResults(core, context, done, position) {
         else restoreSearchResultPosition(core, search, position, restored => finish(!restored.interrupted, restored));
       }
     });
-    if (steps) enqueue({ ...steps[0], kind: 'search-resume-open', onDone: submit });
+    // A prompt-less filter (Backspace) is one step, with no prompt to open.
+    if (steps && steps.length > 1) enqueue({ ...steps[0], kind: 'search-resume-open', onDone: submit });
     else submit();
   };
   const first = search.filters[0];

@@ -10,7 +10,7 @@ import { MAIL_LIST_KEY, USER_LIST_KEY, isUserListKey, sameBoard } from './screen
 import { handoffStep, PAGE, HANDOFF_TIMEOUT_MS, HANDOFF_REACH_POLL_MS } from './page_stack';
 import { i18n } from './i18n';
 import { STACK_NOTICE_MS, LOCAL_INPUT, stopLocal } from './stack_layer';
-import { searchKindOfKey } from './article_search';
+import { searchKindOfKey, withBoardJump } from './article_search';
 import { homeKeyAction } from './home_dashboard';
 import { articleLeftoverKey, articleReadingKey, handleArticleFindKey } from './easy_reading';
 import { ctrlAliasKey, isAltRemapEvent, isBrowserClipboardEvent, keyEventToBytes } from './term_keyboard';
@@ -188,7 +188,7 @@ export class Handoff {
     const core = this.core;
     const prefs = readValuesWithDefault();
     const kind = this.shownTarget();
-    const searchKinds = this.toolbar?.search || [];
+    const searchKinds = withBoardJump(this.toolbar?.search || []);
     const plain = !event.ctrlKey && !event.altKey;
     const search = plain && searchKindOfKey(kind === PAGE.HOME && event.key === 'S' ? 's' : event.key);
     if (search && searchKinds.includes(search) && core.openSearchModal?.(search))
