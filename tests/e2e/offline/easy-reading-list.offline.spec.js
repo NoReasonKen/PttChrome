@@ -362,7 +362,7 @@ test.describe('文章列表好读模式（离线）', () => {
       const before = await waitState(page, (x) => x.state === 'active' && x.queueIdle);
 
       await page.locator('#t').focus();
-      for (const key of ['z', 'v', 'Control+p', 'Alt+t', 'Tab']) {
+      for (const key of ['z', 'Control+p', 'Alt+t', 'Tab']) {
         await page.evaluate(() => {
           const el = document.querySelector('.ListHint');
           if (el) el.textContent = '';

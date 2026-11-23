@@ -60,7 +60,7 @@ do not count as reader input. See `src/js/scroll_restore_follow.js` and
 | `list-refresh` 列表重新整理（F5／工具列／下拉） | 列表：原處（送 `s` 之前先把 PTT 的游標停到找得回視野的那一列，見下節） | 列表：原處 |
 | `board-list-refresh` 看板列表重新整理 | 看板列表：原處 | 看板列表：原處 |
 | `mark-read-before` 前已讀後未讀 | 列表：原處 | 列表：原處 |
-| `mark-all-read` 設為全部已讀 | 列表：原處 | 列表：原處 |
+| `mark-all-read` 設為全部已讀／未讀（選擇 sheet 的 U／V） | 列表：原處 | 列表：原處 |
 | `board-search` `s` 看板搜尋（含首頁點看板） | 首頁：原處（回到首頁時）；其餘不還原（換板） | 列表、看板列表、首頁：原處 |
 | `article-search` 文章搜尋 | 列表：原處（有結果時落在搜尋結果，編號空間比對不符自動丟棄；找不到時 PTT `vmsg` 後回原列表） | 取消：不還原（零送出）；失敗（prompt 沒開出來）：列表原處 |
 | `article-shortcut-search` article shortcut search | No restore: results are the destination | Cancel: article origin; failure: leave the verified current screen |

@@ -75,7 +75,7 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
     搜尋**直接開搜尋彈窗**（預設第一個可用種類，無子選單；見 `docs/article-search.md`）。分享＝`deep_link_controller.shareCurrentPostLink(title)`（與複製本篇連結同一條 AID 解析；`navigator.share`，AbortError＝完成，其他拒絕／無 API 退回複製；**click 內同步呼叫**）。
     更多＝bottom sheet（見「Bottom sheet」）：外部搜尋（**選取模式開＋有選取**才列；選取模式下長按走原生選單，
     我們的長按選單出不來。選取在工具列 `pointerdown` 當下記住——tap 收尾時瀏覽器可能先清選取才發 click）／
-    跳到第一篇未讀／設為全部已讀（文章列表才有）／查詢網友（線上使用者列表才有，開輸入 sheet，`user_query.promptUserQuery`）／只看好友（或顯示全部使用者，跟著現在的視圖；線上使用者列表才有，送 PTT 的 `f`）／顯示文章數（或顯示看板編號，跟著現在的顯示方式；好讀的我的最愛與
+    跳到第一篇未讀／已讀／未讀設定…（文章列表才有；一個入口，開 PTT `v` 的選擇 sheet：全部未讀 U／全部已讀 V／選取的文章（含）以前已讀 W／取消，挑了才送，`mark_all_read.ask`，#299；取代原本直接送的「設為全部已讀」）／查詢網友（線上使用者列表才有，開輸入 sheet，`user_query.promptUserQuery`）／只看好友（或顯示全部使用者，跟著現在的視圖；線上使用者列表才有，送 PTT 的 `f`）／顯示文章數（或顯示看板編號，跟著現在的顯示方式；好讀的我的最愛與
     分類的看板列表才有，送 PTT 的 `c`）／切換排序（依板名／依類別）（好讀的分類看板列表才有，送 PTT 的 `S`）／
     重新排序我的最愛（好讀的我的最愛才有：先開確認 sheet 說明會覆寫目前排列且無法復原，選了依板名／依類別才送 `S` 與答案）。
     使用者查詢頁顯示時（`mobile_toolbar.queryPage`）：按鍵與「更多」可用，針對底下列表的格位與項目關掉（見 `docs/easy-reading.md` 的查詢頁），「更多」裡的登出反灰；頁面出現前整條反灰（`locked`）。
@@ -84,8 +84,8 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
     畫面被收起、點不到原生提示，見 `docs/help-menu.md`）／分享／文章導覽／選取模式／全選／
     上傳圖片＋圖片上傳紀錄（跟 `enableImageUpload`，開 sheet 時現讀；全選與這兩項主功能表不給＝`contentTools`，
     那裡沒內容可選、上傳只能退回剪貼簿，卻會把 sheet 撐到蓋住整個選單）／設定／登出（inline 二段確認，`LOGOUT_CONFIRM_MS` 無動作自動收回）。
-    全選、圖片上傳、設為全部已讀在桌機是右鍵選單項；手機長按選單**不放**（`ContextSheet` 傳 `mobile: true` 給
-    `context_menu_entries`），集中在「更多」。設為全部已讀放這裡不必指定哪一列：`v` 的 `(V)已讀` 分支
+    全選、圖片上傳、設為全部已讀在桌機是右鍵選單項（手機對應的是「已讀／未讀設定…」）；手機長按選單**不放**（`ContextSheet` 傳 `mobile: true` 給
+    `context_menu_entries`），集中在「更多」。已讀／未讀設定放這裡不必指定哪一列（W 用的是列表目前選取的那篇）：`v` 的 `(V)已讀` 分支
     （`brc_toggle_all_read`）不看游標所在那篇；要指定某一列的「前已讀後未讀」與看板列表的「<板名> 設為已讀」
     （看板列表的 `v` 只作用在游標那個看板）留在長按選單。文章卡片的「查詢作者 '<作者>'」（#254，PTT 的 `Ctrl-Q` 只查游標那篇）
     也在長按選單，緊跟在加入黑名單的作者項後面。

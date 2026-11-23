@@ -117,10 +117,67 @@ function expectRefused(ctx, e) {
   expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
 }
 
+describe("ListSession `v` asks the read-state question in the choice sheet (#299)", () => {
+  test("v on the article list is prevented, sends nothing, and asks MarkAllRead", () => {
+    const ctx = activeRefusalSession();
+    const ask = vi.fn(() => true);
+    ctx.s._core.markAllRead = { ask };
+    const e = keyEvent("v");
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(ctx.sent).toEqual([]);
+    expect(ctx.enqueued).toEqual([]);
+    expect(ctx.s.state).toBe("active");
+    expect(ctx.hints).toEqual([]);
+  });
+
+  test("V (shift), Ctrl+V-style combos and Alt+V stay refused", () => {
+    for (const [key, mods] of [["V", { shiftKey: true }], ["v", { altKey: true, code: "KeyV" }]]) {
+      const ctx = activeRefusalSession();
+      ctx.s._core.markAllRead = { ask: vi.fn() };
+      const e = keyEvent(key, mods);
+      ctx.s.onKeyDown(e);
+      expectRefused(ctx, e);
+      expect(ctx.s._core.markAllRead.ask).not.toHaveBeenCalled();
+    }
+  });
+
+  test("the digest list and search results keep refusing it", () => {
+    for (const setup of [
+      (s) => { s.isDigestList = () => true; },
+      (s) => { s._selectMode = true; },
+    ]) {
+      const ctx = activeRefusalSession();
+      ctx.s._core.markAllRead = { ask: vi.fn() };
+      setup(ctx.s);
+      const e = keyEvent("v");
+      ctx.s.onKeyDown(e);
+      expectRefused(ctx, e);
+      expect(ctx.s._core.markAllRead.ask).not.toHaveBeenCalled();
+    }
+  });
+
+  test("a revealed stack page classifies by its own search state", () => {
+    const ctx = activeRefusalSession();
+    expect(ctx.s._classifyKey(keyEvent("v"), { boardName: "C_Chat", selectMode: false }).class).toBe("mark-read-choice");
+    expect(ctx.s._classifyKey(keyEvent("v"), { boardName: "C_Chat", selectMode: true }).class).toBe("unsupported");
+  });
+
+  test("markReadCursorNum: the selection when numbered, null for none or a pinned one", () => {
+    const ctx = activeRefusalSession();
+    ctx.s._termBuf.listLineNums = [40, 41, 42];
+    expect(ctx.s.markReadCursorNum()).toBe(42);
+    ctx.s._selectedNum = null;
+    expect(ctx.s.markReadCursorNum()).toBe(null);
+    ctx.s._selectedNum = 99;
+    expect(ctx.s.markReadCursorNum()).toBe(null);
+  });
+});
+
 describe("ListSession refuses keys easy reading does not present (#159)", () => {
   const UNSUPPORTED = [
     ["z", {}],
-    ["v", {}],
     ["Z", { shiftKey: true }],
     ["p", { ctrlKey: true }], // Ctrl-P: post
     ["x", { ctrlKey: true }], // Ctrl-X: cross-post (not a clipboard key)

@@ -176,13 +176,18 @@ const NESTED_ARTICLES = [
 // `urls`: articles end with their URL line, so the app knows an article's
 //   AID without asking PTT.
 // `images`: short articles show an image link near their top, previewed inline.
+// `readMarks`: every article starts unread (a `+` in the list row's mark cell,
+//   as bbs.c#readdoent draws it) and `v` on the list asks PTT's read-state
+//   question (bbs.c#b_mark_read_unread): `u` all unread, `v` all read, `w`
+//   everything up to the cursor article read and the rest unread, anything
+//   else cancels. `state.readAnswers` records each answer line.
 // `ptList`: screens behave as PTT's do where the default server simplifies: a
 //   list's footer names its keys, (y)回應 among them, `s<board>` from a list
 //   lands on the board's full list, and the main menu has its title bar.
-async function bootNestedShortcutSearch(page, { loggedIn = false, startAtMain = false, boardEntry = null, legacyCaptions = false, extraArticles = 0, leadingArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false, images = false, ptList = false } = {}) {
+async function bootNestedShortcutSearch(page, { loggedIn = false, startAtMain = false, boardEntry = null, legacyCaptions = false, extraArticles = 0, leadingArticles = 0, homeMenu = false, dynamicRows = false, pinned = false, alphaLines = 0, urls = false, images = false, ptList = false, readMarks = false } = {}) {
   if (startAtMain) await bootOffline(page, ptt);
   else await bootGestureArticle(page);
-  await installNestedServer(page, { surface: loggedIn || startAtMain ? 'main' : 'article', boardEntry, legacyCaptions, extraArticles, leadingArticles, homeMenu, dynamicRows, pinned, alphaLines, urls, images, ptList });
+  await installNestedServer(page, { surface: loggedIn || startAtMain ? 'main' : 'article', boardEntry, legacyCaptions, extraArticles, leadingArticles, homeMenu, dynamicRows, pinned, alphaLines, urls, images, ptList, readMarks });
   if (startAtMain) {
     await waitScreenSettled(page, { 0: '主功能表' });
     return;
@@ -256,7 +261,9 @@ async function installNestedServer(page, session) {
       // Ctrl-C are its choices, kept in `notesChoices`). A movie that ends or
       // is stopped waits in pressanykey over its last frame; `notesStop:
       // 'list'` draws the list at once instead, as pmore's READ_NEXT would.
-      notes: 'plain', notesStop: 'pause', notesFrame: 0, notesFrames: 4, notesFrameMs: 300, notesChoices: []
+      notes: 'plain', notesStop: 'pause', notesFrame: 0, notesFrames: 4, notesFrameMs: 300, notesChoices: [],
+      unread: new Set(session.readMarks ? articles.filter(article => !article.pinned).map(article => article.aid) : []),
+      readAnswers: []
     };
     const listed = () => {
       const all = articles.filter(article => !state.deleted.has(article.aid) && (!state.filter || !article.pinned));
@@ -505,7 +512,8 @@ async function installNestedServer(page, session) {
           const num = article.pinned ? '      ★' : String(state.filter ? index + 1 : 101 + index).padStart(7);
           // The current-generation cursor marker replaces the first column.
           const mark = index === state.cursor ? '>' : ' ';
-          rows[3 + offset] = `${mark}${num.slice(1)}     9/01 ${article.author.padEnd(12)} □ ${article.title}`;
+          const unread = state.unread.has(article.aid) ? '+' : ' ';
+          rows[3 + offset] = `${mark}${num.slice(1)} ${unread}   9/01 ${article.author.padEnd(12)} □ ${article.title}`;
         });
         cursor = [4 + state.cursor - start, 1];
         if (state.surface === 'info') {
@@ -519,6 +527,13 @@ async function installNestedServer(page, session) {
         } else if (state.surface === 'prompt') {
           rows[termRows - 1] = state.prompt.label;
           cursor = [termRows, state.prompt.label.length + 1];
+        } else if (state.surface === 'readPrompt') {
+          // b_mark_read_unread: move(b_lines-4) clrtobot, the note, then the
+          // getdata on b_lines-1.
+          for (let row = termRows - 5; row < termRows; row++) delete rows[row];
+          rows[termRows - 3] = "設定已讀未讀記錄 (注意: 文章設為已讀後不會再出現修改記號 '~')";
+          rows[termRows - 2] = '設定所有文章 (U)未讀 (V)已讀 (W)前已讀後未讀 (Q)取消？[Q] ';
+          cursor = [termRows - 1, 61];
         } else if (state.surface === 'empty') {
           rows[termRows - 1] = ' ◆ 找不到符合條件的文章。 [按任意鍵繼續]';
           cursor = [termRows, 1];
@@ -617,6 +632,22 @@ async function installNestedServer(page, session) {
         enterBoard();
         return rest.slice(end + 1);
       }
+      if (state.surface === 'readPrompt') {
+        // getdata reads a whole line (LCECHO lowercases it).
+        const end = rest.indexOf('\r');
+        if (end < 0) return '';
+        const answer = rest.slice(0, end).toLowerCase().charAt(0);
+        const all = listed();
+        state.readAnswers.push(answer || 'q');
+        if (answer === 'u') articles.forEach(article => { if (!article.pinned) state.unread.add(article.aid); });
+        else if (answer === 'v') state.unread.clear();
+        else if (answer === 'w') all.forEach((article, index) => {
+          if (index <= state.cursor) state.unread.delete(article.aid);
+          else state.unread.add(article.aid);
+        });
+        state.surface = 'list';
+        return rest.slice(end + 1);
+      }
       if (state.surface === 'prompt') {
         const end = rest.indexOf('\r');
         const text = rest.slice(0, end);
@@ -691,6 +722,9 @@ async function installNestedServer(page, session) {
         state.surface = 'info';
         state.infoFrom = 'list';
         state.infoOf = selected();
+      }
+      else if (head === 'v' && state.surface === 'list' && session.readMarks && selected()) {
+        state.surface = 'readPrompt';
       }
       else if ((head === 'i' || head === 'I') && state.surface === 'list') {
         if (!state.boardInfoFails) {

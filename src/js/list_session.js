@@ -2127,6 +2127,12 @@ ListSession.prototype = {
       return;
     }
 
+    if (key.class === 'mark-read-choice') {
+      // ask() says why itself when it opens nothing (busy, not a list).
+      this._core.markAllRead?.ask();
+      return;
+    }
+
     if (key.class === 'native-inplace') {
       // A 類鍵：凍結交易（畫面凍住 → 送真鍵 → 採用真落點 → 直接回 buffer）。
       this._beginInplaceTransaction(key.bytes);
@@ -3501,6 +3507,15 @@ ListSession.prototype = {
     // no board and the digest list's table no `i`.
     if (!mail && (e.key === 'i' || e.key === 'I'))
       return { class: page || !this.isDigestList() ? 'board-info' : 'unsupported' };
+    // `v` asks PTT's read-state question (b_mark_read_unread), answered in the
+    // choice sheet (#299, mark_all_read.js). The digest and the search results
+    // have their own tables / numbering: refused.
+    if (e.key === 'v' && !mail)
+      return {
+        class: (page ? !page.selectMode : !this._selectMode && !this.isDigestList())
+          ? 'mark-read-choice'
+          : 'unsupported'
+      };
     if (mail && (e.key === 'r' || e.key === 'l' || e.key === 'L')) return { class: 'open' };
     // Navigation synonyms follow pttbbs read.c:858-902 (' ' / 'N' / KEY_PGDN /
     // Ctrl-F = next page, 'P' / KEY_PGUP / Ctrl-B = prev page, 'p'/'k'/KEY_UP,
@@ -3762,6 +3777,16 @@ ListSession.prototype = {
     const num = (this._termBuf.listLineNums || [])[abs];
     if (num == null) return null;
     return { num: num };
+  },
+
+  // The number of the article the choice sheet's W answer ("read up to here")
+  // is about: the selection, or null when none is a numbered article (a
+  // pinned article has no number to jump to, markReadTargetAtRow).
+  markReadCursorNum: function() {
+    if (this._selectedNum == null) return null;
+    return (this._termBuf.listLineNums || []).indexOf(this._selectedNum) === -1
+      ? null
+      : this._selectedNum;
   },
 
   // 需求的三步：真游標移到那一列 → `v` → `w` + Enter。回 true ＝我接手了。
