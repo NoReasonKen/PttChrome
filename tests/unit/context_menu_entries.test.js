@@ -274,6 +274,24 @@ test("文章：文章資訊在複製本篇文章連結之後，桌機右鍵與�
 
 // #288: board information acts on the whole list, as 設為全部已讀 does; on the
 // phone it is in the toolbar's More instead.
+test("desktop: an article list has 我在哪 after board information; it calls onMenuSelect('whereAmI') (#293)", () => {
+  const calls = [];
+  const entries = buildContextMenuEntries({
+    ...BASE,
+    boardInfoEnabled: true,
+    whereAmIEnabled: true,
+    onMenuSelect: (k) => calls.push(k),
+  });
+  const at = entries.findIndex((e) => e.key === "whereAmI");
+  expect(at).toBe(entries.findIndex((e) => e.key === "boardInfo") + 1);
+  expect(entries[at].label).toBe(i18n("whereAmI_title"));
+  entries[at].onClick({});
+  expect(calls).toEqual(["whereAmI"]);
+  expect(keys({ ...BASE, whereAmIEnabled: false })).not.toContain("whereAmI");
+  expect(keys({ ...BASE, normalEnabled: false, whereAmIEnabled: true })).not.toContain("whereAmI");
+  expect(keys({ ...BASE, mobile: true, whereAmIEnabled: true })).not.toContain("whereAmI");
+});
+
 test("desktop: an article list has board information, after 設為全部已讀; it calls onMenuSelect('boardInfo')", () => {
   const calls = [];
   const entries = buildContextMenuEntries({

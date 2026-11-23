@@ -41,6 +41,7 @@ import {
 import {
   keyEventToBytes,
   altRemapCharCode,
+  ctrlAliasKey,
   isAltRemapEvent,
   isBrowserClipboardEvent
 } from './term_keyboard';
@@ -103,6 +104,7 @@ import { selectedUserId } from './user_list';
 import { queryUser, promptUserQuery, queryAuthor } from './user_query';
 import { showListPostInfo } from './post_info';
 import { showBoardInfo } from './board_info';
+import { showWhereAmI } from './whereami';
 
 // A plain `←`, for a key that leaves as it does (article_gestures.handleBack).
 const PLAIN_BACK_EVENT = Object.freeze({
@@ -2062,19 +2064,16 @@ ListSession.prototype = {
     }
     if (this.state !== 'active') return;
 
-    if (altRemap !== null) {
-      // Alt+letter is this app's alias for PTT's Ctrl+letter, a PTT command key
-      // like any other: refused (#159). It is caught here because
-      // keyEventToBytes returns null for altKey, which _classifyKey would read
-      // as 'ignore', and before _classifyKey because j/k/n/p are navigation
-      // synonyms there. Alt+Q is Ctrl-Q, the author query (#254).
-      e.preventDefault();
-      if (altRemap === 17 && this._authorQueryList()) queryAuthor(this._core);
-      else this._refuseUnsupported('key');
-      return;
-    }
-
-    const key = this._classifyKey(e);
+    // Alt+letter is this app's alias for PTT's Ctrl+letter (so is the phone's
+    // sticky Ctrl): it is classified and dispatched as that Ctrl key below, so
+    // every Ctrl shortcut (Ctrl-Q, Ctrl-W…) has its alias with no code per key.
+    // It is turned into the Ctrl key before _classifyKey, whose Ctrl rules come
+    // before any plain-letter rule: Alt+J/K/N/P are never the navigation
+    // synonyms j/k/n/p. keyEventToBytes returns null for altKey, which
+    // _classifyKey would read as 'ignore', hence the conversion.
+    const alias = ctrlAliasKey(e);
+    const key = this._classifyKey(alias || e);
+    if (alias && key.class === 'ignore') key.class = 'unsupported';
     if (key.class === 'ignore') {
       // Deliberately NOT preventDefault'd: F12 devtools / CapsLock's OS
       // behaviour belong to the browser, and the native keyboard path below
@@ -2124,6 +2123,11 @@ ListSession.prototype = {
 
     if (key.class === 'board-notes') {
       this._core.boardNotes?.start();
+      return;
+    }
+
+    if (key.class === 'whereami') {
+      showWhereAmI(this._core, key.code);
       return;
     }
 
@@ -2258,6 +2262,15 @@ ListSession.prototype = {
     this._beginPassthroughBytes(steps, { kind: 'board-info', hint: null, noSync: true });
   },
 
+  // Where the board is (#293, whereami.js): Ctrl-W names the board, not a
+  // row, so it goes out as the board information's keys do.
+  beginWhereAmI: function(steps) {
+    this._spendLayer('nativePassthrough');
+    this._helpBoard = this._boardName;
+    this._helpSelection = { num: this._selectedNum, pinnedKey: this._selectedPinnedKey };
+    this._beginPassthroughBytes(steps, { kind: 'whereami', hint: null, noSync: true });
+  },
+
   // A query of the selected article's author (#254, user_query.queryAuthor):
   // as beginUserQuery, but Ctrl-Q acts on PTT's cursor row, so PTT's cursor
   // is moved to the selection first. When that fails nothing is sent:
@@ -2299,6 +2312,12 @@ ListSession.prototype = {
     const facts = this._collectFacts(null);
     return facts.kind === 'clean-list' && facts.boardName != null &&
       facts.boardName === (this._helpBoard ?? this._boardName);
+  },
+
+  // The lists whose table has Ctrl-W / Ctrl-Y, PTT's 我在哪 (#293): a board's
+  // article list or digest, not the mailbox or the online user list.
+  _whereAmIList: function() {
+    return !this.isUserList() && !this.isMailList();
   },
 
   // The lists whose article rows have an author for Ctrl-Q: an article list,
@@ -3491,6 +3510,10 @@ ListSession.prototype = {
     // Ctrl-Q queries the author of the article selected (#254, user_query.js).
     if (e.ctrlKey && (e.key === 'q' || e.key === 'Q') && (page ? !mail : this._authorQueryList()))
       return { class: 'author-query' };
+    // Ctrl-W and Ctrl-Y show where the board is (#293, whereami.js); the digest
+    // list's table has them too, the mailbox has no board.
+    if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === 'w' || e.key === 'y') && (page ? !mail : this._whereAmIList()))
+      return { class: 'whereami', code: e.key === 'w' ? 23 : 25 };
     if (e.ctrlKey) return { class: 'unsupported' }; // Ctrl-P 發文 etc.
     // The mailbox (#196) reads a mail with every key mail.c#mail_comms gives
     // mail_cmd_read (→ Enter r l L); its other commands (reply, forward,

@@ -510,6 +510,25 @@ describe("更多（bottom sheet）", () => {
     expect(byKey("__boardInfo")).toBeNull();
   });
 
+  // #293: where the board is, in More over an article list it can be asked for.
+  test("where the board is (in More): only with context.whereAmI; calls whereAmI.start and closes the sheet", async () => {
+    const core = makeCore({ context: { push: false, search: [], whereAmI: true } });
+    core.whereAmI = { start: vi.fn(() => true) };
+    renderBar(core);
+    expect(byKey("__whereAmI")).toBeNull();
+    await openMore();
+    expect(byKey("__whereAmI").textContent).toBe(i18n("whereAmI_title"));
+    fireEvent.click(byKey("__whereAmI"));
+    await sheetClosed();
+    expect(core.whereAmI.start).toHaveBeenCalledTimes(1);
+  });
+
+  test("More: no where the board is without context.whereAmI", async () => {
+    renderBar(makeCore({ context: { push: false, search: [], whereAmI: false } }));
+    await openMore();
+    expect(byKey("__whereAmI")).toBeNull();
+  });
+
   test("設為全部已讀：不是文章列表就沒有", async () => {
     renderBar(makeCore());
     await openMore();
