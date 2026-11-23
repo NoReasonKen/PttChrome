@@ -160,6 +160,8 @@ export const RESTORE_TABLE = {
     cancel: cell(null, 'origin'),
     fail: cell(null, 'origin')
   },
+  // The poll results (poll_results.js, #301) reuse the board entry screen's
+  // row: kind.record is 'board-notes'.
   // An article's animation (article_movie.js, #300): the article under its
   // page is the same article; pmore shows it again where the movie stopped,
   // and the reader's line comes back whatever came of it.

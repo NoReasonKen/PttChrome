@@ -34,6 +34,7 @@ import { UserQuery } from './user_query';
 import { PostInfo } from './post_info';
 import { BoardInfo } from './board_info';
 import { BoardNotes } from './board_notes';
+import { PollResults } from './poll_results';
 import { ArticleMovie } from './article_movie';
 import { inputPage } from './input_page';
 import { WhereAmI } from './whereami';
@@ -261,6 +262,8 @@ export const App = function() {
   this.boardInfo = new BoardInfo(this);
   // The board entry screen page over the article list (#292, board_notes.js).
   this.boardNotes = new BoardNotes(this);
+  // The poll results on the same page (#301, poll_results.js).
+  this.pollResults = new PollResults(this);
   // An article's animation on the same kind of page, over the article (#300,
   // article_movie.js).
   this.articleMovie = new ArticleMovie(this);
@@ -722,6 +725,7 @@ App.prototype.onClose = function() {
   this.postInfo?.reset();
   this.boardInfo?.reset();
   this.boardNotes?.reset();
+  this.pollResults?.reset();
   this.articleMovie?.reset();
   this.whereAmI?.reset();
   // 長推文的探路成果同理：錨點是這條連線的列表游標（pttbbs getkeep），斷線就失效。

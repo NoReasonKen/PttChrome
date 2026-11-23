@@ -21,6 +21,7 @@ import { readValuesWithDefault } from "../../js/pref_storage";
 import { promptUserQuery } from "../../js/user_query";
 import { showArticlePostInfo } from "../../js/post_info";
 import { showBoardNotes } from "../../js/board_notes";
+import { showPollResults } from "../../js/poll_results";
 import { showArticleMovie } from "../../js/article_movie";
 import { requestAidJump } from "../../js/aid_jump";
 import {
@@ -535,6 +536,17 @@ export const MobileToolbar = ({
   }, [pttchrome, whenReady]);
 
   // An article's animation (#300, js/article_movie.js): the same entrance as `p`.
+  // The poll results (#301, js/poll_results.js): the same entrance as `R`.
+  const onPollResults = useCallback(() => {
+    setPanel(null);
+    setConfirmLogout(false);
+    whenReady(() => {
+      if (typeof pttchrome.noteUserAction === "function")
+        pttchrome.noteUserAction();
+      showPollResults(pttchrome);
+    });
+  }, [pttchrome, whenReady]);
+
   const onArticleMovie = useCallback(() => {
     setPanel(null);
     setConfirmLogout(false);
@@ -969,6 +981,16 @@ export const MobileToolbar = ({
             onClick={onBoardNotes}
           >
             {i18n("boardNotes_title")}
+          </button>
+        ) : null}
+        {context.pollResults ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__pollResults"
+            onClick={onPollResults}
+          >
+            {i18n("pollResults_title")}
           </button>
         ) : null}
         {context.aidJump ? (

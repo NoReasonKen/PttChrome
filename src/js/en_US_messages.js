@@ -140,6 +140,21 @@ export const en_US = {
   "articleMovie_lost": {
     "message": "PTT left the article while the animation played: pull down to refresh."
   },
+  "pollResults_title": {
+    "message": "Poll results"
+  },
+  "pollResults_busy": {
+    "message": "Working on the poll results, please wait…"
+  },
+  "pollResults_unavailable": {
+    "message": "Poll results are shown only from a board's article list"
+  },
+  "pollResults_failed": {
+    "message": "The poll results got no answer; try again"
+  },
+  "pollResults_wait": {
+    "message": "The poll results are still being drawn; leave them in a moment"
+  },
   "postInfo_code": {
     "message": "Article code"
   },

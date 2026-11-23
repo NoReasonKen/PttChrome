@@ -96,6 +96,23 @@ test("board entry screen: on the desktop menu over an article list; the phone ha
   expect(keys({ ...p, normalEnabled: false })).not.toContain("boardNotes");
 });
 
+// The poll results (#301): `R` on the same list, not the digest list.
+test("poll results: in the desktop menu after the board entry screen; the phone has it in More", () => {
+  const calls = [];
+  const p = { ...BASE, boardNotesEnabled: true, pollResultsEnabled: true, onMenuSelect: (k) => calls.push(k) };
+  const entries = buildContextMenuEntries(p);
+  const at = entries.findIndex((e) => e.key === "pollResults");
+  expect(entries[at].label).toBe(i18n("pollResults_title"));
+  expect(at).toBeGreaterThan(entries.findIndex((e) => e.key === "boardNotes"));
+  expect(entries[at + 1].type).toBe("divider");
+  entries[at].onClick({});
+  expect(calls).toEqual(["pollResults"]);
+  expect(keys({ ...p, pollResultsEnabled: false })).not.toContain("pollResults");
+  expect(keys({ ...p, pollResultsEnabled: false })).toContain("boardNotes");
+  expect(keys({ ...p, mobile: true })).not.toContain("pollResults");
+  expect(keys({ ...p, normalEnabled: false })).not.toContain("pollResults");
+});
+
 test("手機：全選／圖片上傳／設為全部已讀都不在長按選單", () => {
   const k = keys({ ...BASE, mobile: true });
   for (const m of MOVED) expect(k).not.toContain(m);

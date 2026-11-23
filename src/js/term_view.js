@@ -1704,7 +1704,8 @@ TermView.prototype = {
       toolbarDiag(this.bbscore, 'key', {
         key: keyName.length > 1 ? keyName : 'char', ctrl: ctrl, alt: alt,
         outcome: keyPage === this.bbscore.userQuery ? 'userQueryPage'
-          : keyPage === this.bbscore.articleMovie ? 'articleMoviePage' : 'boardNotesPage'
+          : keyPage === this.bbscore.articleMovie ? 'articleMoviePage'
+            : keyPage === this.bbscore.pollResults ? 'pollResultsPage' : 'boardNotesPage'
       });
       return;
     }

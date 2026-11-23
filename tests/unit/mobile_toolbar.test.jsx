@@ -249,6 +249,25 @@ describe("依畫面的動作（文章／信件／文章列表）", () => {
     expect(byKey("__articleMovie")).toBeNull();
   });
 
+  // #301: the poll results, beside it.
+  test("poll results (More): goes through pollResults.start; absent when pollResults is false", async () => {
+    const core = makeCore({ context: { push: false, search: [], boardNotes: true, pollResults: true } });
+    core.pollResults = { start: vi.fn(() => true) };
+    renderBar(core);
+    await openMore();
+    expect(byKey("__pollResults").textContent).toBe(i18n("pollResults_title"));
+    fireEvent.click(byKey("__pollResults"));
+    await sheetClosed();
+    expect(core.pollResults.start).toHaveBeenCalledTimes(1);
+  });
+
+  test("More: the digest list has the board entry screen but no poll results", async () => {
+    renderBar(makeCore({ context: { push: false, search: [], boardNotes: true, pollResults: false } }));
+    await openMore();
+    expect(byKey("__boardNotes")).not.toBeNull();
+    expect(byKey("__pollResults")).toBeNull();
+  });
+
   test("More: no board entry screen when boardNotes is false", async () => {
     renderBar(makeCore({ context: { push: false, search: [], boardNotes: false } }));
     await openMore();
