@@ -164,6 +164,11 @@ describe("toolbarContextFromFacts", () => {
     expect(toolbarContextFromFacts(frame(LIST), 2).boardNotes).toBeFalsy();
     expect(sameToolbarContext({ search: [], boardNotes: true }, { search: [], boardNotes: false })).toBe(false);
   });
+  // #300: the article's animation comes from its controller too.
+  test("article animation (More): off in the empty context, and part of the comparison", () => {
+    expect(EMPTY_TOOLBAR_CONTEXT.articleMovie).toBe(false);
+    expect(sameToolbarContext({ search: [], articleMovie: true }, { search: [], articleMovie: false })).toBe(false);
+  });
   test("設為全部已讀（更多）：只有文章列表；prompt 開著、文章、主功能表不給", () => {
     expect(toolbarContextFromFacts(frame(LIST), 2).markAllRead).toBe(true);
     expect(toolbarContextFromFacts({ ...frame(LIST), inputField: true }, 2).markAllRead).toBe(false);

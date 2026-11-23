@@ -272,6 +272,27 @@ test("文章：文章資訊在複製本篇文章連結之後，桌機右鍵與�
   expect(keys({ ...BASE, articlePostInfoEnabled: false })).not.toContain("articlePostInfo");
 });
 
+// #300: the article's animation, its `p`, after its information; on the
+// phone it is in the toolbar's More, as the board entry screen is.
+test("article animation: on the desktop menu over an article, after its information; the phone has it in More", () => {
+  const calls = [];
+  const p = {
+    ...BASE,
+    articlePostInfoEnabled: true,
+    articleMovieEnabled: true,
+    onMenuSelect: (k) => calls.push(k),
+  };
+  const entries = buildContextMenuEntries(p);
+  const at = entries.findIndex((e) => e.key === "articleMovie");
+  expect(at).toBe(entries.findIndex((e) => e.key === "articlePostInfo") + 1);
+  expect(entries[at].label).toBe(i18n("articleMovie_title"));
+  entries[at].onClick({});
+  expect(calls).toEqual(["articleMovie"]);
+  expect(keys({ ...p, articleMovieEnabled: false })).not.toContain("articleMovie");
+  expect(keys({ ...p, mobile: true })).not.toContain("articleMovie");
+  expect(keys({ ...p, normalEnabled: false })).not.toContain("articleMovie");
+});
+
 // #288: board information acts on the whole list, as 設為全部已讀 does; on the
 // phone it is in the toolbar's More instead.
 test("desktop: an article list has board information, after 設為全部已讀; it calls onMenuSelect('boardInfo')", () => {

@@ -21,6 +21,7 @@ import { readValuesWithDefault } from "../../js/pref_storage";
 import { promptUserQuery } from "../../js/user_query";
 import { showArticlePostInfo } from "../../js/post_info";
 import { showBoardNotes } from "../../js/board_notes";
+import { showArticleMovie } from "../../js/article_movie";
 import { requestAidJump } from "../../js/aid_jump";
 import {
   normalizeExternalSearchQuery,
@@ -532,6 +533,17 @@ export const MobileToolbar = ({
     });
   }, [pttchrome, whenReady]);
 
+  // An article's animation (#300, js/article_movie.js): the same entrance as `p`.
+  const onArticleMovie = useCallback(() => {
+    setPanel(null);
+    setConfirmLogout(false);
+    whenReady(() => {
+      if (typeof pttchrome.noteUserAction === "function")
+        pttchrome.noteUserAction();
+      showArticleMovie(pttchrome);
+    });
+  }, [pttchrome, whenReady]);
+
   // 跳到第一篇未讀：與桌機快捷鍵（預設 F7）同一個入口（unread_jump.js）。
   const onUnreadJump = useCallback(() => {
     setPanel(null);
@@ -1028,6 +1040,16 @@ export const MobileToolbar = ({
             onClick={onPostInfo}
           >
             {i18n("postInfo_title")}
+          </button>
+        ) : null}
+        {context.articleMovie ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__articleMovie"
+            onClick={onArticleMovie}
+          >
+            {i18n("articleMovie_title")}
           </button>
         ) : null}
         {context.switchBoard ? (

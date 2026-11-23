@@ -40,7 +40,7 @@ import { MOUSE_CURSOR_URLS } from './mouse_cursors';
 import { isAndroidApp, androidNotify } from './android_bridge';
 import { toolbarDiag, handoffState } from './toolbar_diag';
 import { backToJumpOrigin } from './aid_jump';
-import { inputPage } from './input_page';
+import { inputPage, screenPageHolding } from './input_page';
 
 const DEFINE_INPUT_BUFFER_SIZE = 12;
 
@@ -1693,8 +1693,8 @@ TermView.prototype = {
       return;
     }
     // A page over the terminal that takes its own keys (the user query page,
-    // #199; the board entry screen page, #292): its window listener never sees
-    // a key that does not come from the keyboard.
+    // #199; a page of PTT's own screen, screen_page.js): its window listener
+    // never sees a key that does not come from the keyboard.
     var keyPage = inputPage(this.bbscore);
     // The keypad's sticky Ctrl comes first here too: past the page, onKeyDown
     // applies it.
@@ -1703,7 +1703,8 @@ TermView.prototype = {
     if (keyPage && keyPage.takeKey({ key: keyName, ctrlKey: ctrl, altKey: alt, metaKey: false }, true)) {
       toolbarDiag(this.bbscore, 'key', {
         key: keyName.length > 1 ? keyName : 'char', ctrl: ctrl, alt: alt,
-        outcome: keyPage === this.bbscore.userQuery ? 'userQueryPage' : 'boardNotesPage'
+        outcome: keyPage === this.bbscore.userQuery ? 'userQueryPage'
+          : keyPage === this.bbscore.articleMovie ? 'articleMoviePage' : 'boardNotesPage'
       });
       return;
     }
@@ -2244,7 +2245,7 @@ TermView.prototype = {
       (app.userQuery && app.userQuery.holding) ||
       (app.postInfo && app.postInfo.holding) ||
       (app.boardInfo && app.boardInfo.holding) ||
-      (app.boardNotes && app.boardNotes.holding)));
+      screenPageHolding(app)));
   },
 
   // The list easy-reading branch of redraw owns this frame. Article frames

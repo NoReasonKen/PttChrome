@@ -255,6 +255,12 @@ export function buildContextMenuEntries(p) {
       item("articlePostInfo", i18n("postInfo_title"), (e) =>
         p.onMenuSelect("articlePostInfo", e),
       );
+    // The article's animation (#300, js/article_movie.js): its `p`. On mobile
+    // it sits in More, as the board entry screen does.
+    if (p.articleMovieEnabled && !p.mobile)
+      item("articleMovie", i18n("articleMovie_title"), (e) =>
+        p.onMenuSelect("articleMovie", e),
+      );
     // 長推文一鍵發送：打一大段話，自動依 PTT 單則上限分段依序推出。
     // 只在文章畫面出現（要按得到 X），好讀開著才有。
     if (p.longPushEnabled)

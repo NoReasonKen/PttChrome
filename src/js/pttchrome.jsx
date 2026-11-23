@@ -34,6 +34,7 @@ import { UserQuery } from './user_query';
 import { PostInfo } from './post_info';
 import { BoardInfo } from './board_info';
 import { BoardNotes } from './board_notes';
+import { ArticleMovie } from './article_movie';
 import { inputPage } from './input_page';
 import { installToolbarDiagnostics, logToolbarContext } from './toolbar_diag';
 import { DeepLinkController } from './deep_link_controller';
@@ -259,6 +260,9 @@ export const App = function() {
   this.boardInfo = new BoardInfo(this);
   // The board entry screen page over the article list (#292, board_notes.js).
   this.boardNotes = new BoardNotes(this);
+  // An article's animation on the same kind of page, over the article (#300,
+  // article_movie.js).
+  this.articleMovie = new ArticleMovie(this);
   // 搜尋彈窗送出的兩步在途（article_search.submitSearch 寫、serialized_op_gate 讀）。
   this.searchInFlight = false;
   this.view.onAidClick = (aid, board) => this.onAidClick(aid, board);
@@ -716,6 +720,7 @@ App.prototype.onClose = function() {
   this.postInfo?.reset();
   this.boardInfo?.reset();
   this.boardNotes?.reset();
+  this.articleMovie?.reset();
   // 長推文的探路成果同理：錨點是這條連線的列表游標（pttbbs getkeep），斷線就失效。
   // 不丟掉的話，重連後按下「送出」會拿舊錨點去比對新畫面。
   this.longPush.disarm();

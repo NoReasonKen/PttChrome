@@ -103,6 +103,7 @@ import { selectedUserId } from './user_list';
 import { queryUser, promptUserQuery, queryAuthor } from './user_query';
 import { showListPostInfo } from './post_info';
 import { showBoardInfo } from './board_info';
+import { screenPageHolding } from './input_page';
 
 // A plain `←`, for a key that leaves as it does (article_gestures.handleBack).
 const PLAIN_BACK_EVENT = Object.freeze({
@@ -735,6 +736,9 @@ export function transitionListSession(state, event) {
             // 退文落點只剩置底文時同樣不能 re-seed（不變量 17）：停在原生鏡像
             //（_handoffArticle 已把 renderMode 設 native），等下一幀。
             if (!event.hasNumberedRow) return stay;
+            // An article's animation over the article (#300, article_movie.js):
+            // a frame that looks like a list is the movie's.
+            if (event.pageHeld) return stay;
             // Back revealed this list's live layer (#120): the real list keeps
             // the layer's rows, selection and reading position instead of
             // merging PTT's landing page; only the article read changes.
@@ -758,6 +762,7 @@ export function transitionListSession(state, event) {
             // preamble routes through menus and cleanup()'s queue.flush() would
             // kill it mid-sequence.
             if (event.inFlightKind) return stay;
+            if (event.pageHeld) return stay;
             return { next: 'idle', actions: ['cleanup'] };
           default:
             return stay; // article page turns / prompts inside the article
@@ -1379,6 +1384,9 @@ ListSession.prototype = {
         facts.cursorRowNum != null &&
         (this._termBuf.listLineNums || []).indexOf(facts.cursorRowNum) !== -1,
       holdReason: this._holdReason,
+      // A page of PTT's own screen holds what is under it (screen_page.js):
+      // its frames (a movie's draw anything, a list too) are not the reader's.
+      pageHeld: screenPageHolding(this._core),
       withinResumeGrace: performance.now() - this._resumedAt < RESUME_GRACE_MS,
       hasNumberedRow: hasNumberedEntryRow(facts),
       emptyList: !!facts.emptyList,
@@ -1508,11 +1516,11 @@ ListSession.prototype = {
   _tryResumeProbe: function(landed) {
     if (this._holdReason !== 'passthrough' || !this._autoResumeEnabled()) return;
     // The board entry screen's page (#292) takes the list back itself, on the
-    // settled frame that shows it (BoardNotes._settled → resumeAfterHelp). Its
+    // settled frame that shows it (ScreenPage._settled → resumeAfterHelp). Its
     // keys go to PTT outside the queue, so a list PTT draws on its own (a key
     // stopped a movie) can be read here before it settles and taken back
     // without the held board: rebuilt and refilled, with a jump sent behind it.
-    if (!landed && this._core?.boardNotes?.holding) return;
+    if (!landed && screenPageHolding(this._core)) return;
     // 洞 3：畫面與使用者都要靜止。還沒靜置滿就補排剩下的時間（不是輪詢）。
     const quietSince = Math.max(this._lastServerActivityAt, this._lastUserByteAt);
     const waited = performance.now() - quietSince;
@@ -2222,11 +2230,11 @@ ListSession.prototype = {
     this._beginHeldSteps(steps, 'user-query');
   },
 
-  // The board entry screen (#292, board_notes.js): `b` shows the board's
-  // entry screen whatever PTT's cursor row, so it goes out as the user
-  // query's `Q` does.
-  beginBoardNotes: function(steps) {
-    this._beginHeldSteps(steps, 'board-notes');
+  // A page of PTT's own screen over this list (screen_page.LIST_UNDER: the
+  // board entry screen's `b`, #292): its key shows the board's screen
+  // whatever PTT's cursor row, so it goes out as the user query's `Q` does.
+  beginScreenPage: function(steps) {
+    this._beginHeldSteps(steps, steps[0].kind);
   },
 
   // Steps of a page held over this list that need no cursor (the user query,
