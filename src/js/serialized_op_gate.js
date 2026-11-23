@@ -46,6 +46,8 @@ export function serializedOpHint(core) {
   if (core.boardInfo?.busy) return i18n('boardInfo_busy');
   // The board entry screen (board_notes.js, #292): `b`, its page, the way back.
   if (core.boardNotes?.busy) return i18n('boardNotes_busy');
+  // An article's animation (article_movie.js, #300): `p`, its page, the way back.
+  if (core.articleMovie?.busy) return i18n('articleMovie_busy');
   // Where the board is (whereami.js, #293): PTT's screen and the way back.
   if (core.whereAmI?.busy) return i18n('whereAmI_busy');
   // 搜尋彈窗送出的兩步（搜尋鍵 → 等 prompt → 關鍵字），見 article_search.js。

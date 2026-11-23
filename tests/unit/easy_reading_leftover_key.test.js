@@ -21,7 +21,7 @@ test("help and reply keys keep the native route", () => {
 });
 
 test("other PTT command keys are refused", () => {
-  for (const k of ["s", "#", "/", ";", ":", "E", "T", "v", "o", "p", "5", "c"])
+  for (const k of ["s", "#", "/", ";", ":", "E", "T", "v", "o", "5", "c"])
     expect(articleLeftoverKey(ev(k))).toBe("refuse");
   for (const k of ["Escape", "Delete", "Insert"]) expect(articleLeftoverKey(ev(k))).toBe("refuse");
 });
@@ -213,6 +213,19 @@ describe("Q over an article", () => {
 
   test("Ctrl-Q is not it", () => {
     expect(articleLeftoverKey(ev("q", { ctrlKey: true }))).toBe("refuse");
+  });
+
+  test("p and P play the article's animation (#300), over a mail too; the help sheet offers them", () => {
+    for (const mail of [false, true]) {
+      for (const k of ["p", "P"]) expect(articleLeftoverKey(ev(k), { mail })).toBe("movie");
+      expect(articleWouldRefuse({ key: "p" }, {}, { mail })).toBe(false);
+      const { er, hints } = reader(mail);
+      er._core.articleMovie = { start: vi.fn(() => true) };
+      expect(er._leftoverKey(ev("p"))).toBe(true);
+      expect(er._core.articleMovie.start).toHaveBeenCalledTimes(1);
+      expect(hints).toEqual([]);
+    }
+    expect(articleLeftoverKey(ev("p", { ctrlKey: true }))).toBe("refuse");
   });
 
   test("a mail refuses Q with the hint", () => {

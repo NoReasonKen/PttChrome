@@ -119,6 +119,27 @@ export const en_US = {
   "boardNotes_wait": {
     "message": "The board entry screen is still being drawn; leave it in a moment"
   },
+  "articleMovie_title": {
+    "message": "Play animation"
+  },
+  "articleMovie_busy": {
+    "message": "Working on the animation, please wait…"
+  },
+  "articleMovie_unavailable": {
+    "message": "An animation is played only from an article read in easy reading"
+  },
+  "articleMovie_failed": {
+    "message": "The animation got no answer; try again"
+  },
+  "articleMovie_wait": {
+    "message": "The animation is still being drawn; leave it in a moment"
+  },
+  "articleMovie_notMovie": {
+    "message": "This article is not an animation: PTT asks for a speed to page through it as a classic animation. Leave to go back to the article."
+  },
+  "articleMovie_lost": {
+    "message": "PTT left the article while the animation played: pull down to refresh."
+  },
   "postInfo_code": {
     "message": "Article code"
   },

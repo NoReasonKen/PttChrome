@@ -688,6 +688,20 @@ describe("functionMode clean-list settle 的 in-flight 吸收（相對命令配�
       )
     ).toEqual({ next: "functionMode", actions: [] });
   });
+  // #300: an article's animation holds the article over the suspended list;
+  // a movie frame that looks like a list or a menu is the movie's.
+  test("suspended under a page of PTT's own screen: a list or a menu frame is not the list's", () => {
+    expect(transitionListSession("suspended", settle("clean-list", { pageHeld: true }))).toEqual({
+      next: "suspended",
+      actions: [],
+    });
+    expect(transitionListSession("suspended", settle("menu", { pageHeld: true }))).toEqual({
+      next: "suspended",
+      actions: [],
+    });
+    expect(transitionListSession("suspended", settle("clean-list")).next).toBe("active");
+    expect(transitionListSession("suspended", settle("menu")).next).toBe("idle");
+  });
   test("配對完成（無 in-flight、無 hold——leave/jump 交易）→ resume 採用落點游標", () => {
     expect(transitionListSession("functionMode", settle("clean-list"))).toEqual({
       next: "active",
@@ -1139,9 +1153,9 @@ describe("b shows the board entry screen (#292)", () => {
     expect(ctx.start).not.toHaveBeenCalled();
   });
 
-  test("beginBoardNotes sends its steps with no cursor-sync leg and keeps the list to take back", () => {
+  test("beginScreenPage sends its steps with no cursor-sync leg and keeps the list to take back", () => {
     const ctx = activeRefusalSession();
-    ctx.s.beginBoardNotes([{ keys: "b", kind: "board-notes", fullRepaint: false }]);
+    ctx.s.beginScreenPage([{ keys: "b", kind: "board-notes", fullRepaint: false }]);
     expect(ctx.s.state).toBe("functionMode");
     expect(ctx.enqueued.map((c) => [c.keys, c.kind, c.fullRepaint])).toEqual([["b", "board-notes", false]]);
     expect(ctx.s._helpBoard).toBe("C_Chat");

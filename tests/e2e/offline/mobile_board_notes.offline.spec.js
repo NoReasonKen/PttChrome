@@ -111,7 +111,7 @@ test.describe('the board entry screen on the phone', () => {
     await expect(page.locator('#mobileAppBar')).toContainText(await text(page, 'boardNotes_title'));
     // All 80 columns fit the page's width: nothing of PTT's screen is cut.
     const fit = await notesPage(page).evaluate((el) => {
-      const screen = el.querySelector('.boardNotesScreen');
+      const screen = el.querySelector('.screenPageScreen');
       return { page: el.clientWidth, screen: screen.getBoundingClientRect().width, scroll: el.scrollWidth };
     });
     expect(fit.screen).toBeLessThanOrEqual(fit.page + 1);

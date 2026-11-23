@@ -165,6 +165,11 @@ describe("toolbarContextFromFacts", () => {
     expect(toolbarContextFromFacts(frame(LIST), 2).boardNotes).toBeFalsy();
     expect(sameToolbarContext({ search: [], boardNotes: true }, { search: [], boardNotes: false })).toBe(false);
   });
+  // #300: the article's animation comes from its controller too.
+  test("article animation (More): off in the empty context, and part of the comparison", () => {
+    expect(EMPTY_TOOLBAR_CONTEXT.articleMovie).toBe(false);
+    expect(sameToolbarContext({ search: [], articleMovie: true }, { search: [], articleMovie: false })).toBe(false);
+  });
   // #293: where the board is, from the controller as board information is.
   test("where the board is (More): off in the empty context, and part of the comparison", () => {
     expect(EMPTY_TOOLBAR_CONTEXT.whereAmI).toBe(false);

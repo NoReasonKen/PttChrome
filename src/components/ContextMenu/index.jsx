@@ -112,6 +112,7 @@ import { userListToggleTarget } from "../../js/user_list";
 import { rememberSearch } from "../../js/search_history";
 import { promptUserQuery, queryAuthor } from "../../js/user_query";
 import { showBoardNotes } from "../../js/board_notes";
+import { showArticleMovie } from "../../js/article_movie";
 import { showArticlePostInfo, showListPostInfo } from "../../js/post_info";
 import { showBoardInfo } from "../../js/board_info";
 import { showWhereAmI } from "../../js/whereami";
@@ -196,6 +197,8 @@ const menuHandlerByEventKey = {
   userQuery: (pttchrome) => promptUserQuery(pttchrome),
   // The board entry screen (#292): the same entrance as `b` (js/board_notes.js).
   boardNotes: (pttchrome) => showBoardNotes(pttchrome),
+  // An article's animation (#300): the same entrance as `p` (js/article_movie.js).
+  articleMovie: (pttchrome) => showArticleMovie(pttchrome),
   // 查詢作者（文章列表，#254）：選取那一列再送 Ctrl-Q（js/user_query.js）。
   queryAuthor: (pttchrome, { authorQueryTarget }) =>
     queryAuthor(pttchrome, authorQueryTarget),
@@ -317,6 +320,8 @@ const initialState = {
   postInfoTarget: null,
   // 文章畫面的「文章資訊」出不出現（postInfo.articleAvailable，#261）。
   articlePostInfoEnabled: false,
+  // Whether 播放動畫 shows (an article, articleMovie.available, #300).
+  articleMovieEnabled: false,
   // 看板列表右鍵那一列的看板（{ num, name } / null），boardMarkRead.targetAtRow。
   boardMarkReadTarget: null,
   // The live layer's entry the menu was opened on (#124; NavigationStack
@@ -861,6 +866,10 @@ export const ContextMenu = ({ pttchrome }) => {
           onScreen &&
           !!normalEnabled &&
           !!pttchrome.postInfo?.articleAvailable?.(),
+        articleMovieEnabled:
+          onScreen &&
+          !!normalEnabled &&
+          !!pttchrome.articleMovie?.available?.(),
         menuTarget:
           normalEnabled && prefs.highlightMenuTarget
             ? menuTargetFromElement(target)
@@ -928,6 +937,7 @@ export const ContextMenu = ({ pttchrome }) => {
         authorQueryTarget: null,
         postInfoTarget: null,
         articlePostInfoEnabled: false,
+        articleMovieEnabled: false,
         boardMarkReadTarget: null,
         layerEntry: null,
         menuTarget: null,
@@ -1886,6 +1896,7 @@ export const ContextMenu = ({ pttchrome }) => {
     authorQueryTarget,
     postInfoTarget,
     articlePostInfoEnabled,
+    articleMovieEnabled,
     boardMarkReadTarget,
     layerEntry,
     replyCommentTarget,
@@ -1965,6 +1976,7 @@ export const ContextMenu = ({ pttchrome }) => {
         authorQueryTarget={authorQueryTarget}
         postInfoTarget={postInfoTarget}
         articlePostInfoEnabled={articlePostInfoEnabled}
+        articleMovieEnabled={articleMovieEnabled}
         boardMarkReadTarget={boardMarkReadTarget}
         menuAnchor={menuAnchor}
         articleLinkEnabled={articleLinkEnabled}

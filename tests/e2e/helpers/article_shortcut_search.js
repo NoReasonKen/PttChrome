@@ -228,7 +228,7 @@ async function installNestedServer(page, session) {
     }).join('');
     const subject = title => title.replace(/^(?:(?:Re|Fw):\s*)+/i, '').toLowerCase();
     // surface: article | list | info | prompt | empty | missing | main | query |
-    //   boardInfo | notes | notesMovie | notesPause | whereAmI
+    //   boardInfo | notes | notesMovie | notesPause | articleMovie | articleQuestion | whereAmI
     // `promptless`: `a` shows no prompt, as on a screen where it is no command.
     // `squeezedFooter`: the pager footer has room only for its short hints,
     //   as a very long article's (more.c#common_pmore_footer_handler).
@@ -259,6 +259,16 @@ async function installNestedServer(page, session) {
       // is stopped waits in pressanykey over its last frame; `notesStop:
       // 'list'` draws the list at once instead, as pmore's READ_NEXT would.
       notes: 'plain', notesStop: 'pause', notesFrame: 0, notesFrames: 4, notesFrameMs: 300, notesChoices: [],
+      // `p`/`P` in an article (pmore.c#pmore_cmd_movie, #300). `articleMovie`:
+      // 'movie' (`movieFrames` frames `movieFrameMs` apart; any key stops it
+      // and is used up), 'interactive' (keys other than q and Ctrl-C are its
+      // choices, kept in `movieChoices`) or 'none' (no movie: pmore asks for a
+      // classic animation's speed under the article, `movieAnswer` prefilled
+      // with 1; Ctrl-C clears it and the article comes back, Enter plays it).
+      // A movie that ends or is stopped shows the article again, a long one
+      // at `movieStopLine` (where its last frame was) or its top.
+      articleMovie: 'movie', movieFrame: 0, movieFrames: 4, movieFrameMs: 300, movieChoices: [],
+      movieStopLine: null, movieAnswer: '',
       // Ctrl-W / Ctrl-Y on the list (bbs.c#whereami, #293): the board's place in
       // the class tree. `whereAmIFails`: the board has no bid and PTT does
       // nothing; `whereAmIGarbled`: a level's row reads as nothing PTT prints.
@@ -446,6 +456,40 @@ async function installNestedServer(page, session) {
         if (state.surface === 'notesMovie') playNotes();
       }, state.notesFrameMs);
     };
+    // An article's movie: its frames over a cleared screen, pmore's movie
+    // footer on the last row; it plays by itself and shows the article again
+    // when it ends.
+    const movieRows = termRows => {
+      const rows = { 3: `\x1b[1;35m  Article frame ${state.movieFrame}\x1b[m` };
+      if (state.movieChoices.length) rows[5] = '  Choices made: ' + state.movieChoices.length;
+      rows[termRows - 1] = state.articleMovie === 'interactive' ? ' >>> 互動式動畫播放中... 可按 q 或 Ctrl-C 停止'
+        : ' >>> 動畫播放中... 可按 q, Ctrl-C 或其它任意鍵停止';
+      return rows;
+    };
+    let movieTimer = null;
+    const stopMovie = () => {
+      clearTimeout(movieTimer);
+      movieTimer = null;
+      state.surface = 'article';
+      if (state.open.lines) state.line = state.movieStopLine || 1;
+    };
+    const playMovie = () => {
+      clearTimeout(movieTimer);
+      movieTimer = setTimeout(() => {
+        movieTimer = null;
+        if (state.surface !== 'articleMovie') return;
+        if (state.movieFrame >= state.movieFrames) stopMovie();
+        else state.movieFrame++;
+        app.onData(frame());
+        if (state.surface === 'articleMovie') playMovie();
+      }, state.movieFrameMs);
+    };
+    const startMovie = () => {
+      state.surface = 'articleMovie';
+      state.movieFrame = 1;
+      state.movieChoices = [];
+      playMovie();
+    };
     // bbs.c#whereami over the list: from row 1 (move(1, 0); clrtobot()), the
     // list's title kept on row 0. The class tree is p[2] (root) > p[1] > p[0]
     // (the board); the root prints "%-40.40s %.13s", each level under it
@@ -523,6 +567,14 @@ async function installNestedServer(page, session) {
       } else if (['notes', 'notesMovie', 'notesPause'].includes(state.surface)) {
         rows = notesRows(termRows);
         cursor = [termRows, 1];
+      } else if (state.surface === 'articleMovie') {
+        rows = movieRows(termRows);
+        cursor = [termRows, 1];
+      } else if (state.surface === 'articleQuestion') {
+        // getdata_buf on b_lines-1 over the article, its footer kept.
+        rows = articleRows(state.open, termRows);
+        rows[termRows - 2] = '這可能是傳統動畫檔, 若要直接播放請輸入速度(秒): ' + state.movieAnswer;
+        cursor = [termRows - 1, 50 + state.movieAnswer.length];
       } else {
         const entries = listed();
         rows = {
@@ -643,6 +695,25 @@ async function installNestedServer(page, session) {
         else state.surface = state.notesStop === 'list' ? 'list' : 'notesPause';
         return rest.slice(key.length);
       }
+      // An article's movie: q and Ctrl-C always stop it; any other key stops a
+      // plain one and is an interactive one's choice.
+      if (state.surface === 'articleMovie') {
+        const sequence = /^\x1b\[[0-9;]*[~A-Za-z]/.exec(rest);
+        const key = sequence ? sequence[0] : rest[0];
+        if (state.articleMovie === 'interactive' && key !== 'q' && key !== '\x03') state.movieChoices.push(key);
+        else stopMovie();
+        return rest.slice(key.length);
+      }
+      // The classic animation's speed: Ctrl-C clears it (the article again),
+      // Enter plays the article.
+      if (state.surface === 'articleQuestion') {
+        if (rest[0] === '\x03') {
+          state.movieAnswer = '';
+          state.surface = 'article';
+        } else if (rest[0] === '\r') startMovie();
+        else state.movieAnswer += rest[0];
+        return rest.slice(1);
+      }
       if (state.surface === 'boardPause' || state.surface === 'backPause') {
         state.surface = 'list';
         state.pausing = null;
@@ -759,6 +830,12 @@ async function installNestedServer(page, session) {
         state.surface = 'info';
         state.infoFrom = 'list';
         state.infoOf = selected();
+      }
+      else if ((head === 'p' || head === 'P') && state.surface === 'article') {
+        if (state.articleMovie === 'none') {
+          state.surface = 'articleQuestion';
+          state.movieAnswer = '1';
+        } else startMovie();
       }
       else if ((head === 'i' || head === 'I') && state.surface === 'list') {
         if (!state.boardInfoFails) {
