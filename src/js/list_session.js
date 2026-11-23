@@ -676,6 +676,9 @@ export function transitionListSession(state, event) {
             // 與下面 menu 的守門同型：等序列自己收尾（最後那個文章 settle 的
             // inFlightKind 已是 null，照常 handoff）。
             if (event.inFlightKind && event.holdReason === 'external') return stay;
+            // The poll results' pager (#301, poll_results.js) is a pmore frame
+            // with a status row too: the page shows it, not article reading.
+            if (event.pageHeld) return stay;
             // User opened an article natively while mirrored.
             return { next: 'suspended', actions: ['handoff-article'] };
           case 'menu':
@@ -2129,6 +2132,11 @@ ListSession.prototype = {
       return;
     }
 
+    if (key.class === 'poll-results') {
+      this._core.pollResults?.start();
+      return;
+    }
+
     if (key.class === 'board-notes') {
       this._core.boardNotes?.start();
       return;
@@ -3532,6 +3540,10 @@ ListSession.prototype = {
     // no board and the digest list's table no `i`.
     if (!mail && (e.key === 'i' || e.key === 'I'))
       return { class: page || !this.isDigestList() ? 'board-info' : 'unsupported' };
+    // R shows the board's poll results (#301, poll_results.js); the mailbox
+    // has no board and the digest list's table no `R`.
+    if (!mail && e.key === 'R')
+      return { class: page || !this.isDigestList() ? 'poll-results' : 'unsupported' };
     if (mail && (e.key === 'r' || e.key === 'l' || e.key === 'L')) return { class: 'open' };
     // Navigation synonyms follow pttbbs read.c:858-902 (' ' / 'N' / KEY_PGDN /
     // Ctrl-F = next page, 'P' / KEY_PGUP / Ctrl-B = prev page, 'p'/'k'/KEY_UP,

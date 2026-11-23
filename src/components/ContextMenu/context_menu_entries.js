@@ -140,6 +140,12 @@ export function buildContextMenuEntries(p) {
     item("boardNotes", i18n("boardNotes_title"), (e) =>
       p.onMenuSelect("boardNotes", e),
     );
+  // The poll results (#301, js/poll_results.js): `R`, likewise.
+  const pollResults = p.normalEnabled && p.pollResultsEnabled && !p.mobile;
+  if (pollResults)
+    item("pollResults", i18n("pollResults_title"), (e) =>
+      p.onMenuSelect("pollResults", e),
+    );
   if (
     p.normalEnabled &&
     (p.authorBlacklistId ||
@@ -154,7 +160,8 @@ export function buildContextMenuEntries(p) {
       boardToggles ||
       userListToggle ||
       userQuery ||
-      boardNotes)
+      boardNotes ||
+      pollResults)
   )
     divider("d-blacklist");
   // 回覆這則推文（推文列預填 → 與帳號）：放在推文那一段的最前面。出現條件在 index.jsx

@@ -156,6 +156,21 @@
   "articleMovie_lost": {
     "message": "播放動畫時 PTT 離開了文章：下拉重新整理。"
   },
+  "pollResults_title": {
+    "message": "投票結果"
+  },
+  "pollResults_busy": {
+    "message": "投票結果處理中，請稍候…"
+  },
+  "pollResults_unavailable": {
+    "message": "只能在看板的文章列表看投票結果"
+  },
+  "pollResults_failed": {
+    "message": "投票結果沒有回應，請再試一次"
+  },
+  "pollResults_wait": {
+    "message": "投票結果還沒畫完，請稍候再離開"
+  },
   "postInfo_code": {
     "message": "文章代碼"
   },

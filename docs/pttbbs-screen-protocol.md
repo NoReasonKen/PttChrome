@@ -494,6 +494,16 @@ results, MODE_SELECT, use it too) and the digest one, and acts on no cursor row.
   footer a key resumes the movie); a key stops a plain movie; an interactive movie takes keys as
   its choices, but `q` and Ctrl-C always stop it; a movie that ends goes to pressanykey.
 
+The poll results asked for with `R` (#301, same module). `poll_results` runs
+`more(<board>/results, YEA)` (`poll.c`, `bbs.c#bbs_cmd_poll_results`): pmore with its footer prompt
+(`promptend` YEA, so no auto exit and no movie autoplay), a page at a time; ←/q leave and `poll_results`
+returns FULLUPDATE, so PTT draws the list with no pressanykey. When the file does not exist
+`more()` returns -1 before `clear()` and `vmsg("目前沒有任何投票的結果。")` waits at the last row of
+the list (the vmsg banner ` ◆ <message> [按任意鍵繼續]`, any key). `R` is bound in the normal table
+only (`read_comms`; search results use it too), not in `digest_comms`. No real result screen has been
+recorded; the footer wording and the results file's content come from the source and the invented
+screens of the tests.
+
 **Open question, the stopped movie**: the owner's facts for #292 say a key stopping a movie also
 leads to pressanykey, while the reading of `pmore.c:3196-3202` above says it returns `READ_NEXT`,
 so `b_notes` skips pressanykey and the list is drawn at once. No live recording settles it. The

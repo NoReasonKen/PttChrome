@@ -38,6 +38,8 @@
 //   boardNotes: easy reading presents a board's article list and is idle
 //            (board_notes.BoardNotes.available, the predicate of `b` and the
 //            context menu): 進板畫面 in More (#292).
+//   pollResults: the same without the digest list (poll_results.PollResults.available,
+//            the predicate of `R` and the context menu): 投票結果 in More (#301).
 //   articleMovie: easy reading presents an article and nothing runs over it
 //            (article_movie.ARTICLE_MOVIE.available, the predicate of `p` and the
 //            context menu): 播放動畫 in More (#300). Offered on every article:
@@ -76,7 +78,7 @@ import { screenPages } from './input_page';
 export const EMPTY_TOOLBAR_CONTEXT = Object.freeze({
   push: false, reply: false, mail: false, share: false, threadNav: false, post: false,
   unreadJump: false, aidJump: false, markAllRead: false, boardCountsSwitch: false, boardCounts: false, boardSort: false, boardSortFavorites: false, help: false, contentTools: false, refresh: false, end: false,
-  userListToggle: null, userQuery: false, postInfo: false, boardInfo: false, boardNotes: false, whereAmI: false, articleMovie: false, queryPage: false, search: [], digest: null, boardJump: false, appBar: EMPTY_APP_BAR, locked: false
+  userListToggle: null, userQuery: false, postInfo: false, boardInfo: false, boardNotes: false, whereAmI: false, pollResults: false, articleMovie: false, queryPage: false, search: [], digest: null, boardJump: false, appBar: EMPTY_APP_BAR, locked: false
 });
 
 // 送鍵表：key 是 term_view.sendKeyAsUser 的 keyName（單字元或 KeyMap 裡的具名鍵），
@@ -229,7 +231,8 @@ export function mobileToolbarContext(core) {
   const withInfo = core && core.boardInfo && core.boardInfo.available() ? { ...withPostInfo, boardInfo: true } : withPostInfo;
   const withWhere = core && core.whereAmI && core.whereAmI.available() ? { ...withInfo, whereAmI: true } : withInfo;
   const withNotes = core && core.boardNotes && core.boardNotes.available() ? { ...withWhere, boardNotes: true } : withWhere;
-  const withMovie = core && core.articleMovie && core.articleMovie.available() ? { ...withNotes, articleMovie: true } : withNotes;
+  const withPoll = core && core.pollResults && core.pollResults.available() ? { ...withNotes, pollResults: true } : withNotes;
+  const withMovie = core && core.articleMovie && core.articleMovie.available() ? { ...withPoll, articleMovie: true } : withPoll;
   // The jump by code: the article list's (#253), or the article's (#281).
   const er = core && core.easyReading;
   const aidJump = (ctx.post && ls && ls.aidJumpBoard && ls.aidJumpBoard()) ||
@@ -239,7 +242,7 @@ export function mobileToolbarContext(core) {
 
 const FLAGS = [
   'push', 'reply', 'mail', 'share', 'switchBoard', 'threadNav', 'post', 'unreadJump', 'aidJump', 'markAllRead', 'boardCountsSwitch', 'boardCounts', 'boardSort', 'boardSortFavorites', 'help', 'contentTools', 'refresh', 'end',
-  'boardJump', 'userQuery', 'postInfo', 'boardInfo', 'boardNotes', 'whereAmI', 'articleMovie', 'queryPage', 'locked'
+  'boardJump', 'userQuery', 'postInfo', 'boardInfo', 'boardNotes', 'whereAmI', 'pollResults', 'articleMovie', 'queryPage', 'locked'
 ];
 
 export function sameToolbarContext(a, b) {

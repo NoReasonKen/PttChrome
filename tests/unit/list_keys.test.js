@@ -1106,8 +1106,10 @@ describe("b shows the board entry screen (#292)", () => {
   function notesSession() {
     const ctx = activeRefusalSession();
     const start = vi.fn(() => true);
+    const pollStart = vi.fn(() => true);
     ctx.s._core.boardNotes = { start };
-    return { ...ctx, start };
+    ctx.s._core.pollResults = { start: pollStart };
+    return { ...ctx, start, pollStart };
   }
 
   test("b → prevented, handed to boardNotes.start, nothing enqueued or sent here", () => {
@@ -1143,6 +1145,25 @@ describe("b shows the board entry screen (#292)", () => {
     expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
     expect(ctx.start).not.toHaveBeenCalled();
     expect(ctx.s.boardNotesBoard()).toBe(null);
+  });
+
+  test("R → poll results: handed to pollResults.start; the digest list and the mailbox refuse it", () => {
+    const ctx = notesSession();
+    const e = keyEvent("R");
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(ctx.pollStart).toHaveBeenCalledTimes(1);
+    expect(ctx.sent).toEqual([]);
+    expect(ctx.enqueued).toEqual([]);
+    const digest = notesSession();
+    digest.s.isDigestList = () => true;
+    digest.s.onKeyDown(keyEvent("R"));
+    expect(digest.pollStart).not.toHaveBeenCalled();
+    expect(digest.hints).toEqual([[KEY_HINT, 4000, "error"]]);
+    const mail = notesSession();
+    mail.s._boardName = MAIL_LIST_KEY;
+    mail.s.onKeyDown(keyEvent("R"));
+    expect(mail.pollStart).not.toHaveBeenCalled();
   });
 
   test("B (upper case) stays refused", () => {
