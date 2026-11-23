@@ -96,6 +96,12 @@ import { quickPushPlan } from "../../js/comment_bar";
 import { serializedOpHint } from "../../js/serialized_op_gate";
 import {
   availableSearchKinds,
+  searchFailureHint,
+  searchModeOf,
+  cursorSubject,
+  searchSheetKinds,
+  withBoardJump,
+  startFilter,
   normalizeSearchText,
   searchGateFacts,
   submitSearch,
@@ -357,6 +363,9 @@ const initialState = {
   showsSearch: false,
   searchKind: "title",
   searchKinds: [],
+  searchExclude: false,
+  searchExcludeAllowed: false,
+  searchSameTitle: null,
   // Opened on a page revealed during a handoff (#119): the search waits for
   // the real page, and the board kind opens no native prompt meanwhile.
   searchHeld: false,
@@ -1114,20 +1123,31 @@ export const ContextMenu = ({ pttchrome }) => {
   // 回傳值是合約（同 openLongPushModal）：true ＝我接手了這次按鍵。可用種類每次現算
   // （availableSearchKinds，與工具列同一個判準）。
   const openSearch = useCallback(
-    (kind) => {
+    (kind, opts) => {
       const stack = pttchrome.navigationStack;
       const whenReady = stack?.deferRevealedAction();
       if (!whenReady && serializedOpHint(pttchrome)) return false;
-      const kinds = whenReady
+      const available = whenReady
         ? stack.toolbarContext()?.search || []
         : availableSearchKinds(searchGateFacts(pttchrome));
-      if (kinds.indexOf(kind) < 0) return false;
+      // The board jump opens its own sheet (the native completion bridge, its
+      // history), also over an article list, whose sheet lists only filters.
+      const kinds = searchSheetKinds(available, kind);
+      if (!kinds.length) return false;
+      // The other filters of the article list (#298): `!` is the title kind's
+      // exclude box (enabled only inside a search, where PTT accepts it), and
+      // same title shows the article it will match.
+      const articleList = !whenReady && kinds.indexOf("price") >= 0;
+      const mode = articleList ? searchModeOf(pttchrome) : null;
       update({
         ...initialState,
         showsSearch: true,
         searchKind: kind,
         searchKinds: kinds,
         searchHeld: whenReady,
+        searchExclude: !!opts?.exclude,
+        searchExcludeAllowed: !!mode?.select,
+        searchSameTitle: articleList ? cursorSubject(pttchrome) : null,
       });
       return true;
     },
@@ -1347,7 +1367,7 @@ export const ContextMenu = ({ pttchrome }) => {
         ).hiddenSearchKeys,
         searchKinds: busy
           ? []
-          : availableSearchKinds(searchGateFacts(pttchrome)),
+          : withBoardJump(availableSearchKinds(searchGateFacts(pttchrome))),
         refresh: refreshOffered(pttchrome.screenRefresh?.target?.()),
         unreadJump: !!pttchrome.unreadJump?.available?.(),
         markAllRead: !!pttchrome.markAllRead?.available?.(),
@@ -1421,7 +1441,7 @@ export const ContextMenu = ({ pttchrome }) => {
         return;
       }
       const value = normalizeSearchText(kind, text);
-      if (!value) return;
+      if (!value && !["sameTitle", "newPost"].includes(kind)) return;
       rememberSearch(kind, value);
       const hint = (msg, level) =>
         pttchrome.view?.flashListHint?.(msg, 3000, level);
@@ -1459,15 +1479,7 @@ export const ContextMenu = ({ pttchrome }) => {
         return;
       }
       const cb = {
-        onFail: (reason) =>
-          hint(
-            i18n(
-              reason === "search-limit"
-                ? "searchModal_conditionLimit"
-                : "searchModal_failed",
-            ),
-            HINT_ERROR,
-          ),
+        onFail: (reason) => hint(searchFailureHint(reason), HINT_ERROR),
       };
       // 背景的看板 prompt 已經開著：直接在上面送出。開不出來／已丟失才走一般兩步。
       if (bridge && bridge.submit(value, cb)) return;
@@ -1598,6 +1610,17 @@ export const ContextMenu = ({ pttchrome }) => {
         );
     },
     [pttchrome, openSearch],
+  );
+  // The More sheet's digest entry (#298): the key's own entrance (Tab).
+  const onToolbarFilter = useCallback(
+    (kind) => {
+      if (!startFilter(pttchrome, kind))
+        pttchrome.view?.flashListHint?.(
+          serializedOpHint(pttchrome) || i18n("searchModal_busy"),
+          3000,
+        );
+    },
+    [pttchrome],
   );
   const onToolbarSettings = useCallback(() => {
     pttchrome.onDisableLiveHelperModalState();
@@ -1856,6 +1879,9 @@ export const ContextMenu = ({ pttchrome }) => {
     showsSearch,
     searchKind,
     searchKinds,
+    searchExclude,
+    searchExcludeAllowed,
+    searchSameTitle,
     aidChoice,
     postInfo,
     boardInfo,
@@ -1978,6 +2004,9 @@ export const ContextMenu = ({ pttchrome }) => {
           show={showsSearch}
           kind={searchKind}
           kinds={searchKinds}
+          exclude={searchExclude}
+          excludeAllowed={searchExcludeAllowed}
+          sameTitle={searchSameTitle}
           onHide={onSearchHide}
           onConfirm={onSearchConfirm}
           createBoardSearch={
@@ -2067,6 +2096,7 @@ export const ContextMenu = ({ pttchrome }) => {
         pttchrome={pttchrome}
         hidden={modalOpen}
         onOpenSearch={onToolbarSearch}
+        onOpenFilter={onToolbarFilter}
         onOpenSettings={onToolbarSettings}
       />
     </Fragment>

@@ -487,7 +487,9 @@ export class ArticleShortcutSearch {
       const board = parseBoardName(facts?.rowTexts[0]);
       if (context && (this.core.buf.pageState === 1 ||
           (facts?.inputField && this.core.listSession?.state !== 'active' && !this.core.commandQueue?.inFlightKind) ||
-          footerCaption(facts?.rowTexts[facts.rows - 1]) === '文摘列表' ||
+          // The digest is no search results, unless the context says the search was made
+          // inside it (the digest keeps its caption then, and leads the context).
+          (footerCaption(facts?.rowTexts[facts.rows - 1]) === '文摘列表' && context.filters[0].kind !== 'digest') ||
           (this.core.buf.pageState === 2 && this._listShown(context.board) === 'full') ||
           (board && !sameBoard(board, context.board)))) {
         clearSearchResultsContext(this.core);
@@ -499,12 +501,14 @@ export class ArticleShortcutSearch {
 
   // A search key pressed by the reader. Only list searches replace the trail:
   // inside an article the same keys are PTT's in-article text search and
-  // reading commands. `S` is the native same-thread search of the list.
+  // reading commands. `S` is the same-thread search of the list.
   noteSearchKey(event) {
     if (event.ctrlKey || event.altKey || event.metaKey || this.core.buf.pageState !== 2) return;
     if (LIST_BACK_KEYS.includes(event.key)) clearSearchResultsContext(this.core);
     if (searchKindOfKey(event.key) || event.key === 'S') this.noteOtherSearch();
-    if (event.key === 'S') clearSearchResultsContext(this.core);
+    // A native `S` that is not taken as the list's same-title filter clears the
+    // results context where tryOpenSearchModal declines it; a taken one records
+    // its own (#298).
   }
 
   noteOtherSearch() {

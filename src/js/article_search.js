@@ -30,18 +30,79 @@ import {
   candidateSearchResults, recordSearchResults, clearSearchResultsContext,
   readSearchResultsContext, MAX_SEARCH_RESULTS_FILTERS
 } from './search_results_context';
-import { isSearchResultsFrame, searchResultsLanded, SEARCH_RESULT_NOTICE } from './search_results_screen';
+import {
+  isSearchResultsFrame, searchResultsLanded, isBoardArticleList, isFullBoardListFrame, SEARCH_RESULT_NOTICE
+} from './search_results_screen';
 import { knownBoardEntryKeys, boardNoteDecision } from './board_note_skip';
 import { classifyListScreen } from './list_session';
 import { serializedOpHint } from './serialized_op_gate';
 import { parseVmsgText } from './push_screen';
 import { KEY_DISMISS } from './screen_dismiss';
+import { footerCaption, isDigestListFooter } from './screen_captions';
+import { i18n } from './i18n';
+import { HINT_ERROR } from './status_hint';
 
 // 種類 → PTT 端的按鍵。`?` 與 `/` 是同一個指令（read.c:1430-1431），送出一律用 `/`。
 // `Z` 是推文數（大寫；小寫 z 是精華區，bbs.c:4406）。
+// SEARCH_KINDS 是搜尋彈窗裡一起切換的四種；FILTER_KINDS 是文章列表其餘的篩選
+// （read.c 的鍵表，#298），各自一個入口：每種一列資料，後來的篩選只加一列。
 export const SEARCH_KINDS = ['title', 'author', 'push', 'board'];
 export const SEARCH_KEY_OF = { title: '/', author: 'a', push: 'Z', board: 's' };
 const KIND_OF_KEY = { '/': 'title', '?': 'title', a: 'author', Z: 'push', s: 'board' };
+
+// 其餘篩選（只在文章列表）。key＝鍵盤事件的 e.key，send＝送給 PTT 的 bytes，
+// input：'text' 在搜尋彈窗打字、'fixed' 在彈窗選（值固定）、'none' 不問任何東西，
+// 按下就送。sheet＝彈窗裡一起切換的種類（只有 fixed 的 m／s 兩種共用一個彈窗）。
+//   A  read_cmd_search_money   RS_MONEY    getdata NUMECHO 7（6 位數）、值要 > 0
+//   G  read_cmd_search_mark    RS_MARK／RS_SOLVED  vans(...) 一行（VGET_LOWERCASE，
+//      3 bytes）：m 或 s ＋ Enter，空白＝取消
+//   !  read_cmd_search_exclude RS_KEYWORD_EXCLUDE  只在已搜尋時（MODE_SELECT），
+//      getdata TTLEN-4 ⇒ 59 bytes；否則 vmsg 拒絕、沒有 prompt
+//   S  read_cmd_search_title   RS_TITLE    游標那篇的完整 subject（subject_ex 去掉 Re:/Fw:）
+//      當條件，沒有 prompt；同一輪搜尋只能用一次（prev_modes & sr_mode ⇒ DONOTHING，
+//      畫面不動）。彈窗只**顯示**那個標題（cursorSubject），送的仍是 PTT 的 S。
+//   ^H read_cmd_search_newpost RS_NEWPOST  只列主題首篇，沒有 prompt，同樣只能一次
+//   Tab bbs_cmd_board_digest   進入／離開文摘（MODE_DIGEST），沒有 prompt；在搜尋結果裡
+//      會先離開搜尋再進文摘
+export const FILTER_KINDS = ['price', 'mark', 'solved', 'exclude', 'sameTitle', 'newPost', 'digest', 'digestLeave'];
+const FILTER_DEFS = {
+  price: { key: 'A', send: 'A', input: 'text', maxBytes: 6,
+    prompts: ['搜尋價格高於多少的文章: ', '增加條件 文章價格: '] },
+  mark: { key: 'G', send: 'G', input: 'fixed', value: 'm', once: true,
+    prompts: ['搜尋標記(m/s)(未輸入則取消): ', '增加條件 標記(m/s)(未輸入則取消): '] },
+  solved: { key: 'G', send: 'G', input: 'fixed', value: 's', once: true,
+    prompts: ['搜尋標記(m/s)(未輸入則取消): ', '增加條件 標記(m/s)(未輸入則取消): '] },
+  exclude: { key: '!', send: '!', input: 'text', maxBytes: 59, inResultsOnly: true,
+    prompts: ['增加條件 排除標題: '] },
+  sameTitle: { key: 'S', send: 'S', input: 'none', once: true },
+  newPost: { key: 'Backspace', send: '\x08', input: 'none', once: true },
+  digest: { key: 'Tab', send: '\t', input: 'none', adds: false },
+  digestLeave: { key: 'Tab', send: '\t', input: 'none', adds: false }
+};
+// Every kind a search can be built for: PTT's key and prompt fingerprint live in
+// these tables (SEARCH_KEY_OF, BOTTOM_PROMPTS) so the steps need no per-kind code.
+FILTER_KINDS.forEach((k) => { SEARCH_KEY_OF[k] = FILTER_DEFS[k].send; });
+
+// The sheet kind a filter key stands for: `!` is the title kind with its
+// exclude box checked, the digest is its own kind.
+export function sheetKindOfFilter(filter) {
+  // The digest is gated like an article list's title search.
+  return filter === 'exclude' || filter === 'digest' || filter === 'digestLeave' ? 'title' : filter;
+}
+
+export function filterDef(kind) {
+  return Object.prototype.hasOwnProperty.call(FILTER_DEFS, kind) ? FILTER_DEFS[kind] : null;
+}
+
+const FILTER_KIND_OF_KEY = { A: 'price', G: 'mark', '!': 'exclude', S: 'sameTitle', Backspace: 'newPost', Tab: 'digest' };
+
+// The filter a key stands for on `facts`' screen: Tab leaves the digest it is in.
+export function filterKindOfKey(key, facts) {
+  if (!Object.prototype.hasOwnProperty.call(FILTER_KIND_OF_KEY, key)) return null;
+  const kind = FILTER_KIND_OF_KEY[key];
+  return kind === 'digest' && facts && isDigestListFooter((facts.rowTexts || [])[(facts.rows || 0) - 1])
+    ? 'digestLeave' : kind;
+}
 
 // 鍵盤攔得到的鍵 → 種類；不是搜尋鍵回 null。`s` 只在 availableSearchKinds 含 board 的
 // 畫面才攔（文章列表／看板列表／主功能表），其他選單的 s 是「跳到 s 開頭的項目」。
@@ -60,6 +121,9 @@ const BOTTOM_PROMPTS = {
   author: ['搜尋作者: ', '增加條件 作者: '],
   push: ['搜尋推文數高於多少', '增加條件 推文數: ']
 };
+FILTER_KINDS.forEach((k) => {
+  if (FILTER_DEFS[k].prompts) BOTTOM_PROMPTS[k] = FILTER_DEFS[k].prompts;
+});
 export const BOARD_PROMPT = '請輸入看板名稱(按空白鍵自動搜尋)';
 
 function startsWithAny(text, prefixes) {
@@ -83,6 +147,9 @@ export function isSearchPromptFrame(kind, facts) {
 // 推文數 7、作者 IDLEN+1、標題 TTLEN（include/pttstruct.h：IDLEN 12、TTLEN 64），
 // vgetstring 只收「欄寬 − 1」個 byte，多打的響 bell 丟掉 ⇒ 送出去的條件會被靜默截斷。
 const SEARCH_MAX_BYTES = { push: 6, author: 12, title: 63 };
+FILTER_KINDS.forEach((k) => {
+  if (FILTER_DEFS[k].maxBytes) SEARCH_MAX_BYTES[k] = FILTER_DEFS[k].maxBytes;
+});
 
 // Big5 長度：ASCII 1 byte、其餘 2 bytes（Big5 沒有 3-byte 字）。
 function big5Length(s) {
@@ -94,12 +161,21 @@ function big5Length(s) {
 // 推文數只收非零整數（可負＝噓文數）。PTT 端 `atoi(keyword) == 0` 就當取消
 // （read.c ask_filter_predicate），送一個一定被丟掉的值只是多一趟。
 export function normalizeSearchText(kind, text) {
+  const def = filterDef(kind);
+  // 'fixed' filters answer with their own letter; 'none' filters carry no text.
+  if (def && def.input === 'fixed') return def.value;
+  if (def && def.input === 'none') return '';
   const t = String(text == null ? '' : text).trim();
   if (!t) return '';
   if (SEARCH_MAX_BYTES[kind] && big5Length(t) > SEARCH_MAX_BYTES[kind]) return '';
   if (kind === 'push') {
     if (!/^-?\d+$/.test(t)) return '';
     return parseInt(t, 10) === 0 ? '' : String(parseInt(t, 10));
+  }
+  // 價格只收正整數（read.c：`atoi(keyword) <= 0` 就當取消）。
+  if (kind === 'price') {
+    if (!/^\d+$/.test(t)) return '';
+    return parseInt(t, 10) <= 0 ? '' : String(parseInt(t, 10));
   }
   // 看板名稱：namecomplete 是 VGET_ASCII_ONLY（name.c#namecomplete_internal），
   // 非 ASCII 打進去也只會被丟掉 ⇒ 這裡先擋，彈窗才能說清楚。
@@ -132,6 +208,35 @@ export function searchGateFacts(core) {
 //   board.c:2063，另一種東西，不接）；主功能表 → 只有看板（menu.c:767，只有
 //   MMENU/TMENU/XMENU 的 s 是選擇看板，其他選單的 s 是跳到 s 開頭的項目）；
 //   其他（文章、prompt、編輯器…）→ 無。
+// The article list's kinds (#298): PTT's search filters. Going to a board (`s`)
+// is navigation, not a filter, and is no kind here (withBoardJump). The digest is
+// a mode, not a search: it has its own entry (digestKindOf).
+function articleListKinds() {
+  return ['title', 'author', 'push', 'price', 'mark', 'sameTitle', 'newPost'];
+}
+
+// Kinds plus the board jump, which every list that has a search offers (the
+// article list's sheet does not list it; `s` and the More sheet open it alone).
+export function withBoardJump(kinds) {
+  return kinds.indexOf('title') >= 0 && kinds.indexOf('board') < 0 ? [...kinds, 'board'] : kinds;
+}
+
+// The kinds of the sheet that opens `kind`, or [] when this screen has none: the
+// board jump opens its own single-kind sheet, everywhere.
+export function searchSheetKinds(available, kind) {
+  if (kind === 'board') return withBoardJump(available).indexOf('board') >= 0 ? ['board'] : [];
+  return available.indexOf(kind) >= 0 ? available : [];
+}
+
+// The digest entry (Tab, the More sheet) of this frame: 'digest' to enter it,
+// 'digestLeave' inside it (the 文摘列表 caption stays even for a search made
+// inside it), null where there is no article list.
+export function digestKindOf(facts) {
+  if (!facts || availableSearchKinds(facts).indexOf('title') < 0) return null;
+  const rows = facts.rowTexts || [];
+  return isDigestListFooter(rows[(facts.rows || rows.length) - 1]) ? 'digestLeave' : 'digest';
+}
+
 export function availableSearchKinds(facts) {
   if (!facts || facts.inputField) return [];
   // The mailbox (#196): mail.c#mail_comms has its own s/a/Z and easy reading
@@ -140,10 +245,10 @@ export function availableSearchKinds(facts) {
   // The online user list (#199): talk.c's s and / are its own, and easy
   // reading presents none of the searches there either.
   if (isUserListTitleRow((facts.rowTexts || [])[0] || '')) return [];
-  if (facts.listOwner === OWNER_ARTICLE_LIST) return SEARCH_KINDS.slice();
+  if (facts.listOwner === OWNER_ARTICLE_LIST) return articleListKinds(facts);
   if (facts.listOwner === OWNER_BOARD_LIST) return ['board'];
   const ctx = boardListContextKind(facts);
-  if (ctx === 'article-list') return SEARCH_KINDS.slice();
+  if (ctx === 'article-list') return articleListKinds(facts);
   if (ctx === 'brdlist' || ctx === 'brdlist-other') return ['board'];
   if (rowHasTitle((facts.rowTexts || [])[0] || '', MAIN_MENU)) return ['board'];
   return [];
@@ -152,18 +257,19 @@ export function availableSearchKinds(facts) {
 // Whether `key`, typed without modifiers on the list `listOwner` presents,
 // opens the search sheet. The help menu sheet asks it for its rows (#222).
 export function searchKeyOpensSheet(key, listOwner) {
-  const kind = searchKindOfKey(key);
-  return !!kind && availableSearchKinds({ listOwner: listOwner, rowTexts: [] }).indexOf(kind) >= 0;
+  const facts = { listOwner: listOwner, rowTexts: [] };
+  const kind = searchKindOfKey(key) || sheetKindOfFilter(filterKindOfKey(key, facts));
+  return !!kind && withBoardJump(availableSearchKinds(facts)).indexOf(kind) >= 0;
 }
 
 // 鍵盤／IME 兩條攔截入口的判準。
 export function shouldInterceptSearchKey(opts) {
   const o = opts || {};
-  const kind = searchKindOfKey(o.key);
+  const kind = searchKindOfKey(o.key) || sheetKindOfFilter(filterKindOfKey(o.key, o.facts));
   if (!kind) return false;
   if (o.ctrlKey || o.altKey || o.metaKey) return false;
   if (!easyReadingOn(o.prefs)) return false;
-  return availableSearchKinds(o.facts).indexOf(kind) >= 0;
+  return withBoardJump(availableSearchKinds(o.facts)).indexOf(kind) >= 0;
 }
 
 // term_view 的鍵盤（onKeyDown）與 IME（onTextInput）兩條入口共用。e 為 null ＝ IME
@@ -171,7 +277,9 @@ export function shouldInterceptSearchKey(opts) {
 // 是 noop（ContextMenu 還沒 mount）時回 false ⇒ 照原生送出，**絕不吞了又不開**。
 export function tryOpenSearchModal(core, key, e) {
   const kind = searchKindOfKey(key);
-  if (!kind || !core || typeof core.openSearchModal !== 'function') return false;
+  const rawFilter = kind ? null : filterKindOfKey(key);
+  const filter = rawFilter && core ? filterKindOfKey(key, searchGateFacts(core)) : rawFilter;
+  if ((!kind && !filter) || !core || typeof core.openSearchModal !== 'function') return false;
   if (
     !shouldInterceptSearchKey({
       key: key,
@@ -186,7 +294,7 @@ export function tryOpenSearchModal(core, key, e) {
       clearSearchResultsContext(core);
     return false;
   }
-  return !!core.openSearchModal(kind);
+  return filter ? startFilter(core, filter) : !!core.openSearchModal(kind);
 }
 
 // 送出序列：先送搜尋鍵，**等 prompt 真的出現**才送關鍵字＋Enter。不可以一次送出：
@@ -194,9 +302,24 @@ export function tryOpenSearchModal(core, key, e) {
 // 變了）關鍵字的每個字母都會落回列表按鍵 —— `a`/`Z`/`s`/數字全是指令。
 export function buildSearchSteps(kind, text, cb) {
   const key = SEARCH_KEY_OF[kind];
+  const def = filterDef(kind);
   const value = normalizeSearchText(kind, text);
-  if (!key || !value) return null;
   const c = cb || {};
+  // A filter that asks nothing is one step: its key is the whole command, and
+  // what it lands on is proven by the caller's expect (submitSearch).
+  if (def && def.input === 'none') {
+    return [{
+      keys: key,
+      kind: 'search-direct',
+      ...SLOW_STEP_BUDGET,
+      expect: function(snapshot, facts) {
+        return directFilterLanded(kind, facts || {});
+      },
+      onFail: c.onFail,
+      onDone: c.onDone
+    }];
+  }
+  if (!key || !value) return null;
   return [
     {
       keys: key,
@@ -224,6 +347,20 @@ export function buildSearchSteps(kind, text, cb) {
       onDone: c.onDone
     }
   ];
+}
+
+// Where a prompt-less filter lands when the board is not known: the caption it
+// proves (see submitSearch for the board-checked version). Searches and the
+// digest show as sub-lists; leaving the digest shows the full list.
+function directFilterLanded(kind, facts) {
+  const rows = facts.rowTexts || [];
+  const last = rows[(facts.rows || rows.length) - 1] || '';
+  const parked = facts.curY >= 3 && facts.curY < facts.rows - 1 && facts.curX <= 1;
+  if (!parked) return false;
+  const caption = footerCaption(last);
+  if (kind === 'digest') return caption === '文摘列表';
+  if (kind === 'digestLeave') return caption === '文章列表';
+  return caption === '系列文章';
 }
 
 // 兩步在途的旗標（core.searchInFlight），由 serialized_op_gate 讀：期間使用者的鍵一律
@@ -400,13 +537,15 @@ function trackInFlight(core, steps, flag) {
   return steps;
 }
 
-function knownSearchConditionLimit(core, facts, board) {
-  if (!isSearchResultsFrame(facts, board, false)) return false;
-  const search = readSearchResultsContext(core, board);
-  if (search?.filters.length !== MAX_SEARCH_RESULTS_FILTERS) return false;
+function knownSearchConditionLimit(core, facts, board, inDigest) {
+  const inDigestSearch = inDigest && readSearchResultsContext(core, board)?.filters[0].kind === 'digest';
+  if (!isSearchResultsFrame(facts, board, false, inDigestSearch)) return false;
+  // The digest is no condition (select_read counts predicates).
+  const conditions = readSearchResultsContext(core, board)?.filters.filter(filter => filter.kind !== 'digest');
+  if (conditions?.length !== MAX_SEARCH_RESULTS_FILTERS) return false;
   // Different characters can encode to the same bytes in Big5. Only refuse
   // locally when all recorded conditions are also distinct on the wire.
-  return new Set(search.filters.map(filter =>
+  return new Set(conditions.map(filter =>
     filter.kind === 'thread' ? 'thread' : filter.kind + ':' + u2b(filter.value)
   )).size === MAX_SEARCH_RESULTS_FILTERS;
 }
@@ -433,14 +572,31 @@ export function submitSearch(core, kind, text, cb) {
   // terminal header. The latter can be blank when the search sheet submits.
   const board = boardNameFromKey(shown?.board) || parseBoardName(facts?.rowTexts[0]);
   // PTT checks the cap before opening a prompt, even for a repeated condition.
-  if (kind !== 'board' && SEARCH_KINDS.includes(kind) && normalizeSearchText(kind, text) &&
-      knownSearchConditionLimit(core, facts, board)) {
+  const def = filterDef(kind);
+  const direct = def?.input === 'none';
+  const mode = searchMode(core, facts, board);
+  // The refusals PTT would give, said before anything goes out (a once-only
+  // filter's repeat does nothing at all on PTT; `!` outside results is a vmsg).
+  const refusal = filterRefusal(def && kind, mode);
+  if (refusal) {
+    c.onFail?.(refusal);
+    return true;
+  }
+  // Every condition takes a slot, whatever its input; the digest takes none.
+  const adds = kind !== 'board' && def?.adds !== false && (SEARCH_KINDS.includes(kind) || !!def);
+  if (adds && (direct || normalizeSearchText(kind, text)) && knownSearchConditionLimit(core, facts, board, mode.digest)) {
     c.onFail?.('search-limit');
     return true;
   }
   let candidate = null;
   let bm = null;
   let openRejected = false;
+  // The condition a prompt-less filter adds is known before it goes out: there
+  // is no prompt to tell an added condition from a new search, so the results
+  // on screen do. Once-only S is not replayable (it reads the cursor row).
+  if (direct && adds) {
+    candidate = candidateSearchResults(core, board, { kind, value: '' }, mode.select, mode.digest);
+  }
   const end = function(outcome) {
     if (bm) recordFor(core).end(bm, outcome);
     bm = null;
@@ -451,7 +607,15 @@ export function submitSearch(core, kind, text, cb) {
         callbacks.onFail('search-limit');
         return;
       }
-      if (a?.searchResults || isSearchResultsFrame(searchGateFacts(core), board)) recordSearchResults(core, candidate);
+      if (!adds && kind !== 'board') {
+        // Entering or leaving the digest drops every search, as PTT does
+        // (bbs.c#board_digest → board_select): the context, the search trail and
+        // the pages stacked above the board's list go, so Back is the digest's own.
+        clearSearchResultsContext(core);
+        core.articleShortcutSearch?.noteOtherSearch();
+        core.navigationStack?.leaveSearchPages(board);
+      } else if (a?.searchResults || (!(direct && a?.searchNotice) && isSearchResultsFrame(searchGateFacts(core), board, true, mode.digest)))
+        recordSearchResults(core, candidate);
       end('done');
       if (c.onDone) c.onDone(a, b);
     },
@@ -501,7 +665,7 @@ export function submitSearch(core, kind, text, cb) {
       if (done) done(a, b);
     };
   }
-  if (!batch) built[0].onDone = result => {
+  if (!batch && !direct) built[0].onDone = result => {
     if (result?.searchLimit) {
       openRejected = true;
       // The notice consumes one key, then PTT redraws the existing results.
@@ -514,9 +678,19 @@ export function submitSearch(core, kind, text, cb) {
     if (hold) hold.opened();
     const prompt = searchGateFacts(core);
     const append = /^增加條件 /.test(prompt?.rowTexts[prompt.rows - 1] || '');
-    candidate = candidateSearchResults(core, board, { kind, value: normalizeSearchText(kind, text) }, append);
+    candidate = candidateSearchResults(core, board, { kind, value: normalizeSearchText(kind, text) }, append, mode.digest);
   };
-  if (kind !== 'board' && board) {
+  if (direct && board) {
+    built[0].expect = (snapshot, landing) => {
+      const last = landing.rowTexts[landing.rows - 1] || '';
+      if (landing.curY === landing.rows - 1 && SEARCH_RESULT_NOTICE.test(last)) return { searchNotice: true };
+      if (kind === 'digest') return directFilterLanded(kind, landing) && isBoardArticleList(landing, board)
+        ? { digest: true } : false;
+      if (kind === 'digestLeave') return directFilterLanded(kind, landing) && isFullBoardListFrame(landing, board)
+        ? { digest: false } : false;
+      return searchResultsLanded(landing, board, mode.digest) ? { searchResults: true } : false;
+    };
+  } else if (kind !== 'board' && board) {
     const expectPrompt = built[0].expect;
     built[0].expect = (snapshot, landing) => searchConditionLimitNotice(landing, board)
       ? { searchLimit: true } : expectPrompt(snapshot, landing);
@@ -524,10 +698,10 @@ export function submitSearch(core, kind, text, cb) {
     // until results or a known rejection are verified, so a close/reload cannot
     // persist the preceding query while the new results are already visible.
     built[1].expect = (snapshot, landing) => {
-      if (openRejected) return searchResultsLanded(landing, board) ? { searchLimit: true } : false;
+      if (openRejected) return searchResultsLanded(landing, board, mode.digest) ? { searchLimit: true } : false;
       const last = landing.rowTexts[landing.rows - 1] || '';
       if (landing.curY === landing.rows - 1 && SEARCH_RESULT_NOTICE.test(last)) return { searchNotice: true };
-      return searchResultsLanded(landing, board) ? { searchResults: true } : false;
+      return searchResultsLanded(landing, board, mode.digest) ? { searchResults: true } : false;
     };
   }
   bm = recordFor(core).begin(kind === 'board' ? 'board-search' : 'article-search');
@@ -543,6 +717,87 @@ export function submitSearch(core, kind, text, cb) {
   if (hold) hold.release();
   bm = null;
   return false;
+}
+
+// What the list on screen is: the digest (the 文摘列表 caption, which PTT keeps
+// even for a search made inside it), whether a search is in force (`select`),
+// and the conditions the live context knows. In the digest a search shows only
+// in that context; elsewhere the 系列文章 caption proves it.
+function searchMode(core, facts, board) {
+  const last = (facts?.rowTexts || [])[(facts?.rows || 0) - 1] || '';
+  const digest = isDigestListFooter(last);
+  const context = board ? readSearchResultsContext(core, board) : null;
+  // A context counts inside the digest only when it says it was made there; any
+  // other is a stale search of the full list.
+  const trusted = !digest || context?.filters[0].kind === 'digest';
+  const conditions = context && trusted ? context.filters.filter(filter => filter.kind !== 'digest') : [];
+  const select = digest ? conditions.length > 0 : footerCaption(last) === '系列文章' ||
+    (!!board && isSearchResultsFrame(facts, board, !!context));
+  return { digest, select, conditions };
+}
+
+export function searchModeOf(core) {
+  const facts = searchGateFacts(core);
+  const shown = core?.listSession?.state === 'active' ? core.listSession.readingPosition?.() : null;
+  return searchMode(core, facts, boardNameFromKey(shown?.board) || parseBoardName(facts?.rowTexts[0]));
+}
+
+// The reason PTT would not run `kind` here, or null (a hint key for
+// searchFailureHint). Native `!` only works inside a search (read.c
+// ask_filter_predicate); once-only filters (S, Backspace, G m, G s) do nothing
+// a second time (prev_modes & sr_mode, DONOTHING) and leave the screen as it is.
+export function filterRefusal(kind, mode) {
+  const def = filterDef(kind);
+  if (!def || !mode) return null;
+  if (def.inResultsOnly && !mode.select) return 'search-needs-results';
+  if (def.once && mode.select && mode.conditions.some(f => f.kind === kind)) return 'search-applied';
+  return null;
+}
+
+export function searchFailureHint(reason) {
+  return i18n(reason === 'search-limit' ? 'searchModal_conditionLimit'
+    : reason === 'search-applied' ? 'searchFilter_applied'
+      : reason === 'search-needs-results' ? 'searchFilter_needsResults'
+        : 'searchModal_failed');
+}
+
+// pttbbs common/bbs/string.c#subject_ex: leading "Re:" and "Fw:" (any case),
+// repeated, each followed by at most one space.
+export function subjectOf(title) {
+  return String(title || '').replace(/^(?:(?:Re|Fw): ?)+/i, '');
+}
+
+// The title of the article under the list cursor as the list shows it, without
+// its type mark (□ ■, or R: for a reply, which already dropped its Re:) and
+// subject_ex's prefixes; null when no row is selected. Display only (the sheet's
+// same-title input): PTT's S matches the full subject of the cursor row itself,
+// which a truncated list cell may show only in part.
+export function cursorSubject(core) {
+  const raw = core?.listSession?.selectedPostInfoTarget?.()?.title;
+  const subject = subjectOf(String(raw || '').replace(/^(?:[□■]|R:)\s*/, '')).trim();
+  return subject || null;
+}
+
+// The key or sheet entry of a filter other than / a Z s (#298). true = taken:
+// the sheet opened, the key went out, or the reader was told why not.
+export function startFilter(core, kind) {
+  const def = filterDef(kind);
+  if (!def || !core) return false;
+  const hint = message => core.view?.flashListHint?.(message, 3000, HINT_ERROR);
+  const busy = serializedOpHint(core);
+  if (busy) {
+    core.view?.flashListHint?.(busy, 3000);
+    return true;
+  }
+  const open = (...args) => typeof core.openSearchModal === 'function' && !!core.openSearchModal(...args);
+  // Price and the marks ask in their own sheet kind; `!` is the title kind with
+  // its exclude box, which the sheet disables outside a search.
+  if (kind === 'price' || kind === 'mark' || kind === 'solved') return open(kind === 'solved' ? 'mark' : kind);
+  if (kind === 'exclude') return open('title', { exclude: true });
+  const cb = { onFail: reason => hint(searchFailureHint(reason)) };
+  const sent = submitSearch(core, kind, '', cb);
+  if (!sent) core.view?.flashListHint?.(serializedOpHint(core) || i18n('searchModal_busy'), 3000);
+  return true;
 }
 
 // submitSearch 的送出半段：多步序列（每步 {keys, kind, expect, onDone, onFail}）交給
