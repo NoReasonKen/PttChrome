@@ -74,6 +74,28 @@ test("查詢網友（#199）：桌機右鍵在線上使用者列表才有；手�
   expect(keys({ ...p, mobile: true })).not.toContain("userQuery");
 });
 
+// The board entry screen (#292): the article list's `b`, for the whole list.
+test("board entry screen: on the desktop menu over an article list; the phone has it in More", () => {
+  const calls = [];
+  const p = {
+    ...BASE,
+    markAllReadEnabled: true,
+    boardNotesEnabled: true,
+    onMenuSelect: (k) => calls.push(k),
+  };
+  const entries = buildContextMenuEntries(p);
+  const at = entries.findIndex((e) => e.key === "boardNotes");
+  expect(entries[at].label).toBe(i18n("boardNotes_title"));
+  // With the other whole-list items, before their divider.
+  expect(at).toBeGreaterThan(entries.findIndex((e) => e.key === "markAllRead"));
+  expect(entries[at + 1].type).toBe("divider");
+  entries[at].onClick({});
+  expect(calls).toEqual(["boardNotes"]);
+  expect(keys({ ...p, boardNotesEnabled: false })).not.toContain("boardNotes");
+  expect(keys({ ...p, mobile: true })).not.toContain("boardNotes");
+  expect(keys({ ...p, normalEnabled: false })).not.toContain("boardNotes");
+});
+
 test("手機：全選／圖片上傳／設為全部已讀都不在長按選單", () => {
   const k = keys({ ...BASE, mobile: true });
   for (const m of MOVED) expect(k).not.toContain(m);
@@ -250,8 +272,47 @@ test("文章：文章資訊在複製本篇文章連結之後，桌機右鍵與�
   expect(keys({ ...BASE, articlePostInfoEnabled: false })).not.toContain("articlePostInfo");
 });
 
+// #300: the article's animation, its `p`, after its information; on the
+// phone it is in the toolbar's More, as the board entry screen is.
+test("article animation: on the desktop menu over an article, after its information; the phone has it in More", () => {
+  const calls = [];
+  const p = {
+    ...BASE,
+    articlePostInfoEnabled: true,
+    articleMovieEnabled: true,
+    onMenuSelect: (k) => calls.push(k),
+  };
+  const entries = buildContextMenuEntries(p);
+  const at = entries.findIndex((e) => e.key === "articleMovie");
+  expect(at).toBe(entries.findIndex((e) => e.key === "articlePostInfo") + 1);
+  expect(entries[at].label).toBe(i18n("articleMovie_title"));
+  entries[at].onClick({});
+  expect(calls).toEqual(["articleMovie"]);
+  expect(keys({ ...p, articleMovieEnabled: false })).not.toContain("articleMovie");
+  expect(keys({ ...p, mobile: true })).not.toContain("articleMovie");
+  expect(keys({ ...p, normalEnabled: false })).not.toContain("articleMovie");
+});
+
 // #288: board information acts on the whole list, as 設為全部已讀 does; on the
 // phone it is in the toolbar's More instead.
+test("desktop: an article list has 我在哪 after board information; it calls onMenuSelect('whereAmI') (#293)", () => {
+  const calls = [];
+  const entries = buildContextMenuEntries({
+    ...BASE,
+    boardInfoEnabled: true,
+    whereAmIEnabled: true,
+    onMenuSelect: (k) => calls.push(k),
+  });
+  const at = entries.findIndex((e) => e.key === "whereAmI");
+  expect(at).toBe(entries.findIndex((e) => e.key === "boardInfo") + 1);
+  expect(entries[at].label).toBe(i18n("whereAmI_title"));
+  entries[at].onClick({});
+  expect(calls).toEqual(["whereAmI"]);
+  expect(keys({ ...BASE, whereAmIEnabled: false })).not.toContain("whereAmI");
+  expect(keys({ ...BASE, normalEnabled: false, whereAmIEnabled: true })).not.toContain("whereAmI");
+  expect(keys({ ...BASE, mobile: true, whereAmIEnabled: true })).not.toContain("whereAmI");
+});
+
 test("desktop: an article list has board information, after 設為全部已讀; it calls onMenuSelect('boardInfo')", () => {
   const calls = [];
   const entries = buildContextMenuEntries({

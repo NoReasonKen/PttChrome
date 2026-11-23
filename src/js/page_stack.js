@@ -89,6 +89,22 @@ export function backPastRevealed(stack) {
   return { stack: left, revealed: revealTarget(left) };
 }
 
+// The reader left a search for PTT's other list mode (the digest, #298): every
+// page stacked above this board's article list goes (search results, the
+// articles opened from them, the results of shortcut searches started from
+// those articles), and the list stays as the real page again, so its own lower
+// page (a board list, the home dashboard) is still what Back reveals. Null when
+// the stack holds no such list: whatever it holds was a way back from the
+// searches only.
+export function popToList(stack, board) {
+  const at = stack.pages.findIndex(page => page.kind === PAGE.ARTICLE_LIST && !page.results &&
+    sameBoard(page.board, board));
+  if (at < 0) return null;
+  const pages = stack.pages.slice(0, at + 1);
+  pages[at] = { ...pages[at], layer: false };
+  return { stack: { ...stack, pages }, kept: at };
+}
+
 // What a reader can do on a page shown from its live layer, and whether it
 // spends the layer: asking PTT for the page's data anew does, and the layer's
 // pending work is dropped; using the page as it is does not. Leaving the page

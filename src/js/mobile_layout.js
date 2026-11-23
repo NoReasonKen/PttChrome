@@ -114,6 +114,30 @@ export function mobileCtrlKey(ch) {
   return null;
 }
 
+// Keys that are only a modifier: pressed alone (Shift before a capital) they
+// are not the "next key".
+export const MODIFIER_KEY_NAMES = ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'AltGraph'];
+
+// The keypad's sticky Ctrl, applied to the next key at every input entrance
+// before any routing: term_view.onKeyDown (keyboard keys and the toolbar's),
+// term_view.onTextInput (a character the soft keyboard typed),
+// term_view.sendKeyAsUser ahead of a page over the list, and that page's
+// window keydown listener (over_list_page.js), which takes keyboard keys
+// before term_view sees them (#292).
+// `e` needs key and the modifier flags. Returns the mods to send the key with
+// (term_view.sendKeyAsUser), or null to let the key go on as it is. The next
+// key disarms Ctrl, also one without a control code. Not the next key, so
+// Ctrl stays armed: a modifier alone, a key the keyboard already modifies, an
+// input method's keydown (its text comes as an input event).
+export function takeStickyCtrl(core, e) {
+  if (!core || !core.mobileCtrlArmed || !e || typeof e.key !== 'string') return null;
+  if (e.ctrlKey || e.altKey || e.metaKey) return null;
+  if (MODIFIER_KEY_NAMES.indexOf(e.key) >= 0) return null;
+  if (e.isComposing || e.keyCode === 229 || e.key === 'Process' || e.key === 'Unidentified') return null;
+  core.setMobileCtrlArmed(false);
+  return mobileCtrlKey(e.key);
+}
+
 // ---- 浮動元件的位置 -----------------------------------------------------------
 // 拖多遠才算拖曳（「⋯」圓鈕：小於這個就是點擊＝展開）。
 export const KEYPAD_DRAG_THRESHOLD_PX = 8;
@@ -221,17 +245,26 @@ export const MOBILE_SURFACES = ['grid', 'article', 'list', 'menu'];
 export function mobileTermGeometry({ width, height, dpr, surface, fontPx }) {
   const font = normalizeMobileFontPx(fontPx);
   const rows = calcTermSize({ height: height, fontSizePx: font }).rows;
-  const byWidth = (2 * (width - 10)) / TERM_COLS;
-  const byHeight = (height - 10) / rows;
   const wide = surface === 'article' || surface === 'list';
-  const raw = Math.max(0, Math.min(wide ? font : byWidth, byHeight));
-  const d = dpr > 0 ? dpr : 1;
   return {
     cols: TERM_COLS,
     rows: rows,
-    chh: Math.floor(raw * d) / d,
+    // A wide surface wraps its text: its font, not the 80 columns, sets the cell.
+    chh: wide ? gridCellPx({ width: null, height, rows, dpr, maxPx: font }) : gridCellPx({ width, height, rows, dpr }),
     mainWidth: wide ? Math.max(0, Math.floor(Number(width) || 0)) : null
   };
+}
+
+// The cell height (chh) that fits PTT's 80 columns and `rows` rows in a box of
+// width × height px, floored to whole device pixels: the grid's scaled-to-fit
+// size. A null width leaves the columns out; `maxPx` caps the cell.
+// Also sizes the board entry screen page's copy of PTT's screen (#292).
+export function gridCellPx({ width, height, rows, dpr, maxPx = Infinity }) {
+  const byWidth = width == null ? Infinity : (2 * (width - 10)) / TERM_COLS;
+  const byHeight = (height - 10) / rows;
+  const raw = Math.max(0, Math.min(maxPx, byWidth, byHeight));
+  const d = dpr > 0 ? dpr : 1;
+  return Math.floor(raw * d) / d;
 }
 
 // ---- Phase 4：列表卡片 -------------------------------------------------------

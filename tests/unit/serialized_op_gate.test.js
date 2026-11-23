@@ -10,6 +10,7 @@
 // 覆蓋，不是守門：繞過 onInput 的呼叫端（App.onPasteDone、image_upload_controller、
 // doPaste）照樣裸送。本檔釘的是四條入口各自的守門，不靠那個巧合。
 import { serializedOpHint } from "../../src/js/serialized_op_gate";
+import { i18n, setupI18n } from "../../src/js/i18n";
 import { TermView } from "../../src/js/term_view";
 import { App } from "../../src/js/pttchrome";
 
@@ -52,6 +53,14 @@ describe("serializedOpHint 述詞", () => {
     expect(
       serializedOpHint({ aidNavigation: { active: true }, longPush: { active: true } })
     ).toBe(AID_HINT);
+  });
+
+  // The board entry screen (#292): from `b` until the list is back, and while
+  // its page stays over the list.
+  test("the board entry screen running → its hint", () => {
+    setupI18n();
+    expect(serializedOpHint({ boardNotes: { busy: true } })).toBe(i18n("boardNotes_busy"));
+    expect(serializedOpHint({ boardNotes: { busy: false } })).toBe(null);
   });
 
   test("物件還沒建立／core 不存在都不炸", () => {

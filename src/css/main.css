@@ -264,6 +264,26 @@ a:link,a:visited,a:active,a:hover {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* Drawing blocks (#295, js/drawing_block.js, docs/mobile.md "Drawing blocks"): a
+   row of an ANSI drawing is not wrapped; it is drawn on PTT's 80-column grid at the
+   drawing cell, 80 columns fitting the page width. term_view._setDrawingCell writes
+   the cell (--drawing-cell, px) and its text size (--drawing-text, undoing the
+   page's text scaling) on `.main`. A full-width character's box is one cell wide:
+   `!important` wins over the inline width term_view.fixedResize writes at the
+   reading cell. The row's ASCII advance is half a cell because the row keeps the
+   terminal's font face (inherited from `.main`). No user-select (css_user_select). */
+.main.mobileReflow #mainContainer span[type="bbsrow"].drawingRow {
+  white-space: pre;
+  overflow-wrap: normal;
+  font-size: var(--drawing-text);
+  line-height: var(--drawing-text);
+}
+.main.mobileReflow #mainContainer .drawingRow .wpadding {
+  width: var(--drawing-cell) !important;
+}
+.main.mobileReflow #mainContainer .drawingRow .hpadding {
+  width: calc(var(--drawing-cell) / 2) !important;
+}
 /* 手機「選取模式」關著時，長按開的是我們的選單（ContextMenu 的 contextmenu handler，
    docs/mobile.md「選取模式」）：擋掉系統的長按呼出（iOS callout）。**不用 user-select:
    none 擋選字**：終端機的祖先不可以有它（css_user_select.test.js），選字殘留改由
@@ -592,6 +612,34 @@ span.listCard[data-user-gone] .listCardLine * {
 .userQueryPage .userQueryPlanEmpty {
   margin: 0;
   color: #888888;
+}
+
+/* The page of PTT's own screen (js/screen_page.js: the board entry screen,
+   #292; an article's animation, #300): PTT's own 80-column screen, a copy
+   drawn by the shared renderer, stacked over the article list or the article
+   as the user query page is. The copy (.screenPageScreen, a `.main` marked
+   data-stack-layer) gets its cell size and width inline; it scrolls when the
+   terminal's cell is taller than the page (a desktop window cut short). */
+.screenPage {
+  position: fixed;
+  top: var(--term-top-inset, 0px);
+  bottom: var(--term-bottom-inset, 0px);
+  z-index: 3;
+  box-sizing: border-box;
+  background-color: black;
+  overflow: auto;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
+  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.6);
+}
+/* Over an article, above its copy (hidden_article_route.coverWithArticle, 150)
+   and below the sheets and hints. */
+.screenPage.overArticleCover {
+  z-index: 151;
+}
+.screenPage .screenPageScreen {
+  margin: 0 auto;
+  padding: 0 5px;
 }
 
 /* 手機 Phase 5：主功能表大按鈕（render/menu_card.js，docs/mobile.md「Phase 5」）。

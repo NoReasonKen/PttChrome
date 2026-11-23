@@ -38,8 +38,7 @@ import { keyEventPredatesModalClose } from './modal_key_gate';
 import { recordFor } from './reading_record';
 import { serializedOpHint } from './serialized_op_gate';
 import { UNSUPPORTED_KEY_HINT, unsupportedPasteHint, unsupportedTextHint } from './unsupported_hint';
-import { slideDuration } from './stack_motion';
-import { ArticleHorizontalGesture } from './article_horizontal_gesture';
+import { OverListPage } from './over_list_page';
 import {
   isUserQueryPrompt,
   isUserQueryScreen,
@@ -115,10 +114,9 @@ export class UserQuery {
     this._alert = null;
     this._page = null;
     this._onSettled = null;
-    this._onKey = null;
+    this._shell = null;
     this._offBack = null;
     this._recovering = false;
-    this._swipe = null;
   }
 
   // term_view holds PTT's frames from `Q` until the list is back (_navigationHeld).
@@ -161,6 +159,11 @@ export class UserQuery {
     const core = this.core;
     if (this._source === 'author') return !!core.listSession?.showsHeldList?.();
     return !!userListView(core.buf);
+  }
+
+  // Whether the page shows (the mobile toolbar works over it).
+  get pageShown() {
+    return this.phase === 'shown';
   }
 
   // The App Bar while the query runs (mobile_toolbar.mobileToolbarContext):
@@ -450,56 +453,26 @@ export class UserQuery {
   }
 
   _openPage() {
-    const core = this.core;
-    const main = core.view && core.view.mainDisplay;
-    if (!main || !main.parentNode || this._page) return;
-    const page = document.createElement('div');
-    page.className = 'userQueryPage nomouse_command';
-    page.setAttribute('data-user-query-page', '');
-    page.setAttribute('role', 'dialog');
-    page.setAttribute('aria-label', i18n('userQuery_title'));
+    if (this._page) return;
+    const shell = new OverListPage(this.core.view, {
+      marker: 'user-query',
+      className: 'userQueryPage',
+      label: i18n('userQuery_title'),
+      // The page takes its own keys (terminal keys stopped at query()).
+      onKey: (e) => this._key(e),
+      canSwipe: () => this.phase === 'shown',
+      onSwipeLeave: () => this.dismiss()
+    });
     const scroll = document.createElement('div');
     scroll.className = 'userQueryScroll';
-    page.appendChild(scroll);
-    this._page = page;
+    shell.el.appendChild(scroll);
+    this._page = shell.el;
+    this._shell = shell;
     this._fillPage();
-    this._place();
-    // The terminal's mouse entrances listen on window: a tap on the page is
-    // not a tap on PTT's screen.
-    for (const type of ['mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu'])
-      page.addEventListener(type, (e) => e.stopPropagation());
-    this._bindSwipe(page);
-    main.parentNode.appendChild(page);
-    const ms = slideDuration();
-    if (ms) {
-      page.style.translate = '100% 0';
-      page.getBoundingClientRect();
-      page.style.transition = `translate ${ms}ms ease-out`;
-      page.style.translate = '0 0';
+    if (!shell.open()) {
+      this._page = null;
+      this._shell = null;
     }
-    this._onResize = () => this._place();
-    window.addEventListener('resize', this._onResize);
-    // The page takes its own keys (terminal keys stopped at query()).
-    this._onKey = (e) => this._key(e);
-    window.addEventListener('keydown', this._onKey, true);
-  }
-
-  // Over the list's own area (between the App Bar and the toolbar on mobile).
-  // Only the sides are measured here (the terminal's). The top and bottom
-  // edges are CSS: --term-top-inset (the App Bar) and --term-bottom-inset
-  // (toolbar, the keypad over it and the safe area), both kept by
-  // App._applyMobileGeometry, so the page follows every geometry change (the
-  // keypad opening and closing, the soft keyboard, a resize) as the other
-  // overlays do, and never measures a layout the keypad had shifted.
-  _place() {
-    const page = this._page;
-    const main = this.core.view && this.core.view.mainDisplay;
-    if (!page || !main) return;
-    const r = main.getBoundingClientRect();
-    Object.assign(page.style, {
-      left: r.left + 'px',
-      width: r.width + 'px'
-    });
   }
 
   _fillPage() {
@@ -620,68 +593,16 @@ export class UserQuery {
     return true;
   }
 
-  // A swipe right leaves the page; a swipe left does nothing (no drawer).
-  _bindSwipe(page) {
-    page.addEventListener('pointerdown', (e) => {
-      if (!e.isPrimary || e.pointerType === 'mouse' || this.phase !== 'shown') return;
-      this._swipe = {
-        id: e.pointerId,
-        gesture: new ArticleHorizontalGesture({
-          width: page.getBoundingClientRect().width || window.innerWidth,
-          opened: false, allowExit: true, allowOpen: false, x: e.clientX, y: e.clientY, t: e.timeStamp
-        })
-      };
-    });
-    page.addEventListener('pointermove', (e) => {
-      const s = this._swipe;
-      if (!s || s.id !== e.pointerId) return;
-      const snap = s.gesture.move(e.clientX, e.clientY, e.timeStamp);
-      if (snap.axis === 'vertical') {
-        this._swipe = null;
-        return;
-      }
-      if (snap.operation === 'exit') {
-        page.style.transition = '';
-        page.style.translate = snap.distance + 'px 0';
-      }
-    });
-    const end = (e, canceled) => {
-      const s = this._swipe;
-      if (!s || s.id !== e.pointerId) return;
-      this._swipe = null;
-      const r = s.gesture.release(e.timeStamp, canceled);
-      if (r.exit) return void this.dismiss();
-      if (s.gesture.operation !== 'exit') return;
-      const ms = slideDuration();
-      page.style.transition = ms ? `translate ${ms}ms ease-out` : '';
-      page.style.translate = '0 0';
-    };
-    page.addEventListener('pointerup', (e) => end(e, false));
-    page.addEventListener('pointercancel', (e) => end(e, true));
-  }
-
   // slide: the page slides out over the list (the list shows at once under it).
   _closePage(slide) {
     const core = this.core;
     if (this._onSettled && core.buf && core.buf.removeEventListener)
       core.buf.removeEventListener('screenSettled', this._onSettled);
     this._onSettled = null;
-    if (this._onKey) window.removeEventListener('keydown', this._onKey, true);
-    this._onKey = null;
-    if (this._onResize) window.removeEventListener('resize', this._onResize);
-    this._onResize = null;
-    this._swipe = null;
-    const page = this._page;
+    const shell = this._shell;
+    this._shell = null;
     this._page = null;
-    if (!page) return;
-    page.removeAttribute('data-user-query-page');
-    page.setAttribute('data-user-query-leaving', '');
-    page.inert = true;
-    const ms = slide ? slideDuration() : 0;
-    if (!ms) return void page.remove();
-    page.style.transition = `translate ${ms}ms ease-in`;
-    page.style.translate = '100% 0';
-    setTimeout(() => page.remove(), ms);
+    if (shell) shell.close(slide);
   }
 }
 

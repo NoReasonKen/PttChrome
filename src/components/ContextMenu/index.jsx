@@ -17,7 +17,9 @@ import LongPushErrorModal from "./LongPushErrorModal";
 import AidBoardChoiceModal from "./AidBoardChoiceModal";
 import PostInfoModal from "./PostInfoModal";
 import BoardInfoModal from "./BoardInfoModal";
+import WhereAmIModal from "./WhereAmIModal";
 import FavSortModal from "./FavSortModal";
+import MarkReadChoiceModal from "./MarkReadChoiceModal";
 import PixivLookup from "../PixivLookup";
 
 // 用到才開的大彈窗拆成獨立 chunk，不進主 bundle（手機冷啟動少解析一截）。
@@ -96,6 +98,12 @@ import { quickPushPlan } from "../../js/comment_bar";
 import { serializedOpHint } from "../../js/serialized_op_gate";
 import {
   availableSearchKinds,
+  searchFailureHint,
+  searchModeOf,
+  cursorSubject,
+  searchSheetKinds,
+  withBoardJump,
+  startFilter,
   normalizeSearchText,
   searchGateFacts,
   submitSearch,
@@ -104,8 +112,11 @@ import { refreshOffered } from "../../js/screen_refresh";
 import { userListToggleTarget } from "../../js/user_list";
 import { rememberSearch } from "../../js/search_history";
 import { promptUserQuery, queryAuthor } from "../../js/user_query";
+import { showBoardNotes } from "../../js/board_notes";
+import { showArticleMovie } from "../../js/article_movie";
 import { showArticlePostInfo, showListPostInfo } from "../../js/post_info";
 import { showBoardInfo } from "../../js/board_info";
+import { showWhereAmI } from "../../js/whereami";
 import { BoardSearchBridge } from "../../js/board_search_bridge";
 import { readSelectionText } from "../../render/screen_chunk";
 import { commentCardCopyText } from "../../render/comment_card";
@@ -185,6 +196,10 @@ const menuHandlerByEventKey = {
   userListToggle: (pttchrome) => pttchrome.view.sendKeyAsUser("f"),
   // 查詢網友（線上使用者列表，#199）：開輸入 sheet，送出才問 PTT（js/user_query.js）。
   userQuery: (pttchrome) => promptUserQuery(pttchrome),
+  // The board entry screen (#292): the same entrance as `b` (js/board_notes.js).
+  boardNotes: (pttchrome) => showBoardNotes(pttchrome),
+  // An article's animation (#300): the same entrance as `p` (js/article_movie.js).
+  articleMovie: (pttchrome) => showArticleMovie(pttchrome),
   // 查詢作者（文章列表，#254）：選取那一列再送 Ctrl-Q（js/user_query.js）。
   queryAuthor: (pttchrome, { authorQueryTarget }) =>
     queryAuthor(pttchrome, authorQueryTarget),
@@ -194,6 +209,8 @@ const menuHandlerByEventKey = {
   articlePostInfo: (pttchrome) => showArticlePostInfo(pttchrome),
   // 看板資訊（#288）：整個看板的，不是那一列的（js/board_info.js）。
   boardInfo: (pttchrome) => showBoardInfo(pttchrome),
+  // 我在哪（#293）：Ctrl-W（js/whereami.js）。
+  whereAmI: (pttchrome) => showWhereAmI(pttchrome, 23),
   // 看板列表：把右鍵那一列的看板設為已讀（跳號 → v）。目標在開選單當下就算好了。
   boardMarkRead: (pttchrome, { boardMarkReadTarget }) =>
     pttchrome.boardMarkRead.start(boardMarkReadTarget),
@@ -286,12 +303,16 @@ const initialState = {
   markAllReadEnabled: false,
   // 「看板資訊」出不出現（好讀文章列表才有，boardInfo.available，#288）。
   boardInfoEnabled: false,
+  // 「我在哪」出不出現（好讀文章列表才有，whereAmI.available，#293）。
+  whereAmIEnabled: false,
   // The board list's view switches ({ counts } or null, boardListSession.listToggles).
   boardToggles: null,
   // 線上使用者列表上 `f` 會切到的視圖（'friends'／'all'），其他畫面 null（#199）。
   userListToggle: null,
   // 「查詢網友」出不出現（線上使用者列表才有，userQuery.available）。
   userQueryEnabled: false,
+  // Whether 進板畫面 shows (a board's article list, boardNotes.available, #292).
+  boardNotesEnabled: false,
   // 「查詢作者」的對象（{ num, pinnedKey, author } / null，#254）：
   // listSession.authorQueryTargetAtRow。
   authorQueryTarget: null,
@@ -300,6 +321,8 @@ const initialState = {
   postInfoTarget: null,
   // 文章畫面的「文章資訊」出不出現（postInfo.articleAvailable，#261）。
   articlePostInfoEnabled: false,
+  // Whether 播放動畫 shows (an article, articleMovie.available, #300).
+  articleMovieEnabled: false,
   // 看板列表右鍵那一列的看板（{ num, name } / null），boardMarkRead.targetAtRow。
   boardMarkReadTarget: null,
   // The live layer's entry the menu was opened on (#124; NavigationStack
@@ -352,6 +375,9 @@ const initialState = {
   showsSearch: false,
   searchKind: "title",
   searchKinds: [],
+  searchExclude: false,
+  searchExcludeAllowed: false,
+  searchSameTitle: null,
   // Opened on a page revealed during a handoff (#119): the search waits for
   // the real page, and the board kind opens no native prompt meanwhile.
   searchHeld: false,
@@ -369,9 +395,15 @@ const initialState = {
   // Board information (#288, js/board_info.js): the rows PTT's `i` drew
   // ({ board, moderators, items }); null = closed.
   boardInfo: null,
+  // Where the board is (#293, js/whereami.js): the screen PTT's Ctrl-W drew
+  // ({ levels, path }); null = closed.
+  whereAmI: null,
   // Reordering the favorites (#221, board_list_session._askFavSort): the
   // confirmation sheet before PTT's `S` prompt.
   showsFavSort: false,
+  // `v` on the easy-reading article list (#299, mark_all_read.ask): the
+  // read-state choice sheet.
+  showsMarkReadChoice: false,
   showsAidJump: false,
   // 指令面板（js/command_palette.js）：paletteCtx＝開的當下量好的「這一刻能做什麼」。
   showsPalette: false,
@@ -491,7 +523,9 @@ export const ContextMenu = ({ pttchrome }) => {
     !!state.aidChoice ||
     !!state.postInfo ||
     !!state.boardInfo ||
+    !!state.whereAmI ||
     state.showsFavSort ||
+    state.showsMarkReadChoice ||
     state.showsAidJump ||
     !!state.longPushProgress ||
     !!state.longPushError;
@@ -808,6 +842,8 @@ export const ContextMenu = ({ pttchrome }) => {
           pttchrome.markAllRead.available(),
         boardInfoEnabled:
           onScreen && !!normalEnabled && !!pttchrome.boardInfo?.available?.(),
+        whereAmIEnabled:
+          onScreen && !!normalEnabled && !!pttchrome.whereAmI?.available?.(),
         boardToggles:
           (onScreen &&
             normalEnabled &&
@@ -822,6 +858,8 @@ export const ContextMenu = ({ pttchrome }) => {
           !!normalEnabled &&
           !!pttchrome.userQuery &&
           pttchrome.userQuery.available(),
+        boardNotesEnabled:
+          onScreen && !!normalEnabled && !!pttchrome.boardNotes?.available?.(),
         authorQueryTarget:
           (onScreen &&
             normalEnabled &&
@@ -838,6 +876,10 @@ export const ContextMenu = ({ pttchrome }) => {
           onScreen &&
           !!normalEnabled &&
           !!pttchrome.postInfo?.articleAvailable?.(),
+        articleMovieEnabled:
+          onScreen &&
+          !!normalEnabled &&
+          !!pttchrome.articleMovie?.available?.(),
         menuTarget:
           normalEnabled && prefs.highlightMenuTarget
             ? menuTargetFromElement(target)
@@ -897,12 +939,15 @@ export const ContextMenu = ({ pttchrome }) => {
         markReadTarget: null,
         markAllReadEnabled: false,
         boardInfoEnabled: false,
+        whereAmIEnabled: false,
         boardToggles: null,
         userListToggle: null,
         userQueryEnabled: false,
+        boardNotesEnabled: false,
         authorQueryTarget: null,
         postInfoTarget: null,
         articlePostInfoEnabled: false,
+        articleMovieEnabled: false,
         boardMarkReadTarget: null,
         layerEntry: null,
         menuTarget: null,
@@ -1111,20 +1156,31 @@ export const ContextMenu = ({ pttchrome }) => {
   // 回傳值是合約（同 openLongPushModal）：true ＝我接手了這次按鍵。可用種類每次現算
   // （availableSearchKinds，與工具列同一個判準）。
   const openSearch = useCallback(
-    (kind) => {
+    (kind, opts) => {
       const stack = pttchrome.navigationStack;
       const whenReady = stack?.deferRevealedAction();
       if (!whenReady && serializedOpHint(pttchrome)) return false;
-      const kinds = whenReady
+      const available = whenReady
         ? stack.toolbarContext()?.search || []
         : availableSearchKinds(searchGateFacts(pttchrome));
-      if (kinds.indexOf(kind) < 0) return false;
+      // The board jump opens its own sheet (the native completion bridge, its
+      // history), also over an article list, whose sheet lists only filters.
+      const kinds = searchSheetKinds(available, kind);
+      if (!kinds.length) return false;
+      // The other filters of the article list (#298): `!` is the title kind's
+      // exclude box (enabled only inside a search, where PTT accepts it), and
+      // same title shows the article it will match.
+      const articleList = !whenReady && kinds.indexOf("price") >= 0;
+      const mode = articleList ? searchModeOf(pttchrome) : null;
       update({
         ...initialState,
         showsSearch: true,
         searchKind: kind,
         searchKinds: kinds,
         searchHeld: whenReady,
+        searchExclude: !!opts?.exclude,
+        searchExcludeAllowed: !!mode?.select,
+        searchSameTitle: articleList ? cursorSubject(pttchrome) : null,
       });
       return true;
     },
@@ -1216,6 +1272,24 @@ export const ContextMenu = ({ pttchrome }) => {
     () => update({ boardInfo: null }),
     [update],
   );
+  // Where the board is (js/whereami.js, #293): the screen PTT's Ctrl-W drew.
+  const openWhereAmI = useCallback(
+    (where) => {
+      update({ ...initialState, whereAmI: where });
+      return true;
+    },
+    [update],
+  );
+  useEffect(() => {
+    pttchrome.openWhereAmI = openWhereAmI;
+    return () => {
+      pttchrome.openWhereAmI = noop;
+    };
+  }, [pttchrome, openWhereAmI]);
+  const onWhereAmIHide = useCallback(
+    () => update({ whereAmI: null }),
+    [update],
+  );
   // `S` on the easy-reading favorites (board_list_session._askFavSort): true =
   // the sheet took it.
   const openFavSortChoice = useCallback(() => {
@@ -1238,6 +1312,31 @@ export const ContextMenu = ({ pttchrome }) => {
       // The reader asked for an irreversible action: say so when it is not done.
       if (!pttchrome.boardListSession?.reorderFavorites(order))
         pttchrome.view?.flashListHint?.(i18n("favSort_gone"), 4000, HINT_ERROR);
+    },
+    [pttchrome, update],
+  );
+  // `v` on the easy-reading article list and the More sheet's entry (#299,
+  // mark_all_read.ask): true = the sheet took it.
+  const openMarkReadChoice = useCallback(() => {
+    update({ ...initialState, showsMarkReadChoice: true });
+    return true;
+  }, [update]);
+  useEffect(() => {
+    pttchrome.openMarkReadChoice = openMarkReadChoice;
+    return () => {
+      pttchrome.openMarkReadChoice = null;
+    };
+  }, [pttchrome, openMarkReadChoice]);
+  const onMarkReadChoiceHide = useCallback(
+    () => update({ showsMarkReadChoice: false }),
+    [update],
+  );
+  const onMarkReadChoicePick = useCallback(
+    (answer) => {
+      update({ showsMarkReadChoice: false });
+      // The sheet's closing is the only thing between the pick and the keys:
+      // startAnswer hints by itself when it sends nothing.
+      pttchrome.markAllRead?.startAnswer(answer);
     },
     [pttchrome, update],
   );
@@ -1347,7 +1446,7 @@ export const ContextMenu = ({ pttchrome }) => {
         ).hiddenSearchKeys,
         searchKinds: busy
           ? []
-          : availableSearchKinds(searchGateFacts(pttchrome)),
+          : withBoardJump(availableSearchKinds(searchGateFacts(pttchrome))),
         refresh: refreshOffered(pttchrome.screenRefresh?.target?.()),
         unreadJump: !!pttchrome.unreadJump?.available?.(),
         markAllRead: !!pttchrome.markAllRead?.available?.(),
@@ -1421,7 +1520,7 @@ export const ContextMenu = ({ pttchrome }) => {
         return;
       }
       const value = normalizeSearchText(kind, text);
-      if (!value) return;
+      if (!value && !["sameTitle", "newPost"].includes(kind)) return;
       rememberSearch(kind, value);
       const hint = (msg, level) =>
         pttchrome.view?.flashListHint?.(msg, 3000, level);
@@ -1459,15 +1558,7 @@ export const ContextMenu = ({ pttchrome }) => {
         return;
       }
       const cb = {
-        onFail: (reason) =>
-          hint(
-            i18n(
-              reason === "search-limit"
-                ? "searchModal_conditionLimit"
-                : "searchModal_failed",
-            ),
-            HINT_ERROR,
-          ),
+        onFail: (reason) => hint(searchFailureHint(reason), HINT_ERROR),
       };
       // 背景的看板 prompt 已經開著：直接在上面送出。開不出來／已丟失才走一般兩步。
       if (bridge && bridge.submit(value, cb)) return;
@@ -1598,6 +1689,17 @@ export const ContextMenu = ({ pttchrome }) => {
         );
     },
     [pttchrome, openSearch],
+  );
+  // The More sheet's digest entry (#298): the key's own entrance (Tab).
+  const onToolbarFilter = useCallback(
+    (kind) => {
+      if (!startFilter(pttchrome, kind))
+        pttchrome.view?.flashListHint?.(
+          serializedOpHint(pttchrome) || i18n("searchModal_busy"),
+          3000,
+        );
+    },
+    [pttchrome],
   );
   const onToolbarSettings = useCallback(() => {
     pttchrome.onDisableLiveHelperModalState();
@@ -1824,12 +1926,15 @@ export const ContextMenu = ({ pttchrome }) => {
     markReadTarget,
     markAllReadEnabled,
     boardInfoEnabled,
+    whereAmIEnabled,
     boardToggles,
     userListToggle,
     userQueryEnabled,
+    boardNotesEnabled,
     authorQueryTarget,
     postInfoTarget,
     articlePostInfoEnabled,
+    articleMovieEnabled,
     boardMarkReadTarget,
     layerEntry,
     replyCommentTarget,
@@ -1855,12 +1960,17 @@ export const ContextMenu = ({ pttchrome }) => {
     showsSearch,
     searchKind,
     searchKinds,
+    searchExclude,
+    searchExcludeAllowed,
+    searchSameTitle,
     aidChoice,
     postInfo,
     boardInfo,
+    whereAmI,
     searchAidTarget,
     searchSwitchBoard,
     showsFavSort,
+    showsMarkReadChoice,
     showsAidJump,
     showsPalette,
     paletteCtx,
@@ -1897,12 +2007,15 @@ export const ContextMenu = ({ pttchrome }) => {
         markReadTarget={markReadTarget}
         markAllReadEnabled={markAllReadEnabled}
         boardInfoEnabled={boardInfoEnabled}
+        whereAmIEnabled={whereAmIEnabled}
         boardToggles={boardToggles}
         userListToggle={userListToggle}
         userQueryEnabled={userQueryEnabled}
+        boardNotesEnabled={boardNotesEnabled}
         authorQueryTarget={authorQueryTarget}
         postInfoTarget={postInfoTarget}
         articlePostInfoEnabled={articlePostInfoEnabled}
+        articleMovieEnabled={articleMovieEnabled}
         boardMarkReadTarget={boardMarkReadTarget}
         menuAnchor={menuAnchor}
         articleLinkEnabled={articleLinkEnabled}
@@ -1976,6 +2089,9 @@ export const ContextMenu = ({ pttchrome }) => {
           show={showsSearch}
           kind={searchKind}
           kinds={searchKinds}
+          exclude={searchExclude}
+          excludeAllowed={searchExcludeAllowed}
+          sameTitle={searchSameTitle}
           onHide={onSearchHide}
           onConfirm={onSearchConfirm}
           createBoardSearch={
@@ -2014,10 +2130,23 @@ export const ContextMenu = ({ pttchrome }) => {
         mobile={mobile}
         pttchrome={pttchrome}
       />
+      <WhereAmIModal
+        where={whereAmI}
+        onHide={onWhereAmIHide}
+        mobile={mobile}
+        pttchrome={pttchrome}
+      />
       <FavSortModal
         opened={showsFavSort}
         onHide={onFavSortHide}
         onPick={onFavSortPick}
+        mobile={mobile}
+        pttchrome={pttchrome}
+      />
+      <MarkReadChoiceModal
+        opened={showsMarkReadChoice}
+        onHide={onMarkReadChoiceHide}
+        onPick={onMarkReadChoicePick}
         mobile={mobile}
         pttchrome={pttchrome}
       />
@@ -2065,6 +2194,7 @@ export const ContextMenu = ({ pttchrome }) => {
         pttchrome={pttchrome}
         hidden={modalOpen}
         onOpenSearch={onToolbarSearch}
+        onOpenFilter={onToolbarFilter}
         onOpenSettings={onToolbarSettings}
       />
     </Fragment>

@@ -479,6 +479,67 @@ client 端自動收掉見 `docs/board-note-skip.md`。
 
 `(b)進板畫面` 走 `read_comms[]` 的 `{ 0, b_notes }`（`bbs.c:4601`），`b_notes` 是同一段
 （`bbs.c:4061-4081`，`mr==-1` 時另印「本看板尚無進板畫面。」）。
+
+The board entry screen asked for with `b` (#292, `src/js/board_notes.js`). `b_notes` runs
+`mr = more(notes, NA)`. With `mr == -1` (no entry screen) it clears the screen, moves to (4,20)
+and prints 「本看板尚無進板畫面。」. When `mr != READ_NEXT` it calls `pressanykey()`; then the
+list is drawn again (FULLUPDATE). `b` is bound in both of read.c's tables, the normal one (search
+results, MODE_SELECT, use it too) and the digest one, and acts on no cursor row. Under
+`PMORE_AUTO_EXIT` (NA):
+- a plain screen draws its first page and leaves: pressanykey 「請按任意鍵繼續」;
+- a longer one waits in pmore with no footer prompt (the last row blank, the cursor on it),
+  leaves at its end or on ←, then pressanykey;
+- a movie plays at once, its footer 「動畫播放中… 可按 q, Ctrl-C 或其它任意鍵停止」,
+  「互動式動畫播放中…」, or, paused, 「暫停播放動畫，請按任意鍵繼續或 q 中斷」 (in the paused
+  footer a key resumes the movie); a key stops a plain movie; an interactive movie takes keys as
+  its choices, but `q` and Ctrl-C always stop it; a movie that ends goes to pressanykey.
+
+**Open question, the stopped movie**: the owner's facts for #292 say a key stopping a movie also
+leads to pressanykey, while the reading of `pmore.c:3196-3202` above says it returns `READ_NEXT`,
+so `b_notes` skips pressanykey and the list is drawn at once. No live recording settles it. The
+client handles both: its way back judges every answer by the screen (`boardNoteDecision`), and a
+list PTT draws by itself while the page shows is taken back under the page.
+
+Two client rules that follow: `b` goes out with no `\f` behind it (a playing movie waits for
+input to stop, and whether a Ctrl-L that igetch swallows (§6) still ends that wait is not read
+from the code; without it the movie surely keeps playing), and every key of the way back waits
+for PTT's answer to the one before (a `q` typed ahead after a movie ended would land on
+pressanykey, and the next key on the list).
+
+### An article's animation (`p` in the pager, #300)
+
+`p` and `P` in pmore's pager (`pmore_cmds[]`: 「播放動畫」, `pmore_cmd_movie`; a mail is read by
+the same pager) play the article as a movie (CONFIRMED by reading `pmore.c`, no live recording):
+- **a movie** (pmore found its movie header when it opened the article, `MFDISP_MOVIE_YES`):
+  `RESET_MOVIE`, then it plays from where the pager shows the article (`mf_movieNextFrame` from
+  the current position): the client sends Home first, so it plays from the start. Every frame
+  is drawn over the whole screen with the movie footer on the last row: 「 >>> 動畫播放中... 可按
+  q, Ctrl-C 或其它任意鍵停止」, an interactive movie 「 >>> 互動式動畫播放中... 可按 q 或 Ctrl-C
+  停止」 (at a choice, 「 >> 請輸入選項:  (互動式動畫播放中，可按 q 或 Ctrl-C 中斷)」 on the row above
+  and the choices on the last row), a paused one 「暫停播放動畫，請按任意鍵繼續或 q 中斷。」 (a key
+  resumes it; `q` and Ctrl-C stop it). Any key stops a plain movie and is used up by
+  `mf_movieWaitKey`; an interactive movie takes keys as its choices, but `q` and Ctrl-C always stop
+  it (`mf_movieIsSystemBreak`; at a choice with the vmsg 「已強制中斷互動式系統」, waiting for one
+  key). A movie that ends or is stopped (`STOP_MOVIE`) goes back to the pager, which shows the
+  article again where the movie's frames were (`read_post` runs the pager as `more_ex(…, YEA)`, `PMORE_USER_EXIT`,
+  so pmore stays on the article; the `READ_NEXT` of the board entry screen is `PMORE_AUTO_EXIT`'s).
+- **no movie** (`MFDISP_MOVIE_NO`): pmore asks on `b_lines-1`, over the article and its footer,
+  「這可能是傳統動畫檔, 若要直接播放請輸入速度(秒): 」 with 1 prefilled (`getdata_buf`, the buffer is
+  kept between asks). Enter plays the article page by page as a classic animation
+  (`MFDISP_MOVIE_PLAYING_OLD`, which ends back in the pager). Ctrl-C clears the answer, nothing
+  plays and the pager draws the article again. On a terminal that is not 24 rows a second
+  question follows, 「傳統動畫是以 24 行為單位設計的, 要模擬 24 行嗎? (否則會用現在的行數)[Yn] 」;
+  Ctrl-C there still plays (only `n` changes the answer).
+
+Client rules that follow (`src/js/article_movie.js`): `Home p` goes out with no `\f` behind it
+(as `b`, §above); the way back judges every answer by the screen (`articleMovieDecision`): Home
+stops a playing plain movie (any key does; Home on an article whose movie already ended only
+moves the pager to its top), `q` stops an interactive or paused one (Home could be a choice),
+Ctrl-C clears either question, and one key answers 「已強制中斷互動式系統」; it ends when the pager's
+footer is back with the cursor on it. Ctrl-C is no safer than `q` on the pager (§6.1): a key that
+reaches the pager after the movie ended is taken as a pager key. A `q` there leaves the article;
+the client then holds the article with a message (`articleMovie_lost`) instead of guessing.
+
 `[i]看板資訊`（`read_comms[]` 的 `i`／`I` → `bbs_cmd_config` → `b_config`）在 main 是可翻頁的 PSB 列表，
 不再 pressanykey：必須 `←`／`q` 才回列表，畫面與交易見 §11.10「`[i]` 看板資訊」。舊版（03cdf5eb `board.c:326`）
 的固定區塊＋`pressanykey()` 已不在線上（2026-11 實機確認是可翻頁列表），本專案不支援。
@@ -873,7 +934,9 @@ server 送的是編碼後的 ANSI，client 看不到 flag，只看得到結果�
 
 看板列表右鍵選單「前已讀後未讀」（`src/js/list_session.js#markReadUnreadBefore`）的依據。
 消費端守護：`tests/unit/list_mark_read.test.js`、`tests/e2e/offline/list_mark_read.offline.spec.js`。
-「設為全部已讀」（`src/js/mark_all_read.js`，右鍵選單／手機「更多」）走同一個 prompt 的 `v` 分支：
+列表好讀的 `v` 鍵與手機「更多」的「已讀／未讀設定…」（#299）開選擇 sheet，三個答案（`u` 全部未讀＝`brc_toggle_all_read(currbid, 0)`、`v` 全部已讀、`w` 前已讀後未讀）共用同一條兩步序列；
+`u`、`v` 兩個分支都不看游標，由 `mark_all_read.js` 的 `MARK_READ_ANSWERS` 一張表送出，`w` 要先把游標對到選取的那篇（`markReadUnreadBefore`）。
+「設為全部已讀」（`src/js/mark_all_read.js`，桌機右鍵選單、指令面板，不開 sheet）走同一個 prompt 的 `v` 分支：
 `v` → 等 prompt → `v⏎` ⇒ `brc_toggle_all_read(currbid, 1)`。該分支**不看** `fhdr`，游標在哪一篇都一樣
 （仍需有一篇可當 needitem），所以不送游標同步以外的跳號；沒有拒絕路徑（不像 `w` 的 `vmsg`）。
 兩者在列表好讀時都是凍結交易、step 3 的 FULLUPDATE 落地即回好讀（`docs/easy-reading-list.md`「Resume on landing」）：
@@ -1387,6 +1450,20 @@ client 交易（`board_info.js`，每一鍵都等前一鍵的回答）：
 2. 該頁滿（項目數＝`t_lines-3`）就送 `PgDn`，直到某頁沒滿或沒有新項目（最後一頁剛好滿時 PTT 重畫同一頁）。
 3. 全部讀完才開 app 自己的 sheet／dialog，同時送 `←`，expect 回到原本那份列表。
 4. 失敗：畫面標題是看板資訊但讀不出來 ⇒ 送 `←` 離開；其他畫面一律不猜、不送任何鍵，交給列表的原生旅行規則。
+### `[^W]`／`[^Y]` 我在哪（`bbs.c#whereami`，原始碼確認；沒有錄製的實機畫面）
+
+一般與文摘兩張讀取表都把 Ctrl-Y 與 Ctrl-W 綁到 `whereami`；`bid` 為 0（看板列表之類）什麼都不做。否則 `move(1, 0); clrtobot()`
+（第 0 列留著列表標題）後印：第 1 列「我在哪?」；第 2 列根分類 `%-40.40s %.13s`（描述、板主）；之後每一層一列
+`%*s %-13.13s %-37.37s %.13s`（寬度每層 2 欄、再一個空白，所以板名從 `2*層+1` 欄起；板名、描述、板主），最後一層是目前看板；
+`b_lines-2` 列「位置: 」加路徑（根的描述取到第一個空白為類別字，之後每層的板名，以 ` >` 相接、每項後一個空白）；最後 `pressanykey`
+（「請按任意鍵繼續」）。欄寬是 printf 的欄數，描述有全形字，所以 client 照畫面格數切（`whereami_parse.parseWhereAmI`）。
+
+client 交易（`whereami.js`，每一鍵都等前一鍵的回答）：
+
+1. `\x17`（使用者按 Ctrl-Y／Alt+Y 就送 `\x19`），不同步游標、不帶 `\f`（會被 `pressanykey` 吃掉）。expect：第 1 列標題、
+   每層都讀得出、路徑與層數相符、底列有 pause；列表重畫（`showsHeldList`）＝這個看板沒有「我在哪」。
+2. 讀到就開 app 自己的 sheet／dialog，同時送一個空白回答 pause，expect 回到原本那份列表。
+3. 失敗：畫面是「我在哪?」但讀不出來 ⇒ 送空白離開；其他畫面一律不猜、不送任何鍵。
 - **滑鼠**：新版伺服器端有 locator 反白、指令列／標題列（新信）hotspot、滾輪捲列表（§1.1），只在 client 送 xterm 滑鼠回報時才有作用。
   滾輪把 `base` 移 ±1 會打破看板列表的分頁對齊；本 client 只在原生畫面（`listRenderMode === 'native'`）且使用者開了
   `mouseServerReport` 才回報，正確性不受影響，細節見 `docs/board-list-smooth-scroll.md` §2.2。

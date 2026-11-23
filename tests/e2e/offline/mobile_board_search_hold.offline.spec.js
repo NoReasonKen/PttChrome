@@ -185,9 +185,10 @@ test.describe('手機：看板搜尋留住原畫面 (#190)', () => {
       // there would read as leaving the board).
       await page.evaluate(() => { window.__shortcutServer.state.selectTitle = true; });
       await watchFrames(page);
-      await page.locator('[data-key="__search"]').tap();
+      // The board jump is not a kind of the article list's sheet (#298): More has it.
+      await page.locator('[data-key="__more"]').tap();
+      await page.locator('[data-key="__boardJump"]').tap();
       await expect(sheet(page)).toBeVisible();
-      await chooseBoardKind(page);
       await expect(sheet(page).locator('[data-board-suggest="ready"]')).toHaveCount(1);
       if (end === 'cancel') {
         await page.keyboard.press('Escape');

@@ -41,6 +41,7 @@ import {
 import {
   keyEventToBytes,
   altRemapCharCode,
+  ctrlAliasKey,
   isAltRemapEvent,
   isBrowserClipboardEvent
 } from './term_keyboard';
@@ -103,6 +104,8 @@ import { selectedUserId } from './user_list';
 import { queryUser, promptUserQuery, queryAuthor } from './user_query';
 import { showListPostInfo } from './post_info';
 import { showBoardInfo } from './board_info';
+import { screenPageHolding } from './input_page';
+import { showWhereAmI } from './whereami';
 
 // A plain `←`, for a key that leaves as it does (article_gestures.handleBack).
 const PLAIN_BACK_EVENT = Object.freeze({
@@ -735,6 +738,9 @@ export function transitionListSession(state, event) {
             // 退文落點只剩置底文時同樣不能 re-seed（不變量 17）：停在原生鏡像
             //（_handoffArticle 已把 renderMode 設 native），等下一幀。
             if (!event.hasNumberedRow) return stay;
+            // An article's animation over the article (#300, article_movie.js):
+            // a frame that looks like a list is the movie's.
+            if (event.pageHeld) return stay;
             // Back revealed this list's live layer (#120): the real list keeps
             // the layer's rows, selection and reading position instead of
             // merging PTT's landing page; only the article read changes.
@@ -758,6 +764,7 @@ export function transitionListSession(state, event) {
             // preamble routes through menus and cleanup()'s queue.flush() would
             // kill it mid-sequence.
             if (event.inFlightKind) return stay;
+            if (event.pageHeld) return stay;
             return { next: 'idle', actions: ['cleanup'] };
           default:
             return stay; // article page turns / prompts inside the article
@@ -1379,6 +1386,9 @@ ListSession.prototype = {
         facts.cursorRowNum != null &&
         (this._termBuf.listLineNums || []).indexOf(facts.cursorRowNum) !== -1,
       holdReason: this._holdReason,
+      // A page of PTT's own screen holds what is under it (screen_page.js):
+      // its frames (a movie's draw anything, a list too) are not the reader's.
+      pageHeld: screenPageHolding(this._core),
       withinResumeGrace: performance.now() - this._resumedAt < RESUME_GRACE_MS,
       hasNumberedRow: hasNumberedEntryRow(facts),
       emptyList: !!facts.emptyList,
@@ -1507,6 +1517,12 @@ ListSession.prototype = {
   // 不必等靜置；它自己會說做了什麼，這裡不閃通用提示。
   _tryResumeProbe: function(landed) {
     if (this._holdReason !== 'passthrough' || !this._autoResumeEnabled()) return;
+    // The board entry screen's page (#292) takes the list back itself, on the
+    // settled frame that shows it (ScreenPage._settled → resumeAfterHelp). Its
+    // keys go to PTT outside the queue, so a list PTT draws on its own (a key
+    // stopped a movie) can be read here before it settles and taken back
+    // without the held board: rebuilt and refilled, with a jump sent behind it.
+    if (!landed && screenPageHolding(this._core)) return;
     // 洞 3：畫面與使用者都要靜止。還沒靜置滿就補排剩下的時間（不是輪詢）。
     const quietSince = Math.max(this._lastServerActivityAt, this._lastUserByteAt);
     const waited = performance.now() - quietSince;
@@ -2056,19 +2072,16 @@ ListSession.prototype = {
     }
     if (this.state !== 'active') return;
 
-    if (altRemap !== null) {
-      // Alt+letter is this app's alias for PTT's Ctrl+letter, a PTT command key
-      // like any other: refused (#159). It is caught here because
-      // keyEventToBytes returns null for altKey, which _classifyKey would read
-      // as 'ignore', and before _classifyKey because j/k/n/p are navigation
-      // synonyms there. Alt+Q is Ctrl-Q, the author query (#254).
-      e.preventDefault();
-      if (altRemap === 17 && this._authorQueryList()) queryAuthor(this._core);
-      else this._refuseUnsupported('key');
-      return;
-    }
-
-    const key = this._classifyKey(e);
+    // Alt+letter is this app's alias for PTT's Ctrl+letter (so is the phone's
+    // sticky Ctrl): it is classified and dispatched as that Ctrl key below, so
+    // every Ctrl shortcut (Ctrl-Q, Ctrl-W…) has its alias with no code per key.
+    // It is turned into the Ctrl key before _classifyKey, whose Ctrl rules come
+    // before any plain-letter rule: Alt+J/K/N/P are never the navigation
+    // synonyms j/k/n/p. keyEventToBytes returns null for altKey, which
+    // _classifyKey would read as 'ignore', hence the conversion.
+    const alias = ctrlAliasKey(e);
+    const key = this._classifyKey(alias || e);
+    if (alias && key.class === 'ignore') key.class = 'unsupported';
     if (key.class === 'ignore') {
       // Deliberately NOT preventDefault'd: F12 devtools / CapsLock's OS
       // behaviour belong to the browser, and the native keyboard path below
@@ -2113,6 +2126,22 @@ ListSession.prototype = {
 
     if (key.class === 'board-info') {
       showBoardInfo(this._core, e.key);
+      return;
+    }
+
+    if (key.class === 'board-notes') {
+      this._core.boardNotes?.start();
+      return;
+    }
+
+    if (key.class === 'mark-read-choice') {
+      // ask() says why itself when it opens nothing (busy, not a list).
+      this._core.markAllRead?.ask();
+      return;
+    }
+
+    if (key.class === 'whereami') {
+      showWhereAmI(this._core, key.code);
       return;
     }
 
@@ -2208,10 +2237,33 @@ ListSession.prototype = {
   // the list is let go of for the native excursion while the query holds it on
   // screen; resumeAfterHelp gives it the frame back with its rows and selection.
   beginUserQuery: function(steps) {
+    this._beginHeldSteps(steps, 'user-query');
+  },
+
+  // A page of PTT's own screen over this list (screen_page.LIST_UNDER: the
+  // board entry screen's `b`, #292): its key shows the board's screen
+  // whatever PTT's cursor row, so it goes out as the user query's `Q` does.
+  beginScreenPage: function(steps) {
+    this._beginHeldSteps(steps, steps[0].kind);
+  },
+
+  // Steps of a page held over this list that need no cursor (the user query,
+  // the board entry screen): the list is let go of for the native excursion
+  // and given the frame back with its rows and selection (resumeAfterHelp).
+  _beginHeldSteps: function(steps, kind) {
     this._spendLayer('nativePassthrough');
     this._helpBoard = this._boardName;
     this._helpSelection = { num: this._selectedNum, pinnedKey: this._selectedPinnedKey };
-    this._beginPassthroughBytes(steps, { kind: 'user-query', hint: null, noSync: true });
+    this._beginPassthroughBytes(steps, { kind: kind, hint: null, noSync: true });
+  },
+
+  // The board whose entry screen `b` shows (#292, board_notes.js), or null:
+  // an article list's board, its search results and digest included (PTT
+  // binds `b` in both of read.c's tables); never the mailbox or the user list.
+  boardNotesBoard: function() {
+    if (this.state !== 'active' || this._renderMode !== 'buffer') return null;
+    if (this._boardName == null || this.isMailList() || this.isUserList()) return null;
+    return this._boardName;
   },
 
   // The board information (#288, board_info.js): `i` names the board, not a
@@ -2222,6 +2274,15 @@ ListSession.prototype = {
     this._helpBoard = this._boardName;
     this._helpSelection = { num: this._selectedNum, pinnedKey: this._selectedPinnedKey };
     this._beginPassthroughBytes(steps, { kind: 'board-info', hint: null, noSync: true });
+  },
+
+  // Where the board is (#293, whereami.js): Ctrl-W names the board, not a
+  // row, so it goes out as the board information's keys do.
+  beginWhereAmI: function(steps) {
+    this._spendLayer('nativePassthrough');
+    this._helpBoard = this._boardName;
+    this._helpSelection = { num: this._selectedNum, pinnedKey: this._selectedPinnedKey };
+    this._beginPassthroughBytes(steps, { kind: 'whereami', hint: null, noSync: true });
   },
 
   // A query of the selected article's author (#254, user_query.queryAuthor):
@@ -2265,6 +2326,12 @@ ListSession.prototype = {
     const facts = this._collectFacts(null);
     return facts.kind === 'clean-list' && facts.boardName != null &&
       facts.boardName === (this._helpBoard ?? this._boardName);
+  },
+
+  // The lists whose table has Ctrl-W / Ctrl-Y, PTT's 我在哪 (#293): a board's
+  // article list or digest, not the mailbox or the online user list.
+  _whereAmIList: function() {
+    return !this.isUserList() && !this.isMailList();
   },
 
   // The lists whose article rows have an author for Ctrl-Q: an article list,
@@ -2375,8 +2442,9 @@ ListSession.prototype = {
     return true;
   },
 
-  // One more step of that query (the space over PTT's alert or its
-  // 請按任意鍵繼續), while the list is still let go of. Returns whether it went out.
+  // One more step of a held page's sequence (the user query's space over PTT's
+  // alert or its 請按任意鍵繼續, the board entry screen's way back, #292),
+  // while the list is still let go of. Returns whether it went out.
   continueUserQuery: function(step) {
     if (this.state !== 'functionMode' || this._helpBoard == null) return false;
     this._enqueuePassthroughStep([step], 0);
@@ -3456,6 +3524,10 @@ ListSession.prototype = {
     // Ctrl-Q queries the author of the article selected (#254, user_query.js).
     if (e.ctrlKey && (e.key === 'q' || e.key === 'Q') && (page ? !mail : this._authorQueryList()))
       return { class: 'author-query' };
+    // Ctrl-W and Ctrl-Y show where the board is (#293, whereami.js); the digest
+    // list's table has them too, the mailbox has no board.
+    if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === 'w' || e.key === 'y') && (page ? !mail : this._whereAmIList()))
+      return { class: 'whereami', code: e.key === 'w' ? 23 : 25 };
     if (e.ctrlKey) return { class: 'unsupported' }; // Ctrl-P 發文 etc.
     // The mailbox (#196) reads a mail with every key mail.c#mail_comms gives
     // mail_cmd_read (→ Enter r l L); its other commands (reply, forward,
@@ -3466,6 +3538,15 @@ ListSession.prototype = {
     // no board and the digest list's table no `i`.
     if (!mail && (e.key === 'i' || e.key === 'I'))
       return { class: page || !this.isDigestList() ? 'board-info' : 'unsupported' };
+    // `v` asks PTT's read-state question (b_mark_read_unread), answered in the
+    // choice sheet (#299, mark_all_read.js). The digest and the search results
+    // have their own tables / numbering: refused.
+    if (e.key === 'v' && !mail)
+      return {
+        class: (page ? !page.selectMode : !this._selectMode && !this.isDigestList())
+          ? 'mark-read-choice'
+          : 'unsupported'
+      };
     if (mail && (e.key === 'r' || e.key === 'l' || e.key === 'L')) return { class: 'open' };
     // Navigation synonyms follow pttbbs read.c:858-902 (' ' / 'N' / KEY_PGDN /
     // Ctrl-F = next page, 'P' / KEY_PGUP / Ctrl-B = prev page, 'p'/'k'/KEY_UP,
@@ -3520,6 +3601,9 @@ ListSession.prototype = {
         // lists. `?` is not one here: on the article list it searches titles
         // (the search sheet takes it), and `Q` is PTT's article information.
         if (e.key === 'h' || e.key === 'H') return { class: 'help' };
+        // `b` shows the board's entry screen as a page over the list (#292,
+        // board_notes.js); the mailbox binds no `b`.
+        if (e.key === 'b' && !mail) return { class: 'board-notes' };
         // `#` (jump to an article by its code) is presented as PttChrome's own
         // input (#253), where the list can take the jump.
         if (e.key === '#' && (page ? !mail && !page.selectMode && page.boardName : this.aidJumpBoard()))
@@ -3724,6 +3808,16 @@ ListSession.prototype = {
     const num = (this._termBuf.listLineNums || [])[abs];
     if (num == null) return null;
     return { num: num };
+  },
+
+  // The number of the article the choice sheet's W answer ("read up to here")
+  // is about: the selection, or null when none is a numbered article (a
+  // pinned article has no number to jump to, markReadTargetAtRow).
+  markReadCursorNum: function() {
+    if (this._selectedNum == null) return null;
+    return (this._termBuf.listLineNums || []).indexOf(this._selectedNum) === -1
+      ? null
+      : this._selectedNum;
   },
 
   // 需求的三步：真游標移到那一列 → `v` → `w` + Enter。回 true ＝我接手了。

@@ -216,6 +216,45 @@ describe("依畫面的動作（文章／信件／文章列表）", () => {
     expect(core.postInfo.fromArticle).toHaveBeenCalledTimes(1);
   });
 
+  // #292: the board entry screen, in More over a board's article list.
+  test("board entry screen (More): goes through boardNotes.start; absent when it cannot be shown", async () => {
+    const core = makeCore({ context: { push: false, search: [], boardNotes: true } });
+    core.boardNotes = { start: vi.fn(() => true) };
+    renderBar(core);
+    expect(byKey("__boardNotes")).toBeNull();
+    await openMore();
+    expect(byKey("__boardNotes").textContent).toBe(i18n("boardNotes_title"));
+    fireEvent.click(byKey("__boardNotes"));
+    await sheetClosed();
+    expect(core.boardNotes.start).toHaveBeenCalledTimes(1);
+  });
+
+  // #300: the article's animation, in More over every article it can be
+  // asked for (whether one is a movie is pmore's to tell).
+  test("article animation (More): goes through articleMovie.start; absent when it cannot be asked for", async () => {
+    const core = makeCore({ context: { ...ARTICLE, articleMovie: true } });
+    core.articleMovie = { start: vi.fn(() => true) };
+    renderBar(core);
+    expect(byKey("__articleMovie")).toBeNull();
+    await openMore();
+    expect(byKey("__articleMovie").textContent).toBe(i18n("articleMovie_title"));
+    fireEvent.click(byKey("__articleMovie"));
+    await sheetClosed();
+    expect(core.articleMovie.start).toHaveBeenCalledTimes(1);
+  });
+
+  test("More: no article animation when articleMovie is false", async () => {
+    renderBar(makeCore({ context: { ...ARTICLE, articleMovie: false } }));
+    await openMore();
+    expect(byKey("__articleMovie")).toBeNull();
+  });
+
+  test("More: no board entry screen when boardNotes is false", async () => {
+    renderBar(makeCore({ context: { push: false, search: [], boardNotes: false } }));
+    await openMore();
+    expect(byKey("__boardNotes")).toBeNull();
+  });
+
   test("更多：postInfo false 就沒有文章資訊", async () => {
     renderBar(makeCore({ context: { ...ARTICLE, postInfo: false } }));
     await openMore();
@@ -409,13 +448,15 @@ describe("更多（bottom sheet）", () => {
     expect(core.setMobileSelectMode).toHaveBeenCalledWith(true);
   });
 
-  test("設為全部已讀：只在文章列表（context.markAllRead）出現，按下走 markAllRead.start 並收起", async () => {
+  test("已讀／未讀設定…：只在文章列表（context.markAllRead）出現，按下走 markAllRead.ask（#299）並收起", async () => {
     const core = makeCore({ context: { push: false, search: [], markAllRead: true } });
-    core.markAllRead = { start: vi.fn(() => true) };
+    core.markAllRead = { ask: vi.fn(() => true), start: vi.fn(() => true) };
     renderBar(core);
     await openMore();
+    expect(byKey("__markAllRead").textContent).toBe(i18n("mobileToolbar_markReadChoice"));
     fireEvent.click(byKey("__markAllRead"));
-    expect(core.markAllRead.start).toHaveBeenCalledTimes(1);
+    expect(core.markAllRead.ask).toHaveBeenCalledTimes(1);
+    expect(core.markAllRead.start).not.toHaveBeenCalled();
     await sheetClosed();
   });
 
@@ -489,6 +530,25 @@ describe("更多（bottom sheet）", () => {
     renderBar(makeCore({ context: { push: false, search: [], boardInfo: false } }));
     await openMore();
     expect(byKey("__boardInfo")).toBeNull();
+  });
+
+  // #293: where the board is, in More over an article list it can be asked for.
+  test("where the board is (in More): only with context.whereAmI; calls whereAmI.start and closes the sheet", async () => {
+    const core = makeCore({ context: { push: false, search: [], whereAmI: true } });
+    core.whereAmI = { start: vi.fn(() => true) };
+    renderBar(core);
+    expect(byKey("__whereAmI")).toBeNull();
+    await openMore();
+    expect(byKey("__whereAmI").textContent).toBe(i18n("whereAmI_title"));
+    fireEvent.click(byKey("__whereAmI"));
+    await sheetClosed();
+    expect(core.whereAmI.start).toHaveBeenCalledTimes(1);
+  });
+
+  test("More: no where the board is without context.whereAmI", async () => {
+    renderBar(makeCore({ context: { push: false, search: [], whereAmI: false } }));
+    await openMore();
+    expect(byKey("__whereAmI")).toBeNull();
   });
 
   test("設為全部已讀：不是文章列表就沒有", async () => {

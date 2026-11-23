@@ -26,7 +26,7 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
 | 9 | Bottom sheet（更多／長按選單／搜尋）＋系統返回收 sheet | 已實作（「更多」sheet＋系統返回收合：Android 模擬器 e2e 已驗 `mobile_chrome`；真機待實測） |
 | 10 | safe-area／theme-color／等待進度條／點擊波紋（波紋桌機共用） | 已實作（真機 `guess`） |
 
-使用者定案：文章只支援好讀模式、要換行不要縮小；列表做卡片；選單項做大按鈕（主功能表與子選單一致；ANSI 圖保留縮小在上方、點一下直接進入）；其他 80 欄格線畫面只求不被切。
+使用者定案：文章只支援好讀模式、要換行不要縮小（Drawings are the exception: shrunk to the screen width, see Drawing blocks, #295）；列表做卡片；選單項做大按鈕（主功能表與子選單一致；ANSI 圖保留縮小在上方、點一下直接進入）；其他 80 欄格線畫面只求不被切。
 2026-10 原生 App 化定案：App Bar **不放返回鍵**（返回＝系統邊緣滑動／返回鍵，`history_back_guard`）；標頭／狀態列只在卡片／文章／選單畫面收起；文章左右滑換篇**不做**。文章好讀的左滑開啟文章捷徑抽屜、右滑退出文章；手勢的啟用條件與操作優先權見[文章捷徑抽屜規格](article-swipe-drawer-spec.md)。
 
 ## 規則
@@ -75,7 +75,7 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
     搜尋**直接開搜尋彈窗**（預設第一個可用種類，無子選單；見 `docs/article-search.md`）。分享＝`deep_link_controller.shareCurrentPostLink(title)`（與複製本篇連結同一條 AID 解析；`navigator.share`，AbortError＝完成，其他拒絕／無 API 退回複製；**click 內同步呼叫**）。
     更多＝bottom sheet（見「Bottom sheet」）：外部搜尋（**選取模式開＋有選取**才列；選取模式下長按走原生選單，
     我們的長按選單出不來。選取在工具列 `pointerdown` 當下記住——tap 收尾時瀏覽器可能先清選取才發 click）／
-    跳到第一篇未讀／設為全部已讀（文章列表才有）／查詢網友（線上使用者列表才有，開輸入 sheet，`user_query.promptUserQuery`）／只看好友（或顯示全部使用者，跟著現在的視圖；線上使用者列表才有，送 PTT 的 `f`）／顯示文章數（或顯示看板編號，跟著現在的顯示方式；好讀的我的最愛與
+    跳到第一篇未讀／已讀／未讀設定…（文章列表才有；一個入口，開 PTT `v` 的選擇 sheet：全部未讀 U／全部已讀 V／選取的文章（含）以前已讀 W／取消，挑了才送，`mark_all_read.ask`，#299；取代原本直接送的「設為全部已讀」）／查詢網友（線上使用者列表才有，開輸入 sheet，`user_query.promptUserQuery`）／只看好友（或顯示全部使用者，跟著現在的視圖；線上使用者列表才有，送 PTT 的 `f`）／顯示文章數（或顯示看板編號，跟著現在的顯示方式；好讀的我的最愛與
     分類的看板列表才有，送 PTT 的 `c`）／切換排序（依板名／依類別）（好讀的分類看板列表才有，送 PTT 的 `S`）／
     重新排序我的最愛（好讀的我的最愛才有：先開確認 sheet 說明會覆寫目前排列且無法復原，選了依板名／依類別才送 `S` 與答案）。
     使用者查詢頁顯示時（`mobile_toolbar.queryPage`）：按鍵與「更多」可用，針對底下列表的格位與項目關掉（見 `docs/easy-reading.md` 的查詢頁），「更多」裡的登出反灰；頁面出現前整條反灰（`locked`）。
@@ -84,8 +84,8 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
     畫面被收起、點不到原生提示，見 `docs/help-menu.md`）／分享／文章導覽／選取模式／全選／
     上傳圖片＋圖片上傳紀錄（跟 `enableImageUpload`，開 sheet 時現讀；全選與這兩項主功能表不給＝`contentTools`，
     那裡沒內容可選、上傳只能退回剪貼簿，卻會把 sheet 撐到蓋住整個選單）／設定／登出（inline 二段確認，`LOGOUT_CONFIRM_MS` 無動作自動收回）。
-    全選、圖片上傳、設為全部已讀在桌機是右鍵選單項；手機長按選單**不放**（`ContextSheet` 傳 `mobile: true` 給
-    `context_menu_entries`），集中在「更多」。設為全部已讀放這裡不必指定哪一列：`v` 的 `(V)已讀` 分支
+    全選、圖片上傳、設為全部已讀在桌機是右鍵選單項（手機對應的是「已讀／未讀設定…」）；手機長按選單**不放**（`ContextSheet` 傳 `mobile: true` 給
+    `context_menu_entries`），集中在「更多」。已讀／未讀設定放這裡不必指定哪一列（W 用的是列表目前選取的那篇）：`v` 的 `(V)已讀` 分支
     （`brc_toggle_all_read`）不看游標所在那篇；要指定某一列的「前已讀後未讀」與看板列表的「<板名> 設為已讀」
     （看板列表的 `v` 只作用在游標那個看板）留在長按選單。文章卡片的「查詢作者 '<作者>'」（#254，PTT 的 `Ctrl-Q` 只查游標那篇）
     也在長按選單，緊跟在加入黑名單的作者項後面。
@@ -115,7 +115,9 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
     展開時以 `App.setMobileKeysPanelInset(offsetHeight)` 回報 ⇒ 終端機排到面板上方（暫態，不改列數、不重送 NAWS）。
     文章、列表卡片與其他捲動頁面只縮短可視高、內容不動，見下方「The key panel shortens the visible area」。
   - **黏滯 Ctrl**：`App.mobileCtrlArmed`（唯一寫入點 `setMobileCtrlArmed`，經 `onMobileChange` 第 4 參數亮燈）。
-    term_view `onKeyDown`（單按修飾鍵不算）與 `onTextInput`（軟鍵盤字走 input 事件）吃下一個字元 →
+    下一個鍵一律經 `mobile_layout.takeStickyCtrl`（單按修飾鍵、已帶修飾鍵的鍵、輸入法的 keydown 不算），在每個入口的分派之前：
+    term_view `onKeyDown`、`onTextInput`（軟鍵盤字走 input 事件）、`sendKeyAsUser`（列表上方的頁面之前），
+    以及列表上方頁面的 window keydown（`over_list_page.js`，實體鍵盤／送真 keydown 的軟鍵盤；查詢頁與進板畫面共用）→
     `mobile_layout.mobileCtrlKey`：字母走 **Alt remap**（`altKey`；byte 同 Ctrl，但繞過 Ctrl+A/C/V 的全選／複製／貼上），
     `@[\]^_?` 走 `ctrlKey`，其他字元解除不轉。用一次就解除。守護 `mobile_ctrl.test.js`。
 - `index.html` viewport **不鎖** `user-scalable`（原生雙指縮放是後援）。
@@ -198,7 +200,7 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
   `mobile_busy.test.js`、`ripple.test.js`、`index_html_meta.test.js`、`history_back_guard`（sheet）、`modal_shown_sources`（sheet 登記）、`deep_link_controller`（分享）
 - offline e2e：project `offline-mobile`（Pixel 7 模擬，只跑 `offline/mobile_*.spec.js`：換行版面、長按選單、推文卡片與收起的檔頭在
   `mobile_reflow`、列表卡片在 `mobile_list_cards`、底部導覽／按鍵面板／黏滯 Ctrl／進度條在 `mobile_toolbar`、按鍵面板縮短可視範圍在 `mobile_keypad_view`、「⋯」與設定頁窄版在 `mobile_float_tools`、
-  App Bar 在 `mobile_app_bar`、sheet（遮罩不漏點、返回收 sheet、拖把手、搜尋 sheet）在 `mobile_sheet`；`offline` project 以 testIgnore 排除 mobile_*）。
+  ANSI drawings in `mobile_drawing_block`, App Bar 在 `mobile_app_bar`、sheet（遮罩不漏點、返回收 sheet、拖把手、搜尋 sheet）在 `mobile_sheet`；`offline` project 以 testIgnore 排除 mobile_*）。
   手機的長按／右鍵選單是 `[data-sheet="context"]`（項目 `[data-cmenu=<key>]`），**不是** `.DropdownMenu`；Drawer 內容非同步掛上、
   有 slide-up 動畫 ⇒ 先 `toBeVisible` 再 `waitRectStable` 才量座標。已併入
   `yarn test:e2e:offline`。**視窗高壓到 390px**：錄製檔全是 24 列，Pixel 7 原生高度會給 52 列、
@@ -267,7 +269,45 @@ Horizontal article gestures are an easy-reading behaviour and apply only to mobi
 - 滑鼠：`resolveMouseRegion({ reflow })` 對 pageState 3 早退 NONE（左側退出帶、邊緣翻頁全關），
   `resolveMouseGates({ reflow })` 關 `clickRange`／`edgePaging`（推文者高亮退回整列可點）。
   元素層（連結、圖片、`a.fnKey`、合併按鈕）不受影響。右鍵選單的推文者黑名單在 reflow 下整列都算 id 區。
-- 已知接受：ANSI 圖／表格換行後會散（使用者定案）；`#easyReadingLastRow`（footer overlay）只改寬度不換行，超出視窗寬的部分被裁。
+- Drawings (ANSI art, box frames, tables) are not wrapped: see "Drawing blocks" below (#295; this replaces the earlier accepted
+  behaviour of letting them fall apart). `#easyReadingLastRow`（footer overlay）只改寬度不換行，超出視窗寬的部分被裁。
+
+### Drawing blocks (`js/drawing_block.js`, #295)
+
+Owner decision: a drawing in the phone's article is shrunk to the screen width, not wrapped. Its rows are drawn on PTT's
+80-column grid with the terminal's font face, at a cell that fits 80 columns in the page width (as the board entry screen,
+`mobile_layout.gridCellPx`, #292). Prose, long URLs and comments keep wrapping at the reading size.
+
+- The rule, `drawingBlocks(lines, fitCols, { from, to, skip })` (pure, unit `drawing_block.test.js`), errs towards leaving
+  prose alone:
+  - A row is a drawing row ("strong") when its drawing cells (a background colour, or a U+2500–25FF box, block or
+    geometric-shape character) are at least 4 columns and a quarter of its span; or when it is in a table: 3 or more
+    consecutive rows whose gaps of 2+ spaces line up in 2 or more places.
+  - A row with any background colour or box/block character ("weak": a frame's inner row, a highlighted word) joins only
+    a run that has a strong row. Up to 2 blank rows join two drawings; blank rows at either end are left out.
+  - Rows the article draws otherwise end a block: comments (`pusher`), merged and hidden rows, `trailingBlank`, the header
+    (`articleMetaKind`).
+  - A block is drawn small only when one of its rows is wider than `fitCols` (it would wrap at the reading size); a
+    drawing that fits keeps the reading size. One cell for the whole block, so its columns stay aligned.
+- Geometry: `term_view._setDrawingCell` (from `setTermFontSize`, so rotation and text zoom redo it) sets
+  `view.drawingCols` = `drawingGeometry().fitCols` and the vars `--drawing-cell` (px) and `--drawing-text`
+  (`textFontPx(cell)`, undoing Android text zoom) on `.main`; off the article both are removed and `drawingCols` is null.
+  Stack layers copy `.main`'s style, so they carry the vars.
+- Annotation: `enhance.drawingCols` (only with `reflow && stableRows`; in `annotationsKey`) makes `computeAnnotations`
+  (PAGE_READING) mark a block's rows `drawing: true` (`markDrawingRows`). The marked objects are cached per row so a page
+  appended below keeps their identity and nodes. The block's `open` row (where rows appended below could still extend
+  or create a block) is part of `annotationFrontier`, so the incremental path recomputes from there
+  (`screen_annotations_frontier.test.js` "drawing" set).
+- Render and CSS: `screen.js#_renderRow` adds `.drawingRow`; main.css gives it `white-space: pre` at `--drawing-text`, and
+  its `.wpadding` / `.hpadding` the cell's width with `!important` (over `fixedResize`'s inline widths). The row keeps
+  its node contract (`srow`, `.wpadding`), so the reading record, `pageRowTop`, links and long-press work as on any row.
+  `syncTextScale` measures a row that is not `.drawingRow`.
+- Desktop: `drawingCols` is null, nothing is marked; the golden output is unchanged.
+- Not covered: a modern-format comment's `│` body rows are not skipped explicitly (they are only weak, so they never form
+  a block alone). Real-device font metrics are not checked by CI.
+- Guards: unit `drawing_block.test.js`, `drawing_row_render.test.js`, `screen_annotations_frontier.test.js`; offline e2e
+  `mobile_drawing_block` (one line per drawing row at the drawing cell, aligned frame edges, no horizontal overflow,
+  colours kept, prose and comments unchanged, reading record and paging through the block).
 
 ## 長按選單與選取模式（觸控 contextmenu）
 

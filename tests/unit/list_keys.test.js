@@ -10,6 +10,7 @@ import { FRIEND_LIST_KEY, MAIL_LIST_KEY, USER_LIST_KEY } from "../../src/js/scre
 import { queryUser, promptUserQuery, queryAuthor } from "../../src/js/user_query";
 import { showListPostInfo } from "../../src/js/post_info";
 import { showBoardInfo } from "../../src/js/board_info";
+import { showWhereAmI } from "../../src/js/whereami";
 
 vi.mock("../../src/js/user_query", () => ({
   queryUser: vi.fn(() => true),
@@ -21,6 +22,10 @@ vi.mock("../../src/js/post_info", () => ({
 }));
 vi.mock("../../src/js/board_info", () => ({
   showBoardInfo: vi.fn(() => true),
+}));
+vi.mock("../../src/js/whereami", async (importOriginal) => ({
+  ...(await importOriginal()),
+  showWhereAmI: vi.fn(() => true),
 }));
 vi.mock("../../src/js/user_list", async (importOriginal) => ({
   ...(await importOriginal()),
@@ -117,10 +122,67 @@ function expectRefused(ctx, e) {
   expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
 }
 
+describe("ListSession `v` asks the read-state question in the choice sheet (#299)", () => {
+  test("v on the article list is prevented, sends nothing, and asks MarkAllRead", () => {
+    const ctx = activeRefusalSession();
+    const ask = vi.fn(() => true);
+    ctx.s._core.markAllRead = { ask };
+    const e = keyEvent("v");
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(ctx.sent).toEqual([]);
+    expect(ctx.enqueued).toEqual([]);
+    expect(ctx.s.state).toBe("active");
+    expect(ctx.hints).toEqual([]);
+  });
+
+  test("V (shift), Ctrl+V-style combos and Alt+V stay refused", () => {
+    for (const [key, mods] of [["V", { shiftKey: true }], ["v", { altKey: true, code: "KeyV" }]]) {
+      const ctx = activeRefusalSession();
+      ctx.s._core.markAllRead = { ask: vi.fn() };
+      const e = keyEvent(key, mods);
+      ctx.s.onKeyDown(e);
+      expectRefused(ctx, e);
+      expect(ctx.s._core.markAllRead.ask).not.toHaveBeenCalled();
+    }
+  });
+
+  test("the digest list and search results keep refusing it", () => {
+    for (const setup of [
+      (s) => { s.isDigestList = () => true; },
+      (s) => { s._selectMode = true; },
+    ]) {
+      const ctx = activeRefusalSession();
+      ctx.s._core.markAllRead = { ask: vi.fn() };
+      setup(ctx.s);
+      const e = keyEvent("v");
+      ctx.s.onKeyDown(e);
+      expectRefused(ctx, e);
+      expect(ctx.s._core.markAllRead.ask).not.toHaveBeenCalled();
+    }
+  });
+
+  test("a revealed stack page classifies by its own search state", () => {
+    const ctx = activeRefusalSession();
+    expect(ctx.s._classifyKey(keyEvent("v"), { boardName: "C_Chat", selectMode: false }).class).toBe("mark-read-choice");
+    expect(ctx.s._classifyKey(keyEvent("v"), { boardName: "C_Chat", selectMode: true }).class).toBe("unsupported");
+  });
+
+  test("markReadCursorNum: the selection when numbered, null for none or a pinned one", () => {
+    const ctx = activeRefusalSession();
+    ctx.s._termBuf.listLineNums = [40, 41, 42];
+    expect(ctx.s.markReadCursorNum()).toBe(42);
+    ctx.s._selectedNum = null;
+    expect(ctx.s.markReadCursorNum()).toBe(null);
+    ctx.s._selectedNum = 99;
+    expect(ctx.s.markReadCursorNum()).toBe(null);
+  });
+});
+
 describe("ListSession refuses keys easy reading does not present (#159)", () => {
   const UNSUPPORTED = [
     ["z", {}],
-    ["v", {}],
     ["Z", { shiftKey: true }],
     ["p", { ctrlKey: true }], // Ctrl-P: post
     ["x", { ctrlKey: true }], // Ctrl-X: cross-post (not a clipboard key)
@@ -683,6 +745,20 @@ describe("functionMode clean-list settle 的 in-flight 吸收（相對命令配�
       )
     ).toEqual({ next: "functionMode", actions: [] });
   });
+  // #300: an article's animation holds the article over the suspended list;
+  // a movie frame that looks like a list or a menu is the movie's.
+  test("suspended under a page of PTT's own screen: a list or a menu frame is not the list's", () => {
+    expect(transitionListSession("suspended", settle("clean-list", { pageHeld: true }))).toEqual({
+      next: "suspended",
+      actions: [],
+    });
+    expect(transitionListSession("suspended", settle("menu", { pageHeld: true }))).toEqual({
+      next: "suspended",
+      actions: [],
+    });
+    expect(transitionListSession("suspended", settle("clean-list")).next).toBe("active");
+    expect(transitionListSession("suspended", settle("menu")).next).toBe("idle");
+  });
   test("配對完成（無 in-flight、無 hold——leave/jump 交易）→ resume 採用落點游標", () => {
     expect(transitionListSession("functionMode", settle("clean-list"))).toEqual({
       next: "active",
@@ -903,8 +979,9 @@ describe("Alt remap, all 26 letters (list easy reading)", () => {
   const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
   // Alt+Q is Ctrl-Q, the author query (#254): see the Ctrl-Q tests below.
-  test("every letter but Q is refused: prevented, nothing enqueued or sent, mirror not entered", () => {
-    LETTERS.filter((L) => L !== "Q").forEach((L) => {
+  // Alt+W and Alt+Y are Ctrl-W and Ctrl-Y, where the board is (#293).
+  test("every letter but Q, W and Y is refused: prevented, nothing enqueued or sent, mirror not entered", () => {
+    LETTERS.filter((L) => !"QWY".includes(L)).forEach((L) => {
       const ctx = activeRefusalSession();
       const e = keyEvent(L.toLowerCase(), { altKey: true, code: "Key" + L });
       ctx.s.onKeyDown(e);
@@ -1076,6 +1153,140 @@ describe("i / I show the board information (#288)", () => {
       expect(ctx.s.wouldRefuse({ key })).toBe(true);
     }
     expect(showBoardInfo).not.toHaveBeenCalled();
+  });
+});
+
+// b on an article list shows the board entry screen (#292): board_notes takes
+// it and sends it, the session itself sends nothing. Search results keep it
+// (PTT binds b there too); the mailbox refuses it.
+describe("b shows the board entry screen (#292)", () => {
+  function notesSession() {
+    const ctx = activeRefusalSession();
+    const start = vi.fn(() => true);
+    ctx.s._core.boardNotes = { start };
+    return { ...ctx, start };
+  }
+
+  test("b → prevented, handed to boardNotes.start, nothing enqueued or sent here", () => {
+    const ctx = notesSession();
+    const e = keyEvent("b");
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(ctx.start).toHaveBeenCalledTimes(1);
+    expect(ctx.sent).toEqual([]);
+    expect(ctx.enqueued).toEqual([]);
+    expect(ctx.s.state).toBe("active");
+    expect(ctx.hints).toEqual([]);
+  });
+
+  test("search results keep b, and the board is the list's", () => {
+    const ctx = notesSession();
+    ctx.s._selectMode = true;
+    ctx.s.onKeyDown(keyEvent("b"));
+    expect(ctx.start).toHaveBeenCalledTimes(1);
+    expect(ctx.s.boardNotesBoard()).toBe("C_Chat");
+  });
+
+  test("the help sheet's b row is offered on an article list (wouldRefuse)", () => {
+    expect(notesSession().s.wouldRefuse({ key: "b" })).toBe(false);
+  });
+
+  test("the mailbox refuses b with the hint and has no board entry screen", () => {
+    const ctx = notesSession();
+    ctx.s._boardName = MAIL_LIST_KEY;
+    const e = keyEvent("b");
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
+    expect(ctx.start).not.toHaveBeenCalled();
+    expect(ctx.s.boardNotesBoard()).toBe(null);
+  });
+
+  test("B (upper case) stays refused", () => {
+    const ctx = notesSession();
+    const e = keyEvent("B");
+    ctx.s.onKeyDown(e);
+    expectRefused(ctx, e);
+    expect(ctx.start).not.toHaveBeenCalled();
+  });
+
+  test("beginScreenPage sends its steps with no cursor-sync leg and keeps the list to take back", () => {
+    const ctx = activeRefusalSession();
+    ctx.s.beginScreenPage([{ keys: "b", kind: "board-notes", fullRepaint: false }]);
+    expect(ctx.s.state).toBe("functionMode");
+    expect(ctx.enqueued.map((c) => [c.keys, c.kind, c.fullRepaint])).toEqual([["b", "board-notes", false]]);
+    expect(ctx.s._helpBoard).toBe("C_Chat");
+    expect(ctx.s._helpSelection).toEqual({ num: 42, pinnedKey: null });
+  });
+});
+
+// Ctrl-W and Ctrl-Y, with their Alt aliases, show where the board is (#293);
+// the digest list's table has them as well, the mailbox has no board.
+describe("Ctrl-W / Ctrl-Y show where the board is (#293)", () => {
+  beforeEach(() => showWhereAmI.mockClear());
+
+  test.each([
+    ["w", 23],
+    ["y", 25],
+  ])("Ctrl-%s → prevented, handed to showWhereAmI with its code, nothing enqueued or sent here", (key, code) => {
+    const ctx = activeRefusalSession();
+    const e = keyEvent(key, { ctrlKey: true });
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(showWhereAmI).toHaveBeenCalledTimes(1);
+    expect(showWhereAmI).toHaveBeenCalledWith(ctx.s._core, code);
+    expect(ctx.sent).toEqual([]);
+    expect(ctx.enqueued).toEqual([]);
+    expect(ctx.hints).toEqual([]);
+  });
+
+  test.each([
+    ["w", 23],
+    ["y", 25],
+  ])("Alt+%s is the same key", (key, code) => {
+    const ctx = activeRefusalSession();
+    const e = keyEvent(key, { altKey: true, code: "Key" + key.toUpperCase() });
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(showWhereAmI).toHaveBeenCalledWith(ctx.s._core, code);
+    expect(ctx.hints).toEqual([]);
+  });
+
+  // The phone's sticky Ctrl + w (mobile_layout.takeStickyCtrl) arrives as the
+  // synthetic Alt+w of term_view.sendKeyAsUser, with no physical key code.
+  test("the phone's sticky Ctrl + w (Alt+w with no key code) is Ctrl-W", () => {
+    const ctx = activeRefusalSession();
+    const e = keyEvent("w", { altKey: true });
+    ctx.s.onKeyDown(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(showWhereAmI).toHaveBeenCalledWith(ctx.s._core, 23);
+    expect(ctx.hints).toEqual([]);
+  });
+
+  test("also over search results and the digest list", () => {
+    const ctx = activeRefusalSession();
+    ctx.s._footerText = " 系列文章  (←)離開";
+    expect(ctx.s._classifyKey(keyEvent("w", { ctrlKey: true })).class).toBe("whereami");
+    ctx.s._footerText = " 文摘列表  (←)離開";
+    expect(ctx.s._classifyKey(keyEvent("y", { ctrlKey: true })).class).toBe("whereami");
+  });
+
+  test("the help sheet's Ctrl-W row is offered on an article list (wouldRefuse)", () => {
+    expect(activeRefusalSession().s.wouldRefuse({ key: "w", ctrlKey: true })).toBe(false);
+  });
+
+  test("the mailbox refuses both, and their Alt aliases, with the hint", () => {
+    for (const mods of [{ ctrlKey: true }, { altKey: true }]) {
+      for (const key of ["w", "y"]) {
+        const ctx = activeRefusalSession();
+        ctx.s._boardName = MAIL_LIST_KEY;
+        const e = keyEvent(key, { ...mods, code: "Key" + key.toUpperCase() });
+        ctx.s.onKeyDown(e);
+        expect(e.defaultPrevented).toBe(true);
+        expect(ctx.hints).toEqual([[KEY_HINT, 4000, "error"]]);
+      }
+    }
+    expect(showWhereAmI).not.toHaveBeenCalled();
   });
 });
 

@@ -211,9 +211,23 @@ describe("the list's number input owns the toolbar and keypad keys", () => {
 describe("the user query page takes the toolbar and keypad keys", () => {
   test("a key the page takes reaches neither the busy hint nor the list", () => {
     const view = makeView({ listRenderMode: "buffer" });
-    view.bbscore.userQuery = { busy: true, takeKey: vi.fn((e) => e.key === "ArrowLeft") };
+    view.bbscore.userQuery = { busy: true, ownsInput: () => true, takeKey: vi.fn((e) => e.key === "ArrowLeft") };
     view.sendKeyAsUser("ArrowLeft");
     expect(view.bbscore.userQuery.takeKey).toHaveBeenCalledWith(expect.objectContaining({ key: "ArrowLeft", ctrlKey: false }), true);
+    expect(view.seen.hints).toHaveLength(0);
+    expect(view.seen.listSession).toHaveLength(0);
+    expect(view.seen.keyboard).toHaveLength(0);
+  });
+
+  // The board entry screen page (#292) takes them the same way: the keypad's
+  // keys go to PTT through the page, never to the list held under it.
+  test("the board entry screen page takes them when it owns the input", () => {
+    const view = makeView({ listRenderMode: "buffer" });
+    view.bbscore.userQuery = { busy: false, ownsInput: () => false, takeKey: vi.fn(() => false) };
+    view.bbscore.boardNotes = { busy: true, ownsInput: () => true, takeKey: vi.fn(() => true) };
+    view.sendKeyAsUser("x", { ctrlKey: true });
+    expect(view.bbscore.userQuery.takeKey).not.toHaveBeenCalled();
+    expect(view.bbscore.boardNotes.takeKey).toHaveBeenCalledWith(expect.objectContaining({ key: "x", ctrlKey: true }), true);
     expect(view.seen.hints).toHaveLength(0);
     expect(view.seen.listSession).toHaveLength(0);
     expect(view.seen.keyboard).toHaveLength(0);

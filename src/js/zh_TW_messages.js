@@ -120,6 +120,42 @@
   "postInfo_title": {
     "message": "文章資訊"
   },
+  "boardNotes_title": {
+    "message": "進板畫面"
+  },
+  "boardNotes_busy": {
+    "message": "進板畫面處理中，請稍候…"
+  },
+  "boardNotes_unavailable": {
+    "message": "只能在看板的文章列表看進板畫面"
+  },
+  "boardNotes_failed": {
+    "message": "進板畫面沒有回應，請再試一次"
+  },
+  "boardNotes_wait": {
+    "message": "進板畫面還沒畫完，請稍候再離開"
+  },
+  "articleMovie_title": {
+    "message": "播放動畫"
+  },
+  "articleMovie_busy": {
+    "message": "動畫處理中，請稍候…"
+  },
+  "articleMovie_unavailable": {
+    "message": "只能在好讀模式的文章裡播放動畫"
+  },
+  "articleMovie_failed": {
+    "message": "動畫沒有回應，請再試一次"
+  },
+  "articleMovie_wait": {
+    "message": "動畫還沒畫完，請稍候再離開"
+  },
+  "articleMovie_notMovie": {
+    "message": "這篇文章不是動畫：PTT 在問要用多快的速度把它當傳統動畫逐頁播放。離開即回到文章。"
+  },
+  "articleMovie_lost": {
+    "message": "播放動畫時 PTT 離開了文章：下拉重新整理。"
+  },
   "postInfo_code": {
     "message": "文章代碼"
   },
@@ -176,6 +212,21 @@
   },
   "boardInfo_failed": {
     "message": "讀不到看板資訊"
+  },
+  "whereAmI_title": {
+    "message": "我在哪"
+  },
+  "whereAmI_path": {
+    "message": "位置"
+  },
+  "whereAmI_busy": {
+    "message": "詢問看板位置中，請稍候…"
+  },
+  "whereAmI_unavailable": {
+    "message": "這裡無法查看看板位置"
+  },
+  "whereAmI_failed": {
+    "message": "讀不到看板位置"
   },
   "cmenu_addTitleBlacklist": {
     "message": "加入標題黑名單 ..."
@@ -520,6 +571,54 @@
   },
   "searchModal_conditionLimit": {
     "message": "已達搜尋條件上限。請先返回所有文章，再重新搜尋。"
+  },
+  "searchModal_kindPrice": {
+    "message": "價格 (A)"
+  },
+  "mobileToolbar_boardJump": {
+    "message": "跳至看板…"
+  },
+  "searchModal_sameTitlePlaceholder": {
+    "message": "游標所在文章的標題"
+  },
+  "mobileToolbar_digest": {
+    "message": "文摘"
+  },
+  "mobileToolbar_digestLeave": {
+    "message": "離開文摘"
+  },
+  "searchModal_kindMark": {
+    "message": "標記 (G)"
+  },
+  "searchModal_kindSameTitle": {
+    "message": "同標題 (S)"
+  },
+  "searchModal_kindNewPost": {
+    "message": "主題首篇 (⌫)"
+  },
+  "searchModal_markM": {
+    "message": "m 標記"
+  },
+  "searchModal_markS": {
+    "message": "s 標記"
+  },
+  "searchModal_markHint": {
+    "message": "搜尋有這個標記的文章"
+  },
+  "searchModal_excludeLabel": {
+    "message": "排除"
+  },
+  "searchModal_newPostHint": {
+    "message": "只列出主題首篇（不含回文）"
+  },
+  "searchModal_placeholderPrice": {
+    "message": "價格高於多少"
+  },
+  "searchFilter_applied": {
+    "message": "這一輪搜尋已經用過這個條件了"
+  },
+  "searchFilter_needsResults": {
+    "message": "排除標題只能在搜尋結果裡使用，請先搜尋"
   },
   "searchModal_busy": {
     "message": "指令處理中，請稍候再試"
@@ -1757,6 +1856,27 @@
   },
   "aidJump_failedArticle": {
     "message": "跳至 {0} 失敗"
+  },
+  "mobileToolbar_markReadChoice": {
+    "message": "已讀／未讀設定…"
+  },
+  "markReadChoice_title": {
+    "message": "已讀／未讀設定"
+  },
+  "markReadChoice_hint": {
+    "message": "設定本板文章的已讀記號，等同 PTT 的 v 鍵。"
+  },
+  "markReadChoice_allUnread": {
+    "message": "全部設為未讀"
+  },
+  "markReadChoice_allRead": {
+    "message": "全部設為已讀"
+  },
+  "markReadChoice_readBefore": {
+    "message": "選取的文章（含）以前已讀、以後未讀"
+  },
+  "markReadChoice_cancel": {
+    "message": "取消"
   },
   "mobileToolbar_aidJump": {
     "message": "跳至文章代碼"

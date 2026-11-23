@@ -104,6 +104,42 @@ export const en_US = {
   "postInfo_title": {
     "message": "Article information"
   },
+  "boardNotes_title": {
+    "message": "Board entry screen"
+  },
+  "boardNotes_busy": {
+    "message": "Working on the board entry screen, please wait…"
+  },
+  "boardNotes_unavailable": {
+    "message": "The board entry screen is shown only from a board's article list"
+  },
+  "boardNotes_failed": {
+    "message": "The board entry screen got no answer; try again"
+  },
+  "boardNotes_wait": {
+    "message": "The board entry screen is still being drawn; leave it in a moment"
+  },
+  "articleMovie_title": {
+    "message": "Play animation"
+  },
+  "articleMovie_busy": {
+    "message": "Working on the animation, please wait…"
+  },
+  "articleMovie_unavailable": {
+    "message": "An animation is played only from an article read in easy reading"
+  },
+  "articleMovie_failed": {
+    "message": "The animation got no answer; try again"
+  },
+  "articleMovie_wait": {
+    "message": "The animation is still being drawn; leave it in a moment"
+  },
+  "articleMovie_notMovie": {
+    "message": "This article is not an animation: PTT asks for a speed to page through it as a classic animation. Leave to go back to the article."
+  },
+  "articleMovie_lost": {
+    "message": "PTT left the article while the animation played: pull down to refresh."
+  },
   "postInfo_code": {
     "message": "Article code"
   },
@@ -160,6 +196,21 @@ export const en_US = {
   },
   "boardInfo_failed": {
     "message": "Could not read the board information"
+  },
+  "whereAmI_title": {
+    "message": "Where am I"
+  },
+  "whereAmI_path": {
+    "message": "Location"
+  },
+  "whereAmI_busy": {
+    "message": "Asking where the board is…"
+  },
+  "whereAmI_unavailable": {
+    "message": "Cannot show where the board is here"
+  },
+  "whereAmI_failed": {
+    "message": "Could not read where the board is"
   },
   "cmenu_addTitleBlacklist": {
     "message": "Blacklist title keyword ..."
@@ -504,6 +555,54 @@ export const en_US = {
   },
   "searchModal_conditionLimit": {
     "message": "The search condition limit has been reached. Return to the full article list to start a new search."
+  },
+  "searchModal_kindPrice": {
+    "message": "Price (A)"
+  },
+  "mobileToolbar_boardJump": {
+    "message": "Go to board…"
+  },
+  "searchModal_sameTitlePlaceholder": {
+    "message": "Title of the article under the cursor"
+  },
+  "mobileToolbar_digest": {
+    "message": "Digest"
+  },
+  "mobileToolbar_digestLeave": {
+    "message": "Leave digest"
+  },
+  "searchModal_kindMark": {
+    "message": "Marked (G)"
+  },
+  "searchModal_kindSameTitle": {
+    "message": "Same title (S)"
+  },
+  "searchModal_kindNewPost": {
+    "message": "First posts (⌫)"
+  },
+  "searchModal_markM": {
+    "message": "m mark"
+  },
+  "searchModal_markS": {
+    "message": "s mark"
+  },
+  "searchModal_markHint": {
+    "message": "Search articles with this mark"
+  },
+  "searchModal_excludeLabel": {
+    "message": "Exclude"
+  },
+  "searchModal_newPostHint": {
+    "message": "List thread starters only (no replies)"
+  },
+  "searchModal_placeholderPrice": {
+    "message": "Price above N"
+  },
+  "searchFilter_applied": {
+    "message": "This condition is already part of these results"
+  },
+  "searchFilter_needsResults": {
+    "message": "Excluding a title only works inside search results; search first"
   },
   "searchModal_busy": {
     "message": "A command is in progress, please try again"
@@ -1742,6 +1841,27 @@ export const en_US = {
   },
   "aidJump_failedArticle": {
     "message": "Could not jump to {0}"
+  },
+  "mobileToolbar_markReadChoice": {
+    "message": "Read / unread settings…"
+  },
+  "markReadChoice_title": {
+    "message": "Read / unread settings"
+  },
+  "markReadChoice_hint": {
+    "message": "Sets the read marks of this board's articles, as PTT's v key does."
+  },
+  "markReadChoice_allUnread": {
+    "message": "Set all articles unread"
+  },
+  "markReadChoice_allRead": {
+    "message": "Set all articles read"
+  },
+  "markReadChoice_readBefore": {
+    "message": "Read up to the selected article, unread after"
+  },
+  "markReadChoice_cancel": {
+    "message": "Cancel"
   },
   "mobileToolbar_aidJump": {
     "message": "Jump to article code"

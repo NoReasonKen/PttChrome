@@ -85,6 +85,13 @@ export function buildContextMenuEntries(p) {
     item("boardInfo", i18n("boardInfo_title"), (e) =>
       p.onMenuSelect("boardInfo", e),
     );
+  // 「我在哪」（#293）：同上，整個看板的（js/whereami.js，判定在
+  // whereAmI.available）；手機在工具列「更多」。
+  const whereAmI = p.normalEnabled && p.whereAmIEnabled && !p.mobile;
+  if (whereAmI)
+    item("whereAmI", i18n("whereAmI_title"), (e) =>
+      p.onMenuSelect("whereAmI", e),
+    );
   // The board list's view switches (#221, PTT's `c` and `S`) act on the whole
   // list, not the row clicked. board_list_session.listToggles decides which the
   // current easy-reading list offers: `counts` is null where `c` is not offered
@@ -126,6 +133,13 @@ export function buildContextMenuEntries(p) {
     item("userQuery", i18n("userQuery_title"), (e) =>
       p.onMenuSelect("userQuery", e),
     );
+  // The board entry screen (#292, js/board_notes.js): the article list's `b`,
+  // for the whole list, not the row clicked. On mobile it sits in More.
+  const boardNotes = p.normalEnabled && p.boardNotesEnabled && !p.mobile;
+  if (boardNotes)
+    item("boardNotes", i18n("boardNotes_title"), (e) =>
+      p.onMenuSelect("boardNotes", e),
+    );
   if (
     p.normalEnabled &&
     (p.authorBlacklistId ||
@@ -136,9 +150,11 @@ export function buildContextMenuEntries(p) {
       p.boardMarkReadTarget ||
       markAllRead ||
       boardInfo ||
+      whereAmI ||
       boardToggles ||
       userListToggle ||
-      userQuery)
+      userQuery ||
+      boardNotes)
   )
     divider("d-blacklist");
   // 回覆這則推文（推文列預填 → 與帳號）：放在推文那一段的最前面。出現條件在 index.jsx
@@ -246,6 +262,12 @@ export function buildContextMenuEntries(p) {
     if (p.articlePostInfoEnabled)
       item("articlePostInfo", i18n("postInfo_title"), (e) =>
         p.onMenuSelect("articlePostInfo", e),
+      );
+    // The article's animation (#300, js/article_movie.js): its `p`. On mobile
+    // it sits in More, as the board entry screen does.
+    if (p.articleMovieEnabled && !p.mobile)
+      item("articleMovie", i18n("articleMovie_title"), (e) =>
+        p.onMenuSelect("articleMovie", e),
       );
     // 長推文一鍵發送：打一大段話，自動依 PTT 單則上限分段依序推出。
     // 只在文章畫面出現（要按得到 X），好讀開著才有。

@@ -20,6 +20,8 @@ import { i18n } from "../../js/i18n";
 import { readValuesWithDefault } from "../../js/pref_storage";
 import { promptUserQuery } from "../../js/user_query";
 import { showArticlePostInfo } from "../../js/post_info";
+import { showBoardNotes } from "../../js/board_notes";
+import { showArticleMovie } from "../../js/article_movie";
 import { requestAidJump } from "../../js/aid_jump";
 import {
   normalizeExternalSearchQuery,
@@ -53,7 +55,7 @@ import "./MobileToolbar.css";
 //   其他      搜尋（有可用種類時）／按鍵／更多
 //   搜尋  直接開搜尋彈窗（不開子選單；種類在彈窗上方切，article_search.js）
 //   按鍵  展開方向鍵面板（貼在工具列上方；含軟鍵盤開關與黏滯 Ctrl／Esc／Tab／Del）
-//   更多  外部搜尋（選取模式下有選取時）／跳到第一篇未讀／設為全部已讀／分享／文章導覽／
+//   更多  外部搜尋（選取模式下有選取時）／跳到第一篇未讀／已讀／未讀設定…／分享／文章導覽／
 //         選取模式／全選／圖片上傳／設定／登出
 //         （全選與圖片上傳在桌機是右鍵選單項；手機長按選單不放，集中在這裡；主功能表不給，
 //         見 mobile_toolbar.js 的 contentTools）
@@ -105,6 +107,7 @@ export const MobileToolbar = ({
   pttchrome,
   hidden,
   onOpenSearch,
+  onOpenFilter,
   onOpenSettings,
 }) => {
   const [mobile, setMobile] = useState(() => !!pttchrome.mobile);
@@ -520,6 +523,41 @@ export const MobileToolbar = ({
     });
   }, [pttchrome, whenReady]);
 
+  // The board entry screen (#292, js/board_notes.js): the same entrance as `b`.
+  const onBoardNotes = useCallback(() => {
+    setPanel(null);
+    setConfirmLogout(false);
+    whenReady(() => {
+      if (typeof pttchrome.noteUserAction === "function")
+        pttchrome.noteUserAction();
+      showBoardNotes(pttchrome);
+    });
+  }, [pttchrome, whenReady]);
+
+  // An article's animation (#300, js/article_movie.js): the same entrance as `p`.
+  const onArticleMovie = useCallback(() => {
+    setPanel(null);
+    setConfirmLogout(false);
+    whenReady(() => {
+      if (typeof pttchrome.noteUserAction === "function")
+        pttchrome.noteUserAction();
+      showArticleMovie(pttchrome);
+    });
+  }, [pttchrome, whenReady]);
+
+  // Where the board is (#293, js/whereami.js): PTT's Ctrl-W screen, as a sheet.
+  const onWhereAmI = useCallback(() => {
+    setPanel(null);
+    setConfirmLogout(false);
+    const w = pttchrome.whereAmI;
+    if (!w || typeof w.start !== "function") return;
+    whenReady(() => {
+      if (typeof pttchrome.noteUserAction === "function")
+        pttchrome.noteUserAction();
+      w.start();
+    });
+  }, [pttchrome, whenReady]);
+
   // 跳到第一篇未讀：與桌機快捷鍵（預設 F7）同一個入口（unread_jump.js）。
   const onUnreadJump = useCallback(() => {
     setPanel(null);
@@ -533,6 +571,20 @@ export const MobileToolbar = ({
     });
   }, [pttchrome, whenReady]);
 
+  // The digest (#298): the same entrance as Tab.
+  const onFilter = useCallback(
+    (kind) => {
+      setPanel(null);
+      setConfirmLogout(false);
+      whenReady(() => {
+        if (typeof pttchrome.noteUserAction === "function")
+          pttchrome.noteUserAction();
+        if (onOpenFilter) onOpenFilter(kind);
+      });
+    },
+    [pttchrome, whenReady, onOpenFilter],
+  );
+
   // Jump to an article by its code (#253): the same input as `#` on a keyboard.
   const onAidJump = useCallback(() => {
     setPanel(null);
@@ -544,7 +596,6 @@ export const MobileToolbar = ({
     });
   }, [pttchrome, whenReady]);
 
-  // 設為全部已讀：與桌機右鍵選單同一個入口（mark_all_read.js）。
   // 查詢網友（#199）：開 app 自己的輸入 sheet，送出才送 Q、代號、Enter（user_query.js）。
   const onUserQuery = useCallback(() => {
     setPanel(null);
@@ -556,15 +607,16 @@ export const MobileToolbar = ({
     });
   }, [pttchrome, whenReady]);
 
+  // 已讀／未讀設定…：與列表上的 `v` 同一個選擇 sheet（mark_all_read.ask，#299）。
   const onMarkAllRead = useCallback(() => {
     setPanel(null);
     setConfirmLogout(false);
     const m = pttchrome.markAllRead;
-    if (!m || typeof m.start !== "function") return;
+    if (!m || typeof m.ask !== "function") return;
     whenReady(() => {
       if (typeof pttchrome.noteUserAction === "function")
         pttchrome.noteUserAction();
-      m.start();
+      m.ask();
     });
   }, [pttchrome, whenReady]);
 
@@ -909,6 +961,16 @@ export const MobileToolbar = ({
             {i18n("userQuery_title")}
           </button>
         ) : null}
+        {context.boardNotes ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__boardNotes"
+            onClick={onBoardNotes}
+          >
+            {i18n("boardNotes_title")}
+          </button>
+        ) : null}
         {context.aidJump ? (
           <button
             type="button"
@@ -926,7 +988,7 @@ export const MobileToolbar = ({
             data-key="__markAllRead"
             onClick={onMarkAllRead}
           >
-            {i18n("cmenu_markAllRead")}
+            {i18n("mobileToolbar_markReadChoice")}
           </button>
         ) : null}
         {context.boardInfo ? (
@@ -937,6 +999,40 @@ export const MobileToolbar = ({
             onClick={onBoardInfo}
           >
             {i18n("boardInfo_title")}
+          </button>
+        ) : null}
+        {context.whereAmI ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__whereAmI"
+            onClick={onWhereAmI}
+          >
+            {i18n("whereAmI_title")}
+          </button>
+        ) : null}
+        {context.boardJump ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__boardJump"
+            onClick={() => {
+              setPanel(null);
+              setConfirmLogout(false);
+              if (onOpenSearch) onOpenSearch("board");
+            }}
+          >
+            {i18n("mobileToolbar_boardJump")}
+          </button>
+        ) : null}
+        {context.digest ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__digest"
+            onClick={() => onFilter(context.digest)}
+          >
+            {i18n("mobileToolbar_" + context.digest)}
           </button>
         ) : null}
         {context.boardCountsSwitch ? (
@@ -1006,6 +1102,16 @@ export const MobileToolbar = ({
             onClick={onPostInfo}
           >
             {i18n("postInfo_title")}
+          </button>
+        ) : null}
+        {context.articleMovie ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__articleMovie"
+            onClick={onArticleMovie}
+          >
+            {i18n("articleMovie_title")}
           </button>
         ) : null}
         {context.switchBoard ? (

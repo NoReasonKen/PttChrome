@@ -462,7 +462,7 @@ describe("EasyReading._onKeyDownProcessUI End handling", () => {
   // message: no native mirror, and the key never reaches PTT.
   // `/` is the browser-find hint, see easy_reading_browser_find.test.js.
   it("unsupported pmore keys are refused: no functionMode, key prevented, a message", () => {
-    for (const key of ["o", "p", "\\", ";", ":", "#", "s", "1", "9", ",", ".", "<", ">"]) {
+    for (const key of ["o", "\\", ";", ":", "#", "s", "1", "9", ",", ".", "<", ">"]) {
       const { er } = makeER();
       const hints = [];
       er._view.flashListHint = (msg, ms, level) => hints.push({ msg, level });
@@ -476,6 +476,24 @@ describe("EasyReading._onKeyDownProcessUI End handling", () => {
       expect(hints).toHaveLength(1);
       expect(hints[0].msg).toContain("不支援");
       expect(hints[0].level).toBe("error");
+    }
+  });
+
+  // p and P play the article's animation on its own page (#300,
+  // article_movie.js), which sends the keys: no functionMode here, no message.
+  it("p and P play the article's animation: the key is prevented and the page asked for", () => {
+    for (const key of ["p", "P"]) {
+      const { er } = makeER();
+      const hints = [];
+      er._view.flashListHint = (msg) => hints.push(msg);
+      er._enterFunctionMode = vi.fn();
+      er._core.articleMovie = { start: vi.fn(() => true) };
+      const e = keyEvent(key);
+      er._onKeyDownProcessUI(e);
+      expect(er._core.articleMovie.start).toHaveBeenCalledTimes(1);
+      expect(er._enterFunctionMode).not.toHaveBeenCalled();
+      expect(e.preventDefault).toHaveBeenCalledTimes(1);
+      expect(hints).toEqual([]);
     }
   });
 

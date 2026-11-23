@@ -87,6 +87,15 @@ describe("決策表", () => {
     ["user-query", "done", "none", "origin", "none"],
     ["user-query", "cancel", "none", "origin", "none"],
     ["user-query", "fail", "none", "origin", "none"],
+    // The board entry screen (#292): the list under its page is the same list.
+    ["board-notes", "done", "none", "origin", "none"],
+    ["board-notes", "cancel", "none", "origin", "none"],
+    ["board-notes", "fail", "none", "origin", "none"],
+    // An article's animation (#300): the article under its page is the same
+    // article, read on from the reader's line.
+    ["article-movie", "done", "origin", "none", "none"],
+    ["article-movie", "cancel", "origin", "none", "none"],
+    ["article-movie", "fail", "origin", "none", "none"],
     // Article information (#261): the box over the list or the article closes
     // on the same list, and the article is opened again at its row.
     ["post-info", "done", "origin", "origin", "none"],
@@ -96,6 +105,10 @@ describe("決策表", () => {
     ["board-info", "done", "none", "origin", "none"],
     ["board-info", "cancel", "none", "origin", "none"],
     ["board-info", "fail", "none", "origin", "none"],
+    // Where the board is (#293): as board information.
+    ["whereami", "done", "none", "origin", "none"],
+    ["whereami", "cancel", "none", "origin", "none"],
+    ["whereami", "fail", "none", "origin", "none"],
     // 使用者拍板：找不到第一篇未讀時停在翻到的那頁。
     ["unread-jump", "done", "none", "none", "none"],
     ["unread-jump", "fail", "none", "none", "none"],

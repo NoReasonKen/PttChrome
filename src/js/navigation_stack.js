@@ -14,7 +14,7 @@
 import { easyReadingOn, readValuesWithDefault } from './pref_storage';
 import { sameBoard } from './screen_titles';
 import {
-  createPageStack, pushPage, popPage, revealTarget, withLayer, backPastRevealed, spendsLayer, boundLayers, pageShown, PAGE
+  createPageStack, pushPage, popPage, popToList, revealTarget, withLayer, backPastRevealed, spendsLayer, boundLayers, pageShown, PAGE
 } from './page_stack';
 import { StackListLayer } from './stack_list_layer';
 import { StackHomeLayer } from './stack_home_layer';
@@ -408,6 +408,18 @@ export class NavigationStack {
   disconnected() {
     this._end('disconnected');
     this.clear();
+  }
+
+  // Entering or leaving the digest drops every search (#298): the pages above
+  // this board's article list go with their live layers, the pages below it
+  // stay. A stack with no such list holds only the searches' own way back.
+  leaveSearchPages(board) {
+    if (this.handoff) return;
+    const popped = popToList(this.stack, board);
+    if (!popped) return this.clear();
+    this.dropPending();
+    this._releaseFrom(popped.kept);
+    this.stack = popped.stack;
   }
 
   clear() {
