@@ -528,6 +528,9 @@ describe("transitionListSession (full table)", () => {
       ["resume-buffer", "rebuild"]
     );
     T("functionMode", settle("article"), "suspended", ["handoff-article"]);
+    // A pmore frame of a page held over the list (the poll results, #301) is
+    // no article the reader opened.
+    T("functionMode", settle("article", { pageHeld: true }), "functionMode", []);
     T("functionMode", settle("menu"), "idle", ["cleanup"]);
     // AID 跳文的退出前導段（站內信）刻意經過選單：mbbsd/more.c:102 把 s 綁死在
     // currstat == READING，所以必須先 ← 退到主功能表。cleanup 會 queue.flush()

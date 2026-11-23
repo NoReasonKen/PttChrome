@@ -233,7 +233,7 @@ async function installNestedServer(page, session) {
     }).join('');
     const subject = title => title.replace(/^(?:(?:Re|Fw):\s*)+/i, '').toLowerCase();
     // surface: article | list | info | prompt | empty | missing | main | query |
-    //   boardInfo | notes | notesMovie | notesPause | articleMovie | articleQuestion | whereAmI
+    //   boardInfo | notes | notesMovie | notesPause | articleMovie | articleQuestion | whereAmI | pollResults | pollNone
     // `promptless`: `a` shows no prompt, as on a screen where it is no command.
     // `squeezedFooter`: the pager footer has room only for its short hints,
     //   as a very long article's (more.c#common_pmore_footer_handler).
@@ -279,7 +279,13 @@ async function installNestedServer(page, session) {
       // Ctrl-W / Ctrl-Y on the list (bbs.c#whereami, #293): the board's place in
       // the class tree. `whereAmIFails`: the board has no bid and PTT does
       // nothing; `whereAmIGarbled`: a level's row reads as nothing PTT prints.
-      whereAmIFails: false, whereAmIGarbled: false
+      whereAmIFails: false, whereAmIGarbled: false,
+      // `R` on the list (bbs.c#bbs_cmd_poll_results → poll.c#poll_results,
+      // #301): more(results, YEA), a pmore page with its footer, `pollPages`
+      // pages (space / PgDn page on, ← or q leave, and PTT draws the list with
+      // no pressanykey); `poll: 'none'` has no results file, so more() draws
+      // nothing and vmsg's banner waits over the list.
+      poll: 'results', pollPage: 1, pollPages: 2
     };
     const listed = () => {
       const all = articles.filter(article => !state.deleted.has(article.aid) && (!state.filter || !article.pinned) &&
@@ -432,6 +438,13 @@ async function installNestedServer(page, session) {
       else if (key === '\x1b[D' || key === 'q' || key === 'Q') state.surface = 'list';
       return rest.slice(key.length);
     };
+    // poll_results's page: pmore's footer prompt (a page at a time).
+    const pollRows = termRows => ({
+      1: `\x1b[1;33m  ◆ Lunch poll, page ${state.pollPage}\x1b[m`,
+      3: '\x1b[32m  (1) Bento  12 votes\x1b[m',
+      4: '\x1b[31m  (2) Noodles  7 votes\x1b[m',
+      [termRows - 1]: `\x1b[34;46m  瀏覽 第 ${state.pollPage}/${state.pollPages} 頁 (${String(Math.floor(100 * state.pollPage / state.pollPages)).padStart(3)}%)  \x1b[0;31;47m目前顯示: 第 01~23 行 \x1b[0;34;46m (h)說明 [←,q]結束 \x1b[m`
+    });
     // b_notes's screens: the entry screen's own rows over a cleared screen,
     // with pmore's movie footer or pressanykey's bar on the last row.
     const NOTES_BAR = '\x1b[1;34;44m' + '▄'.repeat(15) + ' \x1b[37m請按任意鍵繼續\x1b[34m ' + '▄'.repeat(15) + '\x1b[m';
@@ -574,6 +587,9 @@ async function installNestedServer(page, session) {
         rows = boardInfoRows(termRows);
         inverse = [0];
         cursor = [3 + state.boardInfoAt % (termRows - 3), 1];
+      } else if (state.surface === 'pollResults') {
+        rows = pollRows(termRows);
+        cursor = [termRows, 80];
       } else if (['notes', 'notesMovie', 'notesPause'].includes(state.surface)) {
         rows = notesRows(termRows);
         cursor = [termRows, 1];
@@ -617,6 +633,9 @@ async function installNestedServer(page, session) {
         } else if (state.surface === 'prompt') {
           rows[termRows - 1] = state.prompt.label;
           cursor = [termRows, state.prompt.label.length + 1];
+        } else if (state.surface === 'pollNone') {
+          rows[termRows - 1] = ' ◆ 目前沒有任何投票的結果。 [按任意鍵繼續]';
+          cursor = [termRows, 1];
         } else if (state.surface === 'readPrompt') {
           // b_mark_read_unread: move(b_lines-4) clrtobot, the note, then the
           // getdata on b_lines-1.
@@ -699,6 +718,20 @@ async function installNestedServer(page, session) {
         state.sleepPending = state.querySleepMs;
         const sequence = /^\x1b\[[0-9;]*[~A-Za-z]/.exec(rest);
         return rest.slice(sequence ? sequence[0].length : 1);
+      }
+      // vmsg's banner: any one key draws the list.
+      if (state.surface === 'pollNone') {
+        state.surface = 'list';
+        const sequence = /^\x1b\[[0-9;]*[~A-Za-z]/.exec(rest);
+        return rest.slice(sequence ? sequence[0].length : 1);
+      }
+      // pmore's page: paging keys, ←/q leave; others do nothing.
+      if (state.surface === 'pollResults') {
+        const sequence = /^\x1b\[[0-9;]*[~A-Za-z]/.exec(rest);
+        const key = sequence ? sequence[0] : rest[0];
+        if (key === '\x1b[D' || key === 'q') state.surface = 'list';
+        else if (key === ' ' || key === '\x1b[6~') state.pollPage = Math.min(state.pollPages, state.pollPage + 1);
+        return rest.slice(key.length);
       }
       // pressanykey after the entry screen, or whereami's: any one key draws
       // the list.
@@ -882,6 +915,10 @@ async function installNestedServer(page, session) {
           state.surface = 'boardInfo';
           state.boardInfoAt = 0;
         }
+      }
+      else if (head === 'R' && state.surface === 'list') {
+        state.surface = state.poll === 'none' ? 'pollNone' : 'pollResults';
+        state.pollPage = 1;
       }
       else if (head === 'b' && state.surface === 'list') {
         if (state.notes === 'movie' || state.notes === 'interactive') {

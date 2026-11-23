@@ -46,6 +46,8 @@ export function serializedOpHint(core) {
   if (core.boardInfo?.busy) return i18n('boardInfo_busy');
   // The board entry screen (board_notes.js, #292): `b`, its page, the way back.
   if (core.boardNotes?.busy) return i18n('boardNotes_busy');
+  // The poll results (poll_results.js, #301): `R`, its page, the way back.
+  if (core.pollResults?.busy) return i18n('pollResults_busy');
   // An article's animation (article_movie.js, #300): `p`, its page, the way back.
   if (core.articleMovie?.busy) return i18n('articleMovie_busy');
   // Where the board is (whereami.js, #293): PTT's screen and the way back.

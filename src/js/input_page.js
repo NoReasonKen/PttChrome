@@ -15,7 +15,7 @@ export function inputPage(core) {
 // The pages of PTT's own screen on the core, one per kind (screen_page.js).
 // Those that ask them all (term_view, the toolbar, the list session, the
 // serialized-operation gate) go through here.
-const SCREEN_PAGES = ['boardNotes', 'articleMovie'];
+const SCREEN_PAGES = ['boardNotes', 'pollResults', 'articleMovie'];
 
 export function screenPages(core) {
   return core ? SCREEN_PAGES.map((name) => core[name]).filter(Boolean) : [];

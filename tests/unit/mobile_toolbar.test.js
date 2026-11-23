@@ -162,6 +162,8 @@ describe("toolbarContextFromFacts", () => {
   // (BoardNotes.available), not the screen; the empty context has none.
   test("board entry screen (More): off in the empty context, and part of the comparison", () => {
     expect(EMPTY_TOOLBAR_CONTEXT.boardNotes).toBe(false);
+    expect(EMPTY_TOOLBAR_CONTEXT.pollResults).toBe(false);
+    expect(sameToolbarContext({ search: [], pollResults: true }, { search: [], pollResults: false })).toBe(false);
     expect(toolbarContextFromFacts(frame(LIST), 2).boardNotes).toBeFalsy();
     expect(sameToolbarContext({ search: [], boardNotes: true }, { search: [], boardNotes: false })).toBe(false);
   });

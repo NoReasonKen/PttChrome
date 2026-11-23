@@ -42,6 +42,10 @@
 //   subtitle(core)    the App Bar's subtitle while the page shows
 //   decide(facts)     what PTT's screen waits for: { action: 'skip', key,
 //                     shape: 'movie'|'pause'|'pager'|'input' } or not 'skip'
+//   entryMessage(facts)  optional: { key, hint } when PTT answers the asking
+//                     key with a banner that is no page (a message waiting
+//                     for a key): the key is sent and what is held comes back
+//                     with the hint
 //   shownHint(d)      optional: the i18n key of a hint when the page first
 //                     shows the screen judged `d`
 //
@@ -140,6 +144,7 @@ export class ScreenPage {
     //                                  ↘ ended (PTT shows what is held) → idle
     this.phase = 'idle';
     this._subtitle = null;
+    this._doneHint = null;
     this._underAppBar = null;
     this._bookmark = null;
     this._offBack = null;
@@ -249,6 +254,9 @@ export class ScreenPage {
       fullRepaint: false,
       ...STEP_BUDGET,
       expect: () => {
+        // A banner is drawn over the held screen's rows: it comes first.
+        const message = kind.entryMessage ? kind.entryMessage(screenFacts(core.buf)) : null;
+        if (message) return { message };
         if (kind.under.entryBack && this._back()) return { back: true };
         if (this._lost()) return { lost: true };
         return this._decision().action === 'skip' ? { page: true } : false;
@@ -257,12 +265,22 @@ export class ScreenPage {
         if (this.phase !== 'asking') return;
         if (answer.back) queueMicrotask(() => this._backHome('fail', this._failed(), HINT_ERROR));
         else if (answer.lost) this._lostHome();
+        else if (answer.message) this._answerMessage(answer.message);
         else this._firstShow();
       },
       onFail: () => this._askFailed()
     });
     if (!sent) this._askFailed();
     return true;
+  }
+
+  // PTT answered with a message that waits for a key (no page): the key goes
+  // out, and what is held comes back with the message as a hint.
+  _answerMessage(message) {
+    this.phase = 'leaving';
+    this._doneHint = message.hint || null;
+    this.core._refreshScreenContext?.();
+    this._leaveStep({ key: message.key, shape: 'pause' }, 1);
   }
 
   // The first frame of the page, with the kind's hint for it (an article
@@ -483,7 +501,7 @@ export class ScreenPage {
       },
       onDone: (answer) => {
         if (this.phase !== 'leaving') return;
-        if (answer.back) queueMicrotask(() => this._backHome('done'));
+        if (answer.back) queueMicrotask(() => this._backHome('done', this._doneHint));
         else if (answer.lost) this._lostHome();
         else if (round >= MAX_ROUNDS) this._leaveFailed();
         else this._leaveStep(answer.again, round + 1);
@@ -536,6 +554,7 @@ export class ScreenPage {
     this.phase = 'idle';
     this._resumePending = false;
     this._subtitle = null;
+    this._doneHint = null;
     if (this._offBack) this._offBack();
     this._offBack = null;
     this.core.setModalOpen?.(this.kind.source, false);
