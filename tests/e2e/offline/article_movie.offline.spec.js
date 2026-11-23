@@ -22,6 +22,9 @@ const { rightClickElement } = require('../helpers/real_input');
 const { waitRectStable } = require('../helpers/layout');
 
 const HOME = '\x1b[1~';
+// A movie that plays until a key stops it: a test that stops a playing movie
+// must not depend on how long the runner takes to get there.
+const PLAYING = Infinity;
 const text = (page, key) => page.evaluate((k) => window.__i18n(k), key);
 const moviePage = (page) => page.locator('[data-article-movie-page]');
 const markSent = (page) => page.evaluate(() => { window.__sentMark = window.__gestureSent.length; });
@@ -100,7 +103,7 @@ async function backInArticle(page, position) {
 test.describe('an article\'s animation on the desktop', () => {
   test('p plays the movie frame by frame over the article; Esc stops it with Home; the article is back at the reader\'s line', async ({ page }) => {
     const position = await openAlpha(page);
-    await setMovie(page, { articleMovie: 'movie', movieFrames: 40, movieFrameMs: 250 });
+    await setMovie(page, { articleMovie: 'movie', movieFrames: PLAYING, movieFrameMs: 250 });
     await markSent(page);
     await page.keyboard.press('p');
     await pageShown(page);
@@ -147,7 +150,7 @@ test.describe('an article\'s animation on the desktop', () => {
 
   test('an interactive movie takes the reader\'s keys as typed; q leaves with q', async ({ page }) => {
     const position = await openAlpha(page);
-    await setMovie(page, { articleMovie: 'interactive', movieFrames: 60, movieFrameMs: 400 });
+    await setMovie(page, { articleMovie: 'interactive', movieFrames: PLAYING, movieFrameMs: 400 });
     await markSent(page);
     await page.keyboard.press('p');
     await pageShown(page);
@@ -177,7 +180,7 @@ test.describe('an article\'s animation on the desktop', () => {
 
   test('播放動畫 in the article\'s context menu plays it', async ({ page }) => {
     const position = await openAlpha(page, { alphaLines: 0, middle: false });
-    await setMovie(page, { articleMovie: 'movie', movieFrames: 40, movieFrameMs: 250 });
+    await setMovie(page, { articleMovie: 'movie', movieFrames: PLAYING, movieFrameMs: 250 });
     await rightClickElement(page, '#mainContainer [type="bbsrow"][srow="5"]');
     const item = menuItem(page, await text(page, 'articleMovie_title'));
     await expect(item).toBeVisible();
