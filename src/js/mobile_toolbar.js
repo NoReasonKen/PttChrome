@@ -38,11 +38,16 @@
 //   boardNotes: easy reading presents a board's article list and is idle
 //            (board_notes.BoardNotes.available, the predicate of `b` and the
 //            context menu): 進板畫面 in More (#292).
+//   articleMovie: easy reading presents an article and nothing runs over it
+//            (article_movie.ARTICLE_MOVIE.available, the predicate of `p` and the
+//            context menu): 播放動畫 in More (#300). Offered on every article:
+//            whether one is a movie is pmore's to tell (a hint when it is not).
 //   whereAmI：列表好讀呈現看板的文章列表（或文摘）且閒置（whereami.WhereAmI.available，與右鍵選單、
 //            Ctrl-W 同一個判準），「更多」裡的「我在哪」（#293）。
 //   queryPage：使用者查詢頁（user_query）顯示中：按鍵與「更多」可用（頁面接手按鍵），
 //            其餘動作都針對頁面底下被拿著的列表，一律關掉；「更多」裡的登出（PTT 被查詢佔線，送不出去）反灰。
-//            The board entry screen page (board_notes, #292) shows the same way.
+//            A page of PTT's own screen (screen_page.js: the board entry
+//            screen, #292; an article's animation, #300) shows the same way.
 //   help   ：底列寫著 `(h)說明`／`(h)按鍵說明`（看板列表／文章列表／主功能表 footer、
 //            pager 狀態列；vs_footer 與 pmore.c 的提示都在 b_lines），「更多」裡的「操作說明」送 h
 //            ⇒ 新版說明選單（好讀開著時是 help_menu.js 的 bottom sheet）。手機上這些畫面的底列
@@ -66,11 +71,12 @@ import { OWNER_ARTICLE_LIST } from './list_render_owner';
 import { appBarFromFacts, sameAppBar, EMPTY_APP_BAR } from './mobile_app_bar';
 import { MOBILE_KEYPAD_PUSH_KEY } from './mobile_layout';
 import { userListToggleTarget } from './user_list';
+import { screenPages } from './input_page';
 
 export const EMPTY_TOOLBAR_CONTEXT = Object.freeze({
   push: false, reply: false, mail: false, share: false, threadNav: false, post: false,
   unreadJump: false, aidJump: false, markAllRead: false, boardCountsSwitch: false, boardCounts: false, boardSort: false, boardSortFavorites: false, help: false, contentTools: false, refresh: false, end: false,
-  userListToggle: null, userQuery: false, postInfo: false, boardInfo: false, boardNotes: false, whereAmI: false, queryPage: false, search: [], digest: null, boardJump: false, appBar: EMPTY_APP_BAR, locked: false
+  userListToggle: null, userQuery: false, postInfo: false, boardInfo: false, boardNotes: false, whereAmI: false, articleMovie: false, queryPage: false, search: [], digest: null, boardJump: false, appBar: EMPTY_APP_BAR, locked: false
 });
 
 // 送鍵表：key 是 term_view.sendKeyAsUser 的 keyName（單字元或 KeyMap 裡的具名鍵），
@@ -181,6 +187,18 @@ export function mobileToolbarContext(core) {
   // A page revealed during a handoff, until its real page takes over.
   const revealed = core && core.navigationStack && core.navigationStack.toolbarContext();
   if (revealed) return revealed;
+  // A page over the list or the article (a user query, #199; a page of PTT's
+  // own screen, screen_page.js): the App Bar of what is under it until the
+  // page shows, then the page's. Before the article's cover below: the
+  // article's animation runs as an operation over the article (article_movie.js).
+  const over = core && [core.userQuery, ...screenPages(core)].find((p) => p && p.appBar());
+  // While the page shows, Keys and More work over it (its keys go to the page,
+  // its takeKey), and every entry that acts on what is held under it stays
+  // off (the empty context). Until then the whole bar is locked.
+  if (over) {
+    const shown = over.pageShown;
+    return { ...EMPTY_TOOLBAR_CONTEXT, appBar: over.appBar(), locked: !shown, queryPage: shown };
+  }
   // A far thread jump keeps its source article on screen until it lands, so
   // does the reopen that reads a headerless article's list row, and so does a
   // shortcut search until its results show.
@@ -190,16 +208,6 @@ export function mobileToolbarContext(core) {
     (core.headerlessReopen && core.headerlessReopen.toolbarContext()) ||
     (core.articleShortcutSearch && core.articleShortcutSearch.toolbarContext()));
   if (covered) return covered;
-  // A page over the list (a user query, #199; the board entry screen, #292):
-  // the list's App Bar until the page shows, then the page's.
-  const over = core && [core.userQuery, core.boardNotes].find((p) => p && p.appBar());
-  // While the page shows, Keys and More work over it (its keys go to the page,
-  // its takeKey), and every entry that acts on the list held under it stays
-  // off (the empty context). Until then the whole bar is locked.
-  if (over) {
-    const shown = over.pageShown;
-    return { ...EMPTY_TOOLBAR_CONTEXT, appBar: over.appBar(), locked: !shown, queryPage: shown };
-  }
   const facts = searchGateFacts(core);
   const view = (core && core.view) || {};
   const prev = core && core._screenContext && core._screenContext.appBar;
@@ -221,16 +229,17 @@ export function mobileToolbarContext(core) {
   const withInfo = core && core.boardInfo && core.boardInfo.available() ? { ...withPostInfo, boardInfo: true } : withPostInfo;
   const withWhere = core && core.whereAmI && core.whereAmI.available() ? { ...withInfo, whereAmI: true } : withInfo;
   const withNotes = core && core.boardNotes && core.boardNotes.available() ? { ...withWhere, boardNotes: true } : withWhere;
+  const withMovie = core && core.articleMovie && core.articleMovie.available() ? { ...withNotes, articleMovie: true } : withNotes;
   // The jump by code: the article list's (#253), or the article's (#281).
   const er = core && core.easyReading;
   const aidJump = (ctx.post && ls && ls.aidJumpBoard && ls.aidJumpBoard()) ||
     (ctx.switchBoard && er && er.aidJumpBoard && er.aidJumpBoard());
-  return aidJump ? { ...withNotes, aidJump: true } : withNotes;
+  return aidJump ? { ...withMovie, aidJump: true } : withMovie;
 }
 
 const FLAGS = [
   'push', 'reply', 'mail', 'share', 'switchBoard', 'threadNav', 'post', 'unreadJump', 'aidJump', 'markAllRead', 'boardCountsSwitch', 'boardCounts', 'boardSort', 'boardSortFavorites', 'help', 'contentTools', 'refresh', 'end',
-  'boardJump', 'userQuery', 'postInfo', 'boardInfo', 'boardNotes', 'whereAmI', 'queryPage', 'locked'
+  'boardJump', 'userQuery', 'postInfo', 'boardInfo', 'boardNotes', 'whereAmI', 'articleMovie', 'queryPage', 'locked'
 ];
 
 export function sameToolbarContext(a, b) {

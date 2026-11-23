@@ -1,8 +1,10 @@
-// A page of its own over the easy-reading list: the user query page (#199,
-// user_query.js) and the board entry screen page (#292, board_notes.js). The
-// list stays on screen under it, held, and shows at once when the page leaves.
+// A page of its own over easy reading: the user query page (#199,
+// user_query.js) over the user list, and the page of PTT's own screen
+// (screen_page.js) over the article list (the board entry screen, #292) or
+// the article (its animation, #300). What is under it stays on screen, held,
+// and shows at once when the page leaves.
 //
-// This is the page's shell, shared by both: it slides in from the right over
+// This is the page's shell, shared by all: it slides in from the right over
 // the list's own area, follows the window's geometry, takes the keyboard's
 // keys first (a window listener in the capture phase, the keypad's sticky
 // Ctrl applied first), keeps taps on it away from the terminal, and a swipe
@@ -19,7 +21,8 @@ import { keyEventPredatesModalClose } from './modal_key_gate';
 const MOUSE_INPUT = ['mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu'];
 
 export class OverListPage {
-  // view: the terminal view (its mainDisplay gives the list's area).
+  // view: the terminal view (its mainDisplay gives the list's or the
+  //   article's area).
   // marker: the page carries data-<marker>-page while shown and
   //   data-<marker>-leaving while it slides away.
   // className, label: the page's class names and its accessible name.

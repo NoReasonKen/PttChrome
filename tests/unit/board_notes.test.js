@@ -10,7 +10,8 @@ import { TermBuf } from "../../src/js/term_buf";
 import { AnsiParser } from "../../src/js/ansi_parser";
 import { u2b } from "../../src/js/string_util";
 import { loadBig5Tables } from "./helpers/load_big5_tables";
-import { BoardNotes, boardNotesKeyBytes, showBoardNotes } from "../../src/js/board_notes";
+import { BoardNotes, showBoardNotes } from "../../src/js/board_notes";
+import { screenPageKeyBytes } from "../../src/js/screen_page";
 import { ListSession } from "../../src/js/list_session";
 import { inputPage } from "../../src/js/input_page";
 import { renderScreen } from "../../src/js/term_ui";
@@ -87,7 +88,7 @@ describe("the board entry screen (#292)", () => {
       showsHeldList() {
         return this.held;
       },
-      beginBoardNotes: vi.fn(),
+      beginScreenPage: vi.fn(),
       continueUserQuery: vi.fn(() => true),
       resumeAfterHelp: vi.fn(),
     };
@@ -131,10 +132,10 @@ describe("the board entry screen (#292)", () => {
   function shown(screen = PLAIN, opts) {
     const t = liveCore(opts);
     expect(t.notes.start()).toBe(true);
-    const step = t.ls.beginBoardNotes.mock.calls[0][0][0];
+    const step = t.ls.beginScreenPage.mock.calls[0][0][0];
     t.feed(screen);
     const answer = step.expect();
-    expect(answer).toEqual({ notes: true });
+    expect(answer).toEqual({ page: true });
     step.onDone(answer);
     expect(t.notes.phase).toBe("shown");
     return { ...t, step };
@@ -150,8 +151,8 @@ describe("the board entry screen (#292)", () => {
     const { core, ls, notes, modals, dismissers, hints } = liveCore();
     expect(notes.available()).toBe(true);
     expect(showBoardNotes(core)).toBe(true);
-    expect(ls.beginBoardNotes).toHaveBeenCalledTimes(1);
-    const steps = ls.beginBoardNotes.mock.calls[0][0];
+    expect(ls.beginScreenPage).toHaveBeenCalledTimes(1);
+    const steps = ls.beginScreenPage.mock.calls[0][0];
     expect(steps).toHaveLength(1);
     expect(steps[0]).toMatchObject({ keys: "b", kind: "board-notes", fullRepaint: false });
     expect(notes.phase).toBe("asking");
@@ -166,7 +167,7 @@ describe("the board entry screen (#292)", () => {
     expect(notes.appBar()).toEqual({ kind: "list", title: "C_Chat" });
     // A second `b` while it runs: the busy hint, nothing sent.
     expect(showBoardNotes(core)).toBe(false);
-    expect(ls.beginBoardNotes).toHaveBeenCalledTimes(1);
+    expect(ls.beginScreenPage).toHaveBeenCalledTimes(1);
     expect(hints).toEqual([[i18n("boardNotes_busy"), undefined]]);
     // The system Back before the page shows: the busy hint, never a way out.
     dismissers[0]();
@@ -187,7 +188,7 @@ describe("the board entry screen (#292)", () => {
     expect(busy.notes.start()).toBe(false);
     expect(busy.hints).toEqual([["搜尋中，請稍候…", undefined]]);
     for (const t of [off, native, busy]) {
-      expect(t.ls.beginBoardNotes).not.toHaveBeenCalled();
+      expect(t.ls.beginScreenPage).not.toHaveBeenCalled();
       expect(t.notes.phase).toBe("idle");
       expect(t.modals.size).toBe(0);
     }
@@ -197,15 +198,15 @@ describe("the board entry screen (#292)", () => {
   test("what answers `b`: the entry screen, the list, or a screen not yet known", () => {
     const { ls, notes, feed } = liveCore();
     notes.start();
-    const step = ls.beginBoardNotes.mock.calls[0][0][0];
+    const step = ls.beginScreenPage.mock.calls[0][0][0];
     feed(VMSG);
     expect(step.expect()).toBe(false);
     for (const screen of [PLAIN, NONE, movie(1), INTERACTIVE]) {
       feed(screen);
-      expect(step.expect()).toEqual({ notes: true });
+      expect(step.expect()).toEqual({ page: true });
     }
     ls.held = true;
-    expect(step.expect()).toEqual({ list: true });
+    expect(step.expect()).toEqual({ back: true });
   });
 
   test("the page shows PTT's whole screen, its colours and footer, copied from the buffer", () => {
@@ -213,7 +214,7 @@ describe("the board entry screen (#292)", () => {
     const page = pageEl();
     expect(page).not.toBeNull();
     expect(page.getAttribute("role")).toBe("dialog");
-    const root = page.querySelector(".boardNotesScreen");
+    const root = page.querySelector(".screenPageScreen");
     expect(root.getAttribute("data-stack-layer")).toBe("boardNotes");
     expect(root.style.width).toBe((20 / 2) * COLS + "px");
     expect(root.style.fontSize).toBe("18px");
@@ -397,7 +398,7 @@ describe("the board entry screen (#292)", () => {
     notes._tap();
     expect(notes.phase).toBe("shown");
     modals.delete("more");
-    const text = document.querySelector("[data-board-notes-page] .boardNotesScreen");
+    const text = document.querySelector("[data-board-notes-page] .screenPageScreen");
     text.textContent = "selected text";
     const range = document.createRange();
     range.selectNodeContents(text);
@@ -446,7 +447,7 @@ describe("the board entry screen (#292)", () => {
     const a = liveCore();
     a.notes.start();
     a.ls.held = true;
-    a.ls.beginBoardNotes.mock.calls[0][0][0].onFail();
+    a.ls.beginScreenPage.mock.calls[0][0][0].onFail();
     expect(a.notes.phase).toBe("idle");
     expect(a.ls.resumeAfterHelp).toHaveBeenCalledWith(true);
     expect(a.core.readingRecord.end).toHaveBeenCalledWith({ feature: "board-notes" }, "fail");
@@ -454,7 +455,7 @@ describe("the board entry screen (#292)", () => {
     const b = liveCore();
     b.notes.start();
     b.feed(VMSG);
-    b.ls.beginBoardNotes.mock.calls[0][0][0].onFail();
+    b.ls.beginScreenPage.mock.calls[0][0][0].onFail();
     expect(b.notes.phase).toBe("shown");
     expect(pageEl()).not.toBeNull();
     expect(b.hints).toEqual([[i18n("boardNotes_failed"), "error"]]);
@@ -477,7 +478,7 @@ describe("the board entry screen (#292)", () => {
     // Text that is no single key.
     expect(notes.refuseText("abc", "paste")).toBe(true);
     expect(hints[1]).toEqual([unsupportedPasteHint("進板畫面"), "error"]);
-    expect(boardNotesKeyBytes(key("Home"))).toBe("\x1b[1~");
+    expect(screenPageKeyBytes(key("Home"))).toBe("\x1b[1~");
   });
 
   test("the page's window listener takes a typed key before the terminal", () => {

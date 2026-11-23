@@ -8,6 +8,7 @@ import { HINT_ERROR } from './status_hint';
 import { UNSUPPORTED_KEY_HINT, unsupportedPasteHint, unsupportedTextHint } from './unsupported_hint';
 import { i18n } from './i18n';
 import { showArticlePostInfo } from './post_info';
+import { screenPages } from './input_page';
 import { findShortcutLabel } from './platform';
 import { offsetTopWithin } from './scroll_anchor';
 import { renderChunksAround } from '../render/screen_chunk';
@@ -584,7 +585,10 @@ EasyReading.prototype._onPageStateSettled = function() {
   const prevParkedList = this._lastSettleParkedList;
   const enteringArticle = settled === 3 && settledFromListOrMenu(prevSettled, prevParkedList);
   const leavingArticle = prevSettled === 3 && (settled === 1 || settled === 2);
-  if (enteringArticle || leavingArticle)
+  // An article's animation (#300, article_movie.js) holds the article: its
+  // frames draw anything, a list too, and the article stays the same one.
+  const movie = this._core.articleMovie;
+  if ((enteringArticle || leavingArticle) && !(movie && movie.holding))
     this._resetPagingState();
 
   const values = readValuesWithDefault();
@@ -607,13 +611,12 @@ EasyReading.prototype._onPageStateSettled = function() {
 //
 // 跳過進板畫面（board_note_skip）同理：arm／代按期間出現的 pmore 是進板公告，
 // 好讀若在 2→3 edge 上把它當文章開，會送 PageDown 跟我們搶那一鍵。
-// The board entry screen page (#292, board_notes.js) likewise: its long
-// screens are pmore pages of the entry screen, shown on the page.
+// A page of PTT's own screen (screen_page.js: the board entry screen, #292;
+// an article's animation, #300) likewise: its pmore pages are shown on the page.
 EasyReading.prototype._navActive = function() {
   const nav = this._core.aidNavigation;
   const skip = this._core.boardNoteSkip;
-  const notes = this._core.boardNotes;
-  return !!((nav && nav.active) || (skip && skip.active) || (notes && notes.active));
+  return !!((nav && nav.active) || (skip && skip.active) || screenPages(this._core).some((p) => p.active));
 };
 
 EasyReading.prototype._onChanged = function(e) {
@@ -1429,6 +1432,10 @@ EasyReading.prototype._onScreenSettled = function() {
   // leave functionMode — never a page-down. Handle it first (the pageState !== 3 guard
   // below would otherwise skip the editor/menu screens we need to evaluate).
   if (this._functionMode) {
+    // An article's animation (#300, article_movie.js) mirrors natively while
+    // its page holds the article: the page ends its operation over the article
+    // when pmore shows it again (article_hold.done → settleFunctionMode).
+    if (this._core.articleMovie?.holding) return;
     this._evalFunctionModeExit();
     return;
   }
@@ -1579,7 +1586,8 @@ const UNSUPPORTED_PASTE_HINT = unsupportedPasteHint('文章');
 const UNSUPPORTED_TEXT_HINT = unsupportedTextHint('文章');
 
 // What a key the reading keys did not take means: 'native' (keeps the native
-// route), 'post-info' (the article information, #261), 'refuse', or null (not a PTT key: the browser or the app owns it).
+// route), 'post-info' (the article information, #261), 'movie' (the article's
+// animation, #300), 'refuse', or null (not a PTT key: the browser or the app owns it).
 // opts.mail: a mail is open (#196). Easy reading presents reading a mail, not
 // answering it (sending is #230), so only help keeps the native route.
 export function articleLeftoverKey(e, opts) {
@@ -1593,6 +1601,9 @@ export function articleLeftoverKey(e, opts) {
   if (!e.ctrlKey && e.key.length === 1 && nativeKeys.indexOf(e.key) >= 0) return 'native';
   // Q shows the article's information (#261, post_info.js); a mail has none.
   if (!opts?.mail && !e.ctrlKey && e.key === 'Q') return 'post-info';
+  // p and P play the article as pmore's animation (#300, article_movie.js); a
+  // mail is read by pmore too.
+  if (!e.ctrlKey && (e.key === 'p' || e.key === 'P')) return 'movie';
   return 'refuse';
 }
 
@@ -2572,7 +2583,7 @@ export function articleWouldRefuse(k, prefs, opts) {
   // A swallowed key does nothing in the article: a row for it would do nothing.
   if (reading) return reading === 'swallow';
   const what = articleLeftoverKey(e, opts);
-  return what !== 'native' && what !== 'post-info';
+  return what !== 'native' && what !== 'post-info' && what !== 'movie';
 }
 
 EasyReading.prototype.wouldRefuse = function(k) {
@@ -2723,6 +2734,10 @@ EasyReading.prototype._leftoverKey = function(e) {
   const what = articleLeftoverKey(e, { mail: this._readingMail() });
   if (what === 'post-info') {
     showArticlePostInfo(this._core);
+    return true;
+  }
+  if (what === 'movie') {
+    this._core.articleMovie?.start();
     return true;
   }
   if (what === 'native') {

@@ -229,6 +229,26 @@ describe("依畫面的動作（文章／信件／文章列表）", () => {
     expect(core.boardNotes.start).toHaveBeenCalledTimes(1);
   });
 
+  // #300: the article's animation, in More over every article it can be
+  // asked for (whether one is a movie is pmore's to tell).
+  test("article animation (More): goes through articleMovie.start; absent when it cannot be asked for", async () => {
+    const core = makeCore({ context: { ...ARTICLE, articleMovie: true } });
+    core.articleMovie = { start: vi.fn(() => true) };
+    renderBar(core);
+    expect(byKey("__articleMovie")).toBeNull();
+    await openMore();
+    expect(byKey("__articleMovie").textContent).toBe(i18n("articleMovie_title"));
+    fireEvent.click(byKey("__articleMovie"));
+    await sheetClosed();
+    expect(core.articleMovie.start).toHaveBeenCalledTimes(1);
+  });
+
+  test("More: no article animation when articleMovie is false", async () => {
+    renderBar(makeCore({ context: { ...ARTICLE, articleMovie: false } }));
+    await openMore();
+    expect(byKey("__articleMovie")).toBeNull();
+  });
+
   test("More: no board entry screen when boardNotes is false", async () => {
     renderBar(makeCore({ context: { push: false, search: [], boardNotes: false } }));
     await openMore();

@@ -135,6 +135,27 @@
   "boardNotes_wait": {
     "message": "進板畫面還沒畫完，請稍候再離開"
   },
+  "articleMovie_title": {
+    "message": "播放動畫"
+  },
+  "articleMovie_busy": {
+    "message": "動畫處理中，請稍候…"
+  },
+  "articleMovie_unavailable": {
+    "message": "只能在好讀模式的文章裡播放動畫"
+  },
+  "articleMovie_failed": {
+    "message": "動畫沒有回應，請再試一次"
+  },
+  "articleMovie_wait": {
+    "message": "動畫還沒畫完，請稍候再離開"
+  },
+  "articleMovie_notMovie": {
+    "message": "這篇文章不是動畫：PTT 在問要用多快的速度把它當傳統動畫逐頁播放。離開即回到文章。"
+  },
+  "articleMovie_lost": {
+    "message": "播放動畫時 PTT 離開了文章：下拉重新整理。"
+  },
   "postInfo_code": {
     "message": "文章代碼"
   },

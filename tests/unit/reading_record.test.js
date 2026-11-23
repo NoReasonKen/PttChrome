@@ -91,6 +91,11 @@ describe("決策表", () => {
     ["board-notes", "done", "none", "origin", "none"],
     ["board-notes", "cancel", "none", "origin", "none"],
     ["board-notes", "fail", "none", "origin", "none"],
+    // An article's animation (#300): the article under its page is the same
+    // article, read on from the reader's line.
+    ["article-movie", "done", "origin", "none", "none"],
+    ["article-movie", "cancel", "origin", "none", "none"],
+    ["article-movie", "fail", "origin", "none", "none"],
     // Article information (#261): the box over the list or the article closes
     // on the same list, and the article is opened again at its row.
     ["post-info", "done", "origin", "origin", "none"],

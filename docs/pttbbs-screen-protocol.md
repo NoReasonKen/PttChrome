@@ -506,6 +506,40 @@ from the code; without it the movie surely keeps playing), and every key of the 
 for PTT's answer to the one before (a `q` typed ahead after a movie ended would land on
 pressanykey, and the next key on the list).
 
+### An article's animation (`p` in the pager, #300)
+
+`p` and `P` in pmore's pager (`pmore_cmds[]`: 「播放動畫」, `pmore_cmd_movie`; a mail is read by
+the same pager) play the article as a movie (CONFIRMED by reading `pmore.c`, no live recording):
+- **a movie** (pmore found its movie header when it opened the article, `MFDISP_MOVIE_YES`):
+  `RESET_MOVIE`, then it plays from where the pager shows the article (`mf_movieNextFrame` from
+  the current position): the client sends Home first, so it plays from the start. Every frame
+  is drawn over the whole screen with the movie footer on the last row: 「 >>> 動畫播放中... 可按
+  q, Ctrl-C 或其它任意鍵停止」, an interactive movie 「 >>> 互動式動畫播放中... 可按 q 或 Ctrl-C
+  停止」 (at a choice, 「 >> 請輸入選項:  (互動式動畫播放中，可按 q 或 Ctrl-C 中斷)」 on the row above
+  and the choices on the last row), a paused one 「暫停播放動畫，請按任意鍵繼續或 q 中斷。」 (a key
+  resumes it; `q` and Ctrl-C stop it). Any key stops a plain movie and is used up by
+  `mf_movieWaitKey`; an interactive movie takes keys as its choices, but `q` and Ctrl-C always stop
+  it (`mf_movieIsSystemBreak`; at a choice with the vmsg 「已強制中斷互動式系統」, waiting for one
+  key). A movie that ends or is stopped (`STOP_MOVIE`) goes back to the pager, which shows the
+  article again where the movie's frames were (`read_post` runs the pager as `more_ex(…, YEA)`, `PMORE_USER_EXIT`,
+  so pmore stays on the article; the `READ_NEXT` of the board entry screen is `PMORE_AUTO_EXIT`'s).
+- **no movie** (`MFDISP_MOVIE_NO`): pmore asks on `b_lines-1`, over the article and its footer,
+  「這可能是傳統動畫檔, 若要直接播放請輸入速度(秒): 」 with 1 prefilled (`getdata_buf`, the buffer is
+  kept between asks). Enter plays the article page by page as a classic animation
+  (`MFDISP_MOVIE_PLAYING_OLD`, which ends back in the pager). Ctrl-C clears the answer, nothing
+  plays and the pager draws the article again. On a terminal that is not 24 rows a second
+  question follows, 「傳統動畫是以 24 行為單位設計的, 要模擬 24 行嗎? (否則會用現在的行數)[Yn] 」;
+  Ctrl-C there still plays (only `n` changes the answer).
+
+Client rules that follow (`src/js/article_movie.js`): `Home p` goes out with no `\f` behind it
+(as `b`, §above); the way back judges every answer by the screen (`articleMovieDecision`): Home
+stops a playing plain movie (any key does; Home on an article whose movie already ended only
+moves the pager to its top), `q` stops an interactive or paused one (Home could be a choice),
+Ctrl-C clears either question, and one key answers 「已強制中斷互動式系統」; it ends when the pager's
+footer is back with the cursor on it. Ctrl-C is no safer than `q` on the pager (§6.1): a key that
+reaches the pager after the movie ended is taken as a pager key. A `q` there leaves the article;
+the client then holds the article with a message (`articleMovie_lost`) instead of guessing.
+
 `[i]看板資訊`（`read_comms[]` 的 `i`／`I` → `bbs_cmd_config` → `b_config`）在 main 是可翻頁的 PSB 列表，
 不再 pressanykey：必須 `←`／`q` 才回列表，畫面與交易見 §11.10「`[i]` 看板資訊」。舊版（03cdf5eb `board.c:326`）
 的固定區塊＋`pressanykey()` 已不在線上（2026-11 實機確認是可翻頁列表），本專案不支援。
