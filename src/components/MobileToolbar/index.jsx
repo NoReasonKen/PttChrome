@@ -106,6 +106,7 @@ export const MobileToolbar = ({
   pttchrome,
   hidden,
   onOpenSearch,
+  onOpenFilter,
   onOpenSettings,
 }) => {
   const [mobile, setMobile] = useState(() => !!pttchrome.mobile);
@@ -545,6 +546,20 @@ export const MobileToolbar = ({
     });
   }, [pttchrome, whenReady]);
 
+  // The digest (#298): the same entrance as Tab.
+  const onFilter = useCallback(
+    (kind) => {
+      setPanel(null);
+      setConfirmLogout(false);
+      whenReady(() => {
+        if (typeof pttchrome.noteUserAction === "function")
+          pttchrome.noteUserAction();
+        if (onOpenFilter) onOpenFilter(kind);
+      });
+    },
+    [pttchrome, whenReady, onOpenFilter],
+  );
+
   // Jump to an article by its code (#253): the same input as `#` on a keyboard.
   const onAidJump = useCallback(() => {
     setPanel(null);
@@ -959,6 +974,30 @@ export const MobileToolbar = ({
             onClick={onBoardInfo}
           >
             {i18n("boardInfo_title")}
+          </button>
+        ) : null}
+        {context.boardJump ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__boardJump"
+            onClick={() => {
+              setPanel(null);
+              setConfirmLogout(false);
+              if (onOpenSearch) onOpenSearch("board");
+            }}
+          >
+            {i18n("mobileToolbar_boardJump")}
+          </button>
+        ) : null}
+        {context.digest ? (
+          <button
+            type="button"
+            className="nomouse_command mobileSheetItem pttRipple"
+            data-key="__digest"
+            onClick={() => onFilter(context.digest)}
+          >
+            {i18n("mobileToolbar_" + context.digest)}
           </button>
         ) : null}
         {context.boardCountsSwitch ? (

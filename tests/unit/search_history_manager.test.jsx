@@ -196,3 +196,14 @@ test("沒有紀錄的種類：顯示「沒有搜尋紀錄」，全選與所有�
     expect(action(a).disabled).toBe(true),
   );
 });
+
+test("price is a kind of the manager: its own entries, on the second row", () => {
+  seed("price", ["100", "250"]);
+  seed("title", ["t1"]);
+  renderManager();
+  expect(document.querySelectorAll(".searchKindItem")).toHaveLength(5);
+  expect(document.querySelectorAll("[data-search-kinds=wrap] > *")).toHaveLength(2);
+  fireEvent.click(screen.getByText(i18n("searchModal_kindPrice")));
+  expect(entries("recent")).toEqual(["250", "100"]);
+  expect(entry("t1")).toBeNull();
+});

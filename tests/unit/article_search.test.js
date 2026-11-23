@@ -119,13 +119,15 @@ describe("searchKindOfKey", () => {
 });
 
 describe("availableSearchKinds", () => {
-  test("文章列表：四種全開", () => {
-    expect(availableSearchKinds(articleList())).toEqual(["title", "author", "push", "board"]);
+  test("文章列表：四種全開，再加價格／標記／同標題／主題首篇（#298）", () => {
+    expect(availableSearchKinds(articleList())).toEqual([
+      "title", "author", "push", "price", "mark", "sameTitle", "newPost",
+    ]);
   });
   test("列表好讀接管中（listOwner）同樣算文章列表", () => {
     const f = articleList({ listOwner: "article-list" });
     f.rowTexts[23] = "";
-    expect(availableSearchKinds(f)).toHaveLength(4);
+    expect(availableSearchKinds(f)).toHaveLength(7);
   });
   test("看板列表與主功能表：只有看板", () => {
     expect(availableSearchKinds(boardList())).toEqual(["board"]);

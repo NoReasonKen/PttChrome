@@ -49,12 +49,14 @@
 //   contentTools：「更多」裡的全選／上傳圖片／圖片上傳紀錄。主功能表（含子選單）不給：那裡沒有
 //            內容可選、上傳也只能退回複製到剪貼簿，卻會把 sheet 撐到蓋住整個選單（遮罩點不到）。
 //   search ：可開的搜尋種類，與鍵盤攔截同一個判準（article_search.availableSearchKinds）。
+//   digest ：文摘（Tab，#298）是模式不是搜尋：「更多」裡一項，'digest'（進入）或 'digestLeave'
+//            （在文摘裡離開），文章列表才有。
 //   appBar ：頂部 App Bar 的標題（mobile_app_bar.js），同一次計算、同一個通知。
 // 判準刻意不看好讀開關：推鈕送的是 X，好讀關掉時就是 PTT 原生推文。
 
 import { parsePagerFooterContext } from './string_util';
 import { atPagerStatusRow } from './long_push_gate';
-import { availableSearchKinds, searchGateFacts } from './article_search';
+import { availableSearchKinds, digestKindOf, searchGateFacts } from './article_search';
 import { boardListContextKind, classifyBoardListScreen } from './board_list_parse';
 import { refreshTargetFromFacts, refreshOffered, homeDashboardShown } from './screen_refresh';
 import { isMailListTitleRow } from './screen_titles';
@@ -66,7 +68,7 @@ import { userListToggleTarget } from './user_list';
 export const EMPTY_TOOLBAR_CONTEXT = Object.freeze({
   push: false, reply: false, mail: false, share: false, threadNav: false, post: false,
   unreadJump: false, aidJump: false, markAllRead: false, boardCountsSwitch: false, boardCounts: false, boardSort: false, boardSortFavorites: false, help: false, contentTools: false, refresh: false, end: false,
-  userListToggle: null, userQuery: false, postInfo: false, boardInfo: false, boardNotes: false, queryPage: false, search: [], appBar: EMPTY_APP_BAR, locked: false
+  userListToggle: null, userQuery: false, postInfo: false, boardInfo: false, boardNotes: false, queryPage: false, search: [], digest: null, boardJump: false, appBar: EMPTY_APP_BAR, locked: false
 });
 
 // 送鍵表：key 是 term_view.sendKeyAsUser 的 keyName（單字元或 KeyMap 裡的具名鍵），
@@ -165,6 +167,10 @@ export function toolbarContextFromFacts(facts, pageState, opts) {
     })),
     end: pager || lists,
     search: availableSearchKinds(facts),
+    // The digest entry (More sheet): 'digest' or 'digestLeave', never over a mailbox.
+    digest: articles ? digestKindOf(facts) : null,
+    // Going to a board is navigation, no search kind of the article list's sheet.
+    boardJump: articles,
     appBar: appBarFromFacts(facts, { ...(opts || {}), pageState: pageState })
   };
 }
@@ -221,7 +227,7 @@ export function mobileToolbarContext(core) {
 
 const FLAGS = [
   'push', 'reply', 'mail', 'share', 'switchBoard', 'threadNav', 'post', 'unreadJump', 'aidJump', 'markAllRead', 'boardCountsSwitch', 'boardCounts', 'boardSort', 'boardSortFavorites', 'help', 'contentTools', 'refresh', 'end',
-  'userQuery', 'postInfo', 'boardInfo', 'boardNotes', 'queryPage', 'locked'
+  'boardJump', 'userQuery', 'postInfo', 'boardInfo', 'boardNotes', 'queryPage', 'locked'
 ];
 
 export function sameToolbarContext(a, b) {
@@ -229,5 +235,6 @@ export function sameToolbarContext(a, b) {
   for (const f of FLAGS) if (!!a[f] !== !!b[f]) return false;
   if ((a.userListToggle || null) !== (b.userListToggle || null)) return false;
   return (a.search || []).join(',') === (b.search || []).join(',') &&
+    (a.digest || null) === (b.digest || null) &&
     sameAppBar(a.appBar || EMPTY_APP_BAR, b.appBar || EMPTY_APP_BAR);
 }

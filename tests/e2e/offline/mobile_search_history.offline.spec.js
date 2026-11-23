@@ -178,9 +178,11 @@ test.describe('手機：搜尋紀錄', () => {
     await closeSearch(page);
 
     const { settings, manager } = await openManager(page);
-    const kinds = manager.locator('.mantine-SegmentedControl-root');
-    await expectKindLabelsFit(kinds);
-    await kinds.screenshot({ path: test.info().outputPath('search-kinds.png') });
+    // Five kinds: two segmented rows (#298), each one whole.
+    const rows = manager.locator('.mantine-SegmentedControl-root');
+    await expect(rows).toHaveCount(2);
+    for (let i = 0; i < 2; i++) await expectKindLabelsFit(rows.nth(i));
+    await manager.locator('[data-search-kinds="wrap"]').screenshot({ path: test.info().outputPath('search-kinds.png') });
     // 頂端的返回換成這一頁的名字（同分類頁的「< 本機設定」）。
     await expect(settings.locator('[data-pref-subpage-back]')).toBeVisible();
     // 「設回預設值」是整個設定的，不放在這一頁底下。
@@ -257,5 +259,33 @@ test.describe('手機：搜尋紀錄', () => {
     expect(size.scroll).toBeLessThanOrEqual(size.client);
     const box = await toolbarLayout(settings);
     expect(Math.abs(box.toolbar.bottom - box.column.bottom)).toBeLessThanOrEqual(1);
+  });
+
+  // Five kinds (title, author, push, price, board) take the two-row path (#298).
+  test('管理頁的種類列：五種分兩排，都在管理頁裡，沒有橫向捲動；價格選得到', async ({ page }) => {
+    await bootMenu(page, ['Gossiping']);
+    const { settings, manager } = await openManager(page);
+    const kinds = await manager.locator('.searchKindItem input').evaluateAll((els) => els.map((el) => el.value));
+    expect(kinds).toEqual(['title', 'author', 'push', 'price', 'board']);
+    const rows = await manager.locator('[data-search-kinds="wrap"] > *').evaluateAll((els) =>
+      els.map((el) => el.querySelectorAll('.searchKindItem').length));
+    expect(rows).toEqual([3, 2]);
+    const outside = await manager.locator('.searchKindItem').evaluateAll((els) => {
+      const room = els[0].closest('[data-search-history-manager]').getBoundingClientRect();
+      return els.filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width <= 0 || r.left < room.left - 1 || r.right > room.right + 1;
+      }).map((el) => el.textContent);
+    });
+    expect(outside).toEqual([]);
+    const scrolls = await settings.evaluate((el) => [el, ...el.querySelectorAll('*')]
+      .filter((n) => n.scrollWidth > n.clientWidth + 1 && ['auto', 'scroll'].includes(getComputedStyle(n).overflowX) &&
+        n.closest('[data-search-history-manager]') && n.closest('[data-search-kinds]'))
+      .map((n) => n.className));
+    expect(scrolls).toEqual([]);
+    const priceId = await manager.locator('input[value="price"]').getAttribute('id');
+    await manager.locator(`label[for="${priceId}"]`).tap();
+    await expect(manager.locator('input[value="price"]')).toBeChecked();
+    await expect(manager.locator('input:checked')).toHaveCount(1);
   });
 });
