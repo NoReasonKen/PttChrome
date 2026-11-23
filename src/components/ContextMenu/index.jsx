@@ -19,6 +19,7 @@ import PostInfoModal from "./PostInfoModal";
 import BoardInfoModal from "./BoardInfoModal";
 import WhereAmIModal from "./WhereAmIModal";
 import FavSortModal from "./FavSortModal";
+import MarkReadChoiceModal from "./MarkReadChoiceModal";
 import PixivLookup from "../PixivLookup";
 
 // 用到才開的大彈窗拆成獨立 chunk，不進主 bundle（手機冷啟動少解析一截）。
@@ -400,6 +401,9 @@ const initialState = {
   // Reordering the favorites (#221, board_list_session._askFavSort): the
   // confirmation sheet before PTT's `S` prompt.
   showsFavSort: false,
+  // `v` on the easy-reading article list (#299, mark_all_read.ask): the
+  // read-state choice sheet.
+  showsMarkReadChoice: false,
   showsAidJump: false,
   // 指令面板（js/command_palette.js）：paletteCtx＝開的當下量好的「這一刻能做什麼」。
   showsPalette: false,
@@ -520,6 +524,7 @@ export const ContextMenu = ({ pttchrome }) => {
     !!state.boardInfo ||
     !!state.whereAmI ||
     state.showsFavSort ||
+    state.showsMarkReadChoice ||
     state.showsAidJump ||
     !!state.longPushProgress ||
     !!state.longPushError;
@@ -1305,6 +1310,31 @@ export const ContextMenu = ({ pttchrome }) => {
     },
     [pttchrome, update],
   );
+  // `v` on the easy-reading article list and the More sheet's entry (#299,
+  // mark_all_read.ask): true = the sheet took it.
+  const openMarkReadChoice = useCallback(() => {
+    update({ ...initialState, showsMarkReadChoice: true });
+    return true;
+  }, [update]);
+  useEffect(() => {
+    pttchrome.openMarkReadChoice = openMarkReadChoice;
+    return () => {
+      pttchrome.openMarkReadChoice = null;
+    };
+  }, [pttchrome, openMarkReadChoice]);
+  const onMarkReadChoiceHide = useCallback(
+    () => update({ showsMarkReadChoice: false }),
+    [update],
+  );
+  const onMarkReadChoicePick = useCallback(
+    (answer) => {
+      update({ showsMarkReadChoice: false });
+      // The sheet's closing is the only thing between the pick and the keys:
+      // startAnswer hints by itself when it sends nothing.
+      pttchrome.markAllRead?.startAnswer(answer);
+    },
+    [pttchrome, update],
+  );
   // `#` on the easy-reading article list and the More sheet's entry (#253,
   // js/aid_jump.js): true = the input opened.
   const openAidJump = useCallback(() => {
@@ -1932,6 +1962,7 @@ export const ContextMenu = ({ pttchrome }) => {
     searchAidTarget,
     searchSwitchBoard,
     showsFavSort,
+    showsMarkReadChoice,
     showsAidJump,
     showsPalette,
     paletteCtx,
@@ -2101,6 +2132,13 @@ export const ContextMenu = ({ pttchrome }) => {
         opened={showsFavSort}
         onHide={onFavSortHide}
         onPick={onFavSortPick}
+        mobile={mobile}
+        pttchrome={pttchrome}
+      />
+      <MarkReadChoiceModal
+        opened={showsMarkReadChoice}
+        onHide={onMarkReadChoiceHide}
+        onPick={onMarkReadChoicePick}
         mobile={mobile}
         pttchrome={pttchrome}
       />

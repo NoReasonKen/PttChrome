@@ -55,7 +55,7 @@ import "./MobileToolbar.css";
 //   其他      搜尋（有可用種類時）／按鍵／更多
 //   搜尋  直接開搜尋彈窗（不開子選單；種類在彈窗上方切，article_search.js）
 //   按鍵  展開方向鍵面板（貼在工具列上方；含軟鍵盤開關與黏滯 Ctrl／Esc／Tab／Del）
-//   更多  外部搜尋（選取模式下有選取時）／跳到第一篇未讀／設為全部已讀／分享／文章導覽／
+//   更多  外部搜尋（選取模式下有選取時）／跳到第一篇未讀／已讀／未讀設定…／分享／文章導覽／
 //         選取模式／全選／圖片上傳／設定／登出
 //         （全選與圖片上傳在桌機是右鍵選單項；手機長按選單不放，集中在這裡；主功能表不給，
 //         見 mobile_toolbar.js 的 contentTools）
@@ -596,7 +596,6 @@ export const MobileToolbar = ({
     });
   }, [pttchrome, whenReady]);
 
-  // 設為全部已讀：與桌機右鍵選單同一個入口（mark_all_read.js）。
   // 查詢網友（#199）：開 app 自己的輸入 sheet，送出才送 Q、代號、Enter（user_query.js）。
   const onUserQuery = useCallback(() => {
     setPanel(null);
@@ -608,15 +607,16 @@ export const MobileToolbar = ({
     });
   }, [pttchrome, whenReady]);
 
+  // 已讀／未讀設定…：與列表上的 `v` 同一個選擇 sheet（mark_all_read.ask，#299）。
   const onMarkAllRead = useCallback(() => {
     setPanel(null);
     setConfirmLogout(false);
     const m = pttchrome.markAllRead;
-    if (!m || typeof m.start !== "function") return;
+    if (!m || typeof m.ask !== "function") return;
     whenReady(() => {
       if (typeof pttchrome.noteUserAction === "function")
         pttchrome.noteUserAction();
-      m.start();
+      m.ask();
     });
   }, [pttchrome, whenReady]);
 
@@ -988,7 +988,7 @@ export const MobileToolbar = ({
             data-key="__markAllRead"
             onClick={onMarkAllRead}
           >
-            {i18n("cmenu_markAllRead")}
+            {i18n("mobileToolbar_markReadChoice")}
           </button>
         ) : null}
         {context.boardInfo ? (

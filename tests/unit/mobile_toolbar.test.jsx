@@ -448,13 +448,15 @@ describe("更多（bottom sheet）", () => {
     expect(core.setMobileSelectMode).toHaveBeenCalledWith(true);
   });
 
-  test("設為全部已讀：只在文章列表（context.markAllRead）出現，按下走 markAllRead.start 並收起", async () => {
+  test("已讀／未讀設定…：只在文章列表（context.markAllRead）出現，按下走 markAllRead.ask（#299）並收起", async () => {
     const core = makeCore({ context: { push: false, search: [], markAllRead: true } });
-    core.markAllRead = { start: vi.fn(() => true) };
+    core.markAllRead = { ask: vi.fn(() => true), start: vi.fn(() => true) };
     renderBar(core);
     await openMore();
+    expect(byKey("__markAllRead").textContent).toBe(i18n("mobileToolbar_markReadChoice"));
     fireEvent.click(byKey("__markAllRead"));
-    expect(core.markAllRead.start).toHaveBeenCalledTimes(1);
+    expect(core.markAllRead.ask).toHaveBeenCalledTimes(1);
+    expect(core.markAllRead.start).not.toHaveBeenCalled();
     await sheetClosed();
   });
 

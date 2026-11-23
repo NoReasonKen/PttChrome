@@ -1842,6 +1842,27 @@ export const en_US = {
   "aidJump_failedArticle": {
     "message": "Could not jump to {0}"
   },
+  "mobileToolbar_markReadChoice": {
+    "message": "Read / unread settings…"
+  },
+  "markReadChoice_title": {
+    "message": "Read / unread settings"
+  },
+  "markReadChoice_hint": {
+    "message": "Sets the read marks of this board's articles, as PTT's v key does."
+  },
+  "markReadChoice_allUnread": {
+    "message": "Set all articles unread"
+  },
+  "markReadChoice_allRead": {
+    "message": "Set all articles read"
+  },
+  "markReadChoice_readBefore": {
+    "message": "Read up to the selected article, unread after"
+  },
+  "markReadChoice_cancel": {
+    "message": "Cancel"
+  },
   "mobileToolbar_aidJump": {
     "message": "Jump to article code"
   },
