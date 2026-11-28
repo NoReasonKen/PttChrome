@@ -1088,8 +1088,15 @@ async function waitListAtRest(page) {
 }
 
 // Distinct per-screen evidence: result articles and their lists share titles.
-async function waitArticle(page, body) {
-  await expect.poll(() => visibleText(page)).toContain(`${body} line 04:`);
+// anyLine: a source scrolled deep into a long page keeps only its nearby
+// chunks in view (content-visibility), so line 04 is not reliably present;
+// any line of the body proves the article is shown.
+async function waitArticle(page, body, { anyLine = false } = {}) {
+  if (anyLine) {
+    await expect.poll(() => visibleText(page)).toMatch(new RegExp(`${body} line \\d+:`));
+  } else {
+    await expect.poll(() => visibleText(page)).toContain(`${body} line 04:`);
+  }
   await waitIdle(page);
 }
 
