@@ -52,7 +52,7 @@ async function bootOnList(page) {
 
 test.describe('closing a modal by clicking outside it', () => {
   test('home dashboard: the closing click sends nothing to PTT', async ({ page }) => {
-    await bootOffline(page, ptt);
+    await bootOffline(page, ptt, { favoritesFetch: true });
     await ptt.applyPrefs(page, MOUSE_PREFS);
     await page.evaluate(() => window.__app.setInputAreaFocus());
     await startCapture(page);

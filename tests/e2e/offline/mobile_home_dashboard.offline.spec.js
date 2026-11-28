@@ -26,7 +26,7 @@ const FAVS = Array.from({ length: 18 }, (_, i) => ({
 const dashboard = (page) => page.locator('#homeDashboard');
 
 async function bootHome(page, opts) {
-  await bootOffline(page, ptt, opts);
+  await bootOffline(page, ptt, { favoritesFetch: true, ...opts });
   await ptt.applyPrefs(page, { refreshMinIntervalSec: 0 });
   await startCapture(page);
 }
