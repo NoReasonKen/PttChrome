@@ -520,7 +520,7 @@ HomeDashboard.prototype = {
   _wireBusy: function() {
     const core = this._core;
     if (core.commandQueue && !core.commandQueue.idle) return true;
-    // A reopening's countdown shows home, but the wire stays the recovery's.
+    // A return's countdown shows home, but the wire stays the recovery's.
     const rr = core.reconnectResume;
     if (rr && rr.hasPending && rr.hasPending()) return true;
     return this._inTransit();

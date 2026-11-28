@@ -414,18 +414,17 @@ ReconnectResume.prototype = {
     return !!this._countdown;
   },
 
-  // A reconnect waits for its main menu to set off from. The login screens
-  // painted since the disconnect have replaced the reader's page, so home
-  // covers that menu from its first frame (home_dashboard._onFrame).
+  // A reconnect or reclaim waits for its main menu, where its countdown
+  // starts. The login screens painted since the disconnect have replaced the
+  // reader's page, so home covers that menu from its first frame
+  // (home_dashboard._onFrame).
   awaitsReconnectMenu: function() {
     return !!(this._pending && !this._pending.fromOpen && !this.inTransit());
   },
 
   // The recovery is passing through screens: it is driving PTT, or presenting
-  // the list it stopped on. The main menu it sets off from is not passed
-  // through: a reopening's countdown shows home there, and a reconnect is
-  // covered by home from that menu's first frame as well, since the login
-  // screens painted since the disconnect have replaced the reader's page.
+  // the list it stopped on. The main menu its countdown runs on is not passed
+  // through: home shows there, live, whichever kind of return it is.
   inTransit: function() {
     return this.holding && this._holdPhase !== 'arrival';
   },
@@ -471,15 +470,15 @@ ReconnectResume.prototype = {
   },
 
   // A frame arrives: the main menu a waiting plan leaves from is held from its
-  // first frame until the settle decides. The countdown of a reopening is
-  // not held (the home dashboard shows it); its run is (_dispatch).
+  // first frame until the settle decides. A countdown is not held (the home
+  // dashboard shows it, live); its run is (_dispatch).
   _onFrame: function() {
     if (this.holding || !this._pending || this._pending.fromOpen || this._core.connectState !== 1) return;
     if (!this._atMainMenu() || !enabled()) return;
     this._hold('arrival', RECOVERY_ARRIVAL_HOLD_MS);
   },
 
-  // 開站接回的倒數 (#314): the toast names the place, and its bar empties over
+  // 回到原處前的倒數 (#314, #315; 開站接回、APK 回收、斷線重連): the toast names the place, and its bar empties over
   // OPEN_RESUME_DELAY_MS. Tapping the toast sets off at once; any other input
   // of the reader's while it shows cancels (_watchInput). Either way the
   // dispatch-time checks decide once more whether to set off.
@@ -582,7 +581,7 @@ ReconnectResume.prototype = {
     };
     el.style.setProperty('--resume-countdown', OPEN_RESUME_DELAY_MS + 'ms');
     el.querySelector('.resumeLastPlaceText').textContent =
-      '即將回到上次的地方：' + plan.board + (plan.kind === 'article' ? ' 的文章' : ' 看板');
+      (plan.fromOpen ? '即將回到上次的地方：' : '即將回到斷線前的位置：') + plan.board + (plan.kind === 'article' ? ' 的文章' : ' 看板');
     // Shown again, the bar restarts full (display none ends its animation).
     el.hidden = false;
   },
@@ -612,10 +611,6 @@ ReconnectResume.prototype = {
     this._diag('dispatch', { kind: plan.kind, board: plan.board, fromOpen: !!plan.fromOpen });
     const self = this;
     if (enabled()) {
-      // A reconnect sets off at the settle of its main menu: home covers that
-      // menu before the run's hold, as it does under a reopening's countdown,
-      // and stays up while the run drives PTT.
-      if (!plan.fromOpen) core.homeDashboard?.recheck?.();
       this._hold('driving', RECOVERY_DRIVE_HOLD_MS);
     }
     const started = nav.startResume(plan, function(result) {
@@ -676,13 +671,10 @@ ReconnectResume.prototype = {
     }
     const plan = this._pending;
     this._pending = null;
-    if (plan.fromOpen) {
-      // 開站接回：使用者可能根本不想回去 ⇒ 先倒數、可取消。
-      if (core.autoLogin && core.autoLogin.stop) core.autoLogin.stop();
-      this._startCountdown(plan);
-      return;
-    }
-    this._dispatch(plan);
+    // Every return (reopening, reclaim, reconnect) counts down first: the
+    // reader may not want to go back (#314, #315).
+    if (core.autoLogin && core.autoLogin.stop) core.autoLogin.stop();
+    this._startCountdown(plan);
   }
 };
 

@@ -310,6 +310,91 @@ describe("開站接回", () => {
   });
 });
 
+// Reclaim (the APK renderer was rebuilt) and reconnect (重新連線 pressed) return
+// through the countdown of a reopening (#315), worded with the 回到斷線前的位置 label.
+describe("Reclaim and reconnect countdown", () => {
+  const KINDS = {
+    reclaim: () => {
+      leaveFromOldPage();
+      window.__PTT_ANDROID__ = { version: "1", site: "x", restored: true };
+      onTestFinished(() => delete window.__PTT_ANDROID__);
+      return harness();
+    },
+    reconnect: () => {
+      const h = harness();
+      h.settle(MAIN_MENU);
+      h.core.connectState = 2;
+      h.rr.capture(false);
+      h.core.connectState = 1;
+      return h;
+    }
+  };
+  const press = () => {
+    // The 重新連線 press, or a key at a login screen: before the toast, never counted.
+    document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+  };
+
+  describe.each(Object.keys(KINDS))("%s", (kind) => {
+    test("no key before 3 s; the toast uses the 回到斷線前的位置 wording; dispatch at 3 s", () => {
+      const h = KINDS[kind]();
+      expect(h.rr.hasPending()).toBe(true);
+      press();
+      h.settle(LOGIN);
+      press();
+      h.settle(MAIN_MENU);
+      expect(toast().hidden).toBe(false);
+      expect(toast().textContent).toBe("即將回到斷線前的位置：C_Chat 的文章");
+      expect(toast().querySelector("button")).toBeNull();
+      expect(toast().querySelector(".resumeLastPlaceProgress")).not.toBeNull();
+      vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS - 1);
+      expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
+      expect(h.core.aidNavigation.startResume.mock.calls[0][0]).toMatchObject({ kind: "article", aid: "1gIeu-3A" });
+      expect(h.core.aidNavigation.startResume.mock.calls[0][0].fromOpen).toBeUndefined();
+      expect(toast().hidden).toBe(true);
+    });
+
+    test("tapping the toast sets off at once", () => {
+      const h = KINDS[kind]();
+      h.settle(MAIN_MENU);
+      vi.advanceTimersByTime(500);
+      toast().dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+      expect(h.rr.countingDown()).toBe(true);
+      toast().click();
+      expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
+      expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
+    });
+
+    test("outside input cancels silently: no keys, plan dropped, not offered again", () => {
+      const h = KINDS[kind]();
+      h.view.flashListHint = vi.fn();
+      h.settle(MAIN_MENU);
+      vi.advanceTimersByTime(500);
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "j" }));
+      expect(toast().hidden).toBe(true);
+      expect(h.rr.hasPending()).toBe(false);
+      vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS * 2);
+      h.settle(MAIN_MENU);
+      vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
+      expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
+      expect(h.view.flashListHint).not.toHaveBeenCalled();
+    });
+
+    test("a disconnect during the countdown discards the plan", () => {
+      const h = KINDS[kind]();
+      h.settle(MAIN_MENU);
+      h.core.connectState = 2;
+      h.rr.capture(false);
+      expect(toast().hidden).toBe(true);
+      vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
+      expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
+    });
+  });
+});
+
 describe("Foreground recovery checkpoints", () => {
   test("keeps the last visible location when shutdown changes mobile geometry", () => {
     const h = harness();

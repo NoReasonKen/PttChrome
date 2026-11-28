@@ -6,7 +6,9 @@ import {
   ReconnectResume,
   planFromSnapshot,
   SNAPSHOT_KEY,
-  SNAPSHOT_MAX_AGE_MS
+  SNAPSHOT_MAX_AGE_MS,
+  OPEN_RESUME_DELAY_MS,
+  RESUME_TOAST_ID
 } from "../../src/js/reconnect_resume";
 import { ReadingRecord } from "../../src/js/reading_record";
 import { STOP_EVENT } from "../../src/js/android_bridge";
@@ -66,7 +68,10 @@ function asApk({ restored = false } = {}) {
 
 const stored = () => JSON.parse(window.localStorage.getItem(SNAPSHOT_KEY));
 
+beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
+  vi.useRealTimers();
+  document.getElementById(RESUME_TOAST_ID)?.remove();
   delete window.__PTT_ANDROID__;
   window.localStorage.removeItem(SNAPSHOT_KEY);
   window.localStorage.removeItem("pttchrome.pref.v1");
@@ -129,6 +134,10 @@ describe("重建後開機接回", () => {
     h.settle("請輸入代號，或以 guest 參觀，或以 new 註冊:");
     expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
     h.settle(MAIN_MENU);
+    // A reclaim returns through the same countdown as a reopening (#315).
+    expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
+    expect(document.getElementById(RESUME_TOAST_ID).textContent).toBe("即將回到斷線前的位置：C_Chat 的文章");
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
     expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
     expect(h.core.aidNavigation.startResume.mock.calls[0][0]).toMatchObject({
       kind: "article",
