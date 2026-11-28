@@ -106,7 +106,11 @@ async function loginScreens(page) {
     const data = '\x1b[H\x1b[2J' + await encodeBig5(page, text);
     const before = await page.evaluate(() => window.__frames.length);
     await page.evaluate((data) => window.__app.onData(data), data);
-    await page.waitForFunction((n) => window.__frames.length > n + 1, before);
+    // The buffer redraws on its own timer: wait until this screen has been
+    // drawn and painted (a native frame after it was fed), not for a number of
+    // frames, or a loaded run merges it with the next screen's paint.
+    await page.waitForFunction((n) => !window.__app.buf.timerUpdate &&
+      window.__frames.slice(n).some((f) => f.native), before);
   }
 }
 
