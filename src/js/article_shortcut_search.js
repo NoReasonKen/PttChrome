@@ -575,10 +575,12 @@ export class ArticleShortcutSearch {
   }
 
   // Recovery will not run (logout, canceled, superseded, user moved first).
+  // Logging out, or cancelling the reopening countdown (#314), is the reader's
+  // own choice: the trail goes without a notice.
   abandonRecovery(reason) {
     if (!this.suspended) return;
     this.suspended = null;
-    if (reason !== 'logout') this._explain();
+    if (reason !== 'logout' && reason !== 'cancel') this._explain();
   }
 
   _landed(board) {

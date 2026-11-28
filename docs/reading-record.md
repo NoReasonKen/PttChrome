@@ -192,7 +192,7 @@ search-result recovery document above for bounds and ambiguity handling.
   recomputing its viewport using changed row heights. Foreground checkpoints
   wait for stable geometry and do not run while the document is hidden.
 - 接：開機讀一次就刪（`readSnapshot`）。`bootResumeMode`：好讀關 ⇒ 不接；APK 回收重建 ⇒ 照舊直接出發；其餘 ⇒ 計畫帶 `fromOpen`。超過 `SNAPSHOT_MAX_AGE_MS`（12 小時）不接。
-- 出發前倒數：登入回主功能表後先顯示底部提示「即將回到上次的地方：<板>…」＋「取消」（`#resumeLastPlace`，`OPEN_RESUME_DELAY_MS`＝1 秒），倒數完再確認一次（連線中、還在主功能表、AID 跳文沒在跑、deep link 沒在等）才 `startResume`。使用者按取消、自己走開（離開主功能表）、倒數中斷線、deep link 登記 ⇒ 一個鍵都不送。提示的滑鼠事件不外傳（`App._onUploadLayer` 認 `isResumeToastTarget`）。
+- Countdown before setting off (#314): once login reaches the main menu, a floating toast reads 「即將回到上次的地方：<板> 看板／的文章」 (`#resumeLastPlace`) with a thin bar along its bottom edge that empties over `OPEN_RESUME_DELAY_MS` (3 s; the bar's CSS animation reads the duration from the toast's `--resume-countdown`), the same on phone and desktop. There is no 取消 button. When the bar empties, or as soon as the reader taps the toast, the run sets off after the dispatch-time checks (connected, still at the main menu, no AID run, no pending deep link, no serialized operation, idle command queue) and calls `startResume`. Any other input while the toast shows (a press outside the toast, a touch, a wheel, a scroll of the home dashboard, a key) cancels at once: the toast disappears without a hint, no key is sent, the plan is dropped (the snapshot was already consumed at boot), and the reader stays home; the input itself goes on to the page. These inputs are watched by window capture listeners only from the toast's appearance until the countdown ends, so input during the login screens never counts. Leaving the main menu, a disconnect, or a deep link during the countdown also discards it. A cancel also drops a suspended search trail without a notice (`articleShortcutSearch.abandonRecovery('cancel')`); the other reasons a recovery is abandoned still explain the inactive trail. The toast swallows its own mouse events (`App._onUploadLayer` recognises `isResumeToastTarget`), so tapping it never reaches the terminal.
 - deep link 進來時以 deep link 為準：同斷線重連的 superseded。
 - 開關：沒有自己的開關，好讀開著就做（會送鍵 ⇒ 好讀行為）。e2e 預設關（同一個 context 重整會自己送鍵），live 的共用 session 也關。
 
@@ -219,7 +219,7 @@ failed; a non-null plan alone does not prove a successful write.
 | unit | `tests/unit/aid_navigation.test.js`「閱讀紀錄」各條、`deep_link_controller.test.js`「原生 pmore 讀文」 | 返回錨帶列表、看板錨返回還原、失敗交回 hold、deep link 從列表或原生 pager 出發 |
 | unit | `tests/unit/reconnect_resume.test.js`、`aid_navigation.test.js`「startResume」「currentPostAid」 | 斷線重連：去哪、何時出發、收手條件、鍵序列與落地還原、途中握住畫面的每個放開條件 |
 | offline e2e（手機） | `mobile_recovery_hold.offline.spec.js` | 斷線重連與開站接回逐幀都沒有原生畫面：文章、列表、重建的搜尋結果；開站倒數時是首頁儀表板；斷線重連經過重複登入詢問等登入畫面時，主功能表起每一幀都是儀表板或好讀（不是留著的登入畫面），途中點卡片只得到忙碌提示 |
-| unit（真 Chromium） | `tests/unit/reconnect_resume_open.test.js`、`reconnect_resume_renderer.test.js` | 開站接回：存檔時機與清除、開機模式、倒數與取消、走開／deep link／斷線作廢；APK 回收重建 |
+| unit（真 Chromium） | `tests/unit/reconnect_resume_open.test.js`、`reconnect_resume_renderer.test.js` | 開站接回：存檔時機與清除、開機模式、3 秒倒數與進度條、點提示立刻出發、提示出現後的輸入取消、走開／deep link／斷線作廢；APK 回收重建 |
 | unit（真 Chromium） | `tests/unit/list_mark_read_viewport.test.js` | 前已讀後未讀（遷移後行為不變） |
 | offline e2e | `scenario_navigation.offline.spec.js`「跳文 → 返回之後，閱讀紀錄記著開文前的列表視野」 | 真 boot 鏈上身後列表的交接 |
 | offline e2e（手機） | `mobile_list_cards.offline.spec.js`「閱讀紀錄：卡片模式量到的視野頂端」 | 卡片模式的列表量測 |

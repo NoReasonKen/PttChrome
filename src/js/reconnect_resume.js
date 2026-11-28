@@ -17,7 +17,8 @@
 //   - 開站回到上次的地方（docs/reading-record.md「開站回到上次的
 //     地方」）：分頁切到背景／關掉（visibilitychange hidden、pagehide）時存，下一次開站接回。
 //     手機瀏覽器回收分頁、使用者關掉再開，都像原生 App 一樣回到上次讀的文章或列表。出發前
-//     有一段倒數提示可以取消；deep link 進來時以 deep link 為準（同一套 superseded）。
+//     有 3 秒倒數提示：點提示立刻出發，提示出現後的其他輸入都取消；deep link 進來時以 deep
+//     link 為準（同一套 superseded）。
 //   兩者都要求「存的那一刻已登入、連線中」，否則清掉存檔（登出後關掉不會在下次跳走）；
 //   開機讀一次就刪，太舊（SNAPSHOT_MAX_AGE_MS）不接。
 //
@@ -40,8 +41,9 @@ import { resumeSearchResults } from './resume_search_results';
 import { serializedOpHint } from './serialized_op_gate';
 import { captureSearchResultAnchor, validateSearchResultAnchor } from './search_result_anchor';
 
-// 開站接回時，登入回到主功能表後先倒數這麼久（提示上有「取消」）才出發。
-export const OPEN_RESUME_DELAY_MS = 1000;
+// 開站接回時，登入回到主功能表後先倒數這麼久才出發。The toast's progress bar
+// empties over the same duration (main.css reads it from --resume-countdown).
+export const OPEN_RESUME_DELAY_MS = 3000;
 export const RESUME_TOAST_ID = 'resumeLastPlace';
 
 export const SNAPSHOT_KEY = 'pttchrome.rendererResume.v1';
@@ -204,7 +206,7 @@ export function ReconnectResume(core, view, termBuf) {
     // 'change' comes before the view draws the frame (term_buf.notify).
     termBuf.addEventListener('change', this._onFrame.bind(this));
   }
-  // 倒數中的出發（開站接回）：{ timer, plan } | null。
+  // 倒數中的出發（開站接回）：{ timer, plan, unwatch } | null（unwatch 移除輸入監聽）。
   this._countdown = null;
   if (typeof window !== 'undefined' && window.localStorage) {
     // 開機讀一次就刪：APK 回收重建或開站接回（各自的開關）才用，否則丟掉。
@@ -325,7 +327,7 @@ ReconnectResume.prototype = {
     this._cancelCheckpoint();
     this._release('disconnect');
     // 倒數中斷線：那份計畫作廢（重連後照斷線這一刻的位置重新算）。
-    this._cancelCountdown();
+    this._endCountdown();
     const wasLoggedIn = this._loggedIn;
     this._loggedIn = false;
     if (loggedOut) {
@@ -397,7 +399,7 @@ ReconnectResume.prototype = {
   discard: function(reason) {
     const hadPending = !!(this._pending || this._countdown);
     if (hadPending) this._core?.articleShortcutSearch?.abandonRecovery(reason);
-    this._cancelCountdown();
+    this._endCountdown();
     if (!hadPending) return;
     this._diag('discard', { reason: reason });
     this._pending = null;
@@ -477,33 +479,74 @@ ReconnectResume.prototype = {
     this._hold('arrival', RECOVERY_ARRIVAL_HOLD_MS);
   },
 
-  // 開站接回的倒數：提示＋「取消」。倒數完再確認一次還在主功能表才出發。
+  // 開站接回的倒數 (#314): the toast names the place, and its bar empties over
+  // OPEN_RESUME_DELAY_MS. Tapping the toast sets off at once; any other input
+  // of the reader's while it shows cancels (_watchInput). Either way the
+  // dispatch-time checks decide once more whether to set off.
   _startCountdown: function(plan) {
-    const self = this;
-    const timer = setTimeout(function() {
-      if (!self._countdown || self._countdown.timer !== timer) return;
-      self._countdown = null;
-      self._hideToast();
-      self._dispatch(plan);
+    const timer = setTimeout(() => {
+      if (this._countdown && this._countdown.timer === timer) this._setOffNow();
     }, OPEN_RESUME_DELAY_MS);
-    this._countdown = { timer: timer, plan: plan };
+    this._countdown = { timer: timer, plan: plan, unwatch: null };
     this._showToast(plan);
+    this._countdown.unwatch = this._watchInput();
     this._diag('countdown', { kind: plan.kind, board: plan.board });
   },
 
-  _cancelCountdown: function() {
-    if (!this._countdown) return;
-    clearTimeout(this._countdown.timer);
+  // The countdown ends however it ends: its timer, toast and input listeners go.
+  _endCountdown: function() {
+    const countdown = this._countdown;
+    if (!countdown) return null;
     this._countdown = null;
+    clearTimeout(countdown.timer);
+    if (countdown.unwatch) countdown.unwatch();
     this._hideToast();
+    return countdown.plan;
   },
 
-  // 使用者按了「取消」：停在主功能表，這次不回去。
+  // The bar emptied, or the reader tapped the toast.
+  _setOffNow: function() {
+    const plan = this._endCountdown();
+    if (plan) this._dispatch(plan);
+  },
+
+  // 提示出現後讀者的其他輸入 ＝ 讀者要留在首頁：一個鍵都不送，這份計畫作廢。Observed from
+  // the toast's appearance until the countdown ends (the returned function), so
+  // input during the login screens never counts. Capture listeners on window
+  // see each input before any page handler can stop it; none of them prevents
+  // or stops the input, so the reader's action goes on. A press or touch on the
+  // toast is its tap, not an outside input.
+  _watchInput: function() {
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return null;
+    const outside = event => {
+      if (!isResumeToastTarget(event.target)) this.cancel();
+    };
+    const any = () => this.cancel();
+    const homeScroll = event => {
+      const home = this._core.homeDashboard?.rootElement?.();
+      if (home && event.target instanceof Node && home.contains(event.target)) this.cancel();
+    };
+    const listeners = [
+      ['pointerdown', outside],
+      ['touchstart', outside],
+      ['wheel', any],
+      ['keydown', any],
+      // scroll does not bubble: only a capture listener sees home's scroller.
+      ['scroll', homeScroll]
+    ];
+    const options = { capture: true, passive: true };
+    for (const [type, fn] of listeners) window.addEventListener(type, fn, options);
+    return () => {
+      for (const [type, fn] of listeners) window.removeEventListener(type, fn, options);
+    };
+  },
+
+  // 讀者不要回去（提示出現後的其他輸入）：停在首頁，這次不回去，也不再提示。
   cancel: function() {
     if (!this._countdown && !this._pending) return;
     this._core?.articleShortcutSearch?.abandonRecovery('cancel');
     this._diag('cancel', {});
-    this._cancelCountdown();
+    this._endCountdown();
     this._pending = null;
     this._release('cancel');
   },
@@ -517,11 +560,9 @@ ReconnectResume.prototype = {
       el.setAttribute('role', 'status');
       const text = document.createElement('span');
       text.className = 'resumeLastPlaceText';
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'resumeLastPlaceCancel';
-      btn.textContent = '取消';
-      const self = this;
+      const bar = document.createElement('span');
+      bar.className = 'resumeLastPlaceProgress';
+      bar.setAttribute('aria-hidden', 'true');
       // App 的滑鼠入口在 window：不搶 #t 焦點、不外傳成點終端機（App._onUploadLayer 也認它）。
       el.addEventListener('mousedown', function(e) {
         e.preventDefault();
@@ -530,16 +571,19 @@ ReconnectResume.prototype = {
       el.addEventListener('mouseup', function(e) {
         e.stopPropagation();
       });
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        self.cancel();
-      });
       el.appendChild(text);
-      el.appendChild(btn);
+      el.appendChild(bar);
       document.body.appendChild(el);
     }
+    // The toast outlives one countdown: its tap belongs to the countdown it shows.
+    el.onclick = e => {
+      e.stopPropagation();
+      if (this._countdown && this._countdown.plan === plan) this._setOffNow();
+    };
+    el.style.setProperty('--resume-countdown', OPEN_RESUME_DELAY_MS + 'ms');
     el.querySelector('.resumeLastPlaceText').textContent =
       '即將回到上次的地方：' + plan.board + (plan.kind === 'article' ? ' 的文章' : ' 看板');
+    // Shown again, the bar restarts full (display none ends its animation).
     el.hidden = false;
   },
 
