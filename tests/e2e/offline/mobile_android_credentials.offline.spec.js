@@ -396,7 +396,7 @@ test('mobile manager selection saving and retrieval retain unused legacy plainte
 
 test('a disconnected favorites fetch preserves the cancelled manager retrieval hint', async ({ page }) => {
   await installCredentialHost(page, 'manager', null, { legacy: true });
-  await bootOffline(page, ptt);
+  await bootOffline(page, ptt, { favoritesFetch: true });
   await page.clock.install();
   await pauseClockNow(page);
   await page.evaluate(() => {

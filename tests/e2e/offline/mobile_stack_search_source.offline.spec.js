@@ -655,7 +655,7 @@ test('half a swipe back from the results shows a long source scrolled to its end
   await expect.poll(() => rowAtTop(page, ARTICLE_LAYER)).toEqual(row);
   await contact.move({ x: box.width - 20, y });
   await contact.release();
-  await waitArticle(page, 'Alpha');
+  await waitArticle(page, 'Alpha', { anyLine: true });
   await settled(page);
   await expect.poll(() => rowAtTop(page, MAIN)).toEqual(row);
 });
@@ -937,14 +937,33 @@ test('a swipe on the source revealed by Back from the results reveals its list a
   await waitList(page, FULL_LIST);
 });
 
+// While PTT's reply is held, bounds count wall time against the test: the
+// handoff's 5 s wait (performance.now) and the command queue's soft, probe and
+// hard timers for the step the Back sends. A loaded machine can spend them on
+// the UI steps, and either failing drops the revealed source. Hold them until
+// thaw: that one clock stands still and the queue's timers are stretched.
+const holdHandoffClock = page => page.evaluate(() => {
+  const now = performance.now.bind(performance);
+  const queue = window.__app.commandQueue;
+  const set = queue._setTimeout;
+  const frozen = now();
+  window.__thawHandoffClock = () => {
+    performance.now = now;
+    queue._setTimeout = set;
+  };
+  performance.now = () => frozen;
+  queue._setTimeout = (fn, ms) => set(fn, ms * 100);
+});
+const thawHandoffClock = page => page.evaluate(() => window.__thawHandoffClock());
 // The source revealed by Back from the results, every key to PTT held from
 // the Back on, so PTT has not reopened it yet.
-async function revealSourceHeld(page) {
+async function revealSourceHeld(page, { holdClock = false } = {}) {
   await sourceFromList(page);
   await tapShortcut(page, 'author');
   await waitList(page, AUTHOR_RESULTS);
   await settled(page);
   const release = await holdSends(page, /./);
+  if (holdClock) await holdHandoffClock(page);
   await nativeBack(page);
   await expect(page.locator(ARTICLE_LAYER)).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.__heldSends.length)).toBeGreaterThan(0);
@@ -1015,8 +1034,28 @@ test('a left swipe on the revealed source opens its drawer at once, and a search
   expect(await pendingShown(page)).toBe(false);
 });
 
-test('the toolbar of the revealed source opens its panels at once, and a key from it reaches the source once it takes over', async ({ page }) => {
-  const release = await revealSourceHeld(page);
+const toolbarKey = (page, key) => page.locator(`#mobileToolbar [data-key="${key}"]`);
+const handingOff = page => page.evaluate(() => !!window.__app.articleGestures.stack.handingOff);
+
+// Two tests, so neither has to outlast the 5 s the handoff waits for PTT.
+test('the toolbar of the revealed source opens its panels at once', async ({ page }) => {
+  const release = await revealSourceHeld(page, { holdClock: true });
+  await toolbarKey(page, '__more').tap();
+  await expect(page.locator('[data-sheet="more"]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-sheet="more"]')).toHaveCount(0);
+  await toolbarKey(page, '__keys').tap();
+  await expect(page.locator('#mobileKeypad')).toBeVisible();
+  await toolbarKey(page, '__keys').tap();
+  expect(await handingOff(page)).toBe(true);
+  await thawHandoffClock(page);
+  await release();
+  await waitArticle(page, 'Alpha');
+  await settled(page);
+});
+
+test('a key from the toolbar of the revealed source reaches the source once it takes over', async ({ page }) => {
+  const release = await revealSourceHeld(page, { holdClock: true });
   await page.evaluate(() => {
     const reading = window.__app.easyReading;
     const stick = reading._stickBottom.bind(reading);
@@ -1026,17 +1065,12 @@ test('the toolbar of the revealed source opens its panels at once, and a key fro
       return stick();
     };
   });
-  const toolbar = key => page.locator(`#mobileToolbar [data-key="${key}"]`);
-  await toolbar('__more').tap();
-  await expect(page.locator('[data-sheet="more"]')).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.locator('[data-sheet="more"]')).toHaveCount(0);
-  await toolbar('__keys').tap();
-  await expect(page.locator('#mobileKeypad')).toBeVisible();
-  await toolbar('__keys').tap();
-  await toolbar('__end').tap();
+  // A handoff that timed out would leave End doing nothing: say so.
+  expect(await handingOff(page)).toBe(true);
+  await toolbarKey(page, '__end').tap();
   await expect.poll(() => pendingShown(page)).toBe(true);
   expect(await page.evaluate(() => window.__ends)).toEqual([]);
+  await thawHandoffClock(page);
   await release();
   await waitArticle(page, 'Alpha');
   await settled(page);

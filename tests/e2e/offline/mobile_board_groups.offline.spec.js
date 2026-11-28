@@ -150,7 +150,7 @@ async function edgeSwipe(page) {
 }
 
 async function homeWithFavorites(page) {
-  await bootOffline(page, ptt);
+  await bootOffline(page, ptt, { favoritesFetch: true });
   await ptt.applyPrefs(page, { refreshMinIntervalSec: 0 });
   await startCapture(page);
   await drawMainMenu(page);

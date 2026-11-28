@@ -20,14 +20,18 @@ import {
 } from "../../src/js/lazy_media";
 
 const spies = vi.hoisted(() => ({ requestPreview: 0 }));
+const pending = vi.hoisted(() => new Map());
 
 vi.mock("../../src/components/ImagePreviewer", async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
+    // 永不解析：真的解析會讓 <img> 去抓網路，圖在某一幀前載入就會把替身盒
+    // 拿掉（時序競態）。這支測試的圖一律由 fakeLoadedMedia 供應。
     requestPreview: (href) => {
       ++spies.requestPreview;
-      return actual.requestPreview(href);
+      if (!pending.has(href)) pending.set(href, new Promise(() => {}));
+      return pending.get(href);
     },
   };
 });

@@ -16,7 +16,7 @@ const label = (page, key) => page.evaluate((k) => window.__i18n(k), key);
 const menu = (page) => page.locator('.DropdownMenu').first();
 
 async function bootHome(page) {
-  await bootOffline(page, ptt);
+  await bootOffline(page, ptt, { favoritesFetch: true });
   await page.evaluate(() => window.__app.setInputAreaFocus());
   await startCapture(page);
   await drawMainMenu(page);
