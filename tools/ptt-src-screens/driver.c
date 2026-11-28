@@ -214,7 +214,11 @@ static void seed(const char *path)
             serial++;
             STRLCPY(fh.owner, f[1]);
             STRLCPY(fh.date, f[2]);
-            fh.score = atoi(f[3]);
+            // 推文數：upstream 拆成 upvote／downvote 兩格，列表顯示的是兩者的差
+            // （FHDR_SCORE）。seed 只給淨值，正的放推、負的放噓。
+            int score = atoi(f[3]);
+            fh.upvote = score > 0 ? score : 0;
+            fh.downvote = score < 0 ? -score : 0;
             if (strchr(f[4], 'm')) fh.filemode |= FILE_MARKED;
             STRLCPY(fh.title, f[5]);
             // 置底：upstream 的置底是 boardheader_t.bottom[] 裡的 AID 參照（指回 .DIR 裡

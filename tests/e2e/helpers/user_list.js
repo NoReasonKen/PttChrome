@@ -64,6 +64,9 @@ const { ART, MAIN_MENU, FIRST_ITEM_ROW } = require('./main_menu');
 async function bootUserList(page, { count = 60, friends = [], gone = 0, delay = 40, plans = {}, sleepMs = 0, prefs = {},
   hidden = [], twins = [], snapshotMs = 0 } = {}) {
   await bootOffline(page, ptt);
+  // Keep the dashboard's automatic favorites request out of this fixture: while
+  // it runs, the dashboard ignores the 線上使用者 tap.
+  await ptt.holdFavoritesFetch(page);
   await ptt.applyPrefs(page, { enableEasyReading: true, ...prefs });
   await page.evaluate(({ count, friends, gone, delay, plans, sleepMs, hidden, twins, snapshotMs, ART, MAIN_MENU, FIRST_ITEM_ROW }) => {
     const app = window.__app;
