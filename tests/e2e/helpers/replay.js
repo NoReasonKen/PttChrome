@@ -872,6 +872,12 @@ async function bootOffline(page, ptt, opts = {}) {  // eslint-disable-line no-un
   await installOfflineNetwork(page, { profile: offlineImageProfile(opts.imageProfile) });
   await page.goto('/');
   await waitConnected(page);
+  // The home dashboard auto-fetches My Favorites (Ctrl+Z f) 600ms after it shows,
+  // and dashboard actions return silently while that fetch runs, so a spec that
+  // taps the dashboard flakes under load. Hold it by default (the app is connected,
+  // so the dashboard exists); a spec that asserts the fetch passes
+  // `{ favoritesFetch: true }`.
+  if (!opts.favoritesFetch) await require('./ptt').holdFavoritesFetch(page);
 }
 
 // scenario 卷（tools/record-scenarios.spec.js）的開機：錄製前一律 resetSession，所以
