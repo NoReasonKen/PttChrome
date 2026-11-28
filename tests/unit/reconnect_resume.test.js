@@ -168,6 +168,10 @@ function endResumeRun(core, result) {
 }
 
 describe("ReconnectResume（何時出發）", () => {
+  // Every return counts down before it sets off (#315).
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
   test("登入過 → 斷線 → 重連登入回到主功能表 ⇒ 出發；先停 AutoLogin", () => {
     const h = harness();
     h.settle(MAIN_MENU); // 這條連線登入過
@@ -178,6 +182,8 @@ describe("ReconnectResume（何時出發）", () => {
     expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
     h.settle(MAIN_MENU);
     expect(h.core.autoLogin.stop).toHaveBeenCalled();
+    expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
     expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
     const plan = h.core.aidNavigation.startResume.mock.calls[0][0];
     expect(plan).toMatchObject({ kind: "article", board: "C_Chat", aid: "1gIeu-3A" });
@@ -205,6 +211,7 @@ describe("ReconnectResume（何時出發）", () => {
     h.rr.capture(false); // 第二條連線沒登入就斷
     expect(h.rr.hasPending()).toBe(true);
     h.settle(MAIN_MENU);
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
     expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
   });
 
@@ -291,6 +298,7 @@ describe("ReconnectResume（何時出發）", () => {
       h.settle(MAIN_MENU);
       h.rr.capture(false);
       h.settle(MAIN_MENU);
+      vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
       expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
     });
   });
@@ -319,7 +327,13 @@ describe("ReconnectResume: recovery hold", () => {
     return h;
   };
 
-  test("holds from the first main-menu frame through the run; an article landing releases it", () => {
+  // The main menu settles, its countdown runs out and the run sets off.
+  const setOff = (h) => {
+    h.settle(MAIN_MENU);
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
+  };
+
+  test("holds the first main-menu frame, not the countdown; the run after it is held until an article landing", () => {
     const h = disconnected();
     expect(h.rr.holding).toBe(false);
     // The login screens before the main menu are the reader's to see.
@@ -328,22 +342,50 @@ describe("ReconnectResume: recovery hold", () => {
     h.frame(MAIN_MENU);
     expect(h.rr.holding).toBe(true);
     h.settle(MAIN_MENU);
+    // The settle ends the arrival hold: home is live during the countdown.
+    expect(h.rr.countingDown()).toBe(true);
+    expect(h.rr.holding).toBe(false);
+    expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
     expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
     expect(h.rr.holding).toBe(true);
     // Run frames pass far beyond the arrival budget while the run drives PTT.
     vi.advanceTimersByTime(RECOVERY_ARRIVAL_HOLD_MS * 3);
     expect(h.rr.holding).toBe(true);
-    expect(h.view.navigationEnded).not.toHaveBeenCalled();
+    // Only the arrival hold's own release so far (the settle).
+    expect(h.view.navigationEnded).toHaveBeenCalledTimes(1);
     h.endRun({ ok: true });
     expect(h.rr.holding).toBe(false);
-    expect(h.view.navigationEnded).toHaveBeenCalledTimes(1);
+    expect(h.view.navigationEnded).toHaveBeenCalledTimes(2);
     expect(h.core.homeDashboard.recheck).toHaveBeenCalled();
+  });
+
+  test("disconnect during a reconnect's countdown discards its plan", () => {
+    const h = disconnected();
+    h.settle(MAIN_MENU);
+    expect(h.rr.countingDown()).toBe(true);
+    h.rr.capture(false);
+    // The plan of the countdown is gone; the disconnect captured a new one.
+    expect(h.rr.countingDown()).toBe(false);
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
+    expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
+  });
+
+  test("cancelling a reconnect's countdown sends no key and drops the plan", () => {
+    const h = disconnected();
+    h.frame(MAIN_MENU);
+    h.settle(MAIN_MENU);
+    h.rr.cancel();
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS * 2);
+    expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
+    expect(h.rr.hasPending()).toBe(false);
+    expect(h.rr.holding).toBe(false);
   });
 
   test("a list destination stays held until the easy-reading list is presented", () => {
     const h = disconnected();
     h.frame(MAIN_MENU);
-    h.settle(MAIN_MENU);
+    setOff(h);
     h.core.listSession.returningFromExternal = () => true;
     h.endRun({ ok: true });
     expect(h.rr.holding).toBe(true);
@@ -351,13 +393,13 @@ describe("ReconnectResume: recovery hold", () => {
     h.core.listSession.returningFromExternal = () => false;
     h.rr.pagePresented();
     expect(h.rr.holding).toBe(false);
-    expect(h.view.navigationEnded).toHaveBeenCalledTimes(1);
+    expect(h.view.navigationEnded).toHaveBeenCalledTimes(2);
   });
 
   test("a list that never takes the landing over is drawn after the presentation budget", () => {
     const h = disconnected();
     h.frame(MAIN_MENU);
-    h.settle(MAIN_MENU);
+    setOff(h);
     h.core.listSession.returningFromExternal = () => true;
     h.endRun({ ok: true });
     vi.advanceTimersByTime(RECOVERY_PRESENT_HOLD_MS - 1);
@@ -369,7 +411,7 @@ describe("ReconnectResume: recovery hold", () => {
   test("a settle after the list has left its external hold releases it", () => {
     const h = disconnected();
     h.frame(MAIN_MENU);
-    h.settle(MAIN_MENU);
+    setOff(h);
     h.core.listSession.returningFromExternal = () => true;
     h.endRun({ ok: true });
     h.core.listSession.returningFromExternal = () => false;
@@ -380,24 +422,24 @@ describe("ReconnectResume: recovery hold", () => {
   test("a failed run releases it on the screen where it stopped", () => {
     const h = disconnected();
     h.frame(MAIN_MENU);
-    h.settle(MAIN_MENU);
+    setOff(h);
     h.endRun({ ok: false, error: "not found" });
     expect(h.rr.holding).toBe(false);
-    expect(h.view.navigationEnded).toHaveBeenCalledTimes(1);
+    expect(h.view.navigationEnded).toHaveBeenCalledTimes(2);
   });
 
   test("a run that cannot start releases it", () => {
     const h = disconnected();
     h.core.aidNavigation.startResume.mockReturnValue(false);
     h.frame(MAIN_MENU);
-    h.settle(MAIN_MENU);
+    setOff(h);
     expect(h.rr.holding).toBe(false);
   });
 
   test("a run that never ends is drawn after the drive budget", () => {
     const h = disconnected();
     h.frame(MAIN_MENU);
-    h.settle(MAIN_MENU);
+    setOff(h);
     vi.advanceTimersByTime(RECOVERY_DRIVE_HOLD_MS - 1);
     expect(h.rr.holding).toBe(true);
     vi.advanceTimersByTime(1);
@@ -407,7 +449,7 @@ describe("ReconnectResume: recovery hold", () => {
   test("a disconnect during the run releases it", () => {
     const h = disconnected();
     h.frame(MAIN_MENU);
-    h.settle(MAIN_MENU);
+    setOff(h);
     h.settle("【板主：x】看板《C_Chat》");
     expect(h.rr.holding).toBe(true);
     h.rr.capture(false);
@@ -464,27 +506,18 @@ describe("ReconnectResume: recovery hold", () => {
     expect(h.rr.hasPending()).toBe(false);
   });
 
-  test("in transit only while the run drives PTT: never at the main menu it sets off from", () => {
-    // A reconnect: home covers its main menu from the first frame.
+  test("in transit only while the run drives PTT: never at the main menu its countdown runs on", () => {
     const h = disconnected();
     expect(h.rr.inTransit()).toBe(false);
     h.frame(MAIN_MENU);
     expect(h.rr.holding).toBe(true);
     expect(h.rr.inTransit()).toBe(false);
     h.settle(MAIN_MENU);
+    expect(h.rr.inTransit()).toBe(false);
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
     expect(h.rr.inTransit()).toBe(true);
     h.endRun({ ok: true });
     expect(h.rr.inTransit()).toBe(false);
-    // A reopening: home shows under the countdown, and the run is in transit.
-    const o = disconnected();
-    o.rr._pending = Object.assign({}, o.rr._pending, { fromOpen: true });
-    expect(o.rr.inTransit()).toBe(false);
-    o.settle(MAIN_MENU);
-    expect(o.rr.inTransit()).toBe(false);
-    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
-    expect(o.rr.inTransit()).toBe(true);
-    o.endRun({ ok: true });
-    expect(o.rr.inTransit()).toBe(false);
   });
 
   test("a reconnect awaits its main menu until the run sets off; a reopening never does", () => {
@@ -499,20 +532,9 @@ describe("ReconnectResume: recovery hold", () => {
     expect(o.rr.awaitsReconnectMenu()).toBe(false);
   });
 
-  test("a reconnect has home judge its main menu before the run's hold, so home covers the run", () => {
+  test("a reconnect's run does not judge home again at dispatch (home is already under its countdown)", () => {
     const h = disconnected();
     h.frame(MAIN_MENU);
-    const judged = [];
-    h.core.homeDashboard.recheck.mockImplementation(() => judged.push({ transit: h.rr.inTransit(), started: h.core.aidNavigation.startResume.mock.calls.length }));
-    h.settle(MAIN_MENU);
-    expect(judged[0]).toEqual({ transit: false, started: 0 });
-    expect(h.rr.holding).toBe(true);
-    expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
-  });
-
-  test("a reopening's run does not judge home again at dispatch (home is already under its countdown)", () => {
-    const h = disconnected();
-    h.rr._pending = Object.assign({}, h.rr._pending, { fromOpen: true });
     h.settle(MAIN_MENU);
     h.core.homeDashboard.recheck.mockClear();
     vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);

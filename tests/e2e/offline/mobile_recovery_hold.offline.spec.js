@@ -1,6 +1,6 @@
 // Recovery shows home while it drives PTT (#188). After a reconnect, home
-// covers the login's main menu from its first frame and stays until the
-// recovery lands; after a reload, the same, with the countdown over home first.
+// covers the login's main menu from its first frame, shows the 3 s countdown
+// (#315) and stays until the recovery lands; after a reload, the same.
 // Without My Favorites on the main menu there is no home: the last frame before
 // that menu stays instead. Either way the destination is shown only through
 // easy reading, and no frame of PTT's own screens (nor a stale login screen)
@@ -60,6 +60,8 @@ async function watchFrames(page) {
         // PTT's own screen drawn on the terminal grid (not the easy-reading list
         // window). A blank grid is the reloaded page before PTT has drawn anything.
         native: shown && !!app.view._gridRender && !cards && /\S/.test(content.textContent),
+        // The native main menu is what the grid shows (not a later screen).
+        menu: shown && !!app.view._gridRender && !cards && !!content?.textContent.includes('主功能表'),
         article: shown && !app.view._gridRender,
         cards: shown && cards,
         dashboard: visible(document.getElementById('homeDashboard')),
@@ -89,6 +91,10 @@ async function stopFrames(page) {
 }
 
 const nativeFrames = (frames) => frames.filter((f) => f.native);
+// Without My Favorites there is no home: the native main menu shows under the
+// countdown and stays while the run drives (as under a reopening's), and no
+// other PTT screen reaches paint.
+const strayNative = (frames, homeMenu) => nativeFrames(frames).filter((f) => homeMenu || !f.menu);
 // From the main menu on, the reader sees home over it or easy reading: never a
 // PTT screen, never the stale frame painted before that menu.
 const notHomeOrEasyReading = (frames) =>
@@ -158,6 +164,13 @@ test('a reconnect from a home main menu covers its login screens with home until
   await pauseClockNow(page);
   await nestedSessionAfterLogin(page, { homeMenu: true });
   await page.evaluate(() => { window.__shortcutServer.state.holdResponses = true; });
+  // Past the main menu's settle on the paused clock: the countdown shows over
+  // live home and nothing is sent yet (#315).
+  await page.clock.runFor(1500);
+  await expect(page.locator('#resumeLastPlace')).toContainText('即將回到斷線前的位置：Test');
+  await expect(page.locator('#homeDashboard')).toBeVisible();
+  expect(await page.evaluate(() => ({ active: window.__app.aidNavigation.active, holding: window.__app.reconnectResume.holding })))
+    .toEqual({ active: false, holding: false });
   await page.clock.resume();
   await expect.poll(() => page.evaluate(() => window.__app.aidNavigation.active)).toBe(true);
   await expect(page.locator('#homeDashboard')).toBeVisible();
@@ -179,6 +192,9 @@ test('a reconnect from a home main menu covers its login screens with home until
   expect(frames.some((f) => !f.afterMenu && f.native)).toBe(true);
   expect(notHomeOrEasyReading(frames)).toEqual([]);
   // Home shows from the main menu while the run drives, with its progress hint.
+  const countdown = frames.filter((f) => f.countdown);
+  expect(countdown.length).toBeGreaterThan(0);
+  expect(countdown.filter((f) => !f.dashboard)).toEqual([]);
   const run = frames.filter((f) => f.afterMenu && f.holding);
   expect(run.length).toBeGreaterThan(0);
   expect(run.filter((f) => !f.dashboard)).toEqual([]);
@@ -197,6 +213,10 @@ test('a reconnect from a home main menu covers the run with home and lands on th
   expect(nativeFrames(frames)).toEqual([]);
   expect(notHomeOrEasyReading(frames)).toEqual([]);
   expect(frames.some((f) => f.afterMenu && f.dashboard)).toBe(true);
+  // The countdown shows over home, never over PTT's main menu.
+  const countdown = frames.filter((f) => f.countdown);
+  expect(countdown.length).toBeGreaterThan(0);
+  expect(countdown.filter((f) => !f.dashboard)).toEqual([]);
   expect(frames.at(-1).article).toBe(true);
 });
 
@@ -208,12 +228,13 @@ test('a reconnect from a main menu without My Favorites keeps the last frame bef
   await expect.poll(() => topLine(page)).toBe(position);
   await released(page);
   const frames = await stopFrames(page);
-  expect(nativeFrames(frames)).toEqual([]);
+  expect(strayNative(frames, false)).toEqual([]);
   // No home to show: this login painted nothing, so the article stays until
-  // the drive reaches its board; the drive then passes the board's list as
-  // easy-reading cards (as any jump to an article does) and lands.
+  // the main menu settles; its native menu shows under the countdown, then
+  // the drive passes the board's list as easy-reading cards (as any jump to an
+  // article does) and lands.
   expect(frames[0].article).toBe(true);
-  expect(frames.filter((f) => !f.article && !f.cards)).toEqual([]);
+  expect(frames.filter((f) => !f.article && !f.cards && !f.native)).toEqual([]);
   expect(frames.filter((f) => f.dashboard)).toEqual([]);
   expect(frames.at(-1).article).toBe(true);
 });
@@ -228,7 +249,7 @@ for (const homeMenu of [true, false]) {
     await listActive(page);
     await released(page);
     const frames = await stopFrames(page);
-    expect(nativeFrames(frames)).toEqual([]);
+    expect(strayNative(frames, homeMenu)).toEqual([]);
     if (homeMenu) expect(notHomeOrEasyReading(frames)).toEqual([]);
     expect(frames.at(-1).cards).toBe(true);
   });
@@ -328,4 +349,58 @@ test('tapping the countdown after a reload sets off at once and lands on the lis
   const frames = await stopFrames(page);
   expect(nativeFrames(frames)).toEqual([]);
   expect(frames.at(-1).cards).toBe(true);
+});
+
+// A reconnect up to the main menu, the clock held there so a loaded machine
+// cannot let the 3 s countdown expire before the reader's input.
+async function reconnectToCountdown(page, options) {
+  await page.evaluate(() => window.__stubWS.close());
+  await page.locator('#reactAlert button', { hasText: 'Reconnect' }).tap();
+  await waitConnected(page);
+  await pauseClockNow(page);
+  await nestedSessionAfterLogin(page, options);
+  await page.clock.runFor(1500);
+  // The 重新連線 press did not cancel it.
+  await expect(page.locator('#resumeLastPlace')).toContainText('即將回到斷線前的位置：Test');
+}
+
+test('a tap outside the countdown after a reconnect cancels it and stays home', async ({ page }) => {
+  await readAlpha(page, { homeMenu: true });
+  await watchFrames(page);
+  await reconnectToCountdown(page, { homeMenu: true });
+  await expect(page.locator('#homeDashboard')).toBeVisible();
+  const sent = await page.evaluate(() => window.__gestureSent.length);
+  await page.locator('#homeDashboard .homeSection h3').first().tap();
+  await expect(page.locator('#resumeLastPlace')).toBeHidden();
+  const cancelled = await page.evaluate(() => window.__frames.length);
+  await page.clock.resume();
+  await page.clock.runFor(5000);
+  expect(await page.evaluate(() => window.__app.reconnectResume.hasPending())).toBe(false);
+  expect(await page.evaluate(() => window.__app.aidNavigation.active)).toBe(false);
+  expect(await page.evaluate(() => window.__gestureSent.length)).toBe(sent);
+  await expect(page.locator('#homeDashboard')).toBeVisible();
+  const frames = await stopFrames(page);
+  expect(nativeFrames(frames)).toEqual([]);
+  expect(await page.evaluate((n) => window.__frames.slice(n).map((f) => f.hint).filter(Boolean), cancelled)).toEqual([]);
+});
+
+test('tapping the countdown after a reconnect sets off at once and lands on the article', async ({ page }) => {
+  const position = await readAlpha(page, { homeMenu: true });
+  await watchFrames(page);
+  await reconnectToCountdown(page, { homeMenu: true });
+  await page.locator('#resumeLastPlace').tap();
+  // Still inside the countdown on the paused clock: the return has set off and
+  // the recovery hold covers PTT's screens.
+  expect(await page.evaluate(() => {
+    const rr = window.__app.reconnectResume;
+    return { countingDown: rr.countingDown(), holding: rr.holding };
+  })).toEqual({ countingDown: false, holding: true });
+  await expect(page.locator('#resumeLastPlace')).toBeHidden();
+  await page.clock.resume();
+  await waitArticle(page, 'Alpha');
+  await expect.poll(() => topLine(page)).toBe(position);
+  await released(page);
+  const frames = await stopFrames(page);
+  expect(nativeFrames(frames)).toEqual([]);
+  expect(frames.at(-1).article).toBe(true);
 });
