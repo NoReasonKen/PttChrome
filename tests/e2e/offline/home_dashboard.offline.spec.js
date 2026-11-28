@@ -21,7 +21,7 @@ const FAVS = [
 const dashboard = (page) => page.locator('#homeDashboard');
 
 async function bootHome(page, prefs) {
-  await bootOffline(page, ptt);
+  await bootOffline(page, ptt, { favoritesFetch: true });
   if (prefs) await ptt.applyPrefs(page, prefs);
   await page.evaluate(() => window.__app.setInputAreaFocus());
   await startCapture(page);
