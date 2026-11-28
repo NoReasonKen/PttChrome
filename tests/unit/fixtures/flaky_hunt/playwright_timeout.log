@@ -1,0 +1,11 @@
+  ✓  1741 [offline-mobile] › tests/e2e/offline/mobile_whereami.offline.spec.js:148:3 › where the board is on the phone › not offered over an article (3.4s)
+
+
+  1) [offline-mobile] › tests/e2e/offline/mobile_user_list_entry.offline.spec.js:90:3 › the online user list entrance › 線上使用者 sends Ctrl+Z u, and the user cards slide in over the dashboard 
+
+    Test timeout of 60000ms exceeded.
+
+    Error: page.waitForFunction: Test timeout of 60000ms exceeded.
+
+       at helpers/user_list.js:278
+

@@ -1,0 +1,8 @@
+
+
+  1) [offline-mobile] › tests/e2e/offline/mobile_stack_search_source.offline.spec.js:645:1 › half a swipe back from the results shows a long source scrolled to its end at its reading position 
+
+    Error: expect(received).toContain(expected) // indexOf
+
+    Expected substring: "Alpha line 04:"
+    Received string:    "Alpha line 200: reading text reading text reading text reading text reading text

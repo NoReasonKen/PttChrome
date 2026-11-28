@@ -8,6 +8,7 @@ import {
   failedStage,
   renderBody,
   renderChangedBody,
+  renderLogBlock,
   ISSUE_TITLE,
   ISSUE_LABEL,
   CHANGED_TITLE,
@@ -180,5 +181,55 @@ describe("tools/ptt-src-screens", () => {
   test("按鍵等 driver 回到等鍵才送（不准固定睡）", () => {
     expect(gen).not.toMatch(/\bsleep\b/);
     expect(gen).toContain("capture.mjs");
+  });
+});
+
+describe("generate 紅：附輸出尾段，且不斷言是環境問題（#311）", () => {
+  // 2026-11-28 的真實 log：upstream 刪掉 struct fileheader_t 的 score 欄位，driver.c 編不過。
+  const log = [
+    "driver.c:217:30: error: no member named 'score' in 'struct fileheader_t'",
+    "  217 |     fh.score = 0;",
+    "      |     ~~ ^",
+    "1 error generated.",
+  ].join("\n");
+
+  test("body 附 generate 輸出的 fenced block，並說明可能是 upstream 原始碼改了", () => {
+    const body = renderBody({ event: "schedule", generate: "failure", check: "skipped", generateLog: log });
+    expect(body).toContain("紅在 generate");
+    expect(body).toContain("不一定是環境問題");
+    expect(body).not.toContain("環境問題，還沒檢查");
+    expect(body).toContain("```\ndriver.c:217:30: error: no member named 'score' in 'struct fileheader_t'");
+    expect(body).toContain("1 error generated.\n```");
+  });
+
+  test("只留最後 40 行、去 ANSI 與尾端空行", () => {
+    const many = Array.from({ length: 100 }, (_, i) => `\x1b[31mline ${i}\x1b[0m`).join("\n") + "\n\n";
+    const block = renderLogBlock(many).join("\n");
+    expect(block).toContain("line 99");
+    expect(block).toContain("line 60");
+    expect(block).not.toContain("line 59\n");
+    expect(block).not.toContain("\x1b");
+    expect(block).toContain("最後 40 行");
+  });
+
+  test("內容含 ``` 時 fence 比它長，block 關不掉", () => {
+    const block = renderLogBlock("a\n```\nb");
+    expect(block[2]).toBe("````");
+    expect(block.at(-1)).toBe("````");
+  });
+
+  test("沒有 log（步驟在輸出前就被取消）⇒ 不寫空 block；check 紅不附 generate log", () => {
+    expect(renderLogBlock("")).toEqual([]);
+    expect(renderLogBlock(undefined)).toEqual([]);
+    expect(renderBody({ event: "schedule", generate: "failure", check: "skipped" })).not.toContain("```");
+    expect(renderBody({ event: "schedule", generate: "success", check: "failure", generateLog: log })).not.toContain("```");
+  });
+
+  test("workflow：generate 步驟把輸出尾段放進 job output 交給 report", () => {
+    const yml = fs.readFileSync(path.join(__dirname, "../../.github/workflows/ptt-src-screens.yml"), "utf8");
+    expect(yml).toContain("generate-log: ${{ steps.gen.outputs.log }}");
+    expect(yml).toContain("GENERATE_LOG: ${{ needs.generate.outputs.generate-log }}");
+    expect(yml).toMatch(/id: gen\n\s+name: Generate screens/);
+    expect(yml).toContain('tail -n 40 "$RUNNER_TEMP/generate.log"');
   });
 });

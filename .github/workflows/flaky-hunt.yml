@@ -121,13 +121,26 @@ jobs:
           args=()
           if [ -n "$GREP" ]; then args=(-t "$GREP"); fi
           fails=0
+          mkdir -p flaky-logs flaky-failures
           for i in $(seq "$REPEAT"); do
             echo "::group::unit round $i/$REPEAT"
-            if yarn test:unit "${args[@]}"; then echo "round $i: pass"; else echo "::error::unit round $i/$REPEAT failed"; fails=$((fails+1)); fi
+            # tee 留一份 log，紅的那輪撈出失敗的 test 給 report（scripts/flaky-hunt-failures.mjs）。
+            if yarn test:unit "${args[@]}" 2>&1 | tee "flaky-logs/unit-$i.log"; then echo "round $i: pass"; else
+              echo "::error::unit round $i/$REPEAT failed"; fails=$((fails+1))
+              node scripts/flaky-hunt-failures.mjs vitest "flaky-logs/unit-$i.log" --suite=unit --round="$i" >> flaky-failures/unit.ndjson
+            fi
             echo "::endgroup::"
           done
           echo "unit: $fails/$REPEAT rounds failed"
           test "$fails" = 0
+      - name: Upload failed tests
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: flaky-failures-unit-attempt-${{ github.run_attempt }}
+          path: flaky-failures/
+          if-no-files-found: ignore
+          retention-days: 3
 
   integration-repeat:
     needs: gate
@@ -154,13 +167,25 @@ jobs:
           args=()
           if [ -n "$GREP" ]; then args=(-t "$GREP"); fi
           fails=0
+          mkdir -p flaky-logs flaky-failures
           for i in $(seq "$REPEAT"); do
             echo "::group::integration round $i/$REPEAT"
-            if yarn test:integration "${args[@]}"; then echo "round $i: pass"; else echo "::error::integration round $i/$REPEAT failed"; fails=$((fails+1)); fi
+            if yarn test:integration "${args[@]}" 2>&1 | tee "flaky-logs/integration-$i.log"; then echo "round $i: pass"; else
+              echo "::error::integration round $i/$REPEAT failed"; fails=$((fails+1))
+              node scripts/flaky-hunt-failures.mjs vitest "flaky-logs/integration-$i.log" --suite=integration --round="$i" >> flaky-failures/integration.ndjson
+            fi
             echo "::endgroup::"
           done
           echo "integration: $fails/$REPEAT rounds failed"
           test "$fails" = 0
+      - name: Upload failed tests
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: flaky-failures-integration-attempt-${{ github.run_attempt }}
+          path: flaky-failures/
+          if-no-files-found: ignore
+          retention-days: 3
 
   # --repeat-each：每條 test 跑 N 次，fullyParallel 下會被拆到不同 worker／shard。
   e2e-offline-repeat:
@@ -185,7 +210,22 @@ jobs:
           args=()
           if [ -n "$GREP" ]; then args=(--grep "$GREP" --pass-with-no-tests); fi
           yarn install --immutable
-          yarn test:e2e:offline --repeat-each="$REPEAT" --shard=${{ matrix.shard }}/8 "${args[@]}"
+          mkdir -p flaky-logs
+          yarn test:e2e:offline --repeat-each="$REPEAT" --shard=${{ matrix.shard }}/8 "${args[@]}" 2>&1 | tee flaky-logs/e2e.log
+      # 紅時把失敗的 test（project › file:line › title＋第一行錯誤）撈成 ndjson 給 report job。
+      - name: Collect failed tests
+        if: failure()
+        run: |
+          mkdir -p flaky-failures
+          node scripts/flaky-hunt-failures.mjs playwright flaky-logs/e2e.log --suite=e2e-offline --shard=${{ matrix.shard }}/8 > flaky-failures/e2e-offline-${{ matrix.shard }}.ndjson
+      - name: Upload failed tests
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: flaky-failures-e2e-offline-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: flaky-failures/
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Upload failure artifacts
         if: failure()
         uses: actions/upload-artifact@v7
@@ -237,7 +277,21 @@ jobs:
           args=()
           if [ -n "$GREP" ]; then args=(--grep "$GREP" --pass-with-no-tests); fi
           yarn install --immutable
-          yarn test:e2e:offline:adverse --only=${{ matrix.bucket }} --shard=${{ matrix.shard }}/${{ matrix.shards }} --repeat-each="$REPEAT" "${args[@]}"
+          mkdir -p flaky-logs
+          yarn test:e2e:offline:adverse --only=${{ matrix.bucket }} --shard=${{ matrix.shard }}/${{ matrix.shards }} --repeat-each="$REPEAT" "${args[@]}" 2>&1 | tee flaky-logs/e2e.log
+      - name: Collect failed tests
+        if: failure()
+        run: |
+          mkdir -p flaky-failures
+          node scripts/flaky-hunt-failures.mjs playwright flaky-logs/e2e.log --suite=e2e-adverse --shard="${{ matrix.bucket }} ${{ matrix.shard }}/${{ matrix.shards }}" > flaky-failures/e2e-adverse-${{ matrix.bucket }}-${{ matrix.shard }}.ndjson
+      - name: Upload failed tests
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: flaky-failures-e2e-adverse-${{ matrix.bucket }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: flaky-failures/
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Upload failure artifacts
         if: failure()
         uses: actions/upload-artifact@v7
@@ -328,6 +382,15 @@ jobs:
         with:
           sparse-checkout: scripts/flaky-hunt-report.mjs
           sparse-checkout-cone-mode: false
+      # 各重複 job 紅時上傳的失敗清單（scripts/flaky-hunt-failures.mjs）；沒有（job 在跑測試前就掛了、
+      # 或 timeout）就不下載到任何東西，留言退回只有結果一行。
+      - name: Download failed tests
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: flaky-failures-*
+          path: flaky-failures
+          merge-multiple: true
       # 「新開 issue」會觸發 routine「fix Nightly flaky hunt 失敗」起 Claude session ⇒ 只有
       # schedule、且跑的 commit 仍是 dev HEAD 時能開新的；workflow_dispatch（session 修完的驗證 run）
       # 與過時紅只續寫既有 issue，否則會連鎖或重修。決策表守護在 tests/unit/flaky_hunt_report.test.js。
@@ -336,6 +399,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          FAILURES_DIR: flaky-failures
           RESULTS: "unit=${{ needs.unit-repeat.result }} integration=${{ needs.integration-repeat.result }} e2e-offline=${{ needs.e2e-offline-repeat.result }} e2e-adverse=${{ needs.e2e-adverse-repeat.result }} android=${{ needs.android-repeat.result }}"
         run: node scripts/flaky-hunt-report.mjs
 

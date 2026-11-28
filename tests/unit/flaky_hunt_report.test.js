@@ -5,8 +5,9 @@
 // Flaky Hunt 驗證；PR 帶 `Fixes #N` 的話 merge 時 issue 已被關。舊版 report「沒有 open 的就新開」
 // ⇒ 驗證 run 還紅就再 fire 一個 session，一路連鎖。這裡鎖住：只有 schedule 能新開。
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { decideReport, renderBody, mergeIssues, ISSUE_TITLE } from "../../scripts/flaky-hunt-report.mjs";
+import { decideReport, renderBody, renderFailures, loadFailures, mergeIssues, ISSUE_TITLE } from "../../scripts/flaky-hunt-report.mjs";
 
 const open = (number) => ({ number, title: ISSUE_TITLE, state: "OPEN", closedAt: null });
 const closed = (number, closedAt) => ({ number, title: ISSUE_TITLE, state: "CLOSED", closedAt });
@@ -101,4 +102,72 @@ test("report 新開 issue 掛 label、查詢走 label（搜尋索引查不到剛
   const src = fs.readFileSync(path.join(__dirname, "..", "..", "scripts", "flaky-hunt-report.mjs"), "utf8");
   expect(src).toMatch(/"issue", "create",[^\n]*"--label", ISSUE_LABEL/);
   expect(src).toContain('"--label", ISSUE_LABEL])');
+});
+
+describe("留言帶失敗的 test（不必下載 job log）", () => {
+  const pw = (n, shard = "7/8") => ({
+    kind: "playwright",
+    suite: "e2e-offline",
+    project: "offline-mobile",
+    file: `tests/e2e/offline/x${n}.offline.spec.js`,
+    line: 90,
+    title: "the entrance › sends `Ctrl+Z`",
+    error: "Test timeout of 60000ms exceeded.",
+    where: `shard ${shard}`,
+  });
+  const vt = (round) => ({
+    kind: "vitest",
+    suite: "unit",
+    project: "unit-browser (chromium)",
+    file: "tests/unit/lazy_inline_preview.test.js",
+    title: "延遲載入佔位盒 > 替身盒",
+    error: "AssertionError: expected null not to be null",
+    where: `round ${round}`,
+  });
+
+  test("Playwright：project › file:line › title；vitest：file › describe › test；各帶第一行錯誤", () => {
+    const text = renderFailures([pw(1), vt(6)]).join("\n");
+    expect(text).toContain("e2e-offline：`offline-mobile › tests/e2e/offline/x1.offline.spec.js:90 › the entrance › sends 'Ctrl+Z'`（shard 7/8）");
+    expect(text).toContain("  - `Test timeout of 60000ms exceeded.`");
+    expect(text).toContain("unit：`tests/unit/lazy_inline_preview.test.js › 延遲載入佔位盒 › 替身盒`（round 6）");
+  });
+
+  test("同一條 test 合併成次數與 round 清單", () => {
+    const text = renderFailures([vt(6), vt(9)]).join("\n");
+    expect(text).toContain("（1 條、共 2 次）");
+    expect(text).toContain("×2（round 6、round 9）");
+  });
+
+  test("最多列 20 條，其餘只講數量", () => {
+    const text = renderFailures(Array.from({ length: 25 }, (_, i) => pw(i))).join("\n");
+    expect(text.match(/^- e2e-offline：/gm)).toHaveLength(20);
+    expect(text).toContain("另有 5 條沒列出");
+  });
+
+  test("沒有失敗清單（job 沒留下）⇒ body 與舊版相同", () => {
+    const args = { event: "schedule", date: "d", runUrl: "u", sha: "s", headSha: "s", ref: "r", results: "x", repeat: "10" };
+    expect(renderBody({ ...args, failures: [] })).toBe(renderBody(args));
+    expect(renderBody({ ...args, failures: [vt(6)] })).toContain("**失敗的測試**");
+  });
+
+  test("loadFailures：讀目錄下所有 ndjson、壞行略過、目錄不存在回空", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "flaky-"));
+    fs.writeFileSync(path.join(dir, "a.ndjson"), `${JSON.stringify(vt(6))}\nnot json\n`);
+    fs.writeFileSync(path.join(dir, "b.ndjson"), `${JSON.stringify(pw(1))}\n`);
+    fs.writeFileSync(path.join(dir, "ignore.txt"), "x");
+    expect(loadFailures(dir).map((f) => f.kind)).toEqual(["vitest", "playwright"]);
+    expect(loadFailures(path.join(dir, "nope"))).toEqual([]);
+    expect(loadFailures(undefined)).toEqual([]);
+    fs.rmSync(dir, { recursive: true });
+  });
+
+  test("workflow：每個重複 job 紅時上傳 flaky-failures-*，report 下載後交給腳本", () => {
+    const yaml = fs.readFileSync(path.join(__dirname, "..", "..", ".github", "workflows", "flaky-hunt.yml"), "utf8");
+    for (const suite of ["unit", "integration", "e2e-offline", "e2e-adverse"]) expect(yaml).toContain(`--suite=${suite}`);
+    expect(yaml.match(/name: flaky-failures-/g)).toHaveLength(4);
+    const report = yaml.slice(yaml.indexOf("\n  report:"), yaml.indexOf("\n  watchdog:"));
+    expect(report).toContain("pattern: flaky-failures-*");
+    expect(report).toContain("FAILURES_DIR: flaky-failures");
+    expect(report).toContain("continue-on-error: true");
+  });
 });
