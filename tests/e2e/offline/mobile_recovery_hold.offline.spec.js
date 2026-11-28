@@ -281,22 +281,51 @@ test('a reload returns to the article at the same line without painting PTT\'s s
   expect(frames.at(-1).article).toBe(true);
 });
 
-test('canceling the countdown after a reload stays home', async ({ page }) => {
+test('a tap outside the countdown after a reload cancels it and stays home', async ({ page }) => {
   await readFullList(page, { homeMenu: true });
   await reloadAndWatch(page);
-  // Hold the clock inside the 1 s countdown, so a loaded machine cannot let it
+  // Hold the clock inside the 3 s countdown, so a loaded machine cannot let it
   // expire before the tap (as the search-trail recovery spec does).
   await pauseClockNow(page);
   await nestedSessionAfterLogin(page, { homeMenu: true });
-  await page.clock.runFor(500);
-  await page.locator('#resumeLastPlace button').tap();
-  await page.clock.resume();
+  // Past the main menu's settle on the paused clock.
+  await page.clock.runFor(1500);
+  await expect(page.locator('#resumeLastPlace')).toBeVisible();
+  // A plain heading on home: the tap itself does nothing but cancel.
+  await page.locator('#homeDashboard .homeSection h3').first().tap();
   await expect(page.locator('#resumeLastPlace')).toBeHidden();
+  const cancelled = await page.evaluate(() => window.__frames.length);
+  await page.clock.resume();
   await expect(page.locator('#homeDashboard')).toBeVisible();
-  // Past the countdown: nothing set off, home stays.
+  // Past the countdown: nothing set off, home stays, and no hint explains it.
   await page.clock.runFor(5000);
   expect(await page.evaluate(() => window.__app.reconnectResume.hasPending())).toBe(false);
   await expect(page.locator('#homeDashboard')).toBeVisible();
   const frames = await stopFrames(page);
   expect(nativeFrames(frames)).toEqual([]);
+  expect(await page.evaluate((n) => window.__frames.slice(n).map((f) => f.hint).filter(Boolean), cancelled)).toEqual([]);
+});
+
+test('tapping the countdown after a reload sets off at once and lands on the list in easy reading', async ({ page }) => {
+  await readFullList(page, { homeMenu: true });
+  await reloadAndWatch(page);
+  await pauseClockNow(page);
+  await nestedSessionAfterLogin(page, { homeMenu: true });
+  // Past the main menu's settle on the paused clock.
+  await page.clock.runFor(500);
+  await expect(page.locator('#resumeLastPlace')).toBeVisible();
+  await page.locator('#resumeLastPlace').tap();
+  // Still inside the countdown on the paused clock: the run has set off.
+  expect(await page.evaluate(() => {
+    const rr = window.__app.reconnectResume;
+    return { countingDown: rr.countingDown(), holding: rr.holding };
+  })).toEqual({ countingDown: false, holding: true });
+  await expect(page.locator('#resumeLastPlace')).toBeHidden();
+  await page.clock.resume();
+  await waitList(page, FULL_LIST);
+  await listActive(page);
+  await released(page);
+  const frames = await stopFrames(page);
+  expect(nativeFrames(frames)).toEqual([]);
+  expect(frames.at(-1).cards).toBe(true);
 });

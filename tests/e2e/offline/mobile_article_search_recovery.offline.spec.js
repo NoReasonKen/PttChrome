@@ -367,7 +367,7 @@ test('a source deleted while disconnected stops on its board list and leaves the
   expect((await gestureSent(page)).slice(sent)).toBe('\x1b[D');
 });
 
-test('canceling the resume after a reload explains that the trail stays inactive', async ({ page }) => {
+test('canceling the resume after a reload drops the trail without a notice', async ({ page }) => {
   await bootNestedShortcutSearch(page, { loggedIn: true });
   await tapShortcut(page, 'author');
   await waitList(page, { has: ['Alpha topic', 'Beta topic'], lacks: ['Delta topic'] });
@@ -377,11 +377,17 @@ test('canceling the resume after a reload explains that the trail stays inactive
   await reloadForRecovery(page);
   await pauseClockNow(page);
   await nestedSessionAfterLogin(page);
-  // Past the main menu's settle, well inside the 1 s countdown.
-  await page.clock.runFor(500);
-  await page.locator('#resumeLastPlace button').tap();
+  // Past the main menu's settle, well inside the 3 s countdown. Without My
+  // Favorites there is no home: the reader taps the app bar's title instead.
+  await page.clock.runFor(1500);
+  await expect(page.locator('#resumeLastPlace')).toBeVisible();
+  await page.locator('#mobileAppBar .mobileAppBarTitle').tap();
+  await expect(page.locator('#resumeLastPlace')).toBeHidden();
   await page.clock.resume();
-  await expect.poll(() => bodyText(page)).toContain(INACTIVE);
+  // Past the countdown: the reader chose to stay, so nothing explains the trail.
+  await page.clock.runFor(5000);
+  expect(await page.evaluate(() => window.__app.reconnectResume.hasPending())).toBe(false);
+  expect(await bodyText(page)).not.toContain(INACTIVE);
   expect(await bodyText(page)).not.toContain(RESTORED);
   expect(await gestureSent(page)).not.toContain('sTest');
 });

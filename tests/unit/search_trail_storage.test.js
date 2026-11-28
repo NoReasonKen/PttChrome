@@ -152,6 +152,24 @@ test("a resume that lands somewhere else leaves the trail inactive with an expla
   expect(trailOwnsBack()).toBe(false);
 });
 
+test("a reader who cancels the reopening countdown loses the trail without a notice (#314)", () => {
+  closePageOnResults();
+  const { search, hints, trailOwnsBack } = app();
+  search.restoreForRecovery(LIST_PLAN);
+  search.abandonRecovery("cancel");
+  search.recoveryEnded(LIST_PLAN, { ok: true });
+  expect(hints()).toEqual([]);
+  expect(trailOwnsBack()).toBe(false);
+});
+
+test("a resume superseded before it sets off still explains the inactive trail", () => {
+  closePageOnResults();
+  const { search, hints } = app();
+  search.restoreForRecovery(LIST_PLAN);
+  search.abandonRecovery("superseded");
+  expect(hints()).toEqual([i18n("articleShortcutSearch_recoveryInactive")]);
+});
+
 test("a user board switch before closing the page removes the stored trail", () => {
   const rows = { ...FULL_LIST };
   const { search } = app(rows);

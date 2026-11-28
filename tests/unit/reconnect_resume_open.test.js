@@ -1,7 +1,8 @@
 // @unit-env browser
 // 開站回到上次的地方（好讀行為，src/js/reconnect_resume.js；docs/reading-record.md
 // 「開站回到上次的地方」）：分頁切到背景／關掉時存書籤，下一次開站登入回主功能表後先倒數
-// （提示上有「取消」），倒數完還在主功能表才出發；deep link、使用者自己走開、取消都不送鍵。
+// 3 秒（提示下緣的進度條），倒數完還在主功能表才出發；點提示立刻出發；提示出現後的其他
+// 輸入（點別處、觸控、滾輪、捲首頁、按鍵）、deep link、使用者自己走開都不送鍵。
 // real-input: tests/e2e/offline/mobile_article_search_recovery.offline.spec.js
 import {
   ReconnectResume,
@@ -14,6 +15,7 @@ import {
 import { ReadingRecord } from "../../src/js/reading_record";
 import { DEFAULT_PREFS, writeValues } from "../../src/js/pref_storage";
 import { recordSearchResults } from "../../src/js/search_results_context";
+import mainCss from "../../src/css/main.css?raw";
 
 const LIST = {
   kind: "list",
@@ -118,7 +120,29 @@ describe("存書籤", () => {
 });
 
 describe("開站接回", () => {
-  test("登入回主功能表 ⇒ 先倒數（提示）、不送鍵；倒數完才出發", () => {
+  // The reader's inputs the countdown watches (#314), each dispatched where the
+  // reader would make it: outside the toast, or on home's own scroller.
+  const OUTSIDE_INPUTS = {
+    "a tap or click outside the toast": () =>
+      document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })),
+    "a touch": () => document.body.dispatchEvent(new Event("touchstart", { bubbles: true })),
+    "a wheel": () => document.body.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: 40 })),
+    "a key": () => document.body.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "j" })),
+    "a home scroll": (h) => h.home.dispatchEvent(new Event("scroll"))
+  };
+
+  // Home's scroller, as the home dashboard registers it (attachRoot).
+  function withHome(h) {
+    h.home = document.createElement("div");
+    document.body.append(h.home);
+    h.core.homeDashboard = { rootElement: () => h.home };
+    h.view.flashListHint = vi.fn();
+    return h;
+  }
+  afterEach(() => document.querySelectorAll("body > div:not([id])").forEach((el) => el.remove()));
+
+  test("登入回主功能表 ⇒ 先倒數 3 秒（提示）、不送鍵；倒數完才出發", () => {
+    expect(OPEN_RESUME_DELAY_MS).toBe(3000);
     leaveFromOldPage();
     const h = harness();
     expect(h.rr.hasPending()).toBe(true);
@@ -127,9 +151,11 @@ describe("開站接回", () => {
     h.settle(MAIN_MENU);
     expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
     expect(toast().hidden).toBe(false);
-    expect(toast().textContent).toContain("C_Chat");
+    expect(toast().textContent).toBe("即將回到上次的地方：C_Chat 的文章");
     expect(h.rr.hasPending()).toBe(true);
-    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS - 1);
+    expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
     expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
     expect(h.core.aidNavigation.startResume.mock.calls[0][0]).toMatchObject({
       kind: "article",
@@ -141,14 +167,86 @@ describe("開站接回", () => {
     expect(h.rr.hasPending()).toBe(false);
   });
 
-  test("按「取消」⇒ 一個鍵都不送，停在主功能表", () => {
+  test("the toast has no cancel button and a bottom bar that empties over the countdown", () => {
+    const style = document.createElement("style");
+    style.textContent = mainCss;
+    document.head.append(style);
+    onTestFinished(() => style.remove());
     leaveFromOldPage();
     const h = harness();
     h.settle(MAIN_MENU);
-    toast().querySelector("button").click();
+    expect(toast().querySelector("button")).toBeNull();
+    const bar = toast().querySelector(".resumeLastPlaceProgress");
+    const drain = getComputedStyle(bar);
+    expect(drain.animationDuration).toBe(OPEN_RESUME_DELAY_MS / 1000 + "s");
+    expect(drain.animationTimingFunction).toBe("linear");
+    const box = toast().getBoundingClientRect();
+    const edge = bar.getBoundingClientRect();
+    expect(edge.bottom).toBeCloseTo(box.bottom, 0);
+    expect(edge.height).toBeLessThan(box.height / 4);
+  });
+
+  test("tapping the toast sets off at once", () => {
+    leaveFromOldPage();
+    const h = withHome(harness());
+    h.settle(MAIN_MENU);
+    vi.advanceTimersByTime(500);
+    // The tap's own press and touch land on the toast: they are not outside input.
+    toast().dispatchEvent(new Event("touchstart", { bubbles: true }));
+    toast().dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    expect(h.rr.countingDown()).toBe(true);
+    toast().querySelector(".resumeLastPlaceText").click();
+    expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
+    expect(h.core.aidNavigation.startResume.mock.calls[0][0]).toMatchObject({ kind: "article", aid: "1gIeu-3A" });
+    expect(toast().hidden).toBe(true);
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
+    expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
+  });
+
+  test("a tap on the toast still meets the dispatch-time checks", () => {
+    leaveFromOldPage();
+    const h = harness();
+    h.settle(MAIN_MENU);
+    h.core.deepLinkController.hasPending = () => true;
+    toast().click();
+    expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
+    expect(h.rr.hasPending()).toBe(false);
+  });
+
+  test.each(Object.keys(OUTSIDE_INPUTS))("%s during the countdown cancels at once: no keys, no hint, not offered again", (input) => {
+    leaveFromOldPage();
+    const h = withHome(harness());
+    h.settle(MAIN_MENU);
+    vi.advanceTimersByTime(500);
+    OUTSIDE_INPUTS[input](h);
+    expect(toast().hidden).toBe(true);
+    expect(h.rr.hasPending()).toBe(false);
     vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS * 2);
     expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
-    expect(toast().hidden).toBe(true);
+    expect(h.view.flashListHint).not.toHaveBeenCalled();
+    expect(harness().rr.hasPending()).toBe(false);
+  });
+
+  test("input before the toast appears does not cancel", () => {
+    leaveFromOldPage();
+    const h = withHome(harness());
+    h.settle(LOGIN);
+    for (const input of Object.values(OUTSIDE_INPUTS)) input(h);
+    h.settle(MAIN_MENU);
+    vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
+    expect(h.core.aidNavigation.startResume).toHaveBeenCalledTimes(1);
+  });
+
+  test("cancelling input reaches the page as well (the reader's action goes on)", () => {
+    leaveFromOldPage();
+    const h = withHome(harness());
+    h.settle(MAIN_MENU);
+    const seen = vi.fn();
+    h.home.addEventListener("pointerdown", seen);
+    const event = new PointerEvent("pointerdown", { bubbles: true, cancelable: true });
+    h.home.dispatchEvent(event);
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(event.defaultPrevented).toBe(false);
     expect(h.rr.hasPending()).toBe(false);
   });
 
@@ -157,6 +255,7 @@ describe("開站接回", () => {
     const h = harness();
     h.settle(MAIN_MENU);
     h.settle("【看板列表】");
+    expect(toast().hidden).toBe(true);
     vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
     expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
   });
@@ -176,6 +275,7 @@ describe("開站接回", () => {
     h.settle(MAIN_MENU);
     h.core.connectState = 2;
     h.rr.capture(false);
+    expect(toast().hidden).toBe(true);
     vi.advanceTimersByTime(OPEN_RESUME_DELAY_MS);
     expect(h.core.aidNavigation.startResume).not.toHaveBeenCalled();
   });
@@ -187,12 +287,26 @@ describe("開站接回", () => {
     expect(h.rr.hasPending()).toBe(false);
   });
 
-  test("提示認得出來（App._onUploadLayer 靠它不把點提示當成點終端機）", () => {
+  test("提示認得出來，滑鼠事件不外傳（App._onUploadLayer 靠它不把點提示當成點終端機）", () => {
     leaveFromOldPage();
     const h = harness();
     h.settle(MAIN_MENU);
-    expect(isResumeToastTarget(toast().querySelector("button"))).toBe(true);
+    expect(isResumeToastTarget(toast().querySelector(".resumeLastPlaceText"))).toBe(true);
     expect(isResumeToastTarget(document.body)).toBe(false);
+    const terminal = vi.fn();
+    window.addEventListener("mousedown", terminal);
+    window.addEventListener("mouseup", terminal);
+    window.addEventListener("click", terminal);
+    try {
+      for (const type of ["mousedown", "mouseup"])
+        toast().dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
+      toast().click();
+    } finally {
+      window.removeEventListener("mousedown", terminal);
+      window.removeEventListener("mouseup", terminal);
+      window.removeEventListener("click", terminal);
+    }
+    expect(terminal).not.toHaveBeenCalled();
   });
 });
 
