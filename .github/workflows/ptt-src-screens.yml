@@ -42,6 +42,7 @@ jobs:
       pttbbs-sha: ${{ steps.clone.outputs.sha }}
       changed: ${{ steps.diff.outputs.changed }}
       screens-hash: ${{ steps.diff.outputs.hash }}
+      generate-log: ${{ steps.gen.outputs.log }}
     steps:
       - uses: actions/checkout@v7
       - id: clone
@@ -59,8 +60,21 @@ jobs:
         run: |
           clang --version | head -1
           objcopy --version | head -1
-      - name: Generate screens from upstream source
-        run: sh tools/ptt-src-screens/generate.sh 3rd_script/pttbbs
+      # 紅時把輸出最後 40 行放進 output 給 report（generate.sh 在 make 失敗時已 tail build.log；
+      # driver 編譯錯誤直接印在 stderr）：issue 才看得出是 upstream 改了結構還是環境壞了，
+      # 不必點進 run 的 log。步驟失敗時 GITHUB_OUTPUT 仍會被收進 job outputs。
+      - id: gen
+        name: Generate screens from upstream source
+        shell: bash
+        run: |
+          rc=0
+          sh tools/ptt-src-screens/generate.sh 3rd_script/pttbbs > "$RUNNER_TEMP/generate.log" 2>&1 || rc=$?
+          cat "$RUNNER_TEMP/generate.log"
+          if [ "$rc" != 0 ]; then
+            delim="LOG_$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+            { echo "log<<$delim"; tail -n 40 "$RUNNER_TEMP/generate.log" | sed 's/\x1b\[[0-9;]*[A-Za-z]//g' | cut -c1-300; echo "$delim"; } >> "$GITHUB_OUTPUT"
+          fi
+          exit "$rc"
       # 綠也印：畫面跟 repo 裡的 fixture 不同＝upstream 改了這個畫面。changed／hash 給 changed job
       # （全綠時開低優先 issue，以雜湊去重）與 report（紅時一併列出）。add -N：新場景也算變動。
       - id: diff
@@ -141,6 +155,7 @@ jobs:
           GENERATE_RESULT: ${{ needs.generate.result }}
           CHECK_RESULT: ${{ needs.check.result }}
           CHANGED: ${{ needs.generate.outputs.changed }}
+          GENERATE_LOG: ${{ needs.generate.outputs.generate-log }}
         run: node scripts/ptt-src-screens-report.mjs failure
 
   # 全綠但 upstream 產的畫面與 repo 的 fixture 不同 ⇒ 低優先 issue（同一份畫面只講一次）。

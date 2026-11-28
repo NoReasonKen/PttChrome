@@ -1,0 +1,17 @@
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL   unit-browser (chromium)  tests/unit/lazy_inline_preview.test.js > 延遲載入佔位盒（掛載/卸載） > 替身盒頂到真圖佔到版面為止：掛載當下不讓位（那時只有讀取中指示器）
+AssertionError: expected null not to be null
+ ❯ tests/unit/lazy_inline_preview.test.js:430:59
+    428|     resized().emit();
+    429|     await nextFrame();
+    430|     expect(slot.querySelector(".inlinePreviewGhost")).not.toBeNull();
+       |                                                           ^
+    431|
+    432|     // 真圖畫出來了 ⇒ 讓位，下一幀才拿掉（#152：回呼裡不改版面）。
+ ❯ node_modules/.vite/vitest/72d889179a05531fdf8a120ba4a59c85ced67e0f/deps/plugins.DPQHVT0p-CqKEm0WF.js?v=b7f24bdf:5242:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
