@@ -107,11 +107,16 @@ export const SCENES = [
     steps: [{ name: 'menu' }],
   },
   {
-    // 文章列表按 X 推文（bbs.c#recommend）。
+    // 文章列表按 X 推文（bbs.c#recommend）：先問推／噓／→ 註解，選 3 是 → 輸入列。
     file: 'push',
     entry: 'read:Test',
     rows: 24,
-    steps: [{ name: 'list' }, { keys: 'X', name: 'push-1' }, { keys: '1', name: 'push-2' }],
+    steps: [
+      { name: 'list' },
+      { keys: 'X', name: 'menu' },
+      { keys: '3', name: 'push-1' },
+      { keys: '1', name: 'push-2' },
+    ],
   },
   {
     // 推文走完：輸入 → 確定[y/N] → y⏎ 寫進文章 → 開文看到那一則推文列（帶時間戳，long_push 判 IP 記錄板用）。
@@ -120,7 +125,8 @@ export const SCENES = [
     rows: 24,
     steps: [
       { name: 'list' },
-      { keys: 'X', name: 'input' },
+      { keys: 'X', name: 'menu' },
+      { keys: '1', name: 'input' },
       { keys: 'hello\r', name: 'confirm' },
       { keys: 'y\r', name: 'done' },
       { keys: '\r', name: 'article' },

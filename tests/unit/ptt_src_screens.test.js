@@ -428,7 +428,11 @@ describe("upstream pttbbs 產的新信提示（menu.c#redraw_title）", () => {
 });
 
 describe("upstream pttbbs 產的推文畫面（bbs.c#recommend）", () => {
-  test("文章列表按 X ⇒ 推文輸入列（→ 自己的 id:），打字後仍是輸入列", () => {
+  test("文章列表按 X ⇒ 推／噓／→ 選單；選 3 ⇒ 推文輸入列（→ 自己的 id:），打字後仍是輸入列", () => {
+    expect(classifyPushScreen(screenAt(pushFx, "menu").rowTexts)).toEqual({
+      kind: "typeMenu",
+      booAllowed: true,
+    });
     expect(classifyPushScreen(screenAt(pushFx, "push-1").rowTexts)).toEqual({
       kind: "inputPrompt",
       type: "→",
@@ -510,14 +514,15 @@ describe("upstream pttbbs 產的推文流程（bbs.c#recommend 輸入 → 確認
   const kind = (name) => classifyPushScreen(screenAt(pushFlowFx, name).rowTexts);
 
   test("打完內容 ⏎ ⇒ 確定[y/N]；y⏎ 之後離開推文畫面", () => {
-    expect(kind("input")).toMatchObject({ kind: "inputPrompt", userId: "tester" });
+    expect(kind("menu")).toMatchObject({ kind: "typeMenu" });
+    expect(kind("input")).toEqual({ kind: "inputPrompt", type: "推", userId: "tester" });
     expect(kind("confirm")).toEqual({ kind: "confirm" });
     expect(kind("done")).toEqual({ kind: "other" });
   });
 
   test("寫進文章的推文列帶時間戳 ⇒ 不是輸入列；Test 板不記 IP ⇒ detectIpLogged 為 false（不是 null）", () => {
     const { rowTexts } = screenAt(pushFlowFx, "article");
-    const row = rowTexts.find((t) => /^→ tester *:hello/.test(t));
+    const row = rowTexts.find((t) => /^推 tester *: *hello/.test(t));
     expect(row).toBeTruthy();
     expect(classifyPushScreen([row])).toEqual({ kind: "other" });
     expect(detectIpLogged(rowTexts)).toBe(false);
