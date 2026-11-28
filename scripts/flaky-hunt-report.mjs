@@ -13,6 +13,7 @@
 // 找 issue 用 label `flaky-hunt`（建立時就掛上）：`gh issue list --search` 走搜尋索引，剛建立的
 // issue 可能查不到，多個 cron 下兩個 run 會各開一個。搜尋結果仍併進來，涵蓋掛 label 前的舊 issue。
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,7 +39,56 @@ export function isStale({ sha, headSha }) {
   return Boolean(sha && headSha && sha !== headSha);
 }
 
-export function renderBody({ event, date, runUrl, sha, headSha, ref, results, repeat }) {
+export const MAX_FAILURES = 20;
+
+// 各 job 失敗時寫的 ndjson（scripts/flaky-hunt-failures.mjs）→ 陣列。壞行略過：留言少一條勝過 report 掛掉。
+export function loadFailures(dir) {
+  if (!dir || !fs.existsSync(dir)) return [];
+  const out = [];
+  for (const f of fs.readdirSync(dir).filter((n) => n.endsWith(".ndjson")).sort())
+    for (const line of fs.readFileSync(path.join(dir, f), "utf8").split("\n")) {
+      try {
+        if (line.trim()) out.push(JSON.parse(line));
+      } catch {}
+    }
+  return out;
+}
+
+const code = (s) => `\`${String(s).replace(/`/g, "'")}\``;
+const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+
+function testLabel(f) {
+  if (f.kind === "playwright") {
+    const where = `${f.file}:${f.line}`;
+    return [f.project, where, ...String(f.title).split(" › ")].filter(Boolean).join(" › ");
+  }
+  return [f.file, ...String(f.title || "").split(" > ")].filter(Boolean).join(" › ");
+}
+
+// 同一條 test 合併（次數、出現的 shard／round），依次數多到少，最多列 max 條，其餘只講還有幾條。
+export function renderFailures(failures, max = MAX_FAILURES) {
+  if (!failures || !failures.length) return [];
+  const groups = new Map();
+  for (const f of failures) {
+    const key = `${f.suite}\u0000${testLabel(f)}`;
+    const g = groups.get(key) || { suite: f.suite, label: testLabel(f), error: f.error, count: 0, where: [] };
+    g.count++;
+    if (f.where && !g.where.includes(f.where)) g.where.push(f.where);
+    groups.set(key, g);
+  }
+  const all = [...groups.values()].sort((a, b) => b.count - a.count);
+  const lines = ["", `**失敗的測試**（${all.length} 條、共 ${failures.length} 次）：`];
+  for (const g of all.slice(0, max)) {
+    const times = g.count > 1 ? ` ×${g.count}` : "";
+    const where = g.where.length ? `（${g.where.join("、")}）` : "";
+    lines.push(`- ${g.suite ? `${g.suite}：` : ""}${code(clip(g.label, 300))}${times}${where}`);
+    if (g.error) lines.push(`  - ${code(clip(g.error, 200))}`);
+  }
+  if (all.length > max) lines.push(`- …另有 ${all.length - max} 條沒列出，見 run 的 log。`);
+  return lines;
+}
+
+export function renderBody({ event, date, runUrl, sha, headSha, ref, results, repeat, failures }) {
   const lines = [
     event === "schedule"
       ? `${date} 的 nightly 重複測試抓到偶發紅。`
@@ -58,6 +108,7 @@ export function renderBody({ event, date, runUrl, sha, headSha, ref, results, re
     `- 結果: ${results}`,
     `- 每個套件重複 ${repeat} 輪；測試框架不 retry，任一輪紅即為 flaky。`,
   );
+  lines.push(...renderFailures(failures));
   return lines.join("\n");
 }
 
@@ -95,6 +146,7 @@ function main(env) {
     ref: env.GITHUB_REF,
     results: env.RESULTS,
     repeat: env.REPEAT,
+    failures: loadFailures(env.FAILURES_DIR),
   });
   if (action.kind === "create") {
     gh(["label", "create", ISSUE_LABEL, "--force", "--color", "d93f0b", "--description", "Nightly flaky hunt 自動開的 issue"]);

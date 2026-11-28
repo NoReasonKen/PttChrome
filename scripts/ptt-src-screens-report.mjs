@@ -12,7 +12,8 @@
 //          已把 issue 關了，驗證若還紅又新開 ⇒ 再 fire 一個 session ⇒ 連鎖；
 //        · 過時紅不新開：nightly 晚開跑、跑的期間修正已 merge 並關掉 issue，新開只會重修已修好的東西；
 //      - 不新開時留言在最近一個 closed 的（**不 reopen**），一個都沒有就不寫，看 run 本身。
-//    紅分兩種（body 寫清楚）：generate 紅＝upstream build／driver 壞了（環境，修 tools/ptt-src-screens/），
+//    紅分兩種（body 寫清楚）：generate 紅＝build／driver 沒過（可能是 upstream 改了原始碼結構，例如
+//    欄位被改名、driver.c 引用不到；也可能是環境，body 附 generate 輸出的最後 40 行讓人判斷），
 //    check 紅＝upstream 的畫面讓本專案的解析器判錯（真的不相容）。
 //
 // 2. changed ─「PTT 原始碼畫面有變動」（label ptt-src-screens-changed）：全綠，但 upstream 產的畫面
@@ -60,8 +61,25 @@ export function failedStage({ generate, check }) {
   return null;
 }
 
-// changed：有變動的 fixture 名稱（空白分隔，generate job 的輸出）。
-export function renderBody({ event, date, runUrl, sha, headSha, pttbbsSha, generate, check, changed }) {
+const LOG_TAIL_LINES = 40;
+
+// generate 步驟輸出的最後 N 行（去 ANSI、去尾端空行）；整段放進 fenced block，fence 比內容裡最長的
+// 反引號連續段多一個，內容才關不掉 block。
+export function renderLogBlock(log, n = LOG_TAIL_LINES) {
+  const lines = String(log || "")
+    .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\s+$/, ""));
+  while (lines.length && !lines[lines.length - 1]) lines.pop();
+  const tail = lines.slice(-n);
+  if (!tail.length) return [];
+  const longest = Math.max(0, ...(tail.join("\n").match(/`+/g) || []).map((m) => m.length));
+  const fence = "`".repeat(Math.max(3, longest + 1));
+  return ["", `generate 輸出的最後 ${tail.length} 行：`, fence, ...tail, fence];
+}
+
+// changed：有變動的 fixture 名稱（空白分隔，generate job 的輸出）。generateLog：generate 步驟輸出的尾段。
+export function renderBody({ event, date, runUrl, sha, headSha, pttbbsSha, generate, check, changed, generateLog }) {
   const stage = failedStage({ generate, check });
   const lines = [
     `${date}（${event}）用 upstream pttbbs ${pttbbsSha || "（未取得）"} 產生畫面並檢查，結果紅。`,
@@ -69,9 +87,10 @@ export function renderBody({ event, date, runUrl, sha, headSha, pttbbsSha, gener
   ];
   if (stage === "generate") {
     lines.push(
-      "**紅在 generate**：upstream 原始碼 build 不過或 driver 跑不起來（環境問題，還沒檢查到本專案的解析器）。",
+      "**紅在 generate**：build 或 driver 沒過（還沒檢查到本專案的解析器）。**不一定是環境問題**，也可能是 upstream 改了原始碼（例：結構欄位改名、函式簽名變了），先看下面的輸出。",
       "修 `tools/ptt-src-screens/`（generate.sh／driver.c／capture.mjs），本機重現：`sh tools/ptt-src-screens/generate.sh`。",
     );
+    lines.push(...renderLogBlock(generateLog));
   } else {
     lines.push(
       "**紅在 check**：upstream 產的畫面讓本專案的畫面判定／解析器判錯（可能是真的不相容）。",
@@ -163,6 +182,7 @@ function mainFailure(env, common) {
     headSha,
     generate: env.GENERATE_RESULT,
     check: env.CHECK_RESULT,
+    generateLog: env.GENERATE_LOG,
   });
   post({ action, title: ISSUE_TITLE, label: ISSUE_LABEL, color: "5319e7", description: "PTT Source Screens 自動開的 issue（觸發 routine）", body });
   if (action.kind === "none")
